@@ -18,7 +18,7 @@ use gtk4::gio;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-pub fn gtk_app() {
+pub fn main() {
     let app = Application::builder()
         .application_id("com.gcodekit5.app")
         .build();

@@ -7,6 +7,7 @@ use gcodekit5_designer::shapes::{Shape, Point};
 
 pub struct DesignerCanvas {
     pub widget: DrawingArea,
+    #[allow(dead_code)]
     state: Rc<RefCell<DesignerState>>,
 }
 
