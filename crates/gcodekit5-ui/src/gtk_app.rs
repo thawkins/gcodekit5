@@ -8,6 +8,7 @@ use libadwaita::Application as AdwApplication;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::sync::Arc;
+use std::path::PathBuf;
 
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
@@ -40,7 +41,11 @@ pub fn main() {
             eprintln!("Settings init warning: {}", e);
         }
 
-        let device_manager = Arc::new(DeviceManager::new());
+        let config_dir = dirs::config_dir()
+            .map(|p| p.join("gcodekit5"))
+            .unwrap_or_else(|| PathBuf::from("config"));
+            
+        let device_manager = Arc::new(DeviceManager::new(config_dir));
         let device_controller = Rc::new(DeviceUiController::new(device_manager.clone()));
 
         let designer_state = Rc::new(RefCell::new(DesignerState::new()));

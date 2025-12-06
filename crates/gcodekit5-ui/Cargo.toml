@@ -20,10 +20,10 @@ slint = { version = "1.14.1", features = ["backend-winit", "image-default-format
 gtk4 = "0.9"
 libadwaita = "0.7"
 sourceview5 = "0.9"
-epoxy = "0.1"
 glib = "0.20"
 gio = "0.20"
 rfd = "0.15.4"
+lyon = "1.0"
 windows-sys = { version = "0.48.0", features = ["Win32_UI_WindowsAndMessaging"] }
 raw-window-handle = "0.6"
 serde = { version = "1.0", features = ["derive"] }

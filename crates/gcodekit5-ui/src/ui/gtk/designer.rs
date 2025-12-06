@@ -117,7 +117,7 @@ impl DesignerCanvas {
                     cr.save().unwrap();
                     cr.translate(ellipse.center.x, ellipse.center.y);
                     // TODO: Rotation
-                    cr.scale(ellipse.radius_x, ellipse.radius_y);
+                    cr.scale(ellipse.rx, ellipse.ry);
                     cr.arc(0.0, 0.0, 1.0, 0.0, 2.0 * std::f64::consts::PI);
                     cr.restore().unwrap();
                     cr.stroke().unwrap();

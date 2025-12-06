@@ -2,7 +2,8 @@ use gtk4::prelude::*;
 use gtk4::{DrawingArea, ScrolledWindow, PolicyType};
 use std::cell::RefCell;
 use std::rc::Rc;
-use gcodekit5_visualizer::{Visualizer2D, GCodeCommand};
+use gcodekit5_visualizer::{Visualizer2D};
+use gcodekit5_visualizer::visualizer::GCodeCommand;
 
 pub struct GcodeVisualizer {
     pub widget: DrawingArea,
