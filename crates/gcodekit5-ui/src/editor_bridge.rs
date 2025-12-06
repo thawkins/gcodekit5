@@ -1,6 +1,6 @@
 //! Bridge between Slint UI and EditorState backend
 
-use super::EditorState;
+use gcodekit5_gcodeeditor::EditorState;
 use slint::{Model, ModelRc, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -133,7 +133,7 @@ impl EditorBridge {
     /// Set cursor position
     pub fn set_cursor(&self, line: usize, column: usize) {
         let editor = self.editor.borrow();
-        let char_pos = editor.buffer.line_col_to_char(line, column);
+        let char_pos = editor.line_col_to_char(line, column);
         drop(editor);
         
         let mut editor = self.editor.borrow_mut();
@@ -176,7 +176,7 @@ impl EditorBridge {
     /// Get line content at given line index (0-based)
     pub fn get_line_at(&self, line_idx: usize) -> Option<String> {
         let editor = self.editor.borrow();
-        editor.buffer.line(line_idx)
+        editor.get_line(line_idx)
     }
 
     /// Update visible lines from editor state

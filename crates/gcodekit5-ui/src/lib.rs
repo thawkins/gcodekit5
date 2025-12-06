@@ -5,6 +5,7 @@
 
 pub mod testing;
 pub mod ui;
+pub mod editor_bridge;
 
 pub use ui::{
     ConsoleEvent, ConsoleListener, DeviceConsoleManager, DeviceMessageType, FirmwareSettingsIntegration,
@@ -17,7 +18,9 @@ pub use gcodekit5_settings::{
     MachineSettings, SettingsManager, UiSettings,
 };
 
+pub use editor_bridge::{EditorBridge, SlintTextLine};
+
 pub use gcodekit5_gcodeeditor::{
-    EditorBridge, EditorState, SlintTextLine, TextBuffer, TextChange, TextLine, UndoManager,
+    EditorState, TextBuffer, TextChange, TextLine, UndoManager,
     Viewport,
 };

@@ -58,12 +58,10 @@
 //! let (start_line, lines) = editor.get_visible_lines();
 //! ```
 
-mod slint_bridge;
 mod text_buffer;
 mod undo_manager;
 mod viewport;
 
-pub use slint_bridge::{EditorBridge, SlintTextLine};
 pub use text_buffer::TextBuffer;
 pub use undo_manager::{TextChange, UndoManager};
 pub use viewport::Viewport;
@@ -318,6 +316,16 @@ impl EditorState {
     pub fn set_viewport_size(&mut self, viewport_height: f32, line_height: f32) {
         self.viewport
             .set_viewport_size(viewport_height, line_height);
+    }
+
+    /// Convert line/column to character index
+    pub fn line_col_to_char(&self, line: usize, col: usize) -> usize {
+        self.buffer.line_col_to_char(line, col)
+    }
+
+    /// Get content of a specific line
+    pub fn get_line(&self, line_idx: usize) -> Option<String> {
+        self.buffer.line(line_idx)
     }
 }
 
