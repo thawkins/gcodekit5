@@ -408,6 +408,139 @@ impl MachineControlView {
 
         view.refresh_ports();
 
+        // Setup jog button handlers
+        {
+            let communicator = view.communicator.clone();
+            let step_0_1 = view.step_0_1_btn.clone();
+            let step_1_0 = view.step_1_0_btn.clone();
+            let step_10 = view.step_10_btn.clone();
+            view.jog_x_pos.connect_clicked(move |_| {
+                let step_size = if step_0_1.is_active() {
+                    0.1
+                } else if step_1_0.is_active() {
+                    1.0
+                } else if step_10.is_active() {
+                    10.0
+                } else {
+                    50.0
+                };
+                let jog_cmd = format!("$J=G91 X{} F2000\n", step_size);
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(jog_cmd.as_bytes());
+                }
+            });
+        }
+
+        {
+            let communicator = view.communicator.clone();
+            let step_0_1 = view.step_0_1_btn.clone();
+            let step_1_0 = view.step_1_0_btn.clone();
+            let step_10 = view.step_10_btn.clone();
+            view.jog_x_neg.connect_clicked(move |_| {
+                let step_size = if step_0_1.is_active() {
+                    0.1
+                } else if step_1_0.is_active() {
+                    1.0
+                } else if step_10.is_active() {
+                    10.0
+                } else {
+                    50.0
+                };
+                let jog_cmd = format!("$J=G91 X-{} F2000\n", step_size);
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(jog_cmd.as_bytes());
+                }
+            });
+        }
+
+        {
+            let communicator = view.communicator.clone();
+            let step_0_1 = view.step_0_1_btn.clone();
+            let step_1_0 = view.step_1_0_btn.clone();
+            let step_10 = view.step_10_btn.clone();
+            view.jog_y_pos.connect_clicked(move |_| {
+                let step_size = if step_0_1.is_active() {
+                    0.1
+                } else if step_1_0.is_active() {
+                    1.0
+                } else if step_10.is_active() {
+                    10.0
+                } else {
+                    50.0
+                };
+                let jog_cmd = format!("$J=G91 Y{} F2000\n", step_size);
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(jog_cmd.as_bytes());
+                }
+            });
+        }
+
+        {
+            let communicator = view.communicator.clone();
+            let step_0_1 = view.step_0_1_btn.clone();
+            let step_1_0 = view.step_1_0_btn.clone();
+            let step_10 = view.step_10_btn.clone();
+            view.jog_y_neg.connect_clicked(move |_| {
+                let step_size = if step_0_1.is_active() {
+                    0.1
+                } else if step_1_0.is_active() {
+                    1.0
+                } else if step_10.is_active() {
+                    10.0
+                } else {
+                    50.0
+                };
+                let jog_cmd = format!("$J=G91 Y-{} F2000\n", step_size);
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(jog_cmd.as_bytes());
+                }
+            });
+        }
+
+        {
+            let communicator = view.communicator.clone();
+            let step_0_1 = view.step_0_1_btn.clone();
+            let step_1_0 = view.step_1_0_btn.clone();
+            let step_10 = view.step_10_btn.clone();
+            view.jog_z_pos.connect_clicked(move |_| {
+                let step_size = if step_0_1.is_active() {
+                    0.1
+                } else if step_1_0.is_active() {
+                    1.0
+                } else if step_10.is_active() {
+                    10.0
+                } else {
+                    50.0
+                };
+                let jog_cmd = format!("$J=G91 Z{} F2000\n", step_size);
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(jog_cmd.as_bytes());
+                }
+            });
+        }
+
+        {
+            let communicator = view.communicator.clone();
+            let step_0_1 = view.step_0_1_btn.clone();
+            let step_1_0 = view.step_1_0_btn.clone();
+            let step_10 = view.step_10_btn.clone();
+            view.jog_z_neg.connect_clicked(move |_| {
+                let step_size = if step_0_1.is_active() {
+                    0.1
+                } else if step_1_0.is_active() {
+                    1.0
+                } else if step_10.is_active() {
+                    10.0
+                } else {
+                    50.0
+                };
+                let jog_cmd = format!("$J=G91 Z-{} F2000\n", step_size);
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(jog_cmd.as_bytes());
+                }
+            });
+        }
+
         let view_clone = view.clone();
         view.refresh_btn.connect_clicked(move |_| {
             view_clone.refresh_ports();
