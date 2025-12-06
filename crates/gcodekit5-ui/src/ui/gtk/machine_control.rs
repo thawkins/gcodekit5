@@ -419,8 +419,7 @@ impl MachineControlView {
         match list_ports() {
             Ok(ports) if !ports.is_empty() => {
                 for port in ports {
-                    let label = format!("{} - {}", port.port_name, port.description);
-                    self.port_combo.append(Some(&port.port_name), &label);
+                    self.port_combo.append(Some(&port.port_name), &port.port_name);
                 }
                 // Select the first port
                 self.port_combo.set_active(Some(0));
