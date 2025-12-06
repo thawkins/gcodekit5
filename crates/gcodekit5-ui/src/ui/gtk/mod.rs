@@ -1,4 +1,5 @@
 pub mod settings;
+pub mod device_console;
 pub mod device_manager;
 pub mod cam_tools;
 pub mod status_bar;

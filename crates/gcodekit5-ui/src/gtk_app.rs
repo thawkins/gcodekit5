@@ -18,10 +18,12 @@ use crate::ui::gtk::device_manager::DeviceManagerWindow;
 use crate::ui::gtk::cam_tools::CamToolsView;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::machine_control::MachineControlView;
+use crate::ui::gtk::device_console::DeviceConsoleView;
 
 use gcodekit5_settings::{SettingsController, SettingsDialog, SettingsPersistence, SettingsManager};
 use gcodekit5_devicedb::{DeviceManager, DeviceUiController};
 use gcodekit5_designer::designer_state::DesignerState;
+use gcodekit5_communication::Communicator;
 
 pub fn main() {
     let app = AdwApplication::builder()
@@ -222,9 +224,58 @@ pub fn main() {
         });
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
 
-        // 6. Machine Control (Placeholder)
-        // Removed placeholder
+        // 6. Device Console
+        let device_console = DeviceConsoleView::new();
+        stack.add_titled(&device_console.widget, Some("console"), "Device Console");
 
+        // Wire up console send
+        let communicator = machine_control.communicator.clone();
+        let console_clone = device_console.clone();
+
+        let send_cmd = move || {
+            let text = console_clone.command_entry.text();
+            if !text.is_empty() {
+                let mut comm = communicator.borrow_mut();
+                if comm.is_connected() {
+                     if let Err(e) = comm.send_command(&text) {
+                         console_clone.append_log(&format!("Error sending: {}\n", e));
+                     } else {
+                         console_clone.append_log(&format!("> {}\n", text));
+                         console_clone.command_entry.set_text("");
+                     }
+                } else {
+                     console_clone.append_log("Not connected\n");
+                }
+            }
+        };
+
+        let send_cmd_clone = send_cmd.clone();
+        device_console.send_btn.connect_clicked(move |_| {
+            send_cmd_clone();
+        });
+
+        let send_cmd_clone = send_cmd.clone();
+        device_console.command_entry.connect_activate(move |_| {
+            send_cmd_clone();
+        });
+
+        // Poll for incoming data
+        let communicator = machine_control.communicator.clone();
+        let console_clone = device_console.clone();
+        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            let mut comm = communicator.borrow_mut();
+            if comm.is_connected() {
+                match comm.receive() {
+                    Ok(data) if !data.is_empty() => {
+                        let text = String::from_utf8_lossy(&data);
+                        console_clone.append_log(&text);
+                    }
+                    Ok(_) => {} // No data
+                    Err(_) => {} // Ignore errors for now
+                }
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
 
         main_box.append(&content_box);
 
@@ -264,11 +315,18 @@ pub fn main() {
         });
         app.add_action(&cam_action);
 
+        let stack_clone = stack.clone();
+        let console_action = gio::SimpleAction::new("view_console", None);
+        console_action.connect_activate(move |_, _| {
+            stack_clone.set_visible_child_name("console");
+        });
+        app.add_action(&console_action);
+
         // Placeholder Actions for Menu Items
         let action_names = vec![
             "file_new", "file_open", "file_save", "file_save_as", "file_export", "quit",
             "edit_undo", "edit_redo", "edit_cut", "edit_copy", "edit_paste",
-            "view_toolbars", "view_status_bar", "view_console", "view_visualizer",
+            "view_toolbars", "view_status_bar", "view_visualizer",
             "machine_connect", "machine_disconnect", "machine_home", "machine_reset",
             "help_docs", "about"
         ];
