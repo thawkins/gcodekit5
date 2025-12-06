@@ -112,7 +112,8 @@ pub fn main() {
         content_box.append(&stack);
         
         // 1. Machine Control
-        let machine_control = MachineControlView::new();
+        let status_bar = Rc::new(StatusBar::new());
+        let machine_control = MachineControlView::new(Some(status_bar.clone()));
         stack.add_titled(&machine_control.widget, Some("machine"), "Machine Control");
 
         // Wire up Machine Control
@@ -256,8 +257,7 @@ pub fn main() {
 
         main_box.append(&content_box);
 
-        // Status Bar
-        let status_bar = Rc::new(StatusBar::new());
+        // Append the StatusBar (created earlier before MachineControlView)
         main_box.append(&status_bar.widget);
         
         // Connect eStop

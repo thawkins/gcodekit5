@@ -48,10 +48,11 @@ pub struct MachineControlView {
     pub jog_z_neg: Button,
     pub estop_btn: Button,
     pub communicator: Rc<RefCell<SerialCommunicator>>,
+    pub status_bar: Option<Rc<StatusBar>>,
 }
 
 impl MachineControlView {
-    pub fn new() -> Rc<Self> {
+    pub fn new(status_bar: Option<Rc<StatusBar>>) -> Rc<Self> {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
@@ -401,6 +402,7 @@ impl MachineControlView {
             jog_z_neg,
             estop_btn,
             communicator,
+            status_bar: status_bar.clone(),
         });
 
         view.refresh_ports();
@@ -425,6 +427,11 @@ impl MachineControlView {
                         view_clone.port_combo.set_sensitive(true);
                         view_clone.refresh_btn.set_sensitive(true);
                         view_clone.state_label.set_text("DISCONNECTED");
+                        
+                        // Update StatusBar
+                        if let Some(ref status_bar) = view_clone.status_bar {
+                            status_bar.set_connected(false, "");
+                        }
                         
                         // Log to status
                         let buffer = view_clone.status_text.buffer();
@@ -457,6 +464,8 @@ impl MachineControlView {
                     let refresh_btn = view_clone.refresh_btn.clone();
                     let state_label = view_clone.state_label.clone();
                     let status_text = view_clone.status_text.clone();
+                    let status_bar = view_clone.status_bar.clone();
+                    let port_name_copy = port_name.to_string();
 
                     // Spawn connection in a separate thread
                     std::thread::spawn(move || {
@@ -473,10 +482,15 @@ impl MachineControlView {
                                     refresh_btn.set_sensitive(false);
                                     state_label.set_text("CONNECTED");
                                     
+                                    // Update StatusBar
+                                    if let Some(ref sb) = status_bar {
+                                        sb.set_connected(true, &port_name_copy);
+                                    }
+                                    
                                     // Log to status
                                     let buffer = status_text.buffer();
                                     let mut iter = buffer.end_iter();
-                                    buffer.insert(&mut iter, &format!("Connected to {}\n", port_name));
+                                    buffer.insert(&mut iter, &format!("Connected to {}\n", port_name_copy));
                                 }
                                 Err(e) => {
                                     let buffer = status_text.buffer();
