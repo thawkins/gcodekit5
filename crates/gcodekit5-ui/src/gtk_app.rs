@@ -84,6 +84,11 @@ pub fn main() {
         edit_menu.append(Some("Cut"), Some("app.edit_cut"));
         edit_menu.append(Some("Copy"), Some("app.edit_copy"));
         edit_menu.append(Some("Paste"), Some("app.edit_paste"));
+        
+        let preferences_section = gio::Menu::new();
+        preferences_section.append(Some("Preferences"), Some("app.preferences"));
+        edit_menu.append_section(None, &preferences_section);
+        
         menu_bar_model.append_submenu(Some("Edit"), &edit_menu);
 
         // View Menu
