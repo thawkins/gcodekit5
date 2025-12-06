@@ -27,7 +27,7 @@ impl DeviceManagerWindow {
         stack.set_transition_type(gtk4::StackTransitionType::SlideUpDown);
         
         sidebar.set_stack(&stack);
-        sidebar.set_width_request(200);
+        sidebar.set_width_request(250);
         
         content.append(&sidebar);
         content.append(&stack);

@@ -24,7 +24,7 @@ impl GcodeVisualizer {
 
         // Sidebar for controls
         let sidebar = Box::new(Orientation::Vertical, 12);
-        sidebar.set_width_request(200);
+        sidebar.set_width_request(250);
         sidebar.add_css_class("visualizer-sidebar");
         sidebar.set_margin_start(12);
         sidebar.set_margin_end(12);
