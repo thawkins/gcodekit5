@@ -152,8 +152,17 @@ pub fn main() {
         stack.add_titled(&editor.widget, Some("editor"), "G-Code Editor");
         
         // 2. Visualizer
-        let visualizer = GcodeVisualizer::new();
+        let visualizer = Rc::new(GcodeVisualizer::new());
         stack.add_titled(&visualizer.widget, Some("visualizer"), "Visualizer");
+
+        // Connect Editor to Visualizer
+        let vis_clone = visualizer.clone();
+        editor.connect_changed(move |buffer| {
+            let start = buffer.start_iter();
+            let end = buffer.end_iter();
+            let text = buffer.text(&start, &end, true);
+            vis_clone.set_gcode(&text);
+        });
         
         // 3. Designer
         let designer = DesignerCanvas::new(designer_state.clone());
