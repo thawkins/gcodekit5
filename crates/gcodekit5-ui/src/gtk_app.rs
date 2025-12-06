@@ -15,7 +15,7 @@ use crate::ui::gtk::visualizer::GcodeVisualizer;
 use crate::ui::gtk::designer::DesignerCanvas;
 use crate::ui::gtk::settings::SettingsWindow;
 use crate::ui::gtk::device_manager::DeviceManagerWindow;
-use crate::ui::gtk::cam_tools::TabbedBoxDialog;
+use crate::ui::gtk::cam_tools::CamToolsView;
 
 use gcodekit5_settings::{SettingsController, SettingsDialog, SettingsPersistence, SettingsManager};
 use gcodekit5_devicedb::{DeviceManager, DeviceUiController};
@@ -164,7 +164,7 @@ pub fn main() {
         stack.add_titled(device_manager_view.widget(), Some("devices"), "Device Manager");
 
         // 5. CAM Tools
-        let cam_tools_view = TabbedBoxDialog::new();
+        let cam_tools_view = CamToolsView::new();
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
 
         // 6. Machine Control (Placeholder)
