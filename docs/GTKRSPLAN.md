@@ -96,6 +96,8 @@ Migrate simple panels first to establish patterns:
 *   **Functionality**: Wire up port listing, connection handling, and machine state updates.
     *   *Completed*: Implemented port listing and refresh.
     *   *Completed*: Fixed port display to show only device path (e.g., `/dev/ttyACM0`) for cleaner UI.
+    *   *Completed*: Implemented connection handling using `gcodekit5-communication`.
+    *   *Completed*: Implemented Device Console view with command sending and log display.
 
 ### Phase 5: Main Window Integration
 **Goal**: Assemble the application.
@@ -104,7 +106,7 @@ Migrate simple panels first to establish patterns:
 1.  **Layout**: Use `adw::Leaflet` or `gtk::Paned` for the sidebar layout.
     *   *Completed*: Used `gtk::StackSwitcher` (top tab bar) and `gtk::Stack` for navigation.
 2.  **Navigation**: Implement the sidebar navigation to switch between the migrated views (Editor, Visualizer, Designer).
-    *   *Completed*: Integrated `GcodeEditor`, `GcodeVisualizer`, `DesignerCanvas`, and `MachineControlView` into the stack.
+    *   *Completed*: Integrated `GcodeEditor`, `GcodeVisualizer`, `DesignerCanvas`, `MachineControlView`, and `DeviceConsoleView` into the stack.
 3.  **Menu Bar**: Implement `gio::Menu` for application menus.
     *   *Completed*: Added a full menu bar with File, Edit, View, Tools, Machine, Help menus.
 4.  **Status Bar**: Implement a status bar for messages and state.
