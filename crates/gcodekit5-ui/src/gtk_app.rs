@@ -75,7 +75,7 @@ pub fn main() {
         
         // Header Bar
         let header = HeaderBar::new();
-        main_box.append(&header);
+        window.set_titlebar(Some(&header));
 
         // Main Menu Bar
         let menu_bar_model = gio::Menu::new();
@@ -111,6 +111,12 @@ pub fn main() {
         view_menu.append(Some("Console"), Some("app.view_console"));
         view_menu.append(Some("Visualizer"), Some("app.view_visualizer"));
         menu_bar_model.append_submenu(Some("View"), &view_menu);
+
+        // Tools Menu
+        let tools_menu = gio::Menu::new();
+        tools_menu.append(Some("Device Manager"), Some("app.devices"));
+        tools_menu.append(Some("CAM Tools"), Some("app.cam_tools"));
+        menu_bar_model.append_submenu(Some("Tools"), &tools_menu);
 
         // Machine Menu
         let machine_menu = gio::Menu::new();
