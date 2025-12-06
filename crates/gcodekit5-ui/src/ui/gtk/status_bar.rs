@@ -1,6 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{Box, Label, Button, ProgressBar, Orientation, Align};
 
+#[derive(Clone)]
 pub struct StatusBar {
     pub widget: Box,
     pub estop_btn: Button,

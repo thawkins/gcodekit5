@@ -7,12 +7,11 @@ use gtk4::{
     ScrolledWindow, TextView, ToggleButton,
 };
 use gtk4::glib;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::ui::gtk::status_bar::StatusBar;
 
+#[derive(Clone)]
 pub struct MachineControlView {
     pub widget: Paned,
     pub port_combo: ComboBoxText,
@@ -49,12 +48,12 @@ pub struct MachineControlView {
     pub jog_z_pos: Button,
     pub jog_z_neg: Button,
     pub estop_btn: Button,
-    pub communicator: Rc<RefCell<SerialCommunicator>>,
-    pub status_bar: Option<Rc<StatusBar>>,
+     pub communicator: Arc<Mutex<SerialCommunicator>>,
+    pub status_bar: Option<StatusBar>,
 }
 
 impl MachineControlView {
-    pub fn new(status_bar: Option<Rc<StatusBar>>) -> Rc<Self> {
+    pub fn new(status_bar: Option<StatusBar>) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
@@ -365,9 +364,9 @@ impl MachineControlView {
             gtk4::glib::ControlFlow::Continue
         });
 
-        let communicator = Rc::new(RefCell::new(SerialCommunicator::new()));
+        let communicator = Arc::new(Mutex::new(SerialCommunicator::new()));
 
-        let view = Rc::new(Self {
+        let view = Self {
             widget,
             port_combo,
             connect_btn,
@@ -405,7 +404,7 @@ impl MachineControlView {
             estop_btn,
             communicator,
             status_bar: status_bar.clone(),
-        });
+        };
 
         view.refresh_ports();
 
@@ -416,11 +415,11 @@ impl MachineControlView {
 
         let view_clone = view.clone();
         view.connect_btn.connect_clicked(move |_| {
-            let is_connected = view_clone.communicator.borrow().is_connected();
+            let is_connected = view_clone.communicator.lock().unwrap().is_connected();
             
             if is_connected {
                 // Disconnect
-                let mut comm = view_clone.communicator.borrow_mut();
+                let mut comm = view_clone.communicator.lock().unwrap();
                 match comm.disconnect() {
                     Ok(_) => {
                         view_clone.connect_btn.set_label("Connect");
@@ -481,35 +480,17 @@ impl MachineControlView {
                     // Spawn a thread for the blocking connection operation
                     std::thread::spawn(move || {
                         // Perform the connection in a separate thread
-                        let result = {
-                            // We need to create a temporary communicator for the thread
-                            let mut temp_comm = SerialCommunicator::new();
-                            temp_comm.connect(&params)
-                        };
+                        let result = communicator_clone.lock().unwrap().connect(&params);
                         
                         // Send result back to main thread
-                        let _ = sender.send((result, params));
+                        let _ = sender.send(result);
                     });
-                    
-                    // Clone communicator for the timeout callback
-                    let communicator_for_update = view_clone.communicator.clone();
                     
                     // Poll the channel on the main thread using glib timeout
                     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                        if let Ok((result, params)) = receiver.try_recv() {
+                        if let Ok(result) = receiver.try_recv() {
                             match result {
                                 Ok(_) => {
-                                    // Now connect the main communicator
-                                    let mut comm = communicator_for_update.borrow_mut();
-                                    if let Err(e) = comm.connect(&params) {
-                                        // Connection failed on main thread
-                                        let buffer = status_text.buffer();
-                                        let mut iter = buffer.end_iter();
-                                        buffer.insert(&mut iter, &format!("Connection failed: {}\n", e));
-                                        connect_btn.set_sensitive(true);
-                                        return glib::ControlFlow::Break;
-                                    }
-                                    drop(comm); // Release the borrow
                                     
                                     connect_btn.set_label("Disconnect");
                                     connect_btn.remove_css_class("suggested-action");

@@ -112,7 +112,7 @@ pub fn main() {
         content_box.append(&stack);
         
         // 1. Machine Control
-        let status_bar = Rc::new(StatusBar::new());
+        let status_bar = StatusBar::new();
         let machine_control = MachineControlView::new(Some(status_bar.clone()));
         stack.add_titled(&machine_control.widget, Some("machine"), "Machine Control");
 
@@ -163,7 +163,7 @@ pub fn main() {
         let send_cmd = move || {
             let text = console_clone.command_entry.text();
             if !text.is_empty() {
-                let mut comm = communicator.borrow_mut();
+                let mut comm = communicator.lock().unwrap();
                 if comm.is_connected() {
                      if let Err(e) = comm.send_command(&text) {
                          console_clone.append_log(&format!("Error sending: {}\n", e));
@@ -191,7 +191,7 @@ pub fn main() {
         let communicator = machine_control.communicator.clone();
         let console_clone = device_console.clone();
         gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            let mut comm = communicator.borrow_mut();
+            let mut comm = communicator.lock().unwrap();
             if comm.is_connected() {
                 match comm.receive() {
                     Ok(data) if !data.is_empty() => {
