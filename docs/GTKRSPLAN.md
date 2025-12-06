@@ -36,13 +36,16 @@ This document outlines the strategy for migrating GCodeKit5 from the Slint UI fr
 
 ### Phase 2: Project Structure & Dependencies
 **Goal**: Set up the GTK4 build environment.
+**Status**: Completed
 
 1.  **Update `Cargo.toml`**:
     *   Remove `slint` and `slint-build`.
     *   Add `gtk4`, `libadwaita`, `glib`, `gio`.
+    *   *Completed*: Added GTK dependencies to `gcodekit5-ui`. Kept `slint` for now to allow parallel development/reference, but the environment is ready.
 2.  **Initialize GTK Application**:
     *   Create a new entry point in `gcodekit5-ui` using `gtk::Application`.
     *   Set up the main window skeleton using `adw::ApplicationWindow`.
+    *   *Completed*: Created `crates/gcodekit5-ui/src/gtk_app.rs` with a basic Libadwaita application structure.
 
 ### Phase 3: Component Migration (Bottom-Up)
 **Goal**: Reimplement individual UI components.

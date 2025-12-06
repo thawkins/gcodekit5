@@ -6,6 +6,7 @@
 pub mod testing;
 pub mod ui;
 pub mod editor_bridge;
+pub mod gtk_app;
 
 pub use ui::{
     ConsoleEvent, ConsoleListener, DeviceConsoleManager, DeviceMessageType, FirmwareSettingsIntegration,
