@@ -71,7 +71,9 @@ Migrate simple panels first to establish patterns:
 
 #### 4.1 G-Code Editor (`gcodekit5-gcodeeditor`)
 *   **Widget**: Replace custom Slint text edit with `gtk::TextView` and `gtk::SourceView` (from `sourceview5` crate).
+    *   *Completed*: Implemented `GcodeEditor` widget in `crates/gcodekit5-ui/src/ui/gtk/editor.rs` using `sourceview5::View`.
 *   **Features**: `gtk::SourceView` provides built-in syntax highlighting, line numbers, and undo/redo, significantly reducing custom code maintenance.
+    *   *Completed*: Enabled line numbers, monospace font, and basic style scheme.
 
 #### 4.2 Visualizer (`gcodekit5-visualizer`)
 *   **Rendering**: Replace Slint's rendering with `gtk::GLArea`.

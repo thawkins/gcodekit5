@@ -19,6 +19,7 @@ gcodekit5-devicedb = { path = "../gcodekit5-devicedb" }
 slint = { version = "1.14.1", features = ["backend-winit", "image-default-formats"] }
 gtk4 = "0.9"
 libadwaita = "0.7"
+sourceview5 = "0.9"
 glib = "0.20"
 gio = "0.20"
 rfd = "0.15.4"
