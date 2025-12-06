@@ -4,6 +4,7 @@
 
 pub mod gtk_app;
 pub mod ui;
+pub mod device_status;
 
 // Re-export settings for convenience if needed
 pub use gcodekit5_settings::{

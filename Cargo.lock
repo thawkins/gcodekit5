@@ -1274,6 +1274,7 @@ dependencies = [
  "gtk4",
  "libadwaita",
  "lyon",
+ "once_cell",
  "raw-window-handle",
  "rfd",
  "serde",

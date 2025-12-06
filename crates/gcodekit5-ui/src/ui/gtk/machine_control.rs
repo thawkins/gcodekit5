@@ -1,6 +1,7 @@
 use gcodekit5_communication::{
     Communicator, ConnectionDriver, ConnectionParams, SerialCommunicator, SerialParity,
 };
+use gcodekit5_communication::firmware::grbl::status_parser::StatusParser;
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, ComboBoxText, Frame, Grid, Label, Orientation, Paned, PolicyType,
@@ -10,6 +11,7 @@ use gtk4::glib;
 use std::sync::{Arc, Mutex};
 
 use crate::ui::gtk::status_bar::StatusBar;
+use crate::device_status;
 
 #[derive(Clone)]
 pub struct MachineControlView {
@@ -644,6 +646,9 @@ impl MachineControlView {
                         view_clone.refresh_btn.set_sensitive(true);
                         view_clone.state_label.set_text("DISCONNECTED");
                         
+                        // Update global device status
+                        device_status::update_connection_status(false, None);
+                        
                         // Disable all controls on disconnect
                         set_controls_enabled(
                             &view_clone.send_btn,
@@ -719,6 +724,9 @@ impl MachineControlView {
                             view_clone.refresh_btn.set_sensitive(false);
                             view_clone.state_label.set_text("CONNECTED");
                             
+                            // Update global device status
+                            device_status::update_connection_status(true, Some(port_name.to_string()));
+                            
                             // Update StatusBar
                             if let Some(ref sb) = view_clone.status_bar {
                                 sb.set_connected(true, &port_name.to_string());
@@ -763,6 +771,7 @@ impl MachineControlView {
                             let y_dro_poll = view_clone.y_dro.clone();
                             let z_dro_poll = view_clone.z_dro.clone();
                             let communicator_poll = view_clone.communicator.clone();
+                            let status_bar_poll = view_clone.status_bar.clone();
                             
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
@@ -797,27 +806,56 @@ impl MachineControlView {
                                                 if line.is_empty() { continue; }
                                                 
                                                 // Parse GRBL status: <Idle|MPos:0.000,0.000,0.000|...>
-                                                if let Some(start) = line.find('<') {
-                                                    if let Some(end) = line.find('>') {
-                                                        let status = &line[start + 1..end];
-                                                        let parts: Vec<&str> = status.split('|').collect();
+                                                if line.starts_with('<') && line.ends_with('>') {
+                                                    // Update machine state
+                                                    if let Some(state) = StatusParser::parse_machine_state(&line) {
+                                                        state_label_poll.set_text(&state);
+                                                        device_status::update_state(state.clone());
                                                         
-                                                        if !parts.is_empty() {
-                                                            state_label_poll.set_text(parts[0]);
+                                                        // Update StatusBar with state
+                                                        if let Some(sb) = status_bar_poll.as_ref() {
+                                                            sb.set_state(&state);
                                                         }
+                                                    }
+                                                    
+                                                    // Parse and update machine position
+                                                    if let Some(mpos) = StatusParser::parse_mpos(&line) {
+                                                        x_dro_poll.set_text(&format!("{:.3}", mpos.x));
+                                                        y_dro_poll.set_text(&format!("{:.3}", mpos.y));
+                                                        z_dro_poll.set_text(&format!("{:.3}", mpos.z));
+                                                        device_status::update_machine_position(mpos);
                                                         
-                                                        // Parse MPos
-                                                        for part in &parts {
-                                                            if part.starts_with("MPos:") {
-                                                                let coords = &part[5..];
-                                                                let nums: Vec<&str> = coords.split(',').collect();
-                                                                if nums.len() >= 3 {
-                                                                    x_dro_poll.set_text(&format!("{:.3}", nums[0].parse::<f64>().unwrap_or(0.0)));
-                                                                    y_dro_poll.set_text(&format!("{:.3}", nums[1].parse::<f64>().unwrap_or(0.0)));
-                                                                    z_dro_poll.set_text(&format!("{:.3}", nums[2].parse::<f64>().unwrap_or(0.0)));
-                                                                }
-                                                            }
+                                                        // Update StatusBar with position
+                                                        if let Some(sb) = status_bar_poll.as_ref() {
+                                                            sb.set_position(
+                                                                mpos.x as f32, 
+                                                                mpos.y as f32, 
+                                                                mpos.z as f32,
+                                                                mpos.a.unwrap_or(0.0) as f32,
+                                                                mpos.b.unwrap_or(0.0) as f32,
+                                                                mpos.c.unwrap_or(0.0) as f32
+                                                            );
                                                         }
+                                                    }
+                                                    
+                                                    // Parse and update work position
+                                                    if let Some(wpos) = StatusParser::parse_wpos(&line) {
+                                                        device_status::update_work_position(wpos);
+                                                    }
+                                                    
+                                                    // Parse and update work coordinate offset
+                                                    if let Some(wco) = StatusParser::parse_wco(&line) {
+                                                        device_status::update_work_coordinate_offset(wco);
+                                                    }
+                                                    
+                                                    // Parse and update buffer state
+                                                    if let Some(buffer) = StatusParser::parse_buffer(&line) {
+                                                        device_status::update_buffer_state(buffer);
+                                                    }
+                                                    
+                                                    // Parse and update feed/spindle state
+                                                    if let Some(feed_spindle) = StatusParser::parse_feed_spindle(&line) {
+                                                        device_status::update_feed_spindle_state(feed_spindle);
                                                     }
                                                 }
                                             }
