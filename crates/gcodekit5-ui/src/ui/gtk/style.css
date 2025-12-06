@@ -60,3 +60,51 @@ textview {
 .state-run { color: #2ecc71; font-weight: bold; }
 .state-hold { color: #e67e22; font-weight: bold; }
 .state-idle { color: #f1c40f; font-weight: bold; }
+
+/* Machine Control Panel */
+.sidebar {
+    background-color: #2d2d2d;
+    border-right: 1px solid #1e1e1e;
+}
+
+.dro-axis {
+    background-color: #252526;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.dro-label {
+    font-size: 32px;
+    font-weight: bold;
+    color: #2ecc71;
+}
+
+.dro-value {
+    font-size: 32px;
+    font-family: "Monospace";
+    color: #ffffff;
+}
+
+.estop-big {
+    background-color: #f1c40f;
+    color: #000000;
+    font-weight: bold;
+    font-size: 18px;
+    border-radius: 10px;
+    border: 2px solid #e67e22;
+}
+
+.estop-big:hover {
+    background-color: #f39c12;
+}
+
+.estop-big:active {
+    background-color: #d35400;
+}
+
+.dim-label {
+    color: #888888;
+    font-weight: bold;
+}
+

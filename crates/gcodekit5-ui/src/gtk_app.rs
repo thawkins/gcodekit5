@@ -17,6 +17,7 @@ use crate::ui::gtk::settings::SettingsWindow;
 use crate::ui::gtk::device_manager::DeviceManagerWindow;
 use crate::ui::gtk::cam_tools::CamToolsView;
 use crate::ui::gtk::status_bar::StatusBar;
+use crate::ui::gtk::machine_control::MachineControlView;
 
 use gcodekit5_settings::{SettingsController, SettingsDialog, SettingsPersistence, SettingsManager};
 use gcodekit5_devicedb::{DeviceManager, DeviceUiController};
@@ -147,7 +148,47 @@ pub fn main() {
         content_box.append(&stack_switcher);
         content_box.append(&stack);
         
-        // 1. Editor
+        // 1. Machine Control
+        let machine_control = MachineControlView::new();
+        stack.add_titled(&machine_control.widget, Some("machine"), "Machine Control");
+
+        // Wire up Machine Control
+        let mc = machine_control.clone();
+        mc.connect_btn.connect_clicked(|_| println!("Connect clicked"));
+        mc.refresh_btn.connect_clicked(|_| println!("Refresh ports clicked"));
+        mc.send_btn.connect_clicked(|_| println!("Send clicked"));
+        mc.stop_btn.connect_clicked(|_| println!("Stop clicked"));
+        mc.pause_btn.connect_clicked(|_| println!("Pause clicked"));
+        mc.resume_btn.connect_clicked(|_| println!("Resume clicked"));
+        mc.home_btn.connect_clicked(|_| println!("Home clicked"));
+        mc.unlock_btn.connect_clicked(|_| println!("Unlock clicked"));
+        mc.reset_g53_btn.connect_clicked(|_| println!("Reset G53 clicked"));
+        
+        for (i, btn) in mc.wcs_btns.iter().enumerate() {
+            let idx = i;
+            btn.connect_clicked(move |_| println!("G{} clicked", 54 + idx));
+        }
+
+        mc.x_zero_btn.connect_clicked(|_| println!("Zero X clicked"));
+        mc.y_zero_btn.connect_clicked(|_| println!("Zero Y clicked"));
+        mc.z_zero_btn.connect_clicked(|_| println!("Zero Z clicked"));
+        mc.zero_all_btn.connect_clicked(|_| println!("Zero All clicked"));
+
+        let step_size_closure = move || {
+            // This would need to be a method on MachineControlView or we access the buttons
+            // For now just print
+            println!("Jog clicked");
+        };
+
+        mc.jog_x_pos.connect_clicked(move |_| println!("Jog X+"));
+        mc.jog_x_neg.connect_clicked(move |_| println!("Jog X-"));
+        mc.jog_y_pos.connect_clicked(move |_| println!("Jog Y+"));
+        mc.jog_y_neg.connect_clicked(move |_| println!("Jog Y-"));
+        mc.jog_z_pos.connect_clicked(move |_| println!("Jog Z+"));
+        mc.jog_z_neg.connect_clicked(move |_| println!("Jog Z-"));
+        mc.estop_btn.connect_clicked(|_| println!("E-STOP clicked"));
+
+        // 2. Editor
         let editor = Rc::new(GcodeEditor::new());
         stack.add_titled(&editor.widget, Some("editor"), "G-Code Editor");
         
@@ -182,9 +223,8 @@ pub fn main() {
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
 
         // 6. Machine Control (Placeholder)
-        let machine_box = Box::new(Orientation::Vertical, 0);
-        machine_box.append(&Label::new(Some("Machine Control Panel (Coming Soon)")));
-        stack.add_titled(&machine_box, Some("machine"), "Machine Control");
+        // Removed placeholder
+
 
         main_box.append(&content_box);
 
