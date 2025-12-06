@@ -23,12 +23,16 @@ This document outlines the strategy for migrating GCodeKit5 from the Slint UI fr
 
 ### Phase 1: Preparation & Core Decoupling
 **Goal**: Remove Slint dependencies from non-UI crates.
+**Status**: Completed
 
 1.  **Audit Core Crates**: Identify `gcodekit5-core`, `gcodekit5-communication`, etc., that import `slint`.
+    *   *Completed*: Audited all crates. `gcodekit5-devicedb`, `gcodekit5-visualizer`, `gcodekit5-gcodeeditor` had Slint dependencies.
 2.  **Refactor Data Types**:
     *   Convert `SharedString` to `String`.
     *   Abstract UI callbacks into generic traits or channels (e.g., `mpsc` or `async_channel`) instead of direct Slint callback handles.
+    *   *Completed*: `SharedString` was not used in non-UI crates. `gcodekit5-gcodeeditor` was decoupled by moving `slint_bridge.rs` to `gcodekit5-ui`.
 3.  **Isolate UI Logic**: Ensure business logic (G-code parsing, serial communication) is completely decoupled from any UI framework types.
+    *   *Completed*: `gcodekit5-devicedb` and `gcodekit5-visualizer` cleaned up. `gcodekit5-gcodeeditor` logic exposed via public methods.
 
 ### Phase 2: Project Structure & Dependencies
 **Goal**: Set up the GTK4 build environment.
