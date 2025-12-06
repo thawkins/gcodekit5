@@ -1,6 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Application, ApplicationWindow, Box, Orientation, Stack, StackSidebar, HeaderBar,
+    Application, ApplicationWindow, Box, Orientation, Stack, StackSwitcher, HeaderBar,
     MenuButton, PopoverMenu, Label, Button, CssProvider, StyleContext, PopoverMenuBar,
 };
 use libadwaita::prelude::*;
@@ -136,15 +136,14 @@ pub fn main() {
         main_box.append(&menu_bar);
 
         // Content Area
-        let content_box = Box::new(Orientation::Horizontal, 0);
-        let sidebar = StackSidebar::new();
+        let content_box = Box::new(Orientation::Vertical, 0);
+        let stack_switcher = StackSwitcher::new();
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
         
-        sidebar.set_stack(&stack);
-        sidebar.set_width_request(200);
+        stack_switcher.set_stack(Some(&stack));
         
-        content_box.append(&sidebar);
+        content_box.append(&stack_switcher);
         content_box.append(&stack);
         
         // 1. Editor
