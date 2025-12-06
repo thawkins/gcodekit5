@@ -16,6 +16,7 @@ use crate::ui::gtk::designer::DesignerCanvas;
 use crate::ui::gtk::settings::SettingsWindow;
 use crate::ui::gtk::device_manager::DeviceManagerWindow;
 use crate::ui::gtk::cam_tools::CamToolsView;
+use crate::ui::gtk::status_bar::StatusBar;
 
 use gcodekit5_settings::{SettingsController, SettingsDialog, SettingsPersistence, SettingsManager};
 use gcodekit5_devicedb::{DeviceManager, DeviceUiController};
@@ -186,6 +187,17 @@ pub fn main() {
         stack.add_titled(&machine_box, Some("machine"), "Machine Control");
 
         main_box.append(&content_box);
+
+        // Status Bar
+        let status_bar = Rc::new(StatusBar::new());
+        main_box.append(&status_bar.widget);
+        
+        // Connect eStop
+        status_bar.estop_btn.connect_clicked(|_| {
+            println!("Emergency Stop Triggered!");
+            // TODO: Implement actual eStop logic
+        });
+
         window.set_child(Some(&main_box));
 
         // Actions

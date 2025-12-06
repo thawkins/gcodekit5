@@ -14,3 +14,49 @@ textview {
 .designer-canvas {
     background-color: #f0f0f0;
 }
+
+/* Status Bar */
+.status-bar {
+    background-color: #2c3e50;
+    color: white;
+    padding: 2px 5px;
+}
+
+.estop-button {
+    background-color: #e74c3c;
+    color: white;
+    font-weight: bold;
+    padding: 2px 10px;
+    border-radius: 3px;
+}
+
+.estop-button:hover {
+    background-color: #c0392b;
+}
+
+.status-indicator {
+    font-size: 16px;
+}
+
+.status-indicator.connected {
+    color: #2ecc71;
+}
+
+.status-indicator.disconnected {
+    color: #e74c3c;
+}
+
+.status-text {
+    color: white;
+    font-size: 13px;
+}
+
+.monospace {
+    font-family: "Monospace";
+}
+
+/* Machine States */
+.state-alarm { color: #e74c3c; font-weight: bold; }
+.state-run { color: #2ecc71; font-weight: bold; }
+.state-hold { color: #e67e22; font-weight: bold; }
+.state-idle { color: #f1c40f; font-weight: bold; }
