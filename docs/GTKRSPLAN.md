@@ -77,8 +77,12 @@ Migrate simple panels first to establish patterns:
 
 #### 4.2 Visualizer (`gcodekit5-visualizer`)
 *   **Rendering**: Replace Slint's rendering with `gtk::GLArea`.
+    *   *Completed*: Implemented `GcodeVisualizer` in `crates/gcodekit5-ui/src/ui/gtk/visualizer.rs`.
+    *   *Note*: Used `gtk::DrawingArea` with Cairo instead of `GLArea` as the current visualizer logic is strictly 2D and maps directly to Cairo's vector primitives. This avoids unnecessary complexity with raw OpenGL for 2D paths while still providing hardware-accelerated rendering.
 *   **Integration**: Port the OpenGL/WGPU rendering logic to draw within the `GLArea`'s context.
+    *   *Completed*: Ported `Visualizer2D` command iteration to Cairo drawing calls.
 *   **Interaction**: Map GTK pointer/scroll events to the visualizer's camera controller.
+    *   *Pending*: Basic rendering is in place; interaction (zoom/pan) to be added in Phase 5/6 or as a refinement.
 
 #### 4.3 Designer (`gcodekit5-designer`)
 *   **Canvas**: Implement a custom widget using `gtk::Snapshot` (Cairo-like 2D drawing) or `gtk::GLArea` for performance.
