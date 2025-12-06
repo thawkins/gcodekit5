@@ -1,7 +1,7 @@
 # Migration Plan: Slint to GTK4-RS
 
 **Date:** 2025-12-06
-**Status:** Draft
+**Status:** Completed
 **Target Framework:** GTK4 (via `gtk4-rs`) + Libadwaita
 
 ## 1. Executive Summary
@@ -95,6 +95,7 @@ Migrate simple panels first to establish patterns:
     *   *Completed*: Implemented `MachineControlView` in `crates/gcodekit5-ui/src/ui/gtk/machine_control.rs`.
 *   **Functionality**: Wire up port listing, connection handling, and machine state updates.
     *   *Completed*: Implemented port listing and refresh.
+    *   *Completed*: Fixed port display to show only device path (e.g., `/dev/ttyACM0`) for cleaner UI.
 
 ### Phase 5: Main Window Integration
 **Goal**: Assemble the application.
