@@ -20,22 +20,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin: gcodekit5
             name_suffix: linux-x86_64
-          - os_name: Windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin: gcodekit5.exe
-            name_suffix: windows-x86_64.msi
-          - os_name: macOS-x86_64
-            os: macos-13
-            target: x86_64-apple-darwin
-            bin: gcodekit5
-            name_suffix: macos-x86_64.dmg
-          - os_name: macOS-arm64
-            os: macos-15
-            target: aarch64-apple-darwin
-            bin: gcodekit5
-            name_suffix: macos-arm64.dmg
-
+        
     steps:
     - uses: actions/checkout@v4
 
@@ -67,34 +52,7 @@ jobs:
         flatpak-builder --user --install-deps-from=flathub --force-clean build-dir flatpak/com.github.thawkins.gcodekit5.yml --repo=repo
         flatpak build-bundle repo gcodekit5-${{ github.ref_name }}-linux-x86_64.flatpak com.github.thawkins.gcodekit5
 
-    - name: Build (macOS)
-      if: contains(matrix.platform.os_name, 'macOS')
-      run: |
-        cargo install cargo-bundle
-        # Add bundle metadata to Cargo.toml
-        echo '[package.metadata.bundle]' >> Cargo.toml
-        echo 'identifier = "com.github.thawkins.gcodekit5"' >> Cargo.toml
-        cargo bundle --package gcodekit5 --release --target ${{ matrix.platform.target }} --format osx
-        hdiutil create -volname "GCodeKit4" -srcfolder "target/${{ matrix.platform.target }}/release/bundle/osx/gcodekit5.app" -ov -format UDZO "${{ env.ASSET_NAME }}"
-
-    - name: Build (Windows)
-      if: matrix.platform.os_name == 'Windows-x86_64'
-      run: |
-        cargo install cargo-wix
-        # Ensure custom WiX configuration is used
-        if (Test-Path "wix/main.wxs") { Write-Host "Using custom wix/main.wxs" } else { Write-Error "Custom wix/main.wxs not found" }
-        
-        # Build manually to ensure we have the binary in the target directory
-        cargo build --release --target ${{ matrix.platform.target }}
-        
-        # Move binary to where WiX expects it (target/release) because cargo wix doesn't handle target dirs in WXS source paths automatically
-        New-Item -ItemType Directory -Force -Path target/release
-        Copy-Item "target/${{ matrix.platform.target }}/release/gcodekit5.exe" "target/release/gcodekit5.exe"
-        
-        # Run WiX without building
-        cargo wix --no-build --package gcodekit5 --nocapture
-        mv target/wix/*.msi ${{ env.ASSET_NAME }}
-
+   
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:

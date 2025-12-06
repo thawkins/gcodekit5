@@ -28,7 +28,7 @@
 
 #![allow(dead_code)]
 
-pub mod platform;
+// pub mod platform;
 
 // Re-export modules for main.rs
 pub use gcodekit5_communication::firmware;
@@ -83,11 +83,8 @@ pub use gcodekit5_communication::{
 };
 
 pub use gcodekit5_ui::{
-    Config, ConnectionSettings, ConnectionType, ConsoleEvent, ConsoleListener, DeviceConsoleManager,
-    DeviceMessageType, FileProcessingSettings, FirmwareSettings, FirmwareSettingsIntegration,
-    GcodeEditor, GcodeLine, KeyboardShortcut, MachineSettings, Setting, SettingUiModel,
-    SettingValue, SettingsCategory, SettingsController, SettingsDialog, SettingsManager,
-    SettingsPersistence, Token, TokenType, UiSettings,
+    Config, ConnectionSettings, ConnectionType, FileProcessingSettings, FirmwareSettings,
+    MachineSettings, SettingsManager, UiSettings,
 };
 
 /// Library version

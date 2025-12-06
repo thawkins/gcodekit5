@@ -3,7 +3,7 @@
 
 ## Technology Stack
 - **Language**: Rust edition 2021 or greater
-- **UI Framework**: slint
+- **UI Framework**: gtk-rs
 
 Create and maintain a file called SLINT.md that contains all knowledge you have gained about the UI Crate, and all insghts and successfull stratergies. Reffer to this file if you have issues you cannot resolve. 
 

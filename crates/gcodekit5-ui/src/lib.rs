@@ -1,25 +1,15 @@
 //! # GCodeKit4 UI
 //!
-//! Slint-based user interface for GCodeKit4.
-//! Provides UI panels, visualizer, settings, and editor components.
+//! GTK-based user interface for GCodeKit4.
 
-pub mod testing;
-pub mod ui;
-pub mod editor_bridge;
 pub mod gtk_app;
+pub mod ui;
 
-pub use ui::{
-    ConsoleEvent, ConsoleListener, DeviceConsoleManager, DeviceMessageType, FirmwareSettingsIntegration,
-    GcodeEditor, GcodeLine, KeyboardShortcut, Setting, SettingUiModel, SettingValue,
-    SettingsCategory, SettingsController, SettingsDialog, SettingsPersistence, Token, TokenType,
-};
-
+// Re-export settings for convenience if needed
 pub use gcodekit5_settings::{
     Config, ConnectionSettings, ConnectionType, FileProcessingSettings, FirmwareSettings,
     MachineSettings, SettingsManager, UiSettings,
 };
-
-pub use editor_bridge::{EditorBridge, SlintTextLine};
 
 pub use gcodekit5_gcodeeditor::{
     EditorState, TextBuffer, TextChange, TextLine, UndoManager,

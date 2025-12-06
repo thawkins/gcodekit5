@@ -16,7 +16,6 @@ gcodekit5-gcodeeditor = { path = "../gcodekit5-gcodeeditor" }
 gcodekit5-visualizer = { path = "../gcodekit5-visualizer" }
 gcodekit5-settings = { path = "../gcodekit5-settings" }
 gcodekit5-devicedb = { path = "../gcodekit5-devicedb" }
-slint = { version = "1.14.1", features = ["backend-winit", "image-default-formats"] }
 gtk4 = "0.9"
 libadwaita = "0.7"
 sourceview5 = "0.9"
@@ -36,7 +35,7 @@ dirs = "5.0"
 
 [build-dependencies]
 chrono = "0.4"
-slint-build = "1.14.1"
+
 
 [dev-dependencies]
 tempfile = "3.8"
