@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, CheckButton, ComboBoxText, Entry, Label, ListView, Orientation,
     ScrolledWindow, SelectionMode, SignalListItemFactory, SingleSelection, StringList, Window,
-    Stack, StackSidebar,
+    Stack, StackSidebar, Paned,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup, PreferencesPage, PreferencesWindow};
@@ -12,7 +12,7 @@ use std::rc::Rc;
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
 pub struct DeviceManagerWindow {
-    pub content: Box,
+    pub content: Paned,
     controller: Rc<DeviceUiController>,
     stack: Stack,
     sidebar: StackSidebar,
@@ -20,17 +20,28 @@ pub struct DeviceManagerWindow {
 
 impl DeviceManagerWindow {
     pub fn new(controller: Rc<DeviceUiController>) -> Self {
-        let content = Box::new(Orientation::Horizontal, 0);
+        let content = Paned::new(Orientation::Horizontal);
+        content.set_hexpand(true);
+        content.set_vexpand(true);
         
         let sidebar = StackSidebar::new();
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideUpDown);
         
         sidebar.set_stack(&stack);
-        sidebar.set_width_request(250);
+        sidebar.set_width_request(200);
         
-        content.append(&sidebar);
-        content.append(&stack);
+        content.set_start_child(Some(&sidebar));
+        content.set_end_child(Some(&stack));
+
+        content.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.2) as i32;
+            if (paned.position() - target).abs() > 2 {
+                paned.set_position(target);
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
         
         let manager = Self {
             content,
@@ -43,7 +54,7 @@ impl DeviceManagerWindow {
         manager
     }
 
-    pub fn widget(&self) -> &Box {
+    pub fn widget(&self) -> &Paned {
         &self.content
     }
 

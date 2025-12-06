@@ -1,14 +1,14 @@
 use gtk4::prelude::*;
 use gtk4::{
     Box, Orientation, Label, Button, ComboBoxText, Frame, Grid, Align, Image, ToggleButton,
-    TextView, ScrolledWindow, PolicyType,
+    TextView, ScrolledWindow, PolicyType, Paned,
 };
 use std::rc::Rc;
 use std::cell::RefCell;
 use gcodekit5_communication::communication::serial::list_ports;
 
 pub struct MachineControlView {
-    pub widget: Box,
+    pub widget: Paned,
     // Connection
     pub port_combo: ComboBoxText,
     pub connect_btn: Button,
@@ -55,7 +55,7 @@ pub struct MachineControlView {
 
 impl MachineControlView {
     pub fn new() -> Rc<Self> {
-        let widget = Box::new(Orientation::Horizontal, 0);
+        let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
 
@@ -63,7 +63,7 @@ impl MachineControlView {
         // LEFT SIDEBAR
         // ═════════════════════════════════════════════
         let sidebar = Box::new(Orientation::Vertical, 10);
-        sidebar.set_width_request(250);
+        sidebar.set_width_request(200); // Minimum width
         sidebar.add_css_class("sidebar");
         sidebar.set_margin_start(10);
         sidebar.set_margin_end(10);
@@ -191,7 +191,7 @@ impl MachineControlView {
         status_frame.set_child(Some(&status_scroll));
         sidebar.append(&status_frame);
 
-        widget.append(&sidebar);
+        // widget.append(&sidebar); // Moved to Paned setup
 
         // ═════════════════════════════════════════════
         // MAIN AREA
@@ -350,7 +350,20 @@ impl MachineControlView {
         jog_area.append(&pads_box);
 
         main_area.append(&jog_area);
-        widget.append(&main_area);
+        
+        // Setup Paned
+        widget.set_start_child(Some(&sidebar));
+        widget.set_end_child(Some(&main_area));
+        
+        // Dynamic resizing for 20% sidebar width
+        widget.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.2) as i32;
+            if (paned.position() - target).abs() > 2 {
+                paned.set_position(target);
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
 
         let view = Rc::new(Self {
             widget,

@@ -1,12 +1,12 @@
 use gtk4::prelude::*;
-use gtk4::{DrawingArea, ScrolledWindow, PolicyType, Box, Orientation, Button, CheckButton, Label, GestureClick, GestureDrag, EventControllerScroll, EventControllerScrollFlags};
+use gtk4::{DrawingArea, ScrolledWindow, PolicyType, Box, Orientation, Button, CheckButton, Label, GestureClick, GestureDrag, EventControllerScroll, EventControllerScrollFlags, Paned};
 use std::cell::RefCell;
 use std::rc::Rc;
 use gcodekit5_visualizer::{Visualizer2D};
 use gcodekit5_visualizer::visualizer::GCodeCommand;
 
 pub struct GcodeVisualizer {
-    pub widget: Box,
+    pub widget: Paned,
     drawing_area: DrawingArea,
     visualizer: Rc<RefCell<Visualizer2D>>,
     // Visibility toggles
@@ -19,12 +19,14 @@ pub struct GcodeVisualizer {
 
 impl GcodeVisualizer {
     pub fn new() -> Self {
-        let container = Box::new(Orientation::Horizontal, 0);
+        let container = Paned::new(Orientation::Horizontal);
         container.add_css_class("visualizer-container");
+        container.set_hexpand(true);
+        container.set_vexpand(true);
 
         // Sidebar for controls
         let sidebar = Box::new(Orientation::Vertical, 12);
-        sidebar.set_width_request(250);
+        sidebar.set_width_request(200);
         sidebar.add_css_class("visualizer-sidebar");
         sidebar.set_margin_start(12);
         sidebar.set_margin_end(12);
@@ -73,7 +75,7 @@ impl GcodeVisualizer {
             .build();
         sidebar.append(&bounds_label);
 
-        container.append(&sidebar);
+        container.set_start_child(Some(&sidebar));
 
         // Drawing Area
         let drawing_area = DrawingArea::builder()
@@ -82,7 +84,16 @@ impl GcodeVisualizer {
             .css_classes(vec!["visualizer-canvas"])
             .build();
         
-        container.append(&drawing_area);
+        container.set_end_child(Some(&drawing_area));
+
+        container.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.2) as i32;
+            if (paned.position() - target).abs() > 2 {
+                paned.set_position(target);
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
 
         let visualizer = Rc::new(RefCell::new(Visualizer2D::new()));
         
