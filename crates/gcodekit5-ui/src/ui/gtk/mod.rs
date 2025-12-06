@@ -3,3 +3,4 @@ pub mod device_manager;
 pub mod cam_tools;
 pub mod editor;
 pub mod visualizer;
+pub mod designer;

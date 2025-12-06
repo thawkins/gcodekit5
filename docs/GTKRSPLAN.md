@@ -86,7 +86,9 @@ Migrate simple panels first to establish patterns:
 
 #### 4.3 Designer (`gcodekit5-designer`)
 *   **Canvas**: Implement a custom widget using `gtk::Snapshot` (Cairo-like 2D drawing) or `gtk::GLArea` for performance.
+    *   *Completed*: Implemented `DesignerCanvas` in `crates/gcodekit5-ui/src/ui/gtk/designer.rs` using `gtk::DrawingArea` and Cairo.
 *   **Interactivity**: Reimplement drag-and-drop, selection, and resizing logic using GTK's EventControllers (`gtk::GestureDrag`, `gtk::GestureClick`).
+    *   *Completed*: Attached `GestureClick` and `GestureDrag` controllers to the canvas. Basic event handling structure is in place.
 
 ### Phase 5: Main Window Integration
 **Goal**: Assemble the application.
