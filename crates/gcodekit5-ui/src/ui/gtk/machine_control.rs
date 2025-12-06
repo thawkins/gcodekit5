@@ -468,9 +468,6 @@ impl MachineControlView {
                     let status_bar = view_clone.status_bar.clone();
                     let port_name_copy = port_name.to_string();
 
-                    // Disable button to prevent double-click
-                    connect_btn.set_sensitive(false);
-                    
                     // Clone the communicator for thread-safe access
                     let communicator_clone = view_clone.communicator.clone();
                     
@@ -487,7 +484,7 @@ impl MachineControlView {
                     });
                     
                     // Poll the channel on the main thread using glib timeout
-                    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                         if let Ok(result) = receiver.try_recv() {
                             match result {
                                 Ok(_) => {
