@@ -486,77 +486,66 @@ impl MachineControlView {
                             let mut iter = buffer.end_iter();
                             buffer.insert(&mut iter, &format!("Connected to {}\n", port_name));
                             
-                            // Start background polling thread for status updates
+                            // Simple polling using glib::timeout_add_local - runs on main thread, no blocking
+                            let state_label_poll = view_clone.state_label.clone();
+                            let x_dro_poll = view_clone.x_dro.clone();
+                            let y_dro_poll = view_clone.y_dro.clone();
+                            let z_dro_poll = view_clone.z_dro.clone();
                             let communicator_poll = view_clone.communicator.clone();
-                            let (sender, receiver) = async_channel::unbounded();
                             
-                            // Spawn background thread with gcodekit4-style efficient polling
-                            std::thread::spawn(move || {
-                                let mut cycle_count: u32 = 0;
-                                let mut response_buffer = String::new();
+                            let mut query_counter = 0u32;
+                            let mut response_buffer = String::new();
+                            
+                            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                                query_counter += 1;
                                 
-                                // Main polling loop runs at 35ms intervals (matches gcodekit4)
-                                loop {
-                                    std::thread::sleep(std::time::Duration::from_millis(35));
-                                    cycle_count += 1;
-                                    
-                                    // Check connection status (quick check without holding lock long)
-                                    let is_connected = {
-                                        let comm = communicator_poll.lock().unwrap();
+                                // Check if still connected
+                                let is_connected = {
+                                    if let Ok(comm) = communicator_poll.try_lock() {
                                         comm.is_connected()
-                                    };
-                                    
-                                    if !is_connected {
-                                        break;
+                                    } else {
+                                        return glib::ControlFlow::Continue;
                                     }
-                                    
-                                    // Read responses continuously (without sending ? yet)
-                                    let response_bytes = {
-                                        let mut comm = communicator_poll.lock().unwrap();
-                                        comm.receive().ok()
-                                    }; // Lock released immediately
-                                    
-                                    if let Some(response_bytes) = response_bytes {
+                                };
+                                
+                                if !is_connected {
+                                    return glib::ControlFlow::Break;
+                                }
+                                
+                                // Try to read data (non-blocking, quick)
+                                if let Ok(mut comm) = communicator_poll.try_lock() {
+                                    if let Ok(response_bytes) = comm.receive() {
                                         if !response_bytes.is_empty() {
                                             response_buffer.push_str(&String::from_utf8_lossy(&response_bytes));
                                             
-                                            // Process complete lines from buffer
+                                            // Process complete lines
                                             while let Some(idx) = response_buffer.find('\n') {
                                                 let line = response_buffer[..idx].trim().to_string();
                                                 response_buffer.drain(..idx + 1);
                                                 
                                                 if line.is_empty() { continue; }
                                                 
-                                                // Parse GRBL status responses (format: <Idle|MPos:0.000,0.000,0.000|...>)
-                                                if line.contains('<') && line.contains('>') {
-                                                    if let Some(start) = line.find('<') {
-                                                        if let Some(end) = line.find('>') {
-                                                            let status = &line[start + 1..end];
-                                                            let parts: Vec<&str> = status.split('|').collect();
-                                                            
-                                                            let mut state_text = String::new();
-                                                            let mut x_val = 0.0f64;
-                                                            let mut y_val = 0.0f64;
-                                                            let mut z_val = 0.0f64;
-                                                            
-                                                            if !parts.is_empty() {
-                                                                state_text = parts[0].to_string();
-                                                            }
-                                                            
-                                                            // Parse MPos
-                                                            for part in &parts {
-                                                                if part.starts_with("MPos:") {
-                                                                    let coords = &part[5..];
-                                                                    let nums: Vec<&str> = coords.split(',').collect();
-                                                                    if nums.len() >= 3 {
-                                                                        x_val = nums[0].parse::<f64>().unwrap_or(0.0);
-                                                                        y_val = nums[1].parse::<f64>().unwrap_or(0.0);
-                                                                        z_val = nums[2].parse::<f64>().unwrap_or(0.0);
-                                                                    }
+                                                // Parse GRBL status: <Idle|MPos:0.000,0.000,0.000|...>
+                                                if let Some(start) = line.find('<') {
+                                                    if let Some(end) = line.find('>') {
+                                                        let status = &line[start + 1..end];
+                                                        let parts: Vec<&str> = status.split('|').collect();
+                                                        
+                                                        if !parts.is_empty() {
+                                                            state_label_poll.set_text(parts[0]);
+                                                        }
+                                                        
+                                                        // Parse MPos
+                                                        for part in &parts {
+                                                            if part.starts_with("MPos:") {
+                                                                let coords = &part[5..];
+                                                                let nums: Vec<&str> = coords.split(',').collect();
+                                                                if nums.len() >= 3 {
+                                                                    x_dro_poll.set_text(&format!("{:.3}", nums[0].parse::<f64>().unwrap_or(0.0)));
+                                                                    y_dro_poll.set_text(&format!("{:.3}", nums[1].parse::<f64>().unwrap_or(0.0)));
+                                                                    z_dro_poll.set_text(&format!("{:.3}", nums[2].parse::<f64>().unwrap_or(0.0)));
                                                                 }
                                                             }
-                                                            
-                                                            let _ = sender.send((state_text, x_val, y_val, z_val));
                                                         }
                                                     }
                                                 }
@@ -564,30 +553,13 @@ impl MachineControlView {
                                         }
                                     }
                                     
-                                    // Send status query every ~200ms (every 6 cycles of 35ms)
-                                    // This matches gcodekit4's pattern (every 4 cycles of 50ms ≈ 200ms)
-                                    if cycle_count % 6 == 0 {
-                                        let mut comm = communicator_poll.lock().unwrap();
+                                    // Send status query every ~250ms (every 5 cycles of 50ms)
+                                    if query_counter % 5 == 0 {
                                         let _ = comm.send(b"?");
-                                    } // Lock released immediately
-                                }
-                            });
-                            
-                            // Receive status updates on main thread
-                            let state_label_upd = view_clone.state_label.clone();
-                            let x_dro_upd = view_clone.x_dro.clone();
-                            let y_dro_upd = view_clone.y_dro.clone();
-                            let z_dro_upd = view_clone.z_dro.clone();
-                            
-                            glib::spawn_future_local(async move {
-                                while let Ok((state_text, x_val, y_val, z_val)) = receiver.recv().await {
-                                    if !state_text.is_empty() {
-                                        state_label_upd.set_text(&state_text);
                                     }
-                                    x_dro_upd.set_text(&format!("{:.3}", x_val));
-                                    y_dro_upd.set_text(&format!("{:.3}", y_val));
-                                    z_dro_upd.set_text(&format!("{:.3}", z_val));
                                 }
+                                
+                                glib::ControlFlow::Continue
                             });
                         }
                         Err(e) => {
