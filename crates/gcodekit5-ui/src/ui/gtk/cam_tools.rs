@@ -7,18 +7,11 @@ use libadwaita::{ActionRow, PreferencesGroup};
 use std::rc::Rc;
 
 pub struct TabbedBoxDialog {
-    window: Window,
+    pub content: Box,
 }
 
 impl TabbedBoxDialog {
     pub fn new() -> Self {
-        let window = Window::builder()
-            .title("Tabbed Box Generator")
-            .modal(true)
-            .default_width(600)
-            .default_height(800)
-            .build();
-
         let content_box = Box::new(Orientation::Vertical, 0);
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -64,29 +57,20 @@ impl TabbedBoxDialog {
         action_box.set_margin_end(12);
         action_box.set_halign(Align::End);
 
-        let cancel_btn = Button::with_label("Cancel");
         let generate_btn = Button::with_label("Generate");
         generate_btn.add_css_class("suggested-action");
 
-        let window_clone = window.clone();
-        cancel_btn.connect_clicked(move |_| {
-            window_clone.close();
-        });
-
-        action_box.append(&cancel_btn);
         action_box.append(&generate_btn);
 
         let main_layout = Box::new(Orientation::Vertical, 0);
         main_layout.append(&scrolled);
         main_layout.append(&action_box);
 
-        window.set_child(Some(&main_layout));
-
-        Self { window }
+        Self { content: main_layout }
     }
 
-    pub fn present(&self) {
-        self.window.present();
+    pub fn widget(&self) -> &Box {
+        &self.content
     }
 
     fn create_entry_row(title: &str, default: &str) -> ActionRow {

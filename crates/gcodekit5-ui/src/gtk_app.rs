@@ -159,7 +159,15 @@ pub fn main() {
         let designer = DesignerCanvas::new(designer_state.clone());
         stack.add_titled(&designer.widget, Some("designer"), "Designer");
         
-        // 4. Machine Control (Placeholder)
+        // 4. Device Manager
+        let device_manager_view = DeviceManagerWindow::new(device_controller.clone());
+        stack.add_titled(device_manager_view.widget(), Some("devices"), "Device Manager");
+
+        // 5. CAM Tools
+        let cam_tools_view = TabbedBoxDialog::new();
+        stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
+
+        // 6. Machine Control (Placeholder)
         let machine_box = Box::new(Orientation::Vertical, 0);
         machine_box.append(&Label::new(Some("Machine Control Panel (Coming Soon)")));
         stack.add_titled(&machine_box, Some("machine"), "Machine Control");
@@ -176,18 +184,18 @@ pub fn main() {
         });
         app.add_action(&settings_action);
 
+        // Menu actions now just switch tabs
+        let stack_clone = stack.clone();
         let devices_action = gio::SimpleAction::new("devices", None);
-        let device_controller_clone = device_controller.clone();
         devices_action.connect_activate(move |_, _| {
-            let win = DeviceManagerWindow::new(device_controller_clone.clone());
-            win.present();
+            stack_clone.set_visible_child_name("devices");
         });
         app.add_action(&devices_action);
 
+        let stack_clone = stack.clone();
         let cam_action = gio::SimpleAction::new("cam_tools", None);
         cam_action.connect_activate(move |_, _| {
-            let win = TabbedBoxDialog::new();
-            win.present();
+            stack_clone.set_visible_child_name("cam_tools");
         });
         app.add_action(&cam_action);
 

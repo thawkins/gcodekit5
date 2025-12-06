@@ -12,7 +12,7 @@ use std::rc::Rc;
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
 pub struct DeviceManagerWindow {
-    window: Window,
+    pub content: Box,
     controller: Rc<DeviceUiController>,
     stack: Stack,
     sidebar: StackSidebar,
@@ -20,26 +20,20 @@ pub struct DeviceManagerWindow {
 
 impl DeviceManagerWindow {
     pub fn new(controller: Rc<DeviceUiController>) -> Self {
-        let window = Window::builder()
-            .title("Device Manager")
-            .default_width(900)
-            .default_height(600)
-            .build();
-
-        let main_box = Box::new(Orientation::Horizontal, 0);
+        let content = Box::new(Orientation::Horizontal, 0);
+        
         let sidebar = StackSidebar::new();
         let stack = Stack::new();
+        stack.set_transition_type(gtk4::StackTransitionType::SlideUpDown);
         
         sidebar.set_stack(&stack);
         sidebar.set_width_request(200);
         
-        main_box.append(&sidebar);
-        main_box.append(&stack);
+        content.append(&sidebar);
+        content.append(&stack);
         
-        window.set_child(Some(&main_box));
-
         let manager = Self {
-            window,
+            content,
             controller,
             stack,
             sidebar,
@@ -49,8 +43,8 @@ impl DeviceManagerWindow {
         manager
     }
 
-    pub fn present(&self) {
-        self.window.present();
+    pub fn widget(&self) -> &Box {
+        &self.content
     }
 
     pub fn refresh_devices(&self) {
