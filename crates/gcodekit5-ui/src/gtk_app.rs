@@ -148,7 +148,7 @@ pub fn main() {
         content_box.append(&stack);
         
         // 1. Editor
-        let editor = GcodeEditor::new();
+        let editor = Rc::new(GcodeEditor::new());
         stack.add_titled(&editor.widget, Some("editor"), "G-Code Editor");
         
         // 2. Visualizer
@@ -164,7 +164,12 @@ pub fn main() {
         stack.add_titled(device_manager_view.widget(), Some("devices"), "Device Manager");
 
         // 5. CAM Tools
-        let cam_tools_view = CamToolsView::new();
+        let editor_clone = editor.clone();
+        let stack_clone_for_cam = stack.clone();
+        let cam_tools_view = CamToolsView::new(move |gcode| {
+            editor_clone.set_text(&gcode);
+            stack_clone_for_cam.set_visible_child_name("editor");
+        });
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
 
         // 6. Machine Control (Placeholder)

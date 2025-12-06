@@ -1,19 +1,27 @@
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, CheckButton, ComboBoxText, Entry, Label, Orientation, ScrolledWindow, 
-    Stack, IconTheme, Image, GestureClick, Frame, Grid,
+    Stack, IconTheme, Image, GestureClick, Frame, Grid, FileChooserDialog, FileChooserAction,
+    ResponseType,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::path::PathBuf;
+use std::fs;
+
+use gcodekit5_camtools::tabbed_box::{
+    BoxParameters, FingerJointSettings, FingerStyle, BoxType, KeyDividerType, 
+    TabbedBoxMaker as Generator
+};
 
 pub struct CamToolsView {
     pub content: Stack,
 }
 
 impl CamToolsView {
-    pub fn new() -> Self {
+    pub fn new<F: Fn(String) + 'static>(on_generate: F) -> Self {
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
 
@@ -22,7 +30,7 @@ impl CamToolsView {
         stack.add_named(&dashboard, Some("dashboard"));
 
         // Tool Pages
-        let tabbed_box = TabbedBoxMaker::new(&stack);
+        let tabbed_box = TabbedBoxMaker::new(&stack, on_generate);
         stack.add_named(tabbed_box.widget(), Some("tabbed_box"));
 
         // Placeholders for other tools
@@ -216,12 +224,27 @@ impl CamToolsView {
     }
 }
 
+struct TabbedBoxWidgets {
+    width: Entry,
+    depth: Entry,
+    height: Entry,
+    outside: CheckButton,
+    thickness: Entry,
+    burn: Entry,
+    finger_width: Entry,
+    space_width: Entry,
+    surrounding_spaces: Entry,
+    play: Entry,
+    extra_length: Entry,
+    // dimple_height: Entry, // Not in screenshot but in struct
+}
+
 pub struct TabbedBoxMaker {
     pub content: Box,
 }
 
 impl TabbedBoxMaker {
-    pub fn new(stack: &Stack) -> Self {
+    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: F) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
         
         // Header with Back Button
@@ -241,7 +264,7 @@ impl TabbedBoxMaker {
         });
 
         let title_lbl = Label::builder()
-            .label("Tabbed Box Maker")
+            .label("Tabbed Box Maker (boxes.py algorithm)")
             .css_classes(vec!["title-2"])
             .build();
 
@@ -257,36 +280,45 @@ impl TabbedBoxMaker {
             .child(&scroll_content)
             .build();
 
-        // Dimensions Group
-        let dim_group = PreferencesGroup::builder().title("Dimensions").build();
-        dim_group.add(&Self::create_entry_row("Width", "100.0"));
-        dim_group.add(&Self::create_entry_row("Height", "100.0"));
-        dim_group.add(&Self::create_entry_row("Depth", "50.0"));
-        dim_group.add(&Self::create_check_row("Outside Dimensions", true));
+        // Widgets
+        let width = Entry::builder().text("100").valign(Align::Center).build();
+        let depth = Entry::builder().text("100").valign(Align::Center).build();
+        let height = Entry::builder().text("100").valign(Align::Center).build();
+        let outside = CheckButton::builder().active(false).valign(Align::Center).build();
+        let thickness = Entry::builder().text("3").valign(Align::Center).build();
+        let burn = Entry::builder().text("0.1").valign(Align::Center).build();
+        let finger_width = Entry::builder().text("2").valign(Align::Center).build();
+        let space_width = Entry::builder().text("2").valign(Align::Center).build();
+        let surrounding_spaces = Entry::builder().text("2").valign(Align::Center).build();
+        let play = Entry::builder().text("0").valign(Align::Center).build();
+        let extra_length = Entry::builder().text("0").valign(Align::Center).build();
+
+        // Box Dimensions
+        let dim_group = PreferencesGroup::builder().title("Box Dimensions (mm)").build();
+        dim_group.add(&Self::create_row("X (Width):", &width));
+        dim_group.add(&Self::create_row("Y (Depth):", &depth));
+        dim_group.add(&Self::create_row("H (Height):", &height));
+        
+        let outside_row = ActionRow::builder().title("Outside Dims:").build();
+        outside_row.add_suffix(&outside);
+        dim_group.add(&outside_row);
+        
         scroll_content.append(&dim_group);
 
         // Material Settings
         let mat_group = PreferencesGroup::builder().title("Material Settings").build();
-        mat_group.add(&Self::create_entry_row("Thickness", "3.0"));
-        mat_group.add(&Self::create_entry_row("Burn / Tool Dia", "0.1"));
+        mat_group.add(&Self::create_row("Thickness (mm):", &thickness));
+        mat_group.add(&Self::create_row("Burn / Tool Dia (mm):", &burn));
         scroll_content.append(&mat_group);
 
         // Finger Joint Settings
-        let finger_group = PreferencesGroup::builder().title("Finger Joint Settings").build();
-        finger_group.add(&Self::create_entry_row("Finger Width", "2.0"));
-        finger_group.add(&Self::create_entry_row("Space Width", "2.0"));
-        finger_group.add(&Self::create_entry_row("Surrounding Spaces", "2.0"));
-        finger_group.add(&Self::create_entry_row("Play (tolerance)", "0.0"));
-        finger_group.add(&Self::create_combo_row("Finger Style", &["Rectangular", "Springs", "Barbs", "Snap", "Dogbone"]));
+        let finger_group = PreferencesGroup::builder().title("Finger Joint Settings (multiples of thickness)").build();
+        finger_group.add(&Self::create_row("Finger Width:", &finger_width));
+        finger_group.add(&Self::create_row("Space Width:", &space_width));
+        finger_group.add(&Self::create_row("Surrounding Spaces:", &surrounding_spaces));
+        finger_group.add(&Self::create_row("Play (fit tolerance):", &play));
+        finger_group.add(&Self::create_row("Extra Length:", &extra_length));
         scroll_content.append(&finger_group);
-
-        // Box Configuration
-        let box_group = PreferencesGroup::builder().title("Box Configuration").build();
-        box_group.add(&Self::create_combo_row("Box Type", &["Full Box", "No Top", "No Bottom", "No Sides", "No Front/Back", "No Left/Right"]));
-        box_group.add(&Self::create_entry_row("Dividers X", "0"));
-        box_group.add(&Self::create_entry_row("Dividers Y", "0"));
-        box_group.add(&Self::create_check_row("Optimize Layout", false));
-        scroll_content.append(&box_group);
 
         content_box.append(&scrolled);
 
@@ -297,11 +329,58 @@ impl TabbedBoxMaker {
         action_box.set_margin_end(12);
         action_box.set_halign(Align::End);
 
-        let generate_btn = Button::with_label("Generate G-Code");
+        let load_btn = Button::with_label("Load");
+        let save_btn = Button::with_label("Save");
+        let cancel_btn = Button::with_label("Cancel");
+        let generate_btn = Button::with_label("Generate");
         generate_btn.add_css_class("suggested-action");
 
+        action_box.append(&load_btn);
+        action_box.append(&save_btn);
+        action_box.append(&cancel_btn);
         action_box.append(&generate_btn);
         content_box.append(&action_box);
+
+        let widgets = Rc::new(TabbedBoxWidgets {
+            width, depth, height, outside, thickness, burn,
+            finger_width, space_width, surrounding_spaces, play, extra_length
+        });
+
+        // Connect Signals
+        let widgets_gen = widgets.clone();
+        let on_generate = Rc::new(on_generate);
+        generate_btn.connect_clicked(move |_| {
+            let params = Self::collect_params(&widgets_gen);
+            match Generator::new(params) {
+                Ok(mut generator) => {
+                    if let Ok(_) = generator.generate() {
+                        let gcode = generator.to_gcode();
+                        on_generate(gcode);
+                    } else {
+                        eprintln!("Failed to generate box paths");
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Failed to initialize generator: {}", e);
+                }
+            }
+        });
+
+        let widgets_save = widgets.clone();
+        save_btn.connect_clicked(move |_| {
+            let params = Self::collect_params(&widgets_save);
+            Self::save_params(&params);
+        });
+
+        let widgets_load = widgets.clone();
+        load_btn.connect_clicked(move |_| {
+            Self::load_params(&widgets_load);
+        });
+
+        let stack_clone_cancel = stack.clone();
+        cancel_btn.connect_clicked(move |_| {
+            stack_clone_cancel.set_visible_child_name("dashboard");
+        });
 
         Self { content: content_box }
     }
@@ -310,29 +389,97 @@ impl TabbedBoxMaker {
         &self.content
     }
 
-    fn create_entry_row(title: &str, default: &str) -> ActionRow {
+    fn create_row(title: &str, widget: &impl IsA<gtk4::Widget>) -> ActionRow {
         let row = ActionRow::builder().title(title).build();
-        let entry = Entry::builder().text(default).valign(Align::Center).build();
-        row.add_suffix(&entry);
+        row.add_suffix(widget);
         row
     }
 
-    fn create_check_row(title: &str, active: bool) -> ActionRow {
-        let row = ActionRow::builder().title(title).build();
-        let check = CheckButton::builder().active(active).valign(Align::Center).build();
-        row.add_suffix(&check);
-        row
+    fn collect_params(w: &TabbedBoxWidgets) -> BoxParameters {
+        let mut params = BoxParameters::default();
+        
+        params.x = w.width.text().parse().unwrap_or(100.0);
+        params.y = w.depth.text().parse().unwrap_or(100.0);
+        params.h = w.height.text().parse().unwrap_or(100.0);
+        params.outside = w.outside.is_active();
+        params.thickness = w.thickness.text().parse().unwrap_or(3.0);
+        params.burn = w.burn.text().parse().unwrap_or(0.1);
+        
+        params.finger_joint.finger = w.finger_width.text().parse().unwrap_or(2.0);
+        params.finger_joint.space = w.space_width.text().parse().unwrap_or(2.0);
+        params.finger_joint.surrounding_spaces = w.surrounding_spaces.text().parse().unwrap_or(2.0);
+        params.finger_joint.play = w.play.text().parse().unwrap_or(0.0);
+        params.finger_joint.extra_length = w.extra_length.text().parse().unwrap_or(0.0);
+
+        params
     }
 
-    fn create_combo_row(title: &str, options: &[&str]) -> ActionRow {
-        let row = ActionRow::builder().title(title).build();
-        let combo = ComboBoxText::new();
-        for opt in options {
-            combo.append(Some(opt), opt);
-        }
-        combo.set_active(Some(0));
-        combo.set_valign(Align::Center);
-        row.add_suffix(&combo);
-        row
+    fn save_params(params: &BoxParameters) {
+        let dialog = FileChooserDialog::new(
+            Some("Save Box Parameters"),
+            None::<&gtk4::Window>,
+            FileChooserAction::Save,
+            &[("Cancel", ResponseType::Cancel), ("Save", ResponseType::Accept)],
+        );
+        
+        dialog.set_current_name("box_params.json");
+
+        let params_clone = params.clone();
+        dialog.connect_response(move |d, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = d.file() {
+                    if let Some(path) = file.path() {
+                        if let Ok(json) = serde_json::to_string_pretty(&params_clone) {
+                            let _ = fs::write(path, json);
+                        }
+                    }
+                }
+            }
+            d.close();
+        });
+        
+        dialog.show();
+    }
+
+    fn load_params(w: &Rc<TabbedBoxWidgets>) {
+        let dialog = FileChooserDialog::new(
+            Some("Load Box Parameters"),
+            None::<&gtk4::Window>,
+            FileChooserAction::Open,
+            &[("Cancel", ResponseType::Cancel), ("Open", ResponseType::Accept)],
+        );
+
+        let w_clone = w.clone();
+        dialog.connect_response(move |d, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = d.file() {
+                    if let Some(path) = file.path() {
+                        if let Ok(content) = fs::read_to_string(path) {
+                            if let Ok(params) = serde_json::from_str::<BoxParameters>(&content) {
+                                Self::apply_params(&w_clone, &params);
+                            }
+                        }
+                    }
+                }
+            }
+            d.close();
+        });
+        
+        dialog.show();
+    }
+
+    fn apply_params(w: &TabbedBoxWidgets, p: &BoxParameters) {
+        w.width.set_text(&p.x.to_string());
+        w.depth.set_text(&p.y.to_string());
+        w.height.set_text(&p.h.to_string());
+        w.outside.set_active(p.outside);
+        w.thickness.set_text(&p.thickness.to_string());
+        w.burn.set_text(&p.burn.to_string());
+        
+        w.finger_width.set_text(&p.finger_joint.finger.to_string());
+        w.space_width.set_text(&p.finger_joint.space.to_string());
+        w.surrounding_spaces.set_text(&p.finger_joint.surrounding_spaces.to_string());
+        w.play.set_text(&p.finger_joint.play.to_string());
+        w.extra_length.set_text(&p.finger_joint.extra_length.to_string());
     }
 }

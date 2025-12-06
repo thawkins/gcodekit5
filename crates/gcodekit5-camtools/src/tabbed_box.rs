@@ -3,7 +3,9 @@
 //! Based on the superior algorithm from https://github.com/florianfesti/boxes
 //! Uses finger/space multiples of thickness for automatic finger calculation
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BoxType {
     FullBox = 0,
     NoTop = 1,
@@ -27,7 +29,7 @@ impl From<i32> for BoxType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FingerStyle {
     Rectangular = 0,
     Springs = 1,
@@ -48,7 +50,7 @@ impl From<i32> for FingerStyle {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum KeyDividerType {
     WallsAndFloor = 0,
     WallsOnly = 1,
@@ -68,7 +70,7 @@ impl From<i32> for KeyDividerType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FingerJointSettings {
     /// Width of fingers in multiples of thickness
     pub finger: f32,
@@ -103,7 +105,7 @@ impl Default for FingerJointSettings {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoxParameters {
     pub x: f32,
     pub y: f32,
