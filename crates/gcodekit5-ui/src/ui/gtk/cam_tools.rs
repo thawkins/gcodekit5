@@ -291,15 +291,62 @@ impl CamToolsView {
         header.append(&title_lbl);
         container.append(&header);
 
-        // Content
+        // Paned Layout
+        let paned = Paned::new(Orientation::Horizontal);
+        paned.set_hexpand(true);
+        paned.set_vexpand(true);
+
+        // Sidebar (20%)
+        let sidebar = Box::new(Orientation::Vertical, 12);
+        sidebar.add_css_class("sidebar");
+        sidebar.set_margin_top(24);
+        sidebar.set_margin_bottom(24);
+        sidebar.set_margin_start(24);
+        sidebar.set_margin_end(24);
+
+        let sidebar_title = Label::builder()
+            .label(title)
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&sidebar_title);
+
+        let description = match title {
+            "Speeds & Feeds Calculator" => "Calculate optimal cutting speeds and feed rates based on material properties and tool specifications.",
+            "Spoilboard Surfacing" => "Generate G-code for surfacing your CNC spoilboard to ensure a flat, level work surface.",
+            "Spoilboard Grid" => "Create a grid pattern on your spoilboard for easy workpiece alignment and fixturing.",
+            _ => "This tool is under construction."
+        };
+
+        let desc_label = Label::builder()
+            .label(description)
+            .css_classes(vec!["body"])
+            .wrap(true)
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&desc_label);
+
+        // Content Area
         let content = Box::new(Orientation::Vertical, 0);
         content.set_valign(Align::Center);
         content.set_halign(Align::Center);
         content.set_vexpand(true);
-
         content.append(&Label::new(Some("This tool is under construction.")));
 
-        container.append(&content);
+        paned.set_start_child(Some(&sidebar));
+        paned.set_end_child(Some(&content));
+
+        // Sidebar sizing (20%)
+        paned.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.20) as i32;
+            if paned.position() != target {
+                paned.set_position(target);
+            }
+            glib::ControlFlow::Continue
+        });
+
+        container.append(&paned);
         container
     }
 }
@@ -357,13 +404,20 @@ impl JigsawTool {
         paned.set_vexpand(true);
         content_box.append(&paned);
 
-        // Sidebar
+        // Sidebar (20%)
         let sidebar = Box::new(Orientation::Vertical, 12);
         sidebar.add_css_class("sidebar");
         sidebar.set_margin_top(24);
         sidebar.set_margin_bottom(24);
         sidebar.set_margin_start(24);
         sidebar.set_margin_end(24);
+
+        let title_label = Label::builder()
+            .label("Jigsaw Puzzle Generator")
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&title_label);
 
         let desc = Label::builder()
             .label("Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces.")
@@ -469,10 +523,10 @@ impl JigsawTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-        // Sidebar sizing
+        // Sidebar sizing (20%)
         paned.add_tick_callback(|paned, _clock| {
             let width = paned.width();
-            let target = (width as f64 * 0.25) as i32;
+            let target = (width as f64 * 0.20) as i32;
             if (paned.position() - target).abs() > 5 {
                 paned.set_position(target);
             }
@@ -799,13 +853,20 @@ impl BitmapEngravingTool {
         paned.set_vexpand(true);
         content_box.append(&paned);
 
-        // Sidebar with Preview
+        // Sidebar with Preview (20%)
         let sidebar = Box::new(Orientation::Vertical, 12);
         sidebar.add_css_class("sidebar");
         sidebar.set_margin_top(24);
         sidebar.set_margin_bottom(24);
         sidebar.set_margin_start(24);
         sidebar.set_margin_end(24);
+
+        let title_label = Label::builder()
+            .label("Bitmap Engraving")
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&title_label);
 
         let desc = Label::builder()
             .label("Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations.")
@@ -1511,6 +1572,13 @@ impl VectorEngravingTool {
         sidebar.set_margin_bottom(24);
         sidebar.set_margin_start(24);
         sidebar.set_margin_end(24);
+
+        let title_label = Label::builder()
+            .label("Vector Engraving")
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&title_label);
 
         let desc = Label::builder()
             .label("Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization.")
@@ -2312,7 +2380,7 @@ impl TabbedBoxMaker {
 
         let title_lbl = Label::builder()
             .label("Tabbed Box Maker")
-            .css_classes(vec!["title-2"])
+            .css_classes(vec!["title-3"])
             .wrap(true)
             .halign(Align::Start)
             .build();
