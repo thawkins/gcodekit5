@@ -1,3 +1,12 @@
+## [0.2.2-alpha.0] - 2025-12-08
+
+### Fixed
+- **CI/CD**: Added GTK4 development dependencies to GitHub Actions workflow
+  - Fixed glib-sys build error in CI environment
+  - Added libgtk-4-dev, libadwaita-1-dev, libglib2.0-dev
+  - Added libpango1.0-dev, libcairo2-dev, libgdk-pixbuf2.0-dev
+  - Release builds now compile successfully
+
 ## [0.2.1-alpha.0] - 2025-12-08
 
 ### Added
