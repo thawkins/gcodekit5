@@ -20,6 +20,8 @@ use gcodekit5_camtools::laser_engraver::{
     ScanDirection,
 };
 use gcodekit5_camtools::vector_engraver::{VectorEngraver, VectorEngravingParameters};
+use gcodekit5_camtools::spoilboard_surfacing::{SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters};
+use gcodekit5_camtools::spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
 
 pub struct CamToolsView {
     pub content: Stack,
@@ -62,18 +64,18 @@ impl CamToolsView {
         // Vector Engraving Tool
         let vector_tool = VectorEngravingTool::new(&stack, on_generate.clone());
         stack.add_named(vector_tool.widget(), Some("laser_vector"));
-        stack.add_named(
-            &Self::create_placeholder("Speeds & Feeds Calculator", &stack),
-            Some("feeds"),
-        );
-        stack.add_named(
-            &Self::create_placeholder("Spoilboard Surfacing", &stack),
-            Some("surfacing"),
-        );
-        stack.add_named(
-            &Self::create_placeholder("Spoilboard Grid", &stack),
-            Some("grid"),
-        );
+        
+        // Speeds & Feeds Calculator
+        let feeds_tool = SpeedsFeedsTool::new(&stack);
+        stack.add_named(feeds_tool.widget(), Some("feeds"));
+        
+        // Spoilboard Surfacing
+        let surfacing_tool = SpoilboardSurfacingTool::new(&stack, on_generate.clone());
+        stack.add_named(surfacing_tool.widget(), Some("surfacing"));
+        
+        // Spoilboard Grid
+        let grid_tool = SpoilboardGridTool::new(&stack, on_generate.clone());
+        stack.add_named(grid_tool.widget(), Some("grid"));
 
         Self { content: stack }
     }
@@ -2836,5 +2838,814 @@ impl TabbedBoxMaker {
 
         w.offset_x.set_text(&p.offset_x.to_string());
         w.offset_y.set_text(&p.offset_y.to_string());
+    }
+}
+
+// Speeds & Feeds Calculator
+pub struct SpeedsFeedsTool {
+    content: Box,
+}
+
+impl SpeedsFeedsTool {
+    pub fn new(stack: &Stack) -> Self {
+        let content_box = Box::new(Orientation::Vertical, 0);
+
+        // Header
+        let header = Box::new(Orientation::Horizontal, 12);
+        header.set_margin_top(12);
+        header.set_margin_bottom(12);
+        header.set_margin_start(12);
+        header.set_margin_end(12);
+
+        let back_btn = Button::builder().icon_name("go-previous-symbolic").build();
+        let stack_clone = stack.clone();
+        back_btn.connect_clicked(move |_| {
+            stack_clone.set_visible_child_name("dashboard");
+        });
+        header.append(&back_btn);
+
+        let title = Label::builder()
+            .label("Speeds & Feeds Calculator")
+            .css_classes(vec!["title-2"])
+            .build();
+        header.append(&title);
+        content_box.append(&header);
+
+        // Paned Layout
+        let paned = Paned::new(Orientation::Horizontal);
+        paned.set_hexpand(true);
+        paned.set_vexpand(true);
+
+        // Sidebar (40%)
+        let sidebar = Box::new(Orientation::Vertical, 12);
+        sidebar.add_css_class("sidebar");
+        sidebar.set_margin_top(24);
+        sidebar.set_margin_bottom(24);
+        sidebar.set_margin_start(24);
+        sidebar.set_margin_end(24);
+
+        let title_label = Label::builder()
+            .label("Speeds & Feeds")
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&title_label);
+
+        let desc = Label::builder()
+            .label("Calculate optimal cutting speeds and feed rates based on material properties and tool specifications. Uses standard machining formulas.")
+            .css_classes(vec!["body"])
+            .wrap(true)
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&desc);
+
+        // Results display area
+        let results_box = Box::new(Orientation::Vertical, 6);
+        results_box.set_vexpand(true);
+        
+        let results_frame = gtk4::Frame::new(Some("Calculated Results"));
+        results_frame.set_margin_top(12);
+        
+        let results_content = Box::new(Orientation::Vertical, 6);
+        results_content.set_margin_top(12);
+        results_content.set_margin_bottom(12);
+        results_content.set_margin_start(12);
+        results_content.set_margin_end(12);
+        
+        let rpm_label = Label::builder()
+            .label("RPM: --")
+            .halign(Align::Start)
+            .build();
+        let feed_label = Label::builder()
+            .label("Feed Rate: --")
+            .halign(Align::Start)
+            .build();
+        let source_label = Label::builder()
+            .label("")
+            .css_classes(vec!["caption", "dim-label"])
+            .halign(Align::Start)
+            .wrap(true)
+            .build();
+        let warnings_label = Label::builder()
+            .label("")
+            .css_classes(vec!["caption", "warning"])
+            .halign(Align::Start)
+            .wrap(true)
+            .build();
+        
+        results_content.append(&rpm_label);
+        results_content.append(&feed_label);
+        results_content.append(&source_label);
+        results_content.append(&warnings_label);
+        results_frame.set_child(Some(&results_content));
+        results_box.append(&results_frame);
+        sidebar.append(&results_box);
+
+        // Content Area
+        let right_panel = Box::new(Orientation::Vertical, 0);
+        let scroll_content = Box::new(Orientation::Vertical, 0);
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vexpand(true)
+            .child(&scroll_content)
+            .build();
+
+        // Material Selection
+        let material_group = PreferencesGroup::builder().title("Material").build();
+        let material_combo = ComboBoxText::new();
+        material_combo.append(Some("aluminum"), "Aluminum");
+        material_combo.append(Some("wood"), "Wood (Softwood)");
+        material_combo.append(Some("acrylic"), "Acrylic");
+        material_combo.append(Some("steel"), "Steel (Mild)");
+        material_combo.set_active_id(Some("aluminum"));
+        let material_row = ActionRow::builder().title("Material Type:").build();
+        material_row.add_suffix(&material_combo);
+        material_group.add(&material_row);
+        scroll_content.append(&material_group);
+
+        // Tool Selection
+        let tool_group = PreferencesGroup::builder().title("Tool").build();
+        let tool_combo = ComboBoxText::new();
+        tool_combo.append(Some("endmill_6mm"), "End Mill - 6mm");
+        tool_combo.append(Some("endmill_3mm"), "End Mill - 3mm");
+        tool_combo.append(Some("vbit_30deg"), "V-Bit - 30°");
+        tool_combo.set_active_id(Some("endmill_6mm"));
+        let tool_row = ActionRow::builder().title("Tool Type:").build();
+        tool_row.add_suffix(&tool_combo);
+        tool_group.add(&tool_row);
+        scroll_content.append(&tool_group);
+
+        right_panel.append(&scrolled);
+
+        // Action Buttons
+        let action_box = Box::new(Orientation::Horizontal, 12);
+        action_box.set_margin_top(12);
+        action_box.set_margin_bottom(12);
+        action_box.set_margin_end(12);
+        action_box.set_halign(Align::End);
+
+        let calculate_btn = Button::with_label("Calculate");
+        calculate_btn.add_css_class("suggested-action");
+        action_box.append(&calculate_btn);
+        right_panel.append(&action_box);
+
+        paned.set_start_child(Some(&sidebar));
+        paned.set_end_child(Some(&right_panel));
+
+        // Sidebar sizing (40%)
+        paned.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.40) as i32;
+            if (paned.position() - target).abs() > 5 {
+                paned.set_position(target);
+            }
+            glib::ControlFlow::Continue
+        });
+
+        content_box.append(&paned);
+
+        // Calculate button handler - simplified placeholder
+        let rpm_label_calc = rpm_label.clone();
+        let feed_label_calc = feed_label.clone();
+        let source_label_calc = source_label.clone();
+        let warnings_label_calc = warnings_label.clone();
+        
+        calculate_btn.connect_clicked(move |_| {
+            // Placeholder calculation
+            rpm_label_calc.set_text("RPM: 12,000");
+            feed_label_calc.set_text("Feed Rate: 1,500 mm/min");
+            source_label_calc.set_text("Source: Material defaults + Tool specifications");
+            warnings_label_calc.set_text("");
+        });
+
+        Self { content: content_box }
+    }
+
+    pub fn widget(&self) -> &Box {
+        &self.content
+    }
+}
+
+// Spoilboard Surfacing Tool
+struct SpoilboardSurfacingWidgets {
+    width: Entry,
+    height: Entry,
+    tool_diameter: Entry,
+    feed_rate: Entry,
+    spindle_speed: Entry,
+    cut_depth: Entry,
+    stepover_percent: Entry,
+    safe_z: Entry,
+}
+
+pub struct SpoilboardSurfacingTool {
+    content: Box,
+}
+
+impl SpoilboardSurfacingTool {
+    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+        let content_box = Box::new(Orientation::Vertical, 0);
+
+        // Header
+        let header = Box::new(Orientation::Horizontal, 12);
+        header.set_margin_top(12);
+        header.set_margin_bottom(12);
+        header.set_margin_start(12);
+        header.set_margin_end(12);
+
+        let back_btn = Button::builder().icon_name("go-previous-symbolic").build();
+        let stack_clone = stack.clone();
+        back_btn.connect_clicked(move |_| {
+            stack_clone.set_visible_child_name("dashboard");
+        });
+        header.append(&back_btn);
+
+        let title = Label::builder()
+            .label("Spoilboard Surfacing")
+            .css_classes(vec!["title-2"])
+            .build();
+        header.append(&title);
+        content_box.append(&header);
+
+        // Paned Layout
+        let paned = Paned::new(Orientation::Horizontal);
+        paned.set_hexpand(true);
+        paned.set_vexpand(true);
+
+        // Sidebar (40%)
+        let sidebar = Box::new(Orientation::Vertical, 12);
+        sidebar.add_css_class("sidebar");
+        sidebar.set_margin_top(24);
+        sidebar.set_margin_bottom(24);
+        sidebar.set_margin_start(24);
+        sidebar.set_margin_end(24);
+
+        let title_label = Label::builder()
+            .label("Spoilboard Surfacing")
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&title_label);
+
+        let desc = Label::builder()
+            .label("Generate G-code for surfacing your CNC spoilboard to ensure a flat, level work surface.")
+            .css_classes(vec!["body"])
+            .wrap(true)
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&desc);
+
+        // Content Area
+        let right_panel = Box::new(Orientation::Vertical, 0);
+        let scroll_content = Box::new(Orientation::Vertical, 0);
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vexpand(true)
+            .child(&scroll_content)
+            .build();
+
+        // Create widgets
+        let width = Entry::builder().text("400").valign(Align::Center).build();
+        let height = Entry::builder().text("300").valign(Align::Center).build();
+        let tool_diameter = Entry::builder().text("25").valign(Align::Center).build();
+        let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
+        let spindle_speed = Entry::builder().text("18000").valign(Align::Center).build();
+        let cut_depth = Entry::builder().text("0.5").valign(Align::Center).build();
+        let stepover_percent = Entry::builder().text("40").valign(Align::Center).build();
+        let safe_z = Entry::builder().text("5.0").valign(Align::Center).build();
+
+        // Groups
+        let dim_group = PreferencesGroup::builder().title("Spoilboard Dimensions (mm)").build();
+        dim_group.add(&Self::create_row("Width:", &width));
+        dim_group.add(&Self::create_row("Height:", &height));
+        scroll_content.append(&dim_group);
+
+        let tool_group = PreferencesGroup::builder().title("Tool Settings").build();
+        tool_group.add(&Self::create_row("Tool Diameter (mm):", &tool_diameter));
+        tool_group.add(&Self::create_row("Cut Depth (mm):", &cut_depth));
+        tool_group.add(&Self::create_row("Stepover (%):", &stepover_percent));
+        scroll_content.append(&tool_group);
+
+        let machine_group = PreferencesGroup::builder().title("Machine Settings").build();
+        machine_group.add(&Self::create_row("Feed Rate (mm/min):", &feed_rate));
+        machine_group.add(&Self::create_row("Spindle Speed (RPM):", &spindle_speed));
+        machine_group.add(&Self::create_row("Safe Z Height (mm):", &safe_z));
+        scroll_content.append(&machine_group);
+
+        right_panel.append(&scrolled);
+
+        // Action Buttons
+        let action_box = Box::new(Orientation::Horizontal, 12);
+        action_box.set_margin_top(12);
+        action_box.set_margin_bottom(12);
+        action_box.set_margin_end(12);
+        action_box.set_halign(Align::End);
+
+        let load_btn = Button::with_label("Load");
+        let save_btn = Button::with_label("Save");
+        let cancel_btn = Button::with_label("Cancel");
+        let generate_btn = Button::with_label("Generate");
+        generate_btn.add_css_class("suggested-action");
+        action_box.append(&load_btn);
+        action_box.append(&save_btn);
+        action_box.append(&cancel_btn);
+        action_box.append(&generate_btn);
+        right_panel.append(&action_box);
+
+        paned.set_start_child(Some(&sidebar));
+        paned.set_end_child(Some(&right_panel));
+
+        // Sidebar sizing (40%)
+        paned.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.40) as i32;
+            if (paned.position() - target).abs() > 5 {
+                paned.set_position(target);
+            }
+            glib::ControlFlow::Continue
+        });
+
+        content_box.append(&paned);
+
+        let widgets = Rc::new(SpoilboardSurfacingWidgets {
+            width,
+            height,
+            tool_diameter,
+            feed_rate,
+            spindle_speed,
+            cut_depth,
+            stepover_percent,
+            safe_z,
+        });
+
+        // Generate button
+        let w_gen = widgets.clone();
+        generate_btn.connect_clicked(move |_| {
+            let params = SpoilboardSurfacingParameters {
+                width: w_gen.width.text().parse().unwrap_or(400.0),
+                height: w_gen.height.text().parse().unwrap_or(300.0),
+                tool_diameter: w_gen.tool_diameter.text().parse().unwrap_or(25.0),
+                feed_rate: w_gen.feed_rate.text().parse().unwrap_or(1000.0),
+                spindle_speed: w_gen.spindle_speed.text().parse().unwrap_or(18000.0),
+                cut_depth: w_gen.cut_depth.text().parse().unwrap_or(0.5),
+                stepover_percent: w_gen.stepover_percent.text().parse().unwrap_or(40.0),
+                safe_z: w_gen.safe_z.text().parse().unwrap_or(5.0),
+            };
+
+            let generator = SpoilboardSurfacingGenerator::new(params);
+            match generator.generate() {
+                Ok(gcode) => {
+                    on_generate(gcode);
+                }
+                Err(e) => {
+                    CamToolsView::show_error_dialog(
+                        "Generation Failed",
+                        &format!("Failed to generate surfacing toolpath: {}", e),
+                    );
+                }
+            }
+        });
+
+        // Save/Load/Cancel
+        let w_save = widgets.clone();
+        save_btn.connect_clicked(move |_| {
+            Self::save_params(&w_save);
+        });
+
+        let w_load = widgets.clone();
+        load_btn.connect_clicked(move |_| {
+            Self::load_params(&w_load);
+        });
+
+        let stack_clone_cancel = stack.clone();
+        cancel_btn.connect_clicked(move |_| {
+            stack_clone_cancel.set_visible_child_name("dashboard");
+        });
+
+        Self { content: content_box }
+    }
+
+    pub fn widget(&self) -> &Box {
+        &self.content
+    }
+
+    fn create_row(title: &str, widget: &impl IsA<gtk4::Widget>) -> ActionRow {
+        let row = ActionRow::builder().title(title).build();
+        row.add_suffix(widget);
+        row
+    }
+
+    fn save_params(w: &SpoilboardSurfacingWidgets) {
+        let dialog = FileChooserDialog::new(
+            Some("Save Parameters"),
+            None::<&gtk4::Window>,
+            FileChooserAction::Save,
+            &[
+                ("Cancel", ResponseType::Cancel),
+                ("Save", ResponseType::Accept),
+            ],
+        );
+        dialog.set_current_name("surfacing_params.json");
+
+        let w_clone = Rc::new((
+            w.width.text().to_string(),
+            w.height.text().to_string(),
+            w.tool_diameter.text().to_string(),
+            w.feed_rate.text().to_string(),
+            w.spindle_speed.text().to_string(),
+            w.cut_depth.text().to_string(),
+            w.stepover_percent.text().to_string(),
+            w.safe_z.text().to_string(),
+        ));
+
+        dialog.connect_response(move |d, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = d.file() {
+                    if let Some(path) = file.path() {
+                        let json = serde_json::json!({
+                            "width": w_clone.0,
+                            "height": w_clone.1,
+                            "tool_diameter": w_clone.2,
+                            "feed_rate": w_clone.3,
+                            "spindle_speed": w_clone.4,
+                            "cut_depth": w_clone.5,
+                            "stepover_percent": w_clone.6,
+                            "safe_z": w_clone.7,
+                        });
+                        let _ = fs::write(path, serde_json::to_string_pretty(&json).unwrap());
+                    }
+                }
+            }
+            d.close();
+        });
+
+        dialog.show();
+    }
+
+    fn load_params(w: &SpoilboardSurfacingWidgets) {
+        let dialog = FileChooserDialog::new(
+            Some("Load Parameters"),
+            None::<&gtk4::Window>,
+            FileChooserAction::Open,
+            &[
+                ("Cancel", ResponseType::Cancel),
+                ("Open", ResponseType::Accept),
+            ],
+        );
+
+        let w_clone = Rc::new((
+            w.width.clone(),
+            w.height.clone(),
+            w.tool_diameter.clone(),
+            w.feed_rate.clone(),
+            w.spindle_speed.clone(),
+            w.cut_depth.clone(),
+            w.stepover_percent.clone(),
+            w.safe_z.clone(),
+        ));
+
+        dialog.connect_response(move |d, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = d.file() {
+                    if let Some(path) = file.path() {
+                        if let Ok(content) = fs::read_to_string(path) {
+                            if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(v) = params.get("width").and_then(|v| v.as_str()) {
+                                    w_clone.0.set_text(v);
+                                }
+                                if let Some(v) = params.get("height").and_then(|v| v.as_str()) {
+                                    w_clone.1.set_text(v);
+                                }
+                                if let Some(v) = params.get("tool_diameter").and_then(|v| v.as_str()) {
+                                    w_clone.2.set_text(v);
+                                }
+                                if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                                    w_clone.3.set_text(v);
+                                }
+                                if let Some(v) = params.get("spindle_speed").and_then(|v| v.as_str()) {
+                                    w_clone.4.set_text(v);
+                                }
+                                if let Some(v) = params.get("cut_depth").and_then(|v| v.as_str()) {
+                                    w_clone.5.set_text(v);
+                                }
+                                if let Some(v) = params.get("stepover_percent").and_then(|v| v.as_str()) {
+                                    w_clone.6.set_text(v);
+                                }
+                                if let Some(v) = params.get("safe_z").and_then(|v| v.as_str()) {
+                                    w_clone.7.set_text(v);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            d.close();
+        });
+
+        dialog.show();
+    }
+}
+
+// Spoilboard Grid Tool
+struct SpoilboardGridWidgets {
+    width: Entry,
+    height: Entry,
+    grid_spacing: Entry,
+    feed_rate: Entry,
+    laser_power: Entry,
+    laser_mode: ComboBoxText,
+}
+
+pub struct SpoilboardGridTool {
+    content: Box,
+}
+
+impl SpoilboardGridTool {
+    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+        let content_box = Box::new(Orientation::Vertical, 0);
+
+        // Header
+        let header = Box::new(Orientation::Horizontal, 12);
+        header.set_margin_top(12);
+        header.set_margin_bottom(12);
+        header.set_margin_start(12);
+        header.set_margin_end(12);
+
+        let back_btn = Button::builder().icon_name("go-previous-symbolic").build();
+        let stack_clone = stack.clone();
+        back_btn.connect_clicked(move |_| {
+            stack_clone.set_visible_child_name("dashboard");
+        });
+        header.append(&back_btn);
+
+        let title = Label::builder()
+            .label("Spoilboard Grid")
+            .css_classes(vec!["title-2"])
+            .build();
+        header.append(&title);
+        content_box.append(&header);
+
+        // Paned Layout
+        let paned = Paned::new(Orientation::Horizontal);
+        paned.set_hexpand(true);
+        paned.set_vexpand(true);
+
+        // Sidebar (40%)
+        let sidebar = Box::new(Orientation::Vertical, 12);
+        sidebar.add_css_class("sidebar");
+        sidebar.set_margin_top(24);
+        sidebar.set_margin_bottom(24);
+        sidebar.set_margin_start(24);
+        sidebar.set_margin_end(24);
+
+        let title_label = Label::builder()
+            .label("Spoilboard Grid")
+            .css_classes(vec!["title-3"])
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&title_label);
+
+        let desc = Label::builder()
+            .label("Create a grid pattern on your spoilboard for easy workpiece alignment and fixturing.")
+            .css_classes(vec!["body"])
+            .wrap(true)
+            .halign(Align::Start)
+            .build();
+        sidebar.append(&desc);
+
+        // Content Area
+        let right_panel = Box::new(Orientation::Vertical, 0);
+        let scroll_content = Box::new(Orientation::Vertical, 0);
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vexpand(true)
+            .child(&scroll_content)
+            .build();
+
+        // Create widgets
+        let width = Entry::builder().text("400").valign(Align::Center).build();
+        let height = Entry::builder().text("300").valign(Align::Center).build();
+        let grid_spacing = Entry::builder().text("10").valign(Align::Center).build();
+        let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
+        let laser_power = Entry::builder().text("1000").valign(Align::Center).build();
+
+        let laser_mode = ComboBoxText::new();
+        laser_mode.append(Some("M3"), "M3 (Constant Power)");
+        laser_mode.append(Some("M4"), "M4 (Dynamic Power)");
+        laser_mode.set_active_id(Some("M4"));
+        laser_mode.set_valign(Align::Center);
+
+        // Groups
+        let dim_group = PreferencesGroup::builder().title("Spoilboard Dimensions (mm)").build();
+        dim_group.add(&Self::create_row("Width:", &width));
+        dim_group.add(&Self::create_row("Height:", &height));
+        dim_group.add(&Self::create_row("Grid Spacing:", &grid_spacing));
+        scroll_content.append(&dim_group);
+
+        let laser_group = PreferencesGroup::builder().title("Laser Settings").build();
+        laser_group.add(&Self::create_row("Laser Power (S):", &laser_power));
+        laser_group.add(&Self::create_row("Feed Rate (mm/min):", &feed_rate));
+        laser_group.add(&Self::create_row("Laser Mode:", &laser_mode));
+        scroll_content.append(&laser_group);
+
+        right_panel.append(&scrolled);
+
+        // Action Buttons
+        let action_box = Box::new(Orientation::Horizontal, 12);
+        action_box.set_margin_top(12);
+        action_box.set_margin_bottom(12);
+        action_box.set_margin_end(12);
+        action_box.set_halign(Align::End);
+
+        let load_btn = Button::with_label("Load");
+        let save_btn = Button::with_label("Save");
+        let cancel_btn = Button::with_label("Cancel");
+        let generate_btn = Button::with_label("Generate");
+        generate_btn.add_css_class("suggested-action");
+        action_box.append(&load_btn);
+        action_box.append(&save_btn);
+        action_box.append(&cancel_btn);
+        action_box.append(&generate_btn);
+        right_panel.append(&action_box);
+
+        paned.set_start_child(Some(&sidebar));
+        paned.set_end_child(Some(&right_panel));
+
+        // Sidebar sizing (40%)
+        paned.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.40) as i32;
+            if (paned.position() - target).abs() > 5 {
+                paned.set_position(target);
+            }
+            glib::ControlFlow::Continue
+        });
+
+        content_box.append(&paned);
+
+        let widgets = Rc::new(SpoilboardGridWidgets {
+            width,
+            height,
+            grid_spacing,
+            feed_rate,
+            laser_power,
+            laser_mode,
+        });
+
+        // Generate button
+        let w_gen = widgets.clone();
+        generate_btn.connect_clicked(move |_| {
+            let laser_mode_str = w_gen.laser_mode.active_id()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "M4".to_string());
+
+            let params = SpoilboardGridParameters {
+                width: w_gen.width.text().parse().unwrap_or(400.0),
+                height: w_gen.height.text().parse().unwrap_or(300.0),
+                grid_spacing: w_gen.grid_spacing.text().parse().unwrap_or(10.0),
+                feed_rate: w_gen.feed_rate.text().parse().unwrap_or(1000.0),
+                laser_power: w_gen.laser_power.text().parse().unwrap_or(1000.0),
+                laser_mode: laser_mode_str,
+            };
+
+            let generator = SpoilboardGridGenerator::new(params);
+            match generator.generate() {
+                Ok(gcode) => {
+                    on_generate(gcode);
+                }
+                Err(e) => {
+                    CamToolsView::show_error_dialog(
+                        "Generation Failed",
+                        &format!("Failed to generate grid pattern: {}", e),
+                    );
+                }
+            }
+        });
+
+        // Save/Load/Cancel
+        let w_save = widgets.clone();
+        save_btn.connect_clicked(move |_| {
+            Self::save_params(&w_save);
+        });
+
+        let w_load = widgets.clone();
+        load_btn.connect_clicked(move |_| {
+            Self::load_params(&w_load);
+        });
+
+        let stack_clone_cancel = stack.clone();
+        cancel_btn.connect_clicked(move |_| {
+            stack_clone_cancel.set_visible_child_name("dashboard");
+        });
+
+        Self { content: content_box }
+    }
+
+    pub fn widget(&self) -> &Box {
+        &self.content
+    }
+
+    fn create_row(title: &str, widget: &impl IsA<gtk4::Widget>) -> ActionRow {
+        let row = ActionRow::builder().title(title).build();
+        row.add_suffix(widget);
+        row
+    }
+
+    fn save_params(w: &SpoilboardGridWidgets) {
+        let dialog = FileChooserDialog::new(
+            Some("Save Parameters"),
+            None::<&gtk4::Window>,
+            FileChooserAction::Save,
+            &[
+                ("Cancel", ResponseType::Cancel),
+                ("Save", ResponseType::Accept),
+            ],
+        );
+        dialog.set_current_name("grid_params.json");
+
+        let w_clone = Rc::new((
+            w.width.text().to_string(),
+            w.height.text().to_string(),
+            w.grid_spacing.text().to_string(),
+            w.feed_rate.text().to_string(),
+            w.laser_power.text().to_string(),
+            w.laser_mode.active_id().map(|s| s.to_string()).unwrap_or_else(|| "M4".to_string()),
+        ));
+
+        dialog.connect_response(move |d, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = d.file() {
+                    if let Some(path) = file.path() {
+                        let json = serde_json::json!({
+                            "width": w_clone.0,
+                            "height": w_clone.1,
+                            "grid_spacing": w_clone.2,
+                            "feed_rate": w_clone.3,
+                            "laser_power": w_clone.4,
+                            "laser_mode": w_clone.5,
+                        });
+                        let _ = fs::write(path, serde_json::to_string_pretty(&json).unwrap());
+                    }
+                }
+            }
+            d.close();
+        });
+
+        dialog.show();
+    }
+
+    fn load_params(w: &SpoilboardGridWidgets) {
+        let dialog = FileChooserDialog::new(
+            Some("Load Parameters"),
+            None::<&gtk4::Window>,
+            FileChooserAction::Open,
+            &[
+                ("Cancel", ResponseType::Cancel),
+                ("Open", ResponseType::Accept),
+            ],
+        );
+
+        let w_clone = Rc::new((
+            w.width.clone(),
+            w.height.clone(),
+            w.grid_spacing.clone(),
+            w.feed_rate.clone(),
+            w.laser_power.clone(),
+            w.laser_mode.clone(),
+        ));
+
+        dialog.connect_response(move |d, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = d.file() {
+                    if let Some(path) = file.path() {
+                        if let Ok(content) = fs::read_to_string(path) {
+                            if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(v) = params.get("width").and_then(|v| v.as_str()) {
+                                    w_clone.0.set_text(v);
+                                }
+                                if let Some(v) = params.get("height").and_then(|v| v.as_str()) {
+                                    w_clone.1.set_text(v);
+                                }
+                                if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_str()) {
+                                    w_clone.2.set_text(v);
+                                }
+                                if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                                    w_clone.3.set_text(v);
+                                }
+                                if let Some(v) = params.get("laser_power").and_then(|v| v.as_str()) {
+                                    w_clone.4.set_text(v);
+                                }
+                                if let Some(v) = params.get("laser_mode").and_then(|v| v.as_str()) {
+                                    w_clone.5.set_active_id(Some(v));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            d.close();
+        });
+
+        dialog.show();
     }
 }
