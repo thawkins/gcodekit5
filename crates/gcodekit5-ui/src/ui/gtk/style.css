@@ -160,3 +160,48 @@ frame.vector-preview {
     border: 1px solid #cccccc;
     border-radius: 4px;
 }
+
+/* Device Config & Info Views */
+.status-icon-large {
+    font-size: 64px;
+}
+
+.list-header {
+    background-color: #2d2d2d;
+    padding: 8px 0;
+    border-bottom: 1px solid #1e1e1e;
+}
+
+.alternating-row {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.pill {
+    border-radius: 12px;
+    padding: 2px 8px;
+    margin: 0;
+}
+
+.success-bg {
+    background-color: rgba(46, 204, 113, 0.2);
+}
+
+.error-bg {
+    background-color: rgba(231, 76, 60, 0.2);
+}
+
+.success {
+    color: #2ecc71;
+}
+
+.error {
+    color: #e74c3c;
+}
+
+.accent {
+    color: #3498db;
+}
+
+.font-bold {
+    font-weight: bold;
+}

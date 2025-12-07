@@ -12,6 +12,7 @@ use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::tools_manager::ToolsManagerView;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
 use gcodekit5_communication::Communicator;
+use crate::device_status;
 use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{
@@ -218,7 +219,44 @@ pub fn main() {
 
         // 8. Device Config
         let config_settings = ConfigSettingsView::new();
+        config_settings.set_communicator(machine_control.communicator.clone());
+        config_settings.set_device_console(device_console.clone());
         stack.add_titled(&config_settings.container, Some("config"), "Device Config");
+
+        // Connect device info and config to machine control connection state
+        let device_info_clone = device_info.clone();
+        let config_settings_clone = config_settings.clone();
+        let communicator_for_device = machine_control.communicator.clone();
+        
+        // Update device info when connection changes
+        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            let comm = communicator_for_device.lock().unwrap();
+            let connected = comm.is_connected();
+            
+            if connected {
+                // Get firmware info from device status
+                let status = device_status::get_status();
+                let firmware_type = status.firmware_type.as_deref().unwrap_or("GRBL");
+                let firmware_version = status.firmware_version.as_deref().unwrap_or("Unknown");
+                let device_name = status.device_name.as_deref().unwrap_or_else(|| {
+                    status.port_name.as_deref().unwrap_or("CNC Device")
+                });
+                
+                device_info_clone.set_connected(
+                    true,
+                    device_name,
+                    firmware_type,
+                    firmware_version
+                );
+                device_info_clone.load_sample_capabilities();
+                config_settings_clone.set_connected(true);
+            } else {
+                device_info_clone.set_connected(false, "", "", "");
+                config_settings_clone.set_connected(false);
+            }
+            
+            glib::ControlFlow::Continue
+        });
 
         // 9. Device Manager
         let device_manager_view = DeviceManagerWindow::new(device_controller.clone());

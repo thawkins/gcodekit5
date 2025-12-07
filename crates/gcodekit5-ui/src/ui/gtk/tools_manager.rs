@@ -17,6 +17,7 @@ pub struct ToolsManagerView {
     tools_list: ListBox,
     search_entry: SearchEntry,
     type_filter: ComboBoxText,
+    right_panel_stack: Stack,
     
     // Edit form widgets
     edit_id: Entry,
@@ -98,6 +99,7 @@ impl ToolsManagerView {
         scroll.set_vexpand(true);
 
         let tools_list = ListBox::new();
+        tools_list.set_activate_on_single_click(true);
         tools_list.add_css_class("boxed-list");
         scroll.set_child(Some(&tools_list));
         sidebar.append(&scroll);
@@ -110,6 +112,25 @@ impl ToolsManagerView {
         widget.set_start_child(Some(&sidebar));
 
         // RIGHT PANEL - Tool Details/Edit Form
+        let right_panel_stack = Stack::new();
+        right_panel_stack.set_hexpand(true);
+        right_panel_stack.set_vexpand(true);
+        
+        // Empty state
+        let empty_state = Box::new(Orientation::Vertical, 0);
+        empty_state.set_valign(Align::Center);
+        empty_state.set_halign(Align::Center);
+        empty_state.set_vexpand(true);
+        empty_state.set_hexpand(true);
+        
+        let empty_label = Label::new(Some("Please select or create a tool to edit"));
+        empty_label.add_css_class("title-2");
+        empty_label.add_css_class("dim-label");
+        empty_state.append(&empty_label);
+        
+        right_panel_stack.add_named(&empty_state, Some("empty"));
+        
+        // Edit form container
         let main_content = Box::new(Orientation::Vertical, 10);
         main_content.set_margin_top(20);
         main_content.set_margin_bottom(20);
@@ -161,8 +182,11 @@ impl ToolsManagerView {
 
         main_content.append(&switcher);
         main_content.append(&stack);
+        
+        right_panel_stack.add_named(&main_content, Some("edit"));
+        right_panel_stack.set_visible_child_name("empty");
 
-        widget.set_end_child(Some(&main_content));
+        widget.set_end_child(Some(&right_panel_stack));
 
         // Set initial position
         widget.add_tick_callback(|paned, _clock| {
@@ -180,6 +204,7 @@ impl ToolsManagerView {
             tools_list,
             search_entry,
             type_filter,
+            right_panel_stack: right_panel_stack.clone(),
             edit_id,
             edit_number,
             edit_name,
@@ -501,7 +526,27 @@ impl ToolsManagerView {
 
         let backend = self.backend.borrow();
         let search_query = self.search_entry.text().to_string();
-        let tools = backend.search_tools(&search_query);
+        let mut tools = backend.search_tools(&search_query);
+        
+        // Apply type filter
+        if let Some(type_id) = self.type_filter.active_id() {
+            if type_id.as_str() != "all" {
+                tools.retain(|tool| {
+                    let tool_type_str = match tool.tool_type {
+                        ToolType::EndMillFlat => "endmill_flat",
+                        ToolType::EndMillBall => "endmill_ball",
+                        ToolType::EndMillCornerRadius => "endmill_cr",
+                        ToolType::VBit => "vbit",
+                        ToolType::DrillBit => "drill",
+                        ToolType::SpotDrill => "spot",
+                        ToolType::EngravingBit => "engraving",
+                        ToolType::ChamferTool => "chamfer",
+                        ToolType::Specialty => "specialty",
+                    };
+                    tool_type_str == type_id.as_str()
+                });
+            }
+        }
 
         for tool in tools {
             let row_box = Box::new(Orientation::Vertical, 5);
@@ -513,12 +558,20 @@ impl ToolsManagerView {
             let name_label = Label::new(Some(&format!("#{} {}", tool.number, tool.name)));
             name_label.add_css_class("title-4");
             name_label.set_halign(Align::Start);
+            name_label.set_xalign(0.0);
+            name_label.set_wrap(true);
+            name_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+            name_label.set_max_width_chars(30);
             row_box.append(&name_label);
 
             let info = format!("{} - Ø{:.2}mm", tool.tool_type, tool.diameter);
             let info_label = Label::new(Some(&info));
             info_label.add_css_class("dim-label");
             info_label.set_halign(Align::Start);
+            info_label.set_xalign(0.0);
+            info_label.set_wrap(true);
+            info_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+            info_label.set_max_width_chars(30);
             row_box.append(&info_label);
 
             // Store tool ID as hidden label
@@ -536,36 +589,220 @@ impl ToolsManagerView {
 
         self.clear_form();
         self.edit_id.set_sensitive(true);
+        self.right_panel_stack.set_visible_child_name("edit");
         self.save_btn.set_sensitive(true);
         self.cancel_btn.set_sensitive(true);
         self.delete_btn.set_sensitive(false);
     }
 
-    fn load_tool_for_edit(&self, _tool_id: &str) {
-        // TODO: Implement
-        *self.is_creating.borrow_mut() = false;
-        self.edit_id.set_sensitive(false);
-        self.save_btn.set_sensitive(true);
-        self.cancel_btn.set_sensitive(true);
-        self.delete_btn.set_sensitive(true);
+    fn load_tool_for_edit(&self, tool_id: &str) {
+        // Load tool from backend
+        let backend = self.backend.borrow();
+        if let Some(tool) = backend.get_tool(&ToolId(tool_id.to_string())) {
+            *self.is_creating.borrow_mut() = false;
+            *self.selected_tool.borrow_mut() = Some(tool.clone());
+            
+            // Populate form with tool data
+            self.edit_id.set_text(&tool.id.0);
+            self.edit_id.set_sensitive(false);
+            self.edit_number.set_value(tool.number as f64);
+            self.edit_name.set_text(&tool.name);
+            
+            // Set tool type
+            match tool.tool_type {
+                ToolType::EndMillFlat => self.edit_tool_type.set_active(Some(0)),
+                ToolType::EndMillBall => self.edit_tool_type.set_active(Some(1)),
+                ToolType::EndMillCornerRadius => self.edit_tool_type.set_active(Some(2)),
+                ToolType::VBit => self.edit_tool_type.set_active(Some(3)),
+                ToolType::DrillBit => self.edit_tool_type.set_active(Some(4)),
+                ToolType::SpotDrill => self.edit_tool_type.set_active(Some(5)),
+                ToolType::EngravingBit => self.edit_tool_type.set_active(Some(6)),
+                ToolType::ChamferTool => self.edit_tool_type.set_active(Some(7)),
+                ToolType::Specialty => self.edit_tool_type.set_active(Some(8)),
+            }
+            
+            // Material - map string to combobox
+            self.edit_material.set_active(Some(1)); // Default to Carbide
+            
+            self.edit_diameter.set_text(&format!("{:.2}", tool.diameter));
+            self.edit_length.set_text(&format!("{:.2}", tool.length));
+            self.edit_flute_length.set_text(&format!("{:.2}", tool.flute_length));
+            
+            if let Some(shaft_dia) = tool.shaft_diameter {
+                self.edit_shaft_diameter.set_text(&format!("{:.2}", shaft_dia));
+            } else {
+                self.edit_shaft_diameter.set_text(&format!("{:.2}", tool.diameter));
+            }
+            
+            self.edit_flutes.set_value(tool.flutes as f64);
+            
+            // Optional fields
+            if let Some(ref coating) = tool.coating {
+                // Set coating combobox
+                self.edit_coating.set_active(Some(0));
+            }
+            if let Some(ref manufacturer) = tool.manufacturer {
+                self.edit_manufacturer.set_text(manufacturer);
+            }
+            if let Some(ref part_number) = tool.part_number {
+                self.edit_part_number.set_text(part_number);
+            }
+            
+            // Description and notes are not Option types
+            self.edit_description.buffer().set_text(&tool.description);
+            self.edit_notes.buffer().set_text(&tool.notes);
+            
+            // Show edit form
+            self.right_panel_stack.set_visible_child_name("edit");
+            self.save_btn.set_sensitive(true);
+            self.cancel_btn.set_sensitive(true);
+            self.delete_btn.set_sensitive(true);
+        }
     }
 
     fn save_tool(&self) {
-        // TODO: Collect form data and save
+        // Collect form data
+        let tool_id = self.edit_id.text().to_string();
+        let tool_number = self.edit_number.value() as u32;
+        let tool_name = self.edit_name.text().to_string();
+        
+        // Get tool type from combobox
+        let tool_type = match self.edit_tool_type.active() {
+            Some(0) => ToolType::EndMillFlat,
+            Some(1) => ToolType::EndMillBall,
+            Some(2) => ToolType::EndMillCornerRadius,
+            Some(3) => ToolType::VBit,
+            Some(4) => ToolType::DrillBit,
+            Some(5) => ToolType::SpotDrill,
+            Some(6) => ToolType::EngravingBit,
+            Some(7) => ToolType::ChamferTool,
+            Some(8) => ToolType::Specialty,
+            _ => ToolType::EndMillFlat,
+        };
+        
+        // Parse numeric fields
+        let diameter = self.edit_diameter.text().parse::<f32>().unwrap_or(6.35);
+        let length = self.edit_length.text().parse::<f32>().unwrap_or(50.0);
+        let flute_length = self.edit_flute_length.text().parse::<f32>().unwrap_or(20.0);
+        let shaft_diameter = self.edit_shaft_diameter.text().parse::<f32>().ok();
+        let flutes = self.edit_flutes.value() as u32;
+        
+        // Get optional fields
+        let manufacturer = {
+            let text = self.edit_manufacturer.text().to_string();
+            if text.is_empty() { None } else { Some(text) }
+        };
+        
+        let part_number = {
+            let text = self.edit_part_number.text().to_string();
+            if text.is_empty() { None } else { Some(text) }
+        };
+        
+        let coating = None; // TODO: Parse from combobox
+        
+        let description = {
+            let buffer = self.edit_description.buffer();
+            let start = buffer.start_iter();
+            let end = buffer.end_iter();
+            buffer.text(&start, &end, true).to_string()
+        };
+        
+        let notes = {
+            let buffer = self.edit_notes.buffer();
+            let start = buffer.start_iter();
+            let end = buffer.end_iter();
+            buffer.text(&start, &end, true).to_string()
+        };
+        
+        // Create tool
+        let tool = Tool {
+            id: ToolId(tool_id.clone()),
+            number: tool_number,
+            name: tool_name,
+            description,
+            tool_type,
+            diameter,
+            shaft_diameter,
+            length,
+            flute_length,
+            flutes,
+            corner_radius: None,
+            tip_angle: None,
+            material: gcodekit5_core::data::tools::ToolMaterial::Carbide,
+            coating,
+            shank: gcodekit5_core::data::tools::ShankType::Straight(
+                (shaft_diameter.unwrap_or(diameter) * 10.0) as u32
+            ),
+            params: gcodekit5_core::data::tools::ToolCuttingParams::default(),
+            manufacturer,
+            part_number,
+            cost: None,
+            notes,
+            custom: true,
+        };
+        
+        // Save to backend
+        let mut backend = self.backend.borrow_mut();
+        if *self.is_creating.borrow() {
+            backend.add_tool(tool);
+        } else {
+            // For update, remove old and add new
+            backend.remove_tool(&ToolId(tool_id.clone()));
+            backend.add_tool(tool);
+        }
+        drop(backend);
+        
+        // Refresh list and return to empty state
         self.load_tools();
         self.cancel_edit();
     }
 
     fn delete_tool(&self) {
-        // TODO: Delete selected tool
-        self.load_tools();
-        self.cancel_edit();
+        // Get the selected tool
+        if let Some(ref tool) = *self.selected_tool.borrow() {
+            let tool_id = tool.id.clone();
+            
+            // Show confirmation dialog
+            if let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() {
+                let dialog = gtk4::MessageDialog::builder()
+                    .transient_for(&window)
+                    .modal(true)
+                    .message_type(gtk4::MessageType::Warning)
+                    .buttons(gtk4::ButtonsType::YesNo)
+                    .text("Delete Tool?")
+                    .secondary_text(&format!(
+                        "Are you sure you want to delete tool #{} - {}?\n\nThis action cannot be undone.",
+                        tool.number, tool.name
+                    ))
+                    .build();
+                
+                let backend = self.backend.clone();
+                let view = Rc::new(self.clone());
+                
+                dialog.connect_response(move |dialog, response| {
+                    if response == gtk4::ResponseType::Yes {
+                        // Delete from backend
+                        let mut backend_mut = backend.borrow_mut();
+                        backend_mut.remove_tool(&tool_id);
+                        drop(backend_mut);
+                        
+                        // Refresh list and return to empty state
+                        view.load_tools();
+                        view.cancel_edit();
+                    }
+                    dialog.close();
+                });
+                
+                dialog.show();
+            }
+        }
     }
 
     fn cancel_edit(&self) {
         *self.is_creating.borrow_mut() = false;
         *self.selected_tool.borrow_mut() = None;
         self.clear_form();
+        self.right_panel_stack.set_visible_child_name("empty");
         self.save_btn.set_sensitive(false);
         self.cancel_btn.set_sensitive(false);
         self.delete_btn.set_sensitive(false);

@@ -992,6 +992,11 @@ impl MachineControlView {
                             // Unlock button should initially be disabled until ALARM state is detected
                             view_clone.unlock_btn.set_sensitive(false);
                             
+                            // Query firmware version on connect
+                            if let Ok(mut comm) = view_clone.communicator.lock() {
+                                let _ = comm.send_command("$I");
+                            }
+                            
                             // Simple polling using glib::timeout_add_local - runs on main thread, no blocking
                             let state_label_poll = view_clone.state_label.clone();
                             let x_dro_poll = view_clone.x_dro.clone();
@@ -1008,6 +1013,7 @@ impl MachineControlView {
                             
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
+                            let mut firmware_detected = false;
                             
                             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                                 query_counter += 1;
@@ -1040,6 +1046,17 @@ impl MachineControlView {
                                                 
                                                 if line.is_empty() { continue; }
 
+                                                // Detect firmware version info
+                                                if !firmware_detected && (line.starts_with("[VER:") || line.contains("Grbl")) {
+                                                    use gcodekit5_communication::firmware::firmware_detector::FirmwareDetector;
+                                                    if let Ok(detection) = FirmwareDetector::parse_response(&line) {
+                                                        let fw_type = format!("{:?}", detection.firmware_type);
+                                                        let fw_version = detection.version_string.clone();
+                                                        device_status::update_firmware_info(fw_type, fw_version, None);
+                                                        firmware_detected = true;
+                                                    }
+                                                }
+                                                
                                                 // Log to console, filtering out status reports and 'ok' acks to avoid spam
                                                 if !line.starts_with('<') && line != "ok" {
                                                     if let Some(c) = device_console_poll.as_ref() {

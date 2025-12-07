@@ -159,6 +159,20 @@ impl DeviceConsoleView {
         // Append to bottom and auto-scroll
         let mut iter = buffer.end_iter();
         buffer.insert(&mut iter, message);
+    }
+    
+    pub fn get_log_text(&self) -> String {
+        let buffer = self.console_text.buffer();
+        let start = buffer.start_iter();
+        let end = buffer.end_iter();
+        buffer.text(&start, &end, true).to_string()
+    }
+    
+    pub fn clear_log(&self) {
+        let buffer = self.console_text.buffer();
+        let start = buffer.start_iter();
+        let end = buffer.end_iter();
+        buffer.delete(&mut start.clone(), &mut end.clone());
         
         // Auto-scroll to bottom
         let mark = buffer.create_mark(None, &buffer.end_iter(), false);

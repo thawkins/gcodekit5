@@ -25,6 +25,12 @@ pub struct GrblDeviceStatus {
     pub is_connected: bool,
     /// Port name
     pub port_name: Option<String>,
+    /// Firmware type (e.g., "GRBL", "TinyG")
+    pub firmware_type: Option<String>,
+    /// Firmware version (e.g., "1.1h")
+    pub firmware_version: Option<String>,
+    /// Device name (e.g., "CNC 3018 Pro")
+    pub device_name: Option<String>,
 }
 
 impl Default for GrblDeviceStatus {
@@ -38,6 +44,9 @@ impl Default for GrblDeviceStatus {
             feed_spindle_state: None,
             is_connected: false,
             port_name: None,
+            firmware_type: None,
+            firmware_version: None,
+            device_name: None,
         }
     }
 }
@@ -100,6 +109,15 @@ pub fn update_connection_status(connected: bool, port: Option<String>) {
                 ..Default::default()
             };
         }
+    }
+}
+
+/// Update firmware information
+pub fn update_firmware_info(firmware_type: String, version: String, device_name: Option<String>) {
+    if let Ok(mut status) = DEVICE_STATUS.write() {
+        status.firmware_type = Some(firmware_type);
+        status.firmware_version = Some(version);
+        status.device_name = device_name;
     }
 }
 
