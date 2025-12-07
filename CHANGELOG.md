@@ -1,3 +1,14 @@
+## [0.2.4-alpha.0] - 2025-12-08
+
+### Summary
+Minor maintenance release with all CI/CD fixes consolidated.
+
+### Fixed
+- **CI/CD**: Complete GTK4 dependency chain for GitHub Actions
+  - All build dependencies now properly configured
+  - Fixed glib-sys and sourceview5-sys build errors
+  - Release pipeline fully functional
+
 ## [0.2.3-alpha.0] - 2025-12-08
 
 ### Fixed
