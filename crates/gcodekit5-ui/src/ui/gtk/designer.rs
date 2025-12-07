@@ -3,23 +3,30 @@ use gtk4::{DrawingArea, GestureClick, GestureDrag, EventControllerMotion, Box, L
 use std::cell::RefCell;
 use std::rc::Rc;
 use gcodekit5_designer::designer_state::DesignerState;
-use gcodekit5_designer::shapes::{Shape, Point};
+use gcodekit5_designer::shapes::{Shape, Point, Rectangle, Circle, Line, Ellipse};
+use gcodekit5_designer::canvas::DrawingObject;
+use crate::ui::gtk::designer_toolbox::{DesignerToolbox, DesignerTool};
 
 pub struct DesignerCanvas {
     pub widget: DrawingArea,
     state: Rc<RefCell<DesignerState>>,
     mouse_pos: Rc<RefCell<(f64, f64)>>, // Canvas coordinates
+    toolbox: Option<Rc<DesignerToolbox>>,
+    // Shape creation state
+    creation_start: Rc<RefCell<Option<(f64, f64)>>>,
+    creation_current: Rc<RefCell<Option<(f64, f64)>>>,
 }
 
 pub struct DesignerView {
     pub widget: Box,
     canvas: Rc<DesignerCanvas>,
+    toolbox: Rc<DesignerToolbox>,
     status_label: Label,
     coord_label: Label,
 }
 
 impl DesignerCanvas {
-    pub fn new(state: Rc<RefCell<DesignerState>>) -> Rc<Self> {
+    pub fn new(state: Rc<RefCell<DesignerState>>, toolbox: Option<Rc<DesignerToolbox>>) -> Rc<Self> {
         let widget = DrawingArea::builder()
             .hexpand(true)
             .vexpand(true)
@@ -27,6 +34,8 @@ impl DesignerCanvas {
             .build();
 
         let mouse_pos = Rc::new(RefCell::new((0.0, 0.0)));
+        let creation_start = Rc::new(RefCell::new(None));
+        let creation_current = Rc::new(RefCell::new(None));
 
         let state_clone = state.clone();
         let mouse_pos_clone = mouse_pos.clone();
@@ -40,6 +49,9 @@ impl DesignerCanvas {
             widget: widget.clone(),
             state: state.clone(),
             mouse_pos: mouse_pos.clone(),
+            toolbox: toolbox.clone(),
+            creation_start: creation_start.clone(),
+            creation_current: creation_current.clone(),
         });
 
         // Mouse motion tracking
@@ -89,19 +101,128 @@ impl DesignerCanvas {
     }
     
     fn handle_click(&self, x: f64, y: f64) {
-        // TODO: Phase 3 - Handle selection
+        let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
+        
+        // Convert screen coords to canvas coords
+        let width = self.widget.width() as f64;
+        let height = self.widget.height() as f64;
+        let canvas_x = x - width / 2.0;
+        let canvas_y = -(y - height / 2.0);
+        
+        match tool {
+            DesignerTool::Select => {
+                // TODO: Phase 3 - Handle selection
+            }
+            _ => {
+                // Other tools handled by drag
+            }
+        }
     }
     
     fn handle_drag_begin(&self, x: f64, y: f64) {
-        // TODO: Phase 2/3 - Handle shape creation or pan
+        let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
+        
+        // Convert screen coords to canvas coords
+        let width = self.widget.width() as f64;
+        let height = self.widget.height() as f64;
+        let canvas_x = x - width / 2.0;
+        let canvas_y = -(y - height / 2.0);
+        
+        match tool {
+            DesignerTool::Select => {
+                // TODO: Phase 3 - Start drag move or selection rectangle
+            }
+            _ => {
+                // Start shape creation
+                *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
+                *self.creation_current.borrow_mut() = Some((canvas_x, canvas_y));
+            }
+        }
     }
     
     fn handle_drag_update(&self, offset_x: f64, offset_y: f64) {
-        // TODO: Phase 2/3 - Update shape creation or pan
+        let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
+        
+        if let Some(start) = *self.creation_start.borrow() {
+            // Update current position (offset is from drag start)
+            let current_x = start.0 + offset_x;
+            let current_y = start.1 - offset_y; // Flip Y offset
+            
+            *self.creation_current.borrow_mut() = Some((current_x, current_y));
+            self.widget.queue_draw();
+        }
     }
     
     fn handle_drag_end(&self, offset_x: f64, offset_y: f64) {
-        // TODO: Phase 2/3 - Finish shape creation or pan
+        let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
+        
+        if let Some(start) = *self.creation_start.borrow() {
+            let end_x = start.0 + offset_x;
+            let end_y = start.1 - offset_y; // Flip Y offset
+            
+            // Create the shape
+            self.create_shape(tool, start, (end_x, end_y));
+            
+            // Clear creation state
+            *self.creation_start.borrow_mut() = None;
+            *self.creation_current.borrow_mut() = None;
+            self.widget.queue_draw();
+        }
+    }
+    
+    fn create_shape(&self, tool: DesignerTool, start: (f64, f64), end: (f64, f64)) {
+        let mut state = self.state.borrow_mut();
+        
+        let shape = match tool {
+            DesignerTool::Rectangle => {
+                let x = start.0.min(end.0);
+                let y = start.1.min(end.1);
+                let width = (end.0 - start.0).abs();
+                let height = (end.1 - start.1).abs();
+                
+                if width > 1.0 && height > 1.0 {
+                    Some(Shape::Rectangle(Rectangle::new(x, y, width, height)))
+                } else {
+                    None
+                }
+            }
+            DesignerTool::Circle => {
+                let cx = start.0;
+                let cy = start.1;
+                let dx = end.0 - start.0;
+                let dy = end.1 - start.1;
+                let radius = (dx * dx + dy * dy).sqrt();
+                
+                if radius > 1.0 {
+                    Some(Shape::Circle(Circle::new(Point::new(cx, cy), radius)))
+                } else {
+                    None
+                }
+            }
+            DesignerTool::Line => {
+                Some(Shape::Line(Line::new(
+                    Point::new(start.0, start.1),
+                    Point::new(end.0, end.1),
+                )))
+            }
+            DesignerTool::Ellipse => {
+                let cx = (start.0 + end.0) / 2.0;
+                let cy = (start.1 + end.1) / 2.0;
+                let rx = (end.0 - start.0).abs() / 2.0;
+                let ry = (end.1 - start.1).abs() / 2.0;
+                
+                if rx > 1.0 && ry > 1.0 {
+                    Some(Shape::Ellipse(Ellipse::new(Point::new(cx, cy), rx, ry)))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        
+        if let Some(shape) = shape {
+            state.canvas.add_shape(shape);
+        }
     }
 
     fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64)) {
@@ -125,6 +246,10 @@ impl DesignerCanvas {
         
         // Draw Origin Crosshair
         Self::draw_origin_crosshair(cr);
+        
+        // Draw creation preview (if creating)
+        // Note: We can't access self here, so preview will be drawn separately
+        // This is a limitation of the current draw_func approach
 
         // Draw Shapes
         for obj in state.canvas.shape_store.iter() {
@@ -346,9 +471,20 @@ impl DesignerView {
         // Create designer state
         let state = Rc::new(RefCell::new(DesignerState::new()));
         
+        // Create main horizontal layout (toolbox + canvas)
+        let main_box = Box::new(Orientation::Horizontal, 0);
+        main_box.set_hexpand(true);
+        main_box.set_vexpand(true);
+        
+        // Create toolbox
+        let toolbox = DesignerToolbox::new();
+        main_box.append(&toolbox.widget);
+        
         // Create canvas
-        let canvas = DesignerCanvas::new(state.clone());
-        container.append(&canvas.widget);
+        let canvas = DesignerCanvas::new(state.clone(), Some(toolbox.clone()));
+        main_box.append(&canvas.widget);
+        
+        container.append(&main_box);
         
         // Status bar at bottom
         let status_bar = Box::new(Orientation::Horizontal, 10);
@@ -394,11 +530,20 @@ impl DesignerView {
         let view = Rc::new(Self {
             widget: container,
             canvas,
+            toolbox,
             status_label,
             coord_label,
         });
         
         view
+    }
+    
+    pub fn current_tool(&self) -> DesignerTool {
+        self.toolbox.current_tool()
+    }
+    
+    pub fn set_tool(&self, tool: DesignerTool) {
+        self.toolbox.set_tool(tool);
     }
     
     pub fn set_status(&self, message: &str) {
