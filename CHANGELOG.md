@@ -1,3 +1,43 @@
+## [0.2.1-alpha.0] - 2025-12-08
+
+### Added
+- **Device Config**: Migrated device configuration panel from Slint to GTK4
+  - Real-time GRBL settings retrieval via $$ command
+  - Live editing of device settings with save confirmation
+  - Settings update immediately in UI after saving
+  - Category filtering for settings groups
+  - Search/filter functionality across all settings
+- **Device Info**: Implemented automatic firmware detection
+  - Auto-detect firmware type and version via $I command on connect
+  - Display actual device firmware instead of hardcoded values
+  - Added firmware metadata tracking in device_status
+- **CNC Tools Manager**: Complete tool management system
+  - Create new tools with all parameters (geometry, material, manufacturer)
+  - Edit existing tools with form validation
+  - Delete tools with confirmation dialog
+  - Category filter to show tools by type (End Mill, V-Bit, Drill, etc.)
+  - Search/filter functionality across tool names and descriptions
+  - Word-wrapped tool names in sidebar for better readability
+  - Empty state placeholder when no tool selected
+  - Single-click tool selection and editing
+
+### Changed
+- Device console now provides log access methods for other components
+- Settings panel uses console output to avoid competing with machine control polling
+- Tool list properly refreshes after create/update/delete operations
+
+### Fixed
+- Device config settings now show actual values from device instead of zeros
+- Tool creation/saving now properly adds tools to the list
+- Category filter correctly filters tools by type
+- Search functionality works across all tool fields
+- Tool deletion now properly removes tools from the list
+- Long tool names no longer overflow in the sidebar
+
+### Removed
+- All debug println! and eprintln! statements throughout the codebase
+- Unused code paths and callbacks
+
 ## [0.2.0-alpha.0] - 2025-12-08
 
 ### Added
