@@ -1,3 +1,10 @@
+## [0.2.3-alpha.0] - 2025-12-08
+
+### Fixed
+- **CI/CD**: Added GtkSourceView5 development dependency
+  - Fixed sourceview5-sys build error in CI environment
+  - Added libgtksourceview-5-dev for text editor syntax highlighting
+
 ## [0.2.2-alpha.0] - 2025-12-08
 
 ### Fixed
