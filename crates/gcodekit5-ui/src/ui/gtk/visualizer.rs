@@ -66,6 +66,9 @@ pub struct GcodeVisualizer {
     vadjustment: Adjustment,
     // Info labels
     bounds_label: Label,
+    min_s_label: Label,
+    max_s_label: Label,
+    avg_s_label: Label,
     status_label: Label,
     device_manager: Option<Arc<DeviceManager>>,
     current_pos: Rc<RefCell<(f32, f32)>>,
@@ -214,6 +217,32 @@ impl GcodeVisualizer {
             .margin_top(24)
             .build();
         sidebar.append(&bounds_label);
+
+        // Statistics
+        let stats_label = Label::builder()
+            .label("Statistics")
+            .css_classes(vec!["heading"])
+            .halign(gtk4::Align::Start)
+            .margin_top(12)
+            .build();
+        sidebar.append(&stats_label);
+
+        let min_s_label = Label::builder()
+            .label("Min S: -")
+            .halign(gtk4::Align::Start)
+            .build();
+        let max_s_label = Label::builder()
+            .label("Max S: -")
+            .halign(gtk4::Align::Start)
+            .build();
+        let avg_s_label = Label::builder()
+            .label("Avg S: -")
+            .halign(gtk4::Align::Start)
+            .build();
+
+        sidebar.append(&min_s_label);
+        sidebar.append(&max_s_label);
+        sidebar.append(&avg_s_label);
 
         container.set_start_child(Some(&sidebar));
 
@@ -581,6 +610,9 @@ impl GcodeVisualizer {
             hadjustment,
             vadjustment,
             bounds_label,
+            min_s_label,
+            max_s_label,
+            avg_s_label,
             status_label,
             device_manager,
             current_pos,
@@ -693,6 +725,37 @@ impl GcodeVisualizer {
             "Bounds\nX: {:.1} to {:.1}\nY: {:.1} to {:.1}",
             min_x, max_x, min_y, max_y
         ));
+
+        // Calculate S statistics
+        let mut min_s = f32::MAX;
+        let mut max_s = f32::MIN;
+        let mut sum_s = 0.0;
+        let mut count_s = 0;
+
+        for cmd in vis.commands() {
+            let s = match cmd {
+                GCodeCommand::Move { intensity: Some(s), .. } => Some(*s),
+                GCodeCommand::Arc { intensity: Some(s), .. } => Some(*s),
+                _ => None,
+            };
+
+            if let Some(val) = s {
+                if val < min_s { min_s = val; }
+                if val > max_s { max_s = val; }
+                sum_s += val;
+                count_s += 1;
+            }
+        }
+
+        if count_s > 0 {
+            self.min_s_label.set_text(&format!("Min S: {:.1}", min_s));
+            self.max_s_label.set_text(&format!("Max S: {:.1}", max_s));
+            self.avg_s_label.set_text(&format!("Avg S: {:.1}", sum_s / count_s as f32));
+        } else {
+            self.min_s_label.set_text("Min S: N/A");
+            self.max_s_label.set_text("Max S: N/A");
+            self.avg_s_label.set_text("Avg S: N/A");
+        }
 
         // Auto fit
         let width = self.drawing_area.width() as f32;
