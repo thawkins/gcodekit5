@@ -141,9 +141,12 @@ impl DesignerCanvas {
     }
     
     fn handle_drag_update(&self, offset_x: f64, offset_y: f64) {
-        let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
+        let _tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
         
-        if let Some(start) = *self.creation_start.borrow() {
+        // Get start point without holding the borrow
+        let start_opt = *self.creation_start.borrow();
+        
+        if let Some(start) = start_opt {
             // Update current position (offset is from drag start)
             let current_x = start.0 + offset_x;
             let current_y = start.1 - offset_y; // Flip Y offset
@@ -156,14 +159,17 @@ impl DesignerCanvas {
     fn handle_drag_end(&self, offset_x: f64, offset_y: f64) {
         let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
         
-        if let Some(start) = *self.creation_start.borrow() {
+        // Get start point and release the borrow immediately
+        let start_opt = *self.creation_start.borrow();
+        
+        if let Some(start) = start_opt {
             let end_x = start.0 + offset_x;
             let end_y = start.1 - offset_y; // Flip Y offset
             
             // Create the shape
             self.create_shape(tool, start, (end_x, end_y));
             
-            // Clear creation state BEFORE queue_draw to avoid borrow conflicts
+            // Clear creation state (now safe - no borrows held)
             *self.creation_start.borrow_mut() = None;
             *self.creation_current.borrow_mut() = None;
             
