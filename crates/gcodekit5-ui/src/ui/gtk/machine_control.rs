@@ -1010,6 +1010,7 @@ impl MachineControlView {
                             let waiting_for_ack_poll = view_clone.waiting_for_ack.clone();
                             let send_queue_poll = view_clone.send_queue.clone();
                             let device_console_poll = view_clone.device_console.clone();
+                            let total_lines_poll = view_clone.total_lines.clone();
                             
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
@@ -1077,6 +1078,37 @@ impl MachineControlView {
                                                      if *is_streaming_poll.lock().unwrap() {
                                                          if !*is_paused_poll.lock().unwrap() {
                                                               let mut queue = send_queue_poll.lock().unwrap();
+                                                              let total_lines_val = *total_lines_poll.lock().unwrap();
+                                                              let remaining = queue.len();
+                                                              let sent = total_lines_val - remaining;
+                                                              
+                                                              // Update progress bar
+                                                              if let Some(sb) = status_bar_poll.as_ref() {
+                                                                  let progress = if total_lines_val > 0 {
+                                                                      (sent as f64 / total_lines_val as f64) * 100.0
+                                                                  } else {
+                                                                      0.0
+                                                                  };
+                                                                  
+                                                                  // Simple time estimation (very rough)
+                                                                  // Assuming average 0.1s per command for now
+                                                                  let elapsed_secs = sent as f64 * 0.1;
+                                                                  let remaining_secs = remaining as f64 * 0.1;
+                                                                  
+                                                                  let format_time = |secs: f64| {
+                                                                      let h = (secs / 3600.0).floor();
+                                                                      let m = ((secs % 3600.0) / 60.0).floor();
+                                                                      let s = (secs % 60.0).floor();
+                                                                      format!("{:02}:{:02}:{:02}", h, m, s)
+                                                                  };
+                                                                  
+                                                                  sb.set_progress(
+                                                                      progress,
+                                                                      &format_time(elapsed_secs),
+                                                                      &format_time(remaining_secs)
+                                                                  );
+                                                              }
+
                                                               if let Some(next_cmd) = queue.pop_front() {
                                                                    // println!("DEBUG: Sending next: {}", next_cmd);
                                                                    let _ = comm.send_command(&next_cmd);
@@ -1087,6 +1119,10 @@ impl MachineControlView {
                                                                    *is_paused_poll.lock().unwrap() = false;
                                                                    if let Some(c) = device_console_poll.as_ref() {
                                                                        c.append_log("Job Completed.\n");
+                                                                   }
+                                                                   // Reset progress
+                                                                   if let Some(sb) = status_bar_poll.as_ref() {
+                                                                       sb.set_progress(0.0, "", "");
                                                                    }
                                                               }
                                                          }
