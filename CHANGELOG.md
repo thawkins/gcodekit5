@@ -1,4 +1,4 @@
-## [0.2.5-alpha.2] - 2025-12-08
+## [0.2.5-alpha.3] - 2025-12-08
 
 ### Added
 - **Designer**: Added Pan tool to toolbox.

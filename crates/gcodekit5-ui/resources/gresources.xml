@@ -8,5 +8,6 @@
     <file compressed="true" alias="rectangle.svg">icons/rectangle.svg</file>
     <file compressed="true" alias="select.svg">icons/select.svg</file>
     <file compressed="true" alias="text.svg">icons/text.svg</file>
+    <file compressed="true" alias="grab.svg">icons/grab.svg</file>
   </gresource>
 </gresources>

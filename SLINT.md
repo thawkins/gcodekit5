@@ -16,3 +16,7 @@ This file is maintained as per agent instructions, but primary UI development is
 - **LOD**: Implement Level of Detail (LOD) rendering based on zoom level to maintain performance with large files.
 - **Interaction**: Use `GestureDrag` for panning and `EventControllerScroll` for zooming.
 - **Overlays**: Use `Overlay` widget to place floating controls (buttons, status labels) on top of the `DrawingArea`.
+
+## Designer Migration
+- The Designer component has been fully migrated to GTK4, including all tools (Select, Pan, Shapes), property editing, and CAM operations.
+- The migration plan in `DESIGNER_MIGRATION_COMPARISON.md` is now largely complete.
