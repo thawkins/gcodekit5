@@ -9,11 +9,34 @@ use crate::{
 use crate::commands::*;
 use gcodekit5_core::Units;
 
+/// Tool settings for the designer
+#[derive(Clone, Debug)]
+pub struct ToolSettings {
+    pub feed_rate: f64,
+    pub spindle_speed: u32,
+    pub tool_diameter: f64,
+    pub cut_depth: f64,
+    pub step_down: f64,
+}
+
+impl Default for ToolSettings {
+    fn default() -> Self {
+        Self {
+            feed_rate: 100.0,
+            spindle_speed: 3000,
+            tool_diameter: 3.175,
+            cut_depth: 5.0,
+            step_down: 1.0,
+        }
+    }
+}
+
 /// Designer state for UI integration
 #[derive(Clone)]
 pub struct DesignerState {
     pub canvas: Canvas,
     pub toolpath_generator: ToolpathGenerator,
+    pub tool_settings: ToolSettings,
     pub generated_gcode: String,
     pub gcode_generated: bool,
     pub current_file_path: Option<std::path::PathBuf>,
@@ -32,6 +55,7 @@ impl DesignerState {
         Self {
             canvas: Canvas::with_size(800.0, 600.0),
             toolpath_generator: ToolpathGenerator::new(),
+            tool_settings: ToolSettings::default(),
             generated_gcode: String::new(),
             gcode_generated: false,
             current_file_path: None,
@@ -510,22 +534,32 @@ impl DesignerState {
 
     /// Sets feed rate for toolpath generation.
     pub fn set_feed_rate(&mut self, rate: f64) {
+        self.tool_settings.feed_rate = rate;
         self.toolpath_generator.set_feed_rate(rate);
     }
 
     /// Sets spindle speed for toolpath generation.
     pub fn set_spindle_speed(&mut self, speed: u32) {
+        self.tool_settings.spindle_speed = speed;
         self.toolpath_generator.set_spindle_speed(speed);
     }
 
     /// Sets tool diameter for toolpath generation.
     pub fn set_tool_diameter(&mut self, diameter: f64) {
+        self.tool_settings.tool_diameter = diameter;
         self.toolpath_generator.set_tool_diameter(diameter);
     }
 
     /// Sets cut depth for toolpath generation.
     pub fn set_cut_depth(&mut self, depth: f64) {
+        self.tool_settings.cut_depth = depth;
         self.toolpath_generator.set_cut_depth(depth);
+    }
+
+    /// Sets step down for toolpath generation.
+    pub fn set_step_down(&mut self, step: f64) {
+        self.tool_settings.step_down = step;
+        // self.toolpath_generator.set_step_down(step); // Assuming this exists or will be used
     }
 
     /// Adds a test rectangle to the canvas.

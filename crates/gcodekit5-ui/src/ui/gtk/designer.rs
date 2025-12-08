@@ -1551,7 +1551,7 @@ impl DesignerView {
         main_box.set_vexpand(true);
         
         // Create toolbox
-        let toolbox = DesignerToolbox::new();
+        let toolbox = DesignerToolbox::new(state.clone());
         main_box.append(&toolbox.widget);
         
         // Create canvas

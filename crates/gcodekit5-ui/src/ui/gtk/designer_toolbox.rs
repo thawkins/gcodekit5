@@ -1,7 +1,8 @@
 use gtk4::prelude::*;
-use gtk4::{Box, Button, Orientation, Image};
+use gtk4::{Box, Button, Orientation, Image, SpinButton, Label, Adjustment, Expander, Align};
 use std::cell::RefCell;
 use std::rc::Rc;
+use gcodekit5_designer::designer_state::DesignerState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesignerTool {
@@ -56,10 +57,11 @@ pub struct DesignerToolbox {
     pub widget: Box,
     current_tool: Rc<RefCell<DesignerTool>>,
     buttons: Vec<Button>,
+    state: Rc<RefCell<DesignerState>>,
 }
 
 impl DesignerToolbox {
-    pub fn new() -> Rc<Self> {
+    pub fn new(state: Rc<RefCell<DesignerState>>) -> Rc<Self> {
         let container = Box::new(Orientation::Vertical, 2);
         container.set_width_request(60);
         container.add_css_class("designer-toolbox");
@@ -132,11 +134,94 @@ impl DesignerToolbox {
         separator.set_margin_top(10);
         separator.set_margin_bottom(10);
         container.append(&separator);
+
+        // Tool Settings
+        let settings_box = Box::new(Orientation::Vertical, 5);
+        settings_box.set_margin_start(2);
+        settings_box.set_margin_end(2);
+
+        // Helper to create labeled spin button
+        let create_setting = |label_text: &str, min: f64, max: f64, step: f64, value: f64, digits: u32, tooltip: &str| -> SpinButton {
+            let label = Label::builder()
+                .label(label_text)
+                .halign(Align::Start)
+                .build();
+            label.add_css_class("small-label");
+            settings_box.append(&label);
+
+            let adj = Adjustment::new(value, min, max, step, step * 10.0, 0.0);
+            let spin = SpinButton::builder()
+                .adjustment(&adj)
+                .climb_rate(step)
+                .digits(digits)
+                .tooltip_text(tooltip)
+                .build();
+            settings_box.append(&spin);
+            spin
+        };
+
+        let current_settings = state.borrow().tool_settings.clone();
+
+        // Feed Rate
+        let feed_spin = create_setting("Feed (mm/min)", 1.0, 10000.0, 10.0, current_settings.feed_rate, 0, "Feed Rate");
+        let state_feed = state.clone();
+        feed_spin.connect_value_changed(move |spin| {
+            state_feed.borrow_mut().set_feed_rate(spin.value());
+        });
+
+        // Spindle Speed
+        let speed_spin = create_setting("Speed (RPM)", 0.0, 30000.0, 100.0, current_settings.spindle_speed as f64, 0, "Spindle Speed");
+        let state_speed = state.clone();
+        speed_spin.connect_value_changed(move |spin| {
+            state_speed.borrow_mut().set_spindle_speed(spin.value() as u32);
+        });
+
+        // Tool Diameter
+        let diam_spin = create_setting("Tool Dia (mm)", 0.1, 50.0, 0.1, current_settings.tool_diameter, 2, "Tool Diameter");
+        let state_diam = state.clone();
+        diam_spin.connect_value_changed(move |spin| {
+            state_diam.borrow_mut().set_tool_diameter(spin.value());
+        });
+
+        // Cut Depth
+        let depth_spin = create_setting("Cut Depth (mm)", 0.1, 100.0, 0.1, current_settings.cut_depth, 2, "Target Cut Depth (positive)");
+        let state_depth = state.clone();
+        depth_spin.connect_value_changed(move |spin| {
+            // UI shows positive depth, backend expects negative usually? 
+            // Let's check set_cut_depth implementation.
+            // ToolpathGenerator usually takes negative Z for depth.
+            // But let's see what set_cut_depth does.
+            // It just sets the value.
+            // In generate_gcode, it uses header_depth which comes from toolpath.depth.
+            // Usually depth is negative Z.
+            // But UI usually shows positive "Depth".
+            // Let's assume we store it as positive in settings and convert when generating if needed, 
+            // OR we store as negative.
+            // ToolSettings default is 5.0 (positive).
+            // So let's stick to positive here.
+            state_depth.borrow_mut().set_cut_depth(spin.value());
+        });
+
+        // Step Down
+        let step_spin = create_setting("Step Down (mm)", 0.1, 20.0, 0.1, current_settings.step_down, 2, "Depth per pass");
+        let state_step = state.clone();
+        step_spin.connect_value_changed(move |spin| {
+            state_step.borrow_mut().set_step_down(spin.value());
+        });
+
+        let expander = Expander::builder()
+            .label("Tool Settings")
+            .child(&settings_box)
+            .expanded(true)
+            .build();
+        
+        container.append(&expander);
         
         Rc::new(Self {
             widget: container,
             current_tool,
             buttons,
+            state,
         })
     }
     

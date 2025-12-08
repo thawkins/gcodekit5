@@ -3,11 +3,11 @@
   <id>com.github.thawkins.gcodekit5</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-  <name>GCodeKit4</name>
+  <name>GCodeKit5</name>
   <summary>Universal G-Code Sender for CNC machines</summary>
   <description>
     <p>
-      GCodeKit4 is a Rust-based Universal G-Code Sender for CNC machines with support for GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers.
+      GCodeKit5 is a Rust-based Universal G-Code Sender for CNC machines with support for GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers.
     </p>
   </description>
   <launchable type="desktop-id">com.github.thawkins.gcodekit5.desktop</launchable>
