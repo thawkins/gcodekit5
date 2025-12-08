@@ -368,6 +368,7 @@ struct JigsawWidgets {
     feed_rate: Entry,
     offset_x: Entry,
     offset_y: Entry,
+    home_before: CheckButton,
 }
 
 pub struct JigsawTool {
@@ -453,6 +454,7 @@ impl JigsawTool {
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
         let offset_x = Entry::builder().text("10").valign(Align::Center).build();
         let offset_y = Entry::builder().text("10").valign(Align::Center).build();
+        let home_before = CheckButton::builder().active(false).valign(Align::Center).build();
 
         // Groups
         let dim_group = PreferencesGroup::builder()
@@ -500,6 +502,11 @@ impl JigsawTool {
             .build();
         offset_group.add(&Self::create_row("Offset X:", &offset_x));
         offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        
+        let home_row = ActionRow::builder().title("Home Device Before Start").build();
+        home_row.add_suffix(&home_before);
+        offset_group.add(&home_row);
+
         scroll_content.append(&offset_group);
 
         right_panel.append(&scrolled);
@@ -550,6 +557,7 @@ impl JigsawTool {
             feed_rate,
             offset_x,
             offset_y,
+            home_before,
         });
 
         // Connect Generate
@@ -557,6 +565,7 @@ impl JigsawTool {
         let on_gen = on_generate.clone();
         generate_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&w_gen);
+            let home_before = w_gen.home_before.is_active();
             
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
@@ -610,7 +619,15 @@ impl JigsawTool {
                     }
                     let mut maker = JigsawPuzzleMaker::new(params)?;
                     maker.generate()?;
-                    Ok(maker.to_gcode(500.0, 1.0))
+                    let mut gcode = maker.to_gcode(500.0, 1.0);
+                    
+                    // Handle homing
+                    gcode = gcode.replace("$H\n", "").replace("$H", "");
+                    if home_before {
+                        gcode = format!("$H\n{}", gcode);
+                    }
+                    
+                    Ok(gcode)
                 })();
                 
                 let _ = result_tx.send(result);
@@ -817,6 +834,7 @@ struct BitmapEngravingWidgets {
     image_path: Entry,
     preview_image: gtk4::Picture,
     preview_spinner: gtk4::Spinner,
+    home_before: CheckButton,
 }
 
 pub struct BitmapEngravingTool {
@@ -948,6 +966,7 @@ impl BitmapEngravingTool {
 
         let halftone_dot_size = Entry::builder().text("4").valign(Align::Center).build();
         let halftone_threshold = Entry::builder().text("127").valign(Align::Center).build();
+        let home_before = CheckButton::builder().active(false).valign(Align::Center).build();
 
         // Groups
         let image_group = PreferencesGroup::builder().title("Image File").build();
@@ -1003,6 +1022,11 @@ impl BitmapEngravingTool {
         let offset_group = PreferencesGroup::builder().title("Work Offsets (mm)").build();
         offset_group.add(&Self::create_row("Offset X:", &offset_x));
         offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        
+        let home_row = ActionRow::builder().title("Home Device Before Start").build();
+        home_row.add_suffix(&home_before);
+        offset_group.add(&home_row);
+
         scroll_content.append(&offset_group);
 
         right_panel.append(&scrolled);
@@ -1064,6 +1088,7 @@ impl BitmapEngravingTool {
             image_path,
             preview_image: preview_image.clone(),
             preview_spinner: preview_spinner.clone(),
+            home_before,
         });
 
         // Load Image Button
@@ -1139,6 +1164,7 @@ impl BitmapEngravingTool {
         generate_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&w_gen);
             let image_path = w_gen.image_path.text().to_string();
+            let home_before = w_gen.home_before.is_active();
             
             if image_path.is_empty() {
                 CamToolsView::show_error_dialog(
@@ -1209,6 +1235,14 @@ impl BitmapEngravingTool {
                             // Send progress update
                             let _ = progress_tx.send(progress);
                         })
+                    })
+                    .map(|mut gcode| {
+                         gcode = gcode.replace("$H\n", "").replace("$H", "");
+                         if home_before {
+                             format!("$H\n{}", gcode)
+                         } else {
+                             gcode
+                         }
                     });
                 
                 // Send result back
@@ -1529,6 +1563,7 @@ struct VectorEngravingWidgets {
     preview_image: gtk4::Picture,
     preview_spinner: gtk4::Spinner,
     info_label: Label,
+    home_before: CheckButton,
 }
 
 pub struct VectorEngravingTool {
@@ -1660,6 +1695,7 @@ impl VectorEngravingTool {
         let cross_hatch = CheckButton::builder().active(false).valign(Align::Center).build();
         let enable_dwell = CheckButton::builder().active(false).valign(Align::Center).build();
         let dwell_time = Entry::builder().text("0.1").valign(Align::Center).build();
+        let home_before = CheckButton::builder().active(false).valign(Align::Center).build();
 
         // Groups
         let file_group = PreferencesGroup::builder().title("Vector File").build();
@@ -1717,6 +1753,11 @@ impl VectorEngravingTool {
         let offset_group = PreferencesGroup::builder().title("Work Offsets (mm)").build();
         offset_group.add(&Self::create_row("Offset X:", &offset_x));
         offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        
+        let home_row = ActionRow::builder().title("Home Device Before Start").build();
+        home_row.add_suffix(&home_before);
+        offset_group.add(&home_row);
+
         scroll_content.append(&offset_group);
 
         right_panel.append(&scrolled);
@@ -1777,6 +1818,7 @@ impl VectorEngravingTool {
             preview_image: preview_image.clone(),
             preview_spinner: preview_spinner.clone(),
             info_label: info_label.clone(),
+            home_before,
         });
 
         // Load File Button
@@ -1820,6 +1862,7 @@ impl VectorEngravingTool {
         generate_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&w_gen);
             let vector_path = w_gen.vector_path.text().to_string();
+            let home_before = w_gen.home_before.is_active();
             
             if vector_path.is_empty() {
                 CamToolsView::show_error_dialog(
@@ -1884,6 +1927,14 @@ impl VectorEngravingTool {
                             }
                             let _ = progress_tx.send(progress);
                         })
+                    })
+                    .map(|mut gcode| {
+                         gcode = gcode.replace("$H\n", "").replace("$H", "");
+                         if home_before {
+                             format!("$H\n{}", gcode)
+                         } else {
+                             gcode
+                         }
                     });
                 
                 let _ = result_tx.send(result);
@@ -2340,6 +2391,7 @@ struct TabbedBoxWidgets {
     feed_rate: Entry,
     offset_x: Entry,
     offset_y: Entry,
+    home_before: CheckButton,
 }
 
 pub struct TabbedBoxMaker {
@@ -2457,6 +2509,7 @@ impl TabbedBoxMaker {
 
         let offset_x = Entry::builder().text("10").valign(Align::Center).build();
         let offset_y = Entry::builder().text("10").valign(Align::Center).build();
+        let home_before = CheckButton::builder().active(false).valign(Align::Center).build();
 
         // Box Dimensions
         let dim_group = PreferencesGroup::builder()
@@ -2522,6 +2575,11 @@ impl TabbedBoxMaker {
             .build();
         offset_group.add(&Self::create_row("Offset X:", &offset_x));
         offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        
+        let home_row = ActionRow::builder().title("Home Device Before Start").build();
+        home_row.add_suffix(&home_before);
+        offset_group.add(&home_row);
+
         scroll_content.append(&offset_group);
 
         right_panel.append(&scrolled);
@@ -2582,6 +2640,7 @@ impl TabbedBoxMaker {
             feed_rate,
             offset_x,
             offset_y,
+            home_before,
         });
 
         // Connect Signals
@@ -2589,6 +2648,7 @@ impl TabbedBoxMaker {
         let on_generate = on_generate.clone();
         generate_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&widgets_gen);
+            let home_before = widgets_gen.home_before.is_active();
             
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
@@ -2642,7 +2702,13 @@ impl TabbedBoxMaker {
                     }
                     let mut generator = Generator::new(params)?;
                     generator.generate()?;
-                    Ok(generator.to_gcode())
+                    let mut gcode = generator.to_gcode();
+                    
+                    gcode = gcode.replace("$H\n", "").replace("$H", "");
+                    if home_before {
+                        gcode = format!("$H\n{}", gcode);
+                    }
+                    Ok(gcode)
                 })();
                 
                 let _ = result_tx.send(result);
@@ -3036,6 +3102,7 @@ struct SpoilboardSurfacingWidgets {
     cut_depth: Entry,
     stepover_percent: Entry,
     safe_z: Entry,
+    home_before: CheckButton,
 }
 
 pub struct SpoilboardSurfacingTool {
@@ -3113,6 +3180,7 @@ impl SpoilboardSurfacingTool {
         let cut_depth = Entry::builder().text("0.5").valign(Align::Center).build();
         let stepover_percent = Entry::builder().text("40").valign(Align::Center).build();
         let safe_z = Entry::builder().text("5.0").valign(Align::Center).build();
+        let home_before = CheckButton::builder().active(false).valign(Align::Center).build();
 
         // Groups
         let dim_group = PreferencesGroup::builder().title("Spoilboard Dimensions (mm)").build();
@@ -3130,6 +3198,11 @@ impl SpoilboardSurfacingTool {
         machine_group.add(&Self::create_row("Feed Rate (mm/min):", &feed_rate));
         machine_group.add(&Self::create_row("Spindle Speed (RPM):", &spindle_speed));
         machine_group.add(&Self::create_row("Safe Z Height (mm):", &safe_z));
+        
+        let home_row = ActionRow::builder().title("Home Device Before Start").build();
+        home_row.add_suffix(&home_before);
+        machine_group.add(&home_row);
+
         scroll_content.append(&machine_group);
 
         right_panel.append(&scrolled);
@@ -3176,11 +3249,13 @@ impl SpoilboardSurfacingTool {
             cut_depth,
             stepover_percent,
             safe_z,
+            home_before,
         });
 
         // Generate button
         let w_gen = widgets.clone();
         generate_btn.connect_clicked(move |_| {
+            let home_before = w_gen.home_before.is_active();
             let params = SpoilboardSurfacingParameters {
                 width: w_gen.width.text().parse().unwrap_or(400.0),
                 height: w_gen.height.text().parse().unwrap_or(300.0),
@@ -3194,7 +3269,11 @@ impl SpoilboardSurfacingTool {
 
             let generator = SpoilboardSurfacingGenerator::new(params);
             match generator.generate() {
-                Ok(gcode) => {
+                Ok(mut gcode) => {
+                    gcode = gcode.replace("$H\n", "").replace("$H", "");
+                    if home_before {
+                        gcode = format!("$H\n{}", gcode);
+                    }
                     on_generate(gcode);
                 }
                 Err(e) => {
@@ -3354,6 +3433,7 @@ struct SpoilboardGridWidgets {
     feed_rate: Entry,
     laser_power: Entry,
     laser_mode: ComboBoxText,
+    home_before: CheckButton,
 }
 
 pub struct SpoilboardGridTool {
@@ -3434,6 +3514,8 @@ impl SpoilboardGridTool {
         laser_mode.append(Some("M4"), "M4 (Dynamic Power)");
         laser_mode.set_active_id(Some("M4"));
         laser_mode.set_valign(Align::Center);
+        
+        let home_before = CheckButton::builder().active(false).valign(Align::Center).build();
 
         // Groups
         let dim_group = PreferencesGroup::builder().title("Spoilboard Dimensions (mm)").build();
@@ -3446,6 +3528,11 @@ impl SpoilboardGridTool {
         laser_group.add(&Self::create_row("Laser Power (S):", &laser_power));
         laser_group.add(&Self::create_row("Feed Rate (mm/min):", &feed_rate));
         laser_group.add(&Self::create_row("Laser Mode:", &laser_mode));
+        
+        let home_row = ActionRow::builder().title("Home Device Before Start").build();
+        home_row.add_suffix(&home_before);
+        laser_group.add(&home_row);
+
         scroll_content.append(&laser_group);
 
         right_panel.append(&scrolled);
@@ -3490,11 +3577,13 @@ impl SpoilboardGridTool {
             feed_rate,
             laser_power,
             laser_mode,
+            home_before,
         });
 
         // Generate button
         let w_gen = widgets.clone();
         generate_btn.connect_clicked(move |_| {
+            let home_before = w_gen.home_before.is_active();
             let laser_mode_str = w_gen.laser_mode.active_id()
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "M4".to_string());
@@ -3510,7 +3599,11 @@ impl SpoilboardGridTool {
 
             let generator = SpoilboardGridGenerator::new(params);
             match generator.generate() {
-                Ok(gcode) => {
+                Ok(mut gcode) => {
+                    gcode = gcode.replace("$H\n", "").replace("$H", "");
+                    if home_before {
+                        gcode = format!("$H\n{}", gcode);
+                    }
                     on_generate(gcode);
                 }
                 Err(e) => {
