@@ -1041,6 +1041,165 @@ impl DesignerCanvas {
         self.widget.queue_draw();
     }
 
+    pub fn create_linear_array(&self, count: usize, dx: f64, dy: f64) {
+        let mut state = self.state.borrow_mut();
+        let selected: Vec<DrawingObject> = state.canvas.shapes()
+            .filter(|s| s.selected)
+            .cloned()
+            .collect();
+        
+        if selected.is_empty() {
+            return;
+        }
+        
+        // Deselect original shapes
+        for obj in state.canvas.shapes_mut() {
+            obj.selected = false;
+        }
+        
+        let mut new_objects = Vec::new();
+        
+        // For each selected object, create count copies
+        for i in 1..count {
+            for obj in &selected {
+                let mut new_obj = obj.clone();
+                new_obj.id = state.canvas.generate_id();
+                new_obj.shape.translate(dx * i as f64, dy * i as f64);
+                new_obj.selected = true;
+                new_objects.push(new_obj);
+            }
+        }
+        
+        // Re-select original items
+        for obj in state.canvas.shapes_mut() {
+            if selected.iter().any(|s| s.id == obj.id) {
+                obj.selected = true;
+            }
+        }
+
+        if !new_objects.is_empty() {
+            let cmd = DesignerCommand::PasteShapes(PasteShapes {
+                ids: new_objects.iter().map(|o| o.id).collect(),
+                objects: new_objects.into_iter().map(Some).collect(),
+            });
+            state.push_command(cmd);
+        }
+        
+        drop(state);
+        
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        self.widget.queue_draw();
+    }
+
+    pub fn create_grid_array(&self, rows: usize, cols: usize, dx: f64, dy: f64) {
+        let mut state = self.state.borrow_mut();
+        let selected: Vec<DrawingObject> = state.canvas.shapes()
+            .filter(|s| s.selected)
+            .cloned()
+            .collect();
+        
+        if selected.is_empty() {
+            return;
+        }
+        
+        for obj in state.canvas.shapes_mut() {
+            obj.selected = false;
+        }
+        
+        let mut new_objects = Vec::new();
+        
+        for r in 0..rows {
+            for c in 0..cols {
+                if r == 0 && c == 0 { continue; } // Skip original position
+                
+                for obj in &selected {
+                    let mut new_obj = obj.clone();
+                    new_obj.id = state.canvas.generate_id();
+                    new_obj.shape.translate(dx * c as f64, dy * r as f64);
+                    new_obj.selected = true;
+                    new_objects.push(new_obj);
+                }
+            }
+        }
+        
+        // Re-select original items
+        for obj in state.canvas.shapes_mut() {
+            if selected.iter().any(|s| s.id == obj.id) {
+                obj.selected = true;
+            }
+        }
+
+        if !new_objects.is_empty() {
+            let cmd = DesignerCommand::PasteShapes(PasteShapes {
+                ids: new_objects.iter().map(|o| o.id).collect(),
+                objects: new_objects.into_iter().map(Some).collect(),
+            });
+            state.push_command(cmd);
+        }
+        
+        drop(state);
+        
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        self.widget.queue_draw();
+    }
+
+    pub fn create_circular_array(&self, count: usize, center_x: f64, center_y: f64, total_angle: f64) {
+        let mut state = self.state.borrow_mut();
+        let selected: Vec<DrawingObject> = state.canvas.shapes()
+            .filter(|s| s.selected)
+            .cloned()
+            .collect();
+        
+        if selected.is_empty() {
+            return;
+        }
+        
+        for obj in state.canvas.shapes_mut() {
+            obj.selected = false;
+        }
+        
+        let mut new_objects = Vec::new();
+        let angle_step = total_angle / count as f64;
+        
+        for i in 1..count {
+            let angle = angle_step * i as f64;
+            
+            for obj in &selected {
+                let mut new_obj = obj.clone();
+                new_obj.id = state.canvas.generate_id();
+                new_obj.shape.rotate(angle, center_x, center_y);
+                new_obj.selected = true;
+                new_objects.push(new_obj);
+            }
+        }
+        
+        // Re-select original items
+        for obj in state.canvas.shapes_mut() {
+            if selected.iter().any(|s| s.id == obj.id) {
+                obj.selected = true;
+            }
+        }
+
+        if !new_objects.is_empty() {
+            let cmd = DesignerCommand::PasteShapes(PasteShapes {
+                ids: new_objects.iter().map(|o| o.id).collect(),
+                objects: new_objects.into_iter().map(Some).collect(),
+            });
+            state.push_command(cmd);
+        }
+        
+        drop(state);
+        
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        self.widget.queue_draw();
+    }
+
     pub fn group_selected(&self) {
         let mut state = self.state.borrow_mut();
         state.group_selected();

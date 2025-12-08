@@ -170,6 +170,17 @@ impl Shape {
         }
     }
 
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        match self {
+            Shape::Rectangle(s) => s.rotate(angle, cx, cy),
+            Shape::Circle(s) => s.rotate(angle, cx, cy),
+            Shape::Line(s) => s.rotate(angle, cx, cy),
+            Shape::Ellipse(s) => s.rotate(angle, cx, cy),
+            Shape::Path(s) => s.rotate(angle, cx, cy),
+            Shape::Text(s) => s.rotate(angle, cx, cy),
+        }
+    }
+
     pub fn as_any(&self) -> &dyn Any {
         match self {
             Shape::Rectangle(s) => s,
@@ -330,6 +341,14 @@ impl Rectangle {
         }
     }
 
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        let center = Point::new(self.x + self.width / 2.0, self.y + self.height / 2.0);
+        let new_center = rotate_point(center, Point::new(cx, cy), angle);
+        self.x = new_center.x - self.width / 2.0;
+        self.y = new_center.y - self.height / 2.0;
+        self.rotation += angle;
+    }
+
     pub fn to_path_shape(&self) -> PathShape {
         let mut builder = Path::builder();
         if self.corner_radius > 0.0 {
@@ -424,6 +443,11 @@ impl Circle {
             }
             _ => {}
         }
+    }
+
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        self.center = rotate_point(self.center, Point::new(cx, cy), angle);
+        self.rotation += angle;
     }
 
     pub fn to_path_shape(&self) -> PathShape {
@@ -527,6 +551,12 @@ impl Line {
             }
             _ => {}
         }
+    }
+
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        self.start = rotate_point(self.start, Point::new(cx, cy), angle);
+        self.end = rotate_point(self.end, Point::new(cx, cy), angle);
+        self.rotation += angle;
     }
 
     pub fn to_path_shape(&self) -> PathShape {
@@ -653,6 +683,11 @@ impl Ellipse {
             }
             _ => {}
         }
+    }
+
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        self.center = rotate_point(self.center, Point::new(cx, cy), angle);
+        self.rotation += angle;
     }
 
     pub fn to_path_shape(&self) -> PathShape {
@@ -880,6 +915,42 @@ impl PathShape {
         let t_dy = target_center_y - final_center_y;
 
         self.translate(t_dx, t_dy);
+    }
+
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        let mut builder = Path::builder();
+        for event in self.path.iter() {
+            match event {
+                lyon::path::Event::Begin { at } => {
+                    let p = rotate_point(Point::new(at.x as f64, at.y as f64), Point::new(cx, cy), angle);
+                    builder.begin(point(p.x as f32, p.y as f32));
+                },
+                lyon::path::Event::Line { from: _, to } => {
+                    let p = rotate_point(Point::new(to.x as f64, to.y as f64), Point::new(cx, cy), angle);
+                    builder.line_to(point(p.x as f32, p.y as f32));
+                },
+                lyon::path::Event::Quadratic { from: _, ctrl, to } => {
+                    let c = rotate_point(Point::new(ctrl.x as f64, ctrl.y as f64), Point::new(cx, cy), angle);
+                    let p = rotate_point(Point::new(to.x as f64, to.y as f64), Point::new(cx, cy), angle);
+                    builder.quadratic_bezier_to(point(c.x as f32, c.y as f32), point(p.x as f32, p.y as f32));
+                },
+                lyon::path::Event::Cubic { from: _, ctrl1, ctrl2, to } => {
+                    let c1 = rotate_point(Point::new(ctrl1.x as f64, ctrl1.y as f64), Point::new(cx, cy), angle);
+                    let c2 = rotate_point(Point::new(ctrl2.x as f64, ctrl2.y as f64), Point::new(cx, cy), angle);
+                    let p = rotate_point(Point::new(to.x as f64, to.y as f64), Point::new(cx, cy), angle);
+                    builder.cubic_bezier_to(point(c1.x as f32, c1.y as f32), point(c2.x as f32, c2.y as f32), point(p.x as f32, p.y as f32));
+                },
+                lyon::path::Event::End { last: _, first: _, close } => {
+                    if close {
+                        builder.close();
+                    } else {
+                        builder.end(false);
+                    }
+                },
+            }
+        }
+        self.path = builder.build();
+        self.rotation += angle;
     }
     
     // SVG path helpers kept as is
@@ -1357,6 +1428,14 @@ impl TextShape {
         if handle == 4 {
             self.translate(dx, dy);
         }
+    }
+
+    pub fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
+        let p = Point::new(self.x, self.y);
+        let new_p = rotate_point(p, Point::new(cx, cy), angle);
+        self.x = new_p.x;
+        self.y = new_p.y;
+        self.rotation += angle;
     }
 
     pub fn to_path_shape(&self) -> PathShape {

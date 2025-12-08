@@ -4,6 +4,9 @@
 - **Designer**: Implemented alignment tools (Left, Right, Top, Bottom, Center Horizontal, Center Vertical).
   - Accessible via keyboard shortcuts (Alt+L, Alt+R, Alt+T, Alt+B, Alt+H, Alt+V).
   - Aligns selected shapes relative to the selection bounding box.
+- **Designer**: Implemented backend support for Linear, Grid, and Circular arrays.
+  - Added `create_linear_array`, `create_grid_array`, `create_circular_array` to `DesignerCanvas`.
+  - Implemented `rotate` method for all shape types (`Rectangle`, `Circle`, `Line`, `Ellipse`, `PathShape`, `TextShape`).
 
 ### Fixed
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.
