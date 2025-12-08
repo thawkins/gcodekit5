@@ -25,6 +25,11 @@
   - Added button to Designer Toolbox.
   - Generates G-code from current design and tool settings.
   - Automatically loads generated G-code into the G-Code Editor tab.
+- **Designer**: Implemented Toolpath Simulation (T-702).
+  - Added "Show Toolpaths" toggle to the status bar.
+  - Renders generated toolpaths directly on the canvas.
+  - Visualizes rapid moves (red dashed) and cutting moves (green solid).
+  - Automatically updates preview when design changes if enabled.
 
 ### Fixed
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.

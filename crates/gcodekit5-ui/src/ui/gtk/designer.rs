@@ -5,10 +5,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::PathBuf;
 use gcodekit5_designer::designer_state::DesignerState;
-use gcodekit5_designer::shapes::{Shape, Point, Rectangle, Circle, Line, Ellipse, PathShape};
+use gcodekit5_designer::shapes::{Shape, Point, Rectangle, Circle, Line, Ellipse, PathShape, OperationType};
 use gcodekit5_designer::canvas::DrawingObject;
 use gcodekit5_designer::commands::{DesignerCommand, RemoveShape, PasteShapes};
 use gcodekit5_designer::serialization::DesignFile;
+use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
 use crate::ui::gtk::designer_toolbox::{DesignerToolbox, DesignerTool};
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_layers::LayersPanel;
@@ -47,6 +48,8 @@ pub struct DesignerCanvas {
     shift_pressed: Rc<RefCell<bool>>,
     // Polyline state
     polyline_points: Rc<RefCell<Vec<Point>>>,
+    // Toolpath preview
+    preview_toolpaths: Rc<RefCell<Vec<Toolpath>>>,
 }
 
 pub struct DesignerView {
@@ -75,12 +78,14 @@ impl DesignerCanvas {
         let last_drag_offset = Rc::new(RefCell::new((0.0, 0.0)));
         let did_drag = Rc::new(RefCell::new(false));
         let polyline_points = Rc::new(RefCell::new(Vec::new()));
+        let preview_toolpaths = Rc::new(RefCell::new(Vec::new()));
 
         let state_clone = state.clone();
         let mouse_pos_clone = mouse_pos.clone();
         let creation_start_clone = creation_start.clone();
         let creation_current_clone = creation_current.clone();
         let polyline_points_clone = polyline_points.clone();
+        let preview_toolpaths_clone = preview_toolpaths.clone();
         
         let state_draw = state_clone.clone();
         widget.set_draw_func(move |_, cr, width, height| {
@@ -89,7 +94,8 @@ impl DesignerCanvas {
             let preview_start = *creation_start_clone.borrow();
             let preview_current = *creation_current_clone.borrow();
             let poly_points = polyline_points_clone.borrow();
-            Self::draw(cr, &state, width as f64, height as f64, mouse, preview_start, preview_current, &poly_points);
+            let toolpaths = preview_toolpaths_clone.borrow();
+            Self::draw(cr, &state, width as f64, height as f64, mouse, preview_start, preview_current, &poly_points, &toolpaths);
         });
 
         let canvas = Rc::new(Self {
@@ -109,6 +115,7 @@ impl DesignerCanvas {
             vadjustment: Rc::new(RefCell::new(None)),
             shift_pressed: Rc::new(RefCell::new(false)),
             polyline_points: polyline_points.clone(),
+            preview_toolpaths: preview_toolpaths.clone(),
         });
 
         // Mouse motion tracking
@@ -916,6 +923,12 @@ impl DesignerCanvas {
                 props.update_from_selection();
             }
             
+            // Update toolpaths if enabled
+            let show_toolpaths = self.state.borrow().show_toolpaths;
+            if show_toolpaths {
+                self.generate_preview_toolpaths();
+            }
+            
             // Queue draw after clearing state
             self.widget.queue_draw();
         }
@@ -1045,6 +1058,12 @@ impl DesignerCanvas {
             layers_panel.refresh(&self.state);
         }
         
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
@@ -1097,6 +1116,13 @@ impl DesignerCanvas {
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
         }
+        
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
@@ -1151,6 +1177,13 @@ impl DesignerCanvas {
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
         }
+        
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
@@ -1204,6 +1237,13 @@ impl DesignerCanvas {
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
         }
+        
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
@@ -1215,6 +1255,12 @@ impl DesignerCanvas {
         // Refresh layers panel
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
+        }
+        
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
         }
         
         self.widget.queue_draw();
@@ -1230,6 +1276,12 @@ impl DesignerCanvas {
             layers_panel.refresh(&self.state);
         }
         
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
@@ -1243,6 +1295,12 @@ impl DesignerCanvas {
             layers_panel.refresh(&self.state);
         }
         
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
@@ -1254,6 +1312,12 @@ impl DesignerCanvas {
         // Refresh layers panel
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
+        }
+        
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
         }
         
         self.widget.queue_draw();
@@ -1352,6 +1416,12 @@ impl DesignerCanvas {
             layers_panel.refresh(&self.state);
         }
         
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
     
@@ -1363,6 +1433,12 @@ impl DesignerCanvas {
         // Refresh layers panel
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
+        }
+        
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
         }
         
         self.widget.queue_draw();
@@ -1378,10 +1454,99 @@ impl DesignerCanvas {
             layers_panel.refresh(&self.state);
         }
         
+        // Update toolpaths if enabled
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        
         self.widget.queue_draw();
     }
 
-    fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64), preview_start: Option<(f64, f64)>, preview_current: Option<(f64, f64)>, polyline_points: &[Point]) {
+    pub fn generate_preview_toolpaths(&self) {
+        let mut state = self.state.borrow_mut();
+        let mut toolpaths = Vec::new();
+        
+        // Copy settings to avoid borrow issues
+        let feed_rate = state.tool_settings.feed_rate;
+        let spindle_speed = state.tool_settings.spindle_speed;
+        let tool_diameter = state.tool_settings.tool_diameter;
+        let cut_depth = state.tool_settings.cut_depth;
+        
+        // Update toolpath generator settings from state
+        state.toolpath_generator.set_feed_rate(feed_rate);
+        state.toolpath_generator.set_spindle_speed(spindle_speed);
+        state.toolpath_generator.set_tool_diameter(tool_diameter);
+        state.toolpath_generator.set_cut_depth(cut_depth);
+        state.toolpath_generator.set_step_in(tool_diameter * 0.4); // Default stepover
+        
+        let shapes: Vec<_> = state.canvas.shapes().cloned().collect();
+        
+        for shape in shapes {
+            // Set strategy for this shape
+            state.toolpath_generator.set_pocket_strategy(shape.pocket_strategy);
+
+            let shape_toolpaths = match &shape.shape {
+                Shape::Rectangle(rect) => {
+                    if shape.operation_type == OperationType::Pocket {
+                        state.toolpath_generator.generate_rectangle_pocket(
+                            rect,
+                            shape.pocket_depth,
+                            shape.step_down as f64,
+                            shape.step_in as f64,
+                        )
+                    } else {
+                        vec![state.toolpath_generator.generate_rectangle_contour(rect)]
+                    }
+                }
+                Shape::Circle(circle) => {
+                    if shape.operation_type == OperationType::Pocket {
+                        state.toolpath_generator.generate_circle_pocket(
+                            circle,
+                            shape.pocket_depth,
+                            shape.step_down as f64,
+                            shape.step_in as f64,
+                        )
+                    } else {
+                        vec![state.toolpath_generator.generate_circle_contour(circle)]
+                    }
+                }
+                Shape::Line(line) => {
+                    vec![state.toolpath_generator.generate_line_contour(line)]
+                }
+                Shape::Ellipse(ellipse) => {
+                    let (x1, y1, x2, y2) = ellipse.bounding_box();
+                    let cx = (x1 + x2) / 2.0;
+                    let cy = (y1 + y2) / 2.0;
+                    let radius = ((x2 - x1).abs().max((y2 - y1).abs())) / 2.0;
+                    let circle = Circle::new(Point::new(cx, cy), radius);
+                    vec![state.toolpath_generator.generate_circle_contour(&circle)]
+                }
+                Shape::Path(path_shape) => {
+                    if shape.operation_type == OperationType::Pocket {
+                        state.toolpath_generator.generate_path_pocket(
+                            path_shape,
+                            shape.pocket_depth,
+                            shape.step_down as f64,
+                            shape.step_in as f64,
+                        )
+                    } else {
+                        vec![state.toolpath_generator.generate_path_contour(path_shape)]
+                    }
+                }
+                Shape::Text(text) => {
+                    vec![state.toolpath_generator.generate_text_toolpath(text)]
+                }
+            };
+            toolpaths.extend(shape_toolpaths);
+        }
+        
+        drop(state);
+        *self.preview_toolpaths.borrow_mut() = toolpaths;
+        self.widget.queue_draw();
+    }
+
+    fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64), preview_start: Option<(f64, f64)>, preview_current: Option<(f64, f64)>, polyline_points: &[Point], toolpaths: &[Toolpath]) {
         // Clear background
         cr.set_source_rgb(0.95, 0.95, 0.95); // Light grey background
         cr.paint().expect("Invalid cairo surface state");
@@ -1411,6 +1576,33 @@ impl DesignerCanvas {
         
         // Draw Origin Crosshair
         Self::draw_origin_crosshair(cr);
+        
+        // Draw Toolpaths (if enabled)
+        if state.show_toolpaths {
+            cr.save().unwrap();
+            cr.set_line_width(1.0 / zoom); // Constant screen width
+            
+            for toolpath in toolpaths {
+                for segment in &toolpath.segments {
+                    match segment.segment_type {
+                        ToolpathSegmentType::RapidMove => {
+                            cr.set_source_rgba(1.0, 0.0, 0.0, 0.5); // Red for rapid
+                            cr.set_dash(&[2.0 / zoom, 2.0 / zoom], 0.0);
+                        }
+                        ToolpathSegmentType::LinearMove | ToolpathSegmentType::ArcMove => {
+                            cr.set_source_rgba(0.0, 0.8, 0.0, 0.7); // Green for cut
+                            cr.set_dash(&[], 0.0);
+                        }
+                    }
+                    
+                    cr.move_to(segment.start.x, segment.start.y);
+                    cr.line_to(segment.end.x, segment.end.y);
+                    cr.stroke().unwrap();
+                }
+            }
+            
+            cr.restore().unwrap();
+        }
         
         // Draw polyline in progress
         if !polyline_points.is_empty() {
@@ -2044,6 +2236,10 @@ impl DesignerView {
         // Set up redraw callback for properties
         let canvas_redraw = canvas.clone();
         properties.set_redraw_callback(move || {
+            let show_toolpaths = canvas_redraw.state.borrow().show_toolpaths;
+            if show_toolpaths {
+                canvas_redraw.generate_preview_toolpaths();
+            }
             canvas_redraw.widget.queue_draw();
         });
         
@@ -2086,6 +2282,22 @@ impl DesignerView {
             canvas_grid.widget.queue_draw();
         });
         status_bar.append(&grid_toggle);
+
+        // Toolpath toggle
+        let toolpath_toggle = gtk4::CheckButton::with_label("Show Toolpaths");
+        toolpath_toggle.set_active(false);
+        let state_toolpath = state.clone();
+        let canvas_toolpath = canvas.clone();
+        toolpath_toggle.connect_toggled(move |btn| {
+            let active = btn.is_active();
+            state_toolpath.borrow_mut().show_toolpaths = active;
+            if active {
+                canvas_toolpath.generate_preview_toolpaths();
+            } else {
+                canvas_toolpath.widget.queue_draw();
+            }
+        });
+        status_bar.append(&toolpath_toggle);
         
         // Coordinate display
         let coord_label = Label::new(Some("X: 0.00  Y: 0.00"));

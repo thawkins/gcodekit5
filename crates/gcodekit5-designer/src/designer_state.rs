@@ -43,6 +43,7 @@ pub struct DesignerState {
     pub is_modified: bool,
     pub design_name: String,
     pub show_grid: bool,
+    pub show_toolpaths: bool,
     pub clipboard: Vec<crate::canvas::DrawingObject>,
     pub default_properties_shape: crate::canvas::DrawingObject,
     undo_stack: Vec<DesignerCommand>,
@@ -62,6 +63,7 @@ impl DesignerState {
             is_modified: false,
             design_name: "Untitled".to_string(),
             show_grid: true,
+            show_toolpaths: false,
             clipboard: Vec::new(),
             default_properties_shape: crate::canvas::DrawingObject::new(0, crate::shapes::Shape::Rectangle(crate::shapes::Rectangle::new(0.0, 0.0, 0.0, 0.0))),
             undo_stack: Vec::new(),
@@ -143,6 +145,11 @@ impl DesignerState {
     /// Toggle grid visibility
     pub fn toggle_grid(&mut self) {
         self.show_grid = !self.show_grid;
+    }
+
+    /// Toggle toolpath visibility
+    pub fn toggle_toolpaths(&mut self) {
+        self.show_toolpaths = !self.show_toolpaths;
     }
 
     /// Sets the drawing mode.

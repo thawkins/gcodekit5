@@ -63,7 +63,7 @@ This document compares the functionality of the Designer in `gcodekit4` (Slint) 
 | Feature | Slint Implementation | GTK4 Implementation | Status | Task ID | Est. Time |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Generation** | Generate G-Code button | Generate G-Code button implemented | ✅ Complete | T-701 | 5h |
-| **Simulation** | Preview toolpath lines | **Missing** | ❌ Missing | T-702 | 6h |
+| **Simulation** | Preview toolpath lines | Preview toolpath lines implemented | ✅ Complete | T-702 | 6h |
 
 ## Migration Plan & Priorities
 
