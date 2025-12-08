@@ -212,6 +212,15 @@ pub fn main() {
         let designer = DesignerView::new();
         stack.add_titled(&designer.widget, Some("designer"), "Designer");
 
+        // Connect Designer G-Code Generation to Editor
+        let editor_clone_gen = editor.clone();
+        let stack_clone_gen = stack.clone();
+        designer.set_on_gcode_generated(move |gcode| {
+            editor_clone_gen.set_text(&gcode);
+            stack_clone_gen.set_visible_child_name("editor");
+            editor_clone_gen.grab_focus();
+        });
+
         // 7. Device Info
         let device_info = DeviceInfoView::new();
         stack.add_titled(&device_info.container, Some("device_info"), "Device Info");

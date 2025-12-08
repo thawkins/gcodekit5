@@ -57,6 +57,7 @@ pub struct DesignerToolbox {
     pub widget: Box,
     current_tool: Rc<RefCell<DesignerTool>>,
     buttons: Vec<Button>,
+    generate_btn: Button,
     _state: Rc<RefCell<DesignerState>>,
 }
 
@@ -228,6 +229,15 @@ impl DesignerToolbox {
         
         content_box.append(&expander);
 
+        // Generate G-Code Button
+        let generate_btn = Button::with_label("Generate G-Code");
+        generate_btn.add_css_class("suggested-action");
+        generate_btn.set_margin_top(10);
+        generate_btn.set_margin_bottom(10);
+        generate_btn.set_margin_start(5);
+        generate_btn.set_margin_end(5);
+        content_box.append(&generate_btn);
+
         scrolled.set_child(Some(&content_box));
         main_container.append(&scrolled);
         
@@ -235,8 +245,13 @@ impl DesignerToolbox {
             widget: main_container,
             current_tool,
             buttons,
+            generate_btn,
             _state: state,
         })
+    }
+    
+    pub fn connect_generate_clicked<F: Fn() + 'static>(&self, f: F) {
+        self.generate_btn.connect_clicked(move |_| f());
     }
     
     pub fn current_tool(&self) -> DesignerTool {

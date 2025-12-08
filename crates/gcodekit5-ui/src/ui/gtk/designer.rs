@@ -58,6 +58,7 @@ pub struct DesignerView {
     status_label: Label,
     _coord_label: Label,
     current_file: Rc<RefCell<Option<PathBuf>>>,
+    on_gcode_generated: Rc<RefCell<Option<std::boxed::Box<dyn Fn(String)>>>>,
 }
 
 impl DesignerCanvas {
@@ -2122,6 +2123,38 @@ impl DesignerView {
         });
         
         let current_file = Rc::new(RefCell::new(None));
+        let on_gcode_generated: Rc<RefCell<Option<std::boxed::Box<dyn Fn(String)>>>> = Rc::new(RefCell::new(None));
+
+        // Connect Generate G-Code button
+        let canvas_gen = canvas.clone();
+        let on_gen = on_gcode_generated.clone();
+        let status_label_gen = status_label.clone();
+        
+        toolbox.connect_generate_clicked(move || {
+            let mut state = canvas_gen.state.borrow_mut();
+            
+            // Copy settings to avoid borrow issues
+            let feed_rate = state.tool_settings.feed_rate;
+            let spindle_speed = state.tool_settings.spindle_speed;
+            let tool_diameter = state.tool_settings.tool_diameter;
+            let cut_depth = state.tool_settings.cut_depth;
+            
+            // Update toolpath generator settings from state
+            state.toolpath_generator.set_feed_rate(feed_rate);
+            state.toolpath_generator.set_spindle_speed(spindle_speed);
+            state.toolpath_generator.set_tool_diameter(tool_diameter);
+            state.toolpath_generator.set_cut_depth(cut_depth);
+            state.toolpath_generator.set_step_in(tool_diameter * 0.4); // Default stepover
+            
+            let gcode = state.generate_gcode();
+            drop(state);
+            
+            status_label_gen.set_text("G-Code generated");
+            
+            if let Some(callback) = on_gen.borrow().as_ref() {
+                callback(gcode);
+            }
+        });
 
         let view = Rc::new(Self {
             widget: container,
@@ -2132,6 +2165,7 @@ impl DesignerView {
             status_label,
             _coord_label: coord_label,
             current_file,
+            on_gcode_generated,
         });
         
         // Update properties panel when selection changes
@@ -2257,6 +2291,10 @@ impl DesignerView {
     
     pub fn set_status(&self, message: &str) {
         self.status_label.set_text(message);
+    }
+
+    pub fn set_on_gcode_generated<F: Fn(String) + 'static>(&self, f: F) {
+        *self.on_gcode_generated.borrow_mut() = Some(std::boxed::Box::new(f));
     }
 
     pub fn undo(&self) {

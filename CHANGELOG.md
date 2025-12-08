@@ -21,6 +21,10 @@
   - Added "Export G-Code..." and "Export SVG..." options to File menu.
   - Generates G-code based on current tool settings and shape properties.
   - Exports design to SVG format preserving dimensions.
+- **Designer**: Implemented "Generate G-Code" button (T-701).
+  - Added button to Designer Toolbox.
+  - Generates G-code from current design and tool settings.
+  - Automatically loads generated G-code into the G-Code Editor tab.
 
 ### Fixed
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.
