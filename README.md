@@ -118,6 +118,7 @@ This modular structure enables:
   - Example: 37-path tiger head design converts to 26,000+ precise movement commands with optimal path breaks
 - **Interactive Editing**:
   - Zoom, pan, and fit-to-view controls
+  - **NEW**: Floating status panel (Zoom, Pan, Grid)
   - **NEW**: Array Tools (Linear, Circular, Grid) with automatic grouping
   - **NEW**: Dynamic grid and origin indicator
   - **NEW**: View controls (Zoom In/Out, Fit, Reset)
@@ -137,6 +138,7 @@ This modular structure enables:
   - Dynamic grid spacing (e.g., 10mm, 100mm) based on zoom level
   - Infinite grid coverage across the entire viewport
   - Grid size indicator in status bar
+  - **NEW**: Horizontal and vertical scrollbars for navigation
 - **Dynamic Canvas Sizing**: Automatically adjusts to window resize events
 - **Interactive Controls**: Zoom, pan, and fit-to-view with mouse interaction
 - **Color-Coded Paths**: Distinct colors for Rapid (G0) and Feed (G1/G2/G3) moves

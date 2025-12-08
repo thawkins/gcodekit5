@@ -1901,6 +1901,11 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - **Rendering**: Toolpaths now rendered with single-pixel wide lines for clarity at any zoom level.
 - **Grid**: Dynamic grid sizing that covers the entire canvas.
 - **Info Display**: Added bounding box dimensions and offset information to the visualizer toolbar.
+- **Navigation**: Added horizontal and vertical scrollbars.
+
+## Designer UI Updates (December 2025)
+- **Status Panel**: Added floating status panel to bottom-left corner showing Zoom, Pan, and Grid size.
+- **Navigation**: Consistent navigation controls with Visualizer.
 
 ## UI Refactoring (November 2025)
 
