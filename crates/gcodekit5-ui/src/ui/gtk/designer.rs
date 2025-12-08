@@ -950,13 +950,16 @@ impl DesignerCanvas {
                 // So pan_x += dx.
                 
                 state.canvas.pan_by(delta_x, -delta_y);
+                let new_pan_x = state.canvas.pan_x();
+                let new_pan_y = state.canvas.pan_y();
+                drop(state);
                 
                 // Update scrollbars
                 if let Some(adj) = self.hadjustment.borrow().as_ref() {
-                    adj.set_value(-state.canvas.pan_x());
+                    adj.set_value(-new_pan_x);
                 }
                 if let Some(adj) = self.vadjustment.borrow().as_ref() {
-                    adj.set_value(state.canvas.pan_y());
+                    adj.set_value(new_pan_y);
                 }
                 
                 *self.last_drag_offset.borrow_mut() = (offset_x, offset_y);

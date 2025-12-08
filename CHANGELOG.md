@@ -41,6 +41,7 @@
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.
 - **Designer**: Fixed toolbox width issue where it would expand unnecessarily.
 - **Designer**: Fixed panic in properties panel when updating selection due to RefCell borrowing conflict.
+- **Designer**: Fixed panic when using Pan tool (RefCell borrow error).
 - **UI**: Fixed window maximization and status bar visibility issues by ensuring main content expands correctly.
 - **Code Quality**: Cleared compiler warnings across all crates (`gcodekit5-ui`, `gcodekit5-visualizer`, `gcodekit5-designer`, `gcodekit5-camtools`, `gcodekit5-communication`).
   - Fixed unused variables, fields, and imports.
