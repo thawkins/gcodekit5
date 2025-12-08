@@ -6,6 +6,7 @@
   - Fixed unused constants and functions.
   - Fixed mutable variable warnings.
   - Resolved `RefCell` borrowing issues in `visualizer.rs`.
+  - Fixed deprecation warnings for `glib::clone!` and `StyleContext` in `gcodekit5-ui`.
 
 ## [0.2.5-alpha.1] - 2025-12-08
 

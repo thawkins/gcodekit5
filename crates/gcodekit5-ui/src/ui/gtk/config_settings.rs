@@ -753,7 +753,8 @@ impl ConfigSettingsView {
 
         dialog.set_current_name("grbl_settings.json");
 
-        dialog.connect_response(glib::clone!(@weak self.status_label as status_label => move |dialog, response| {
+        let status_label = self.status_label.clone();
+        dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
                 if let Some(file) = dialog.file() {
                     if let Some(path) = file.path() {
@@ -762,7 +763,7 @@ impl ConfigSettingsView {
                 }
             }
             dialog.close();
-        }));
+        });
 
         dialog.show();
     }
@@ -777,7 +778,8 @@ impl ConfigSettingsView {
             &[("Cancel", ResponseType::Cancel), ("Open", ResponseType::Accept)],
         );
 
-        dialog.connect_response(glib::clone!(@weak self.status_label as status_label => move |dialog, response| {
+        let status_label = self.status_label.clone();
+        dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
                 if let Some(file) = dialog.file() {
                     if let Some(path) = file.path() {
@@ -786,7 +788,7 @@ impl ConfigSettingsView {
                 }
             }
             dialog.close();
-        }));
+        });
 
         dialog.show();
     }
