@@ -15,6 +15,8 @@ pub struct DesignerCanvas {
     // Shape creation state
     creation_start: Rc<RefCell<Option<(f64, f64)>>>,
     creation_current: Rc<RefCell<Option<(f64, f64)>>>,
+    // Track last drag offset for incremental movement
+    last_drag_offset: Rc<RefCell<(f64, f64)>>,
 }
 
 pub struct DesignerView {
@@ -36,6 +38,7 @@ impl DesignerCanvas {
         let mouse_pos = Rc::new(RefCell::new((0.0, 0.0)));
         let creation_start = Rc::new(RefCell::new(None));
         let creation_current = Rc::new(RefCell::new(None));
+        let last_drag_offset = Rc::new(RefCell::new((0.0, 0.0)));
 
         let state_clone = state.clone();
         let mouse_pos_clone = mouse_pos.clone();
@@ -52,6 +55,7 @@ impl DesignerCanvas {
             toolbox: toolbox.clone(),
             creation_start: creation_start.clone(),
             creation_current: creation_current.clone(),
+            last_drag_offset: last_drag_offset.clone(),
         });
 
         // Mouse motion tracking
@@ -186,6 +190,7 @@ impl DesignerCanvas {
                 if has_selected {
                     // Start dragging selected shapes
                     *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
+                    *self.last_drag_offset.borrow_mut() = (0.0, 0.0); // Reset offset tracker
                 } else {
                     // Start selection rectangle (future implementation)
                     *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
@@ -216,8 +221,16 @@ impl DesignerCanvas {
             if tool == DesignerTool::Select {
                 let mut state = self.state.borrow_mut();
                 if state.canvas.selection_manager.selected_id().is_some() {
-                    // Move selected shapes by offset
-                    state.canvas.move_selected(offset_x, -offset_y);
+                    // Calculate delta from last update (incremental movement)
+                    let last_offset = *self.last_drag_offset.borrow();
+                    let delta_x = offset_x - last_offset.0;
+                    let delta_y = offset_y - last_offset.1;
+                    
+                    // Apply incremental movement
+                    state.canvas.move_selected(delta_x, -delta_y);
+                    
+                    // Update last offset
+                    *self.last_drag_offset.borrow_mut() = (offset_x, offset_y);
                 }
             }
             
