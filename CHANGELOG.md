@@ -3,6 +3,7 @@
 ### Added
 - **Visualizer**: Added horizontal and vertical scrollbars for better navigation.
 - **Designer**: Added floating status panel (Zoom, Pan, Grid) to bottom-left corner matching Visualizer style.
+- **Status Bar**: Added progress bar and time estimation (Elapsed/Remaining) during job streaming.
 
 ### Fixed
 - **Designer**: Fixed panic in "Fit to View" caused by RefCell borrowing conflict during scrollbar update.
