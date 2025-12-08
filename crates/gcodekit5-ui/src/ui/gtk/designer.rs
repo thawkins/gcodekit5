@@ -163,15 +163,19 @@ impl DesignerCanvas {
             // Create the shape
             self.create_shape(tool, start, (end_x, end_y));
             
-            // Clear creation state
+            // Clear creation state BEFORE queue_draw to avoid borrow conflicts
             *self.creation_start.borrow_mut() = None;
             *self.creation_current.borrow_mut() = None;
+            
+            // Queue draw after clearing state
             self.widget.queue_draw();
         }
     }
     
     fn create_shape(&self, tool: DesignerTool, start: (f64, f64), end: (f64, f64)) {
-        let mut state = self.state.borrow_mut();
+        // Scope the borrow to release it before queue_draw
+        {
+            let mut state = self.state.borrow_mut();
         
         let shape = match tool {
             DesignerTool::Rectangle => {
@@ -220,9 +224,10 @@ impl DesignerCanvas {
             _ => None,
         };
         
-        if let Some(shape) = shape {
-            state.canvas.add_shape(shape);
-        }
+            if let Some(shape) = shape {
+                state.canvas.add_shape(shape);
+            }
+        } // Drop the mutable borrow here
     }
 
     fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64)) {
