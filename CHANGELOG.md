@@ -6,6 +6,7 @@
 
 ### Fixed
 - **Designer**: Fixed panic in "Fit to View" caused by RefCell borrowing conflict during scrollbar update.
+- **Visualizer**: Fixed panic in "Fit to View" caused by RefCell borrowing conflict during scrollbar update.
 
 ## [0.2.4-alpha.0] - 2025-12-08
 
