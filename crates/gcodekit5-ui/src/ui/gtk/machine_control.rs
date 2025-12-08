@@ -682,6 +682,7 @@ impl MachineControlView {
             let is_paused = view.is_paused.clone();
             let waiting_for_ack = view.waiting_for_ack.clone();
             let send_queue = view.send_queue.clone();
+            let status_bar = view.status_bar.clone();
             view.stop_btn.connect_clicked(move |_| {
                 if let Ok(mut comm) = communicator.lock() {
                     // 0x18 = Ctrl-x = Soft Reset
@@ -691,6 +692,11 @@ impl MachineControlView {
                 *is_paused.lock().unwrap() = false;
                 *waiting_for_ack.lock().unwrap() = false;
                 send_queue.lock().unwrap().clear();
+
+                // Reset progress
+                if let Some(sb) = status_bar.as_ref() {
+                    sb.set_progress(0.0, "", "");
+                }
             });
         }
         {
@@ -845,9 +851,25 @@ impl MachineControlView {
         // E-Stop
         {
             let communicator = view.communicator.clone();
+            let is_streaming = view.is_streaming.clone();
+            let is_paused = view.is_paused.clone();
+            let waiting_for_ack = view.waiting_for_ack.clone();
+            let send_queue = view.send_queue.clone();
+            let status_bar = view.status_bar.clone();
+
             view.estop_btn.connect_clicked(move |_| {
                 if let Ok(mut comm) = communicator.lock() {
                     let _ = comm.send(&[0x18]);
+                }
+                
+                *is_streaming.lock().unwrap() = false;
+                *is_paused.lock().unwrap() = false;
+                *waiting_for_ack.lock().unwrap() = false;
+                send_queue.lock().unwrap().clear();
+
+                // Reset progress
+                if let Some(sb) = status_bar.as_ref() {
+                    sb.set_progress(0.0, "", "");
                 }
             });
         }
