@@ -29,7 +29,7 @@ This document compares the functionality of the Designer in `gcodekit4` (Slint) 
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Transform** | X, Y, W, H, Rotation | X, Y, W, H, Rotation | ✅ Complete | - | - |
 | **Shape Props** | Radius, Text content/size | Radius, Text content/size | ✅ Complete | - | - |
-| **CAM Props** | Pocket (Depth, Step, Strategy), V-Carve settings | **Missing** | ❌ Missing | T-301 | 8h |
+| **CAM Props** | Pocket (Depth, Step, Strategy), V-Carve settings | Added to Properties Panel | ✅ Complete | T-301 | 8h |
 | **Name** | Rename shape | Rename shape | ✅ Complete | - | - |
 
 ## 4. Layers & Organization

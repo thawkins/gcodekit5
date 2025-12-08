@@ -1,9 +1,10 @@
 use gtk4::prelude::*;
-use gtk4::{Box, Label, SpinButton, Orientation, Frame, ScrolledWindow, EventControllerFocus};
+use gtk4::{Box, Label, SpinButton, Orientation, Frame, ScrolledWindow, EventControllerFocus, DropDown, StringList, Expression};
 use std::cell::RefCell;
 use std::rc::Rc;
 use gcodekit5_designer::designer_state::DesignerState;
-use gcodekit5_designer::shapes::{Shape, Point};
+use gcodekit5_designer::shapes::{Shape, Point, OperationType};
+use gcodekit5_designer::pocket_operations::PocketStrategy;
 
 pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
@@ -15,6 +16,12 @@ pub struct PropertiesPanel {
     width_spin: SpinButton,
     height_spin: SpinButton,
     rotation_spin: SpinButton,
+    // CAM widgets
+    op_type_combo: DropDown,
+    depth_spin: SpinButton,
+    step_down_spin: SpinButton,
+    step_in_spin: SpinButton,
+    strategy_combo: DropDown,
     // Redraw callback
     redraw_callback: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     // Flag to prevent feedback loops during updates
@@ -129,6 +136,66 @@ impl PropertiesPanel {
         rot_frame.set_child(Some(&rot_grid));
         content.append(&rot_frame);
 
+        // CAM Properties Section
+        let cam_frame = Self::create_section("CAM Properties");
+        let cam_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        // Operation Type
+        let op_label = Label::new(Some("Operation:"));
+        op_label.set_halign(gtk4::Align::Start);
+        let op_model = StringList::new(&["Profile", "Pocket"]);
+        let op_type_combo = DropDown::new(Some(op_model), None::<Expression>);
+        op_type_combo.set_hexpand(true);
+
+        // Pocket Depth
+        let depth_label = Label::new(Some("Depth:"));
+        depth_label.set_halign(gtk4::Align::Start);
+        let depth_spin = SpinButton::with_range(0.0, 100.0, 0.1);
+        depth_spin.set_digits(2);
+        depth_spin.set_hexpand(true);
+
+        // Step Down
+        let step_down_label = Label::new(Some("Step Down:"));
+        step_down_label.set_halign(gtk4::Align::Start);
+        let step_down_spin = SpinButton::with_range(0.1, 20.0, 0.1);
+        step_down_spin.set_digits(2);
+        step_down_spin.set_hexpand(true);
+
+        // Step In (for pockets)
+        let step_in_label = Label::new(Some("Step In:"));
+        step_in_label.set_halign(gtk4::Align::Start);
+        let step_in_spin = SpinButton::with_range(0.1, 20.0, 0.1);
+        step_in_spin.set_digits(2);
+        step_in_spin.set_hexpand(true);
+
+        // Pocket Strategy
+        let strategy_label = Label::new(Some("Strategy:"));
+        strategy_label.set_halign(gtk4::Align::Start);
+        let strategy_model = StringList::new(&["Raster", "Offset", "Adaptive"]);
+        let strategy_combo = DropDown::new(Some(strategy_model), None::<Expression>);
+        strategy_combo.set_hexpand(true);
+
+        cam_grid.attach(&op_label, 0, 0, 1, 1);
+        cam_grid.attach(&op_type_combo, 1, 0, 1, 1);
+        cam_grid.attach(&depth_label, 0, 1, 1, 1);
+        cam_grid.attach(&depth_spin, 1, 1, 1, 1);
+        cam_grid.attach(&step_down_label, 0, 2, 1, 1);
+        cam_grid.attach(&step_down_spin, 1, 2, 1, 1);
+        cam_grid.attach(&step_in_label, 0, 3, 1, 1);
+        cam_grid.attach(&step_in_spin, 1, 3, 1, 1);
+        cam_grid.attach(&strategy_label, 0, 4, 1, 1);
+        cam_grid.attach(&strategy_combo, 1, 4, 1, 1);
+
+        cam_frame.set_child(Some(&cam_grid));
+        content.append(&cam_frame);
+
         // Empty state message
         let empty_label = Label::new(Some("Select a shape to edit its properties"));
         empty_label.add_css_class("dim-label");
@@ -147,6 +214,11 @@ impl PropertiesPanel {
             width_spin: width_spin.clone(),
             height_spin: height_spin.clone(),
             rotation_spin: rotation_spin.clone(),
+            op_type_combo: op_type_combo.clone(),
+            depth_spin: depth_spin.clone(),
+            step_down_spin: step_down_spin.clone(),
+            step_in_spin: step_in_spin.clone(),
+            strategy_combo: strategy_combo.clone(),
             redraw_callback: Rc::new(RefCell::new(None)),
             updating: Rc::new(RefCell::new(false)),
             has_focus: Rc::new(RefCell::new(false)),
@@ -313,6 +385,66 @@ impl PropertiesPanel {
                 cb();
             }
         });
+
+        let state = self.state.clone();
+        let updating6 = self.updating.clone();
+        
+        // Operation Type changed
+        self.op_type_combo.connect_selected_notify(move |combo| {
+            if *updating6.borrow() { return; }
+            let mut designer_state = state.borrow_mut();
+            let is_pocket = combo.selected() == 1;
+            let depth = designer_state.canvas.shapes().find(|s| s.selected).map(|s| s.pocket_depth).unwrap_or(0.0);
+            designer_state.set_selected_pocket_properties(is_pocket, depth);
+        });
+
+        let state = self.state.clone();
+        let updating7 = self.updating.clone();
+        let op_combo = self.op_type_combo.clone();
+
+        // Pocket Depth changed
+        self.depth_spin.connect_value_changed(move |spin| {
+            if *updating7.borrow() { return; }
+            let mut designer_state = state.borrow_mut();
+            let is_pocket = op_combo.selected() == 1;
+            designer_state.set_selected_pocket_properties(is_pocket, spin.value());
+        });
+
+        let state = self.state.clone();
+        let updating8 = self.updating.clone();
+
+        // Step Down changed
+        self.step_down_spin.connect_value_changed(move |spin| {
+            if *updating8.borrow() { return; }
+            let mut designer_state = state.borrow_mut();
+            designer_state.set_selected_step_down(spin.value());
+        });
+
+        let state = self.state.clone();
+        let updating9 = self.updating.clone();
+
+        // Step In changed
+        self.step_in_spin.connect_value_changed(move |spin| {
+            if *updating9.borrow() { return; }
+            let mut designer_state = state.borrow_mut();
+            designer_state.set_selected_step_in(spin.value());
+        });
+
+        let state = self.state.clone();
+        let updating10 = self.updating.clone();
+
+        // Strategy changed
+        self.strategy_combo.connect_selected_notify(move |combo| {
+            if *updating10.borrow() { return; }
+            let mut designer_state = state.borrow_mut();
+            let strategy = match combo.selected() {
+                0 => PocketStrategy::Raster { angle: 0.0, bidirectional: true },
+                1 => PocketStrategy::ContourParallel,
+                2 => PocketStrategy::Adaptive,
+                _ => PocketStrategy::ContourParallel,
+            };
+            designer_state.set_selected_pocket_strategy(strategy);
+        });
     }
 
     fn update_shape_position_and_size(shape: &mut Shape, x: f64, y: f64, width: f64, height: f64) {
@@ -400,6 +532,27 @@ impl PropertiesPanel {
                 self.width_spin.set_sensitive(true);
                 self.height_spin.set_sensitive(true);
                 self.rotation_spin.set_sensitive(true);
+                
+                // Update CAM properties
+                self.op_type_combo.set_selected(match obj.operation_type {
+                    OperationType::Profile => 0,
+                    OperationType::Pocket => 1,
+                });
+                self.depth_spin.set_value(obj.pocket_depth);
+                self.step_down_spin.set_value(obj.step_down as f64);
+                self.step_in_spin.set_value(obj.step_in as f64);
+                self.strategy_combo.set_selected(match obj.pocket_strategy {
+                    PocketStrategy::Raster { .. } => 0,
+                    PocketStrategy::ContourParallel => 1,
+                    PocketStrategy::Adaptive => 2,
+                });
+
+                // Enable CAM controls
+                self.op_type_combo.set_sensitive(true);
+                self.depth_spin.set_sensitive(true);
+                self.step_down_spin.set_sensitive(true);
+                self.step_in_spin.set_sensitive(true);
+                self.strategy_combo.set_sensitive(true);
             }
         } else {
             // No selection - disable controls
@@ -408,6 +561,12 @@ impl PropertiesPanel {
             self.width_spin.set_sensitive(false);
             self.height_spin.set_sensitive(false);
             self.rotation_spin.set_sensitive(false);
+            
+            self.op_type_combo.set_sensitive(false);
+            self.depth_spin.set_sensitive(false);
+            self.step_down_spin.set_sensitive(false);
+            self.step_in_spin.set_sensitive(false);
+            self.strategy_combo.set_sensitive(false);
         }
     }
     
@@ -419,6 +578,9 @@ impl PropertiesPanel {
             &self.width_spin,
             &self.height_spin,
             &self.rotation_spin,
+            &self.depth_spin,
+            &self.step_down_spin,
+            &self.step_in_spin,
         ];
         
         for spinner in spinners {
