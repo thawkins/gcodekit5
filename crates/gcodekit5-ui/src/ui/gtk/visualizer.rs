@@ -60,6 +60,7 @@ pub struct GcodeVisualizer {
     show_grid: CheckButton,
     show_bounds: CheckButton,
     show_intensity: CheckButton,
+    show_laser: CheckButton,
     // Scrollbars
     hadjustment: Adjustment,
     vadjustment: Adjustment,
@@ -67,9 +68,17 @@ pub struct GcodeVisualizer {
     bounds_label: Label,
     status_label: Label,
     device_manager: Option<Arc<DeviceManager>>,
+    current_pos: Rc<RefCell<(f32, f32)>>,
 }
 
 impl GcodeVisualizer {
+    pub fn set_current_position(&self, x: f32, y: f32) {
+        *self.current_pos.borrow_mut() = (x, y);
+        if self.show_laser.is_active() {
+            self.drawing_area.queue_draw();
+        }
+    }
+
     fn apply_fit_to_device(
         vis: &mut Visualizer2D,
         device_manager: &Option<Arc<DeviceManager>>,
@@ -185,12 +194,17 @@ impl GcodeVisualizer {
             .label("Show Intensity")
             .active(false)
             .build();
+        let show_laser = CheckButton::builder()
+            .label("Show Laser/Spindle")
+            .active(true)
+            .build();
 
         sidebar.append(&show_rapid);
         sidebar.append(&show_cut);
         sidebar.append(&show_grid);
         sidebar.append(&show_bounds);
         sidebar.append(&show_intensity);
+        sidebar.append(&show_laser);
 
         // Bounds Info
         let bounds_label = Label::builder()
@@ -236,6 +250,7 @@ impl GcodeVisualizer {
 
         // Initialize Visualizer logic
         let visualizer = Rc::new(RefCell::new(Visualizer2D::new()));
+        let current_pos = Rc::new(RefCell::new((0.0f32, 0.0f32)));
 
         // Overlay for floating controls
         let overlay = Overlay::new();
@@ -438,11 +453,14 @@ impl GcodeVisualizer {
         let show_grid_draw = show_grid.clone();
         let show_bounds_draw = show_bounds.clone();
         let show_intensity_draw = show_intensity.clone();
+        let show_laser_draw = show_laser.clone();
         let device_manager_draw = device_manager.clone();
+        let current_pos_draw = current_pos.clone();
 
         drawing_area.set_draw_func(move |_, cr, width, height| {
             let vis = vis_draw.borrow();
             let mut cache = render_cache_draw.borrow_mut();
+            let pos = *current_pos_draw.borrow();
             Self::draw(
                 cr,
                 &vis,
@@ -454,6 +472,8 @@ impl GcodeVisualizer {
                 show_grid_draw.is_active(),
                 show_bounds_draw.is_active(),
                 show_intensity_draw.is_active(),
+                show_laser_draw.is_active(),
+                pos,
                 &device_manager_draw,
             );
         });
@@ -513,6 +533,8 @@ impl GcodeVisualizer {
         show_bounds.connect_toggled(move |_| da_update.queue_draw());
         let da_update = drawing_area.clone();
         show_intensity.connect_toggled(move |_| da_update.queue_draw());
+        let da_update = drawing_area.clone();
+        show_laser.connect_toggled(move |_| da_update.queue_draw());
 
         // Mouse Interaction
         Self::setup_interaction(&drawing_area, &visualizer, update_ui.clone());
@@ -555,11 +577,13 @@ impl GcodeVisualizer {
             show_grid,
             show_bounds,
             show_intensity,
+            show_laser,
             hadjustment,
             vadjustment,
             bounds_label,
             status_label,
             device_manager,
+            current_pos,
         }
     }
 
@@ -697,6 +721,8 @@ impl GcodeVisualizer {
         show_grid: bool,
         show_bounds: bool,
         show_intensity: bool,
+        show_laser: bool,
+        current_pos: (f32, f32),
         device_manager: &Option<Arc<DeviceManager>>,
     ) {
         // Phase 4: Calculate cache hash from visualizer state
@@ -1107,6 +1133,17 @@ impl GcodeVisualizer {
                 );
                 cr.stroke().unwrap();
             }
+        }
+
+        // Draw Laser/Spindle Position
+        if show_laser {
+            cr.set_source_rgb(1.0, 0.0, 0.0); // Red
+            // Draw a circle at current_pos
+            // Radius 4.0 pixels (diameter 8)
+            // We are in transformed space, so we need to scale the radius
+            let radius = 4.0 / vis.zoom_scale as f64;
+            cr.arc(current_pos.0 as f64, current_pos.1 as f64, radius, 0.0, 2.0 * std::f64::consts::PI);
+            cr.fill().unwrap();
         }
 
         cr.restore().unwrap();

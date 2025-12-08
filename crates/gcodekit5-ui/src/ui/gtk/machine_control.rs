@@ -14,6 +14,7 @@ use std::collections::VecDeque;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
+use crate::ui::gtk::visualizer::GcodeVisualizer;
 use crate::device_status;
 use std::rc::Rc;
 
@@ -57,6 +58,7 @@ pub struct MachineControlView {
     pub status_bar: Option<StatusBar>,
     pub device_console: Option<Rc<DeviceConsoleView>>,
     pub editor: Option<Rc<GcodeEditor>>,
+    pub visualizer: Option<Rc<GcodeVisualizer>>,
     pub send_queue: Arc<Mutex<VecDeque<String>>>,
     pub total_lines: Arc<Mutex<usize>>,
     pub is_streaming: Arc<Mutex<bool>>,
@@ -69,6 +71,7 @@ impl MachineControlView {
         status_bar: Option<StatusBar>,
         device_console: Option<Rc<DeviceConsoleView>>,
         editor: Option<Rc<GcodeEditor>>,
+        visualizer: Option<Rc<GcodeVisualizer>>,
     ) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
@@ -465,6 +468,7 @@ impl MachineControlView {
             status_bar: status_bar.clone(),
             device_console: device_console.clone(),
             editor,
+            visualizer,
             send_queue: Arc::new(Mutex::new(VecDeque::new())),
             total_lines: Arc::new(Mutex::new(0)),
             is_streaming: Arc::new(Mutex::new(false)),
@@ -1032,6 +1036,7 @@ impl MachineControlView {
                             let waiting_for_ack_poll = view_clone.waiting_for_ack.clone();
                             let send_queue_poll = view_clone.send_queue.clone();
                             let device_console_poll = view_clone.device_console.clone();
+                            let visualizer_poll = view_clone.visualizer.clone();
                             let total_lines_poll = view_clone.total_lines.clone();
                             
                             let mut query_counter = 0u32;
@@ -1185,6 +1190,11 @@ impl MachineControlView {
                                                                 mpos.b.unwrap_or(0.0) as f32,
                                                                 mpos.c.unwrap_or(0.0) as f32
                                                             );
+                                                        }
+
+                                                        // Update Visualizer with position
+                                                        if let Some(vis) = visualizer_poll.as_ref() {
+                                                            vis.set_current_position(mpos.x as f32, mpos.y as f32);
                                                         }
                                                     }
                                                     

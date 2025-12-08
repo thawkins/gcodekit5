@@ -129,12 +129,16 @@ pub fn main() {
         // 3. G-Code Editor (Moved up to be available for MachineControl)
         let editor = Rc::new(GcodeEditor::new());
 
+        // 4. Visualizer (Created early for MachineControl dependency)
+        let visualizer = Rc::new(GcodeVisualizer::new(Some(device_manager.clone())));
+
         // 2. Machine Control
         let status_bar = StatusBar::new();
         let machine_control = MachineControlView::new(
             Some(status_bar.clone()),
             Some(device_console.clone()),
             Some(editor.clone()),
+            Some(visualizer.clone()),
         );
         stack.add_titled(&machine_control.widget, Some("machine"), "Machine Control");
 
@@ -179,8 +183,7 @@ pub fn main() {
         // Add Editor to Stack
         stack.add_titled(&editor.widget, Some("editor"), "G-Code Editor");
 
-        // 4. Visualizer
-        let visualizer = Rc::new(GcodeVisualizer::new(Some(device_manager.clone())));
+        // 4. Visualizer (Already created)
         stack.add_titled(&visualizer.widget, Some("visualizer"), "Visualizer");
 
         // Connect Editor to Visualizer
