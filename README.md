@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender and CNC machine controller written in Rus
 
 [![Build Status](https://github.com/thawkins/gcodekit5/workflows/Build%20and%20Release/badge.svg)](https://github.com/thawkins/gcodekit5/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.2.5--alpha.1-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.2.5--alpha.3-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -548,9 +548,15 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 0.1.0-alpha.0
+**Current Version**: 0.2.5-alpha.3
 **Status**: Active Development
 **Stability**: Alpha (breaking changes may occur)
+
+### Recent Updates (v0.2.5-alpha.3)
+- **Designer**: Added Pan tool, Alignment tools, Array tools, Shape Conversion, Import/Export, and Toolpath Simulation.
+- **Visualizer**: Added scrollbars, laser position indicator, and statistics panel.
+- **CAM Tools**: Added "Home device before starting" option.
+- **Status Bar**: Added job progress bar and time estimation.
 
 ### Recent Updates (v0.68.3)
 - **CAM Tools**: Fixed dialog re-opening issue and standardized G-code loading.

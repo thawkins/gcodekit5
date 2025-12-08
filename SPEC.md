@@ -1,10 +1,31 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.2.5-alpha.1
+**Version**: 0.2.5-alpha.3
 **Last Updated**: 2025-12-08
 **Status**: Feature Release
 
-### Latest Release (v0.2.5-alpha.1) - Visualizer & CAM Enhancements
+### Latest Release (v0.2.5-alpha.3) - Designer & Workflow Enhancements
+- ✅ **Designer**
+  - Added Pan tool (hand icon) for canvas navigation.
+  - Implemented alignment tools (Left, Right, Top, Bottom, Center H/V) with context menu and shortcuts.
+  - Added Array tools (Linear, Circular, Grid) with automatic grouping.
+  - Added Shape Conversion tools (Convert to Path, Convert to Rectangle).
+  - Implemented Import (DXF, SVG) and Export (G-Code, SVG) functionality.
+  - Added "Generate G-Code" button to toolbox.
+  - Implemented Toolpath Simulation with "Show Toolpaths" toggle.
+  - Grouped shapes are now rendered in green.
+  - Fixed toolbox layout (3 columns) and scrolling issues.
+  - Fixed panic in properties panel and drag operations.
+- ✅ **Visualizer**
+  - Added horizontal and vertical scrollbars.
+  - Added "Show Laser/Spindle" position indicator.
+  - Added statistics panel (Min/Max/Avg S-value).
+- ✅ **CAM Tools**
+  - Added "Home device before starting" option.
+- ✅ **Status Bar**
+  - Added job progress bar and time estimation.
+
+### Previous Release (v0.2.5-alpha.1) - Visualizer & CAM Enhancements
 - ✅ **Visualizer**
   - Added horizontal and vertical scrollbars.
   - Added "Show Laser/Spindle" position indicator (red dot).
