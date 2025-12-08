@@ -43,6 +43,8 @@ pub struct DesignerCanvas {
     // Scroll adjustments
     hadjustment: Rc<RefCell<Option<gtk4::Adjustment>>>,
     vadjustment: Rc<RefCell<Option<gtk4::Adjustment>>>,
+    // Keyboard state
+    shift_pressed: Rc<RefCell<bool>>,
 }
 
 pub struct DesignerView {
@@ -99,6 +101,7 @@ impl DesignerCanvas {
             resize_original_bounds: Rc::new(RefCell::new(None)),
             hadjustment: Rc::new(RefCell::new(None)),
             vadjustment: Rc::new(RefCell::new(None)),
+            shift_pressed: Rc::new(RefCell::new(false)),
         });
 
         // Mouse motion tracking
@@ -199,8 +202,14 @@ impl DesignerCanvas {
         let key_controller = gtk4::EventControllerKey::new();
         let state_key = state.clone();
         let widget_key = widget.clone();
+        let shift_pressed_key = canvas.shift_pressed.clone();
         
         key_controller.connect_key_pressed(move |_controller, keyval, _keycode, _modifier| {
+            if keyval == gtk4::gdk::Key::Shift_L || keyval == gtk4::gdk::Key::Shift_R {
+                *shift_pressed_key.borrow_mut() = true;
+                return glib::Propagation::Proceed;
+            }
+
             let mut designer_state = state_key.borrow_mut();
             
             match keyval {
@@ -225,6 +234,14 @@ impl DesignerCanvas {
             
             glib::Propagation::Proceed
         });
+
+        let shift_released_key = canvas.shift_pressed.clone();
+        key_controller.connect_key_released(move |_controller, keyval, _keycode, _modifier| {
+            if keyval == gtk4::gdk::Key::Shift_L || keyval == gtk4::gdk::Key::Shift_R {
+                *shift_released_key.borrow_mut() = false;
+            }
+        });
+
         widget.add_controller(key_controller);
 
         canvas
@@ -610,6 +627,7 @@ impl DesignerCanvas {
     
     fn handle_drag_update(&self, offset_x: f64, offset_y: f64) {
         let tool = self.toolbox.as_ref().map(|t| t.current_tool()).unwrap_or(DesignerTool::Select);
+        let shift_pressed = *self.shift_pressed.borrow();
         
         // Get start point without holding the borrow
         let start_opt = *self.creation_start.borrow();
@@ -624,25 +642,77 @@ impl DesignerCanvas {
             let canvas_offset_y = offset_y / zoom;
             
             // Update current position (offset is from drag start)
-            let current_x = start.0 + canvas_offset_x;
-            let current_y = start.1 - canvas_offset_y; // Flip Y offset
+            let mut current_x = start.0 + canvas_offset_x;
+            let mut current_y = start.1 - canvas_offset_y; // Flip Y offset
             
+            // Apply Shift key constraints for creation
+            if shift_pressed && tool != DesignerTool::Select {
+                let dx = current_x - start.0;
+                let dy = current_y - start.1;
+                
+                if tool == DesignerTool::Rectangle || tool == DesignerTool::Ellipse {
+                    // Square/Circle constraint (1:1 aspect ratio)
+                    let max_dim = dx.abs().max(dy.abs());
+                    current_x = start.0 + max_dim * dx.signum();
+                    current_y = start.1 + max_dim * dy.signum();
+                } else if tool == DesignerTool::Line || tool == DesignerTool::Polyline {
+                    // Snap to 45 degree increments
+                    let angle = dy.atan2(dx);
+                    let snap_angle = (angle / (std::f64::consts::PI / 4.0)).round() * (std::f64::consts::PI / 4.0);
+                    let dist = (dx*dx + dy*dy).sqrt();
+                    current_x = start.0 + dist * snap_angle.cos();
+                    current_y = start.1 + dist * snap_angle.sin();
+                }
+            }
+
             *self.creation_current.borrow_mut() = Some((current_x, current_y));
             
             // If in select mode, handle resizing or moving
             if tool == DesignerTool::Select {
                 // Check if we're resizing
                 if let Some((handle, shape_id)) = *self.active_resize_handle.borrow() {
-                    self.apply_resize(handle, shape_id, current_x, current_y);
+                    self.apply_resize(handle, shape_id, current_x, current_y, shift_pressed);
                 } else {
                     let mut state = self.state.borrow_mut();
                     // Check if we have a selection - if so, move it; otherwise, marquee select
                     if state.canvas.selection_manager.selected_id().is_some() {
                         // Calculate delta from last update (incremental movement)
                         let last_offset = *self.last_drag_offset.borrow();
-                        let delta_x = (offset_x - last_offset.0) / zoom;
-                        let delta_y = (offset_y - last_offset.1) / zoom;
+                        let mut delta_x = (offset_x - last_offset.0) / zoom;
+                        let mut delta_y = (offset_y - last_offset.1) / zoom;
                         
+                        if shift_pressed {
+                            // Constrain movement to X or Y axis based on total drag
+                            let total_dx = current_x - start.0;
+                            let total_dy = current_y - start.1;
+                            
+                            if total_dx.abs() > total_dy.abs() {
+                                // Constrain to X axis: cancel Y movement
+                                // We need to cancel the accumulated Y movement.
+                                // But we only control the incremental delta here.
+                                // This is tricky because we've already applied previous deltas.
+                                // Ideally we would reset position to start + constrained total delta.
+                                // But `move_selected` is relative.
+                                
+                                // Workaround: If shift is pressed, we only allow movement in the dominant axis.
+                                // But this only works if shift was pressed from the start.
+                                // If shift is pressed mid-drag, we might want to snap back.
+                                
+                                // For now, let's just zero out the minor axis delta.
+                                // This gives "Manhattan" movement but doesn't snap back if you drift.
+                                // To do it properly, we'd need to store original positions of all selected items.
+                                
+                                // Let's stick to simple axis locking for now.
+                                if total_dx.abs() > total_dy.abs() {
+                                    delta_y = 0.0;
+                                } else {
+                                    delta_x = 0.0;
+                                }
+                            } else {
+                                delta_x = 0.0;
+                            }
+                        }
+
                         // Apply incremental movement
                         state.canvas.move_selected(delta_x, -delta_y);
                         
@@ -1275,7 +1345,7 @@ impl DesignerCanvas {
         None
     }
     
-    fn apply_resize(&self, handle: ResizeHandle, shape_id: u64, current_x: f64, current_y: f64) {
+    fn apply_resize(&self, handle: ResizeHandle, shape_id: u64, current_x: f64, current_y: f64, shift_pressed: bool) {
         let orig_bounds = match *self.resize_original_bounds.borrow() {
             Some(b) => b,
             None => return,
@@ -1289,8 +1359,56 @@ impl DesignerCanvas {
         let (orig_x, orig_y, orig_width, orig_height) = orig_bounds;
         
         // Calculate deltas
-        let dx = current_x - start.0;
-        let dy = current_y - start.1;
+        let mut dx = current_x - start.0;
+        let mut dy = current_y - start.1;
+        
+        if shift_pressed {
+            // Maintain aspect ratio
+            let ratio = if orig_height.abs() > 0.001 { orig_width / orig_height } else { 1.0 };
+            
+            // Calculate "natural" new dimensions based on mouse position
+            let natural_w = match handle {
+                ResizeHandle::TopLeft | ResizeHandle::BottomLeft => orig_width - dx,
+                ResizeHandle::TopRight | ResizeHandle::BottomRight => orig_width + dx,
+            };
+            
+            let natural_h = match handle {
+                ResizeHandle::TopLeft | ResizeHandle::TopRight => orig_height + dy,
+                ResizeHandle::BottomLeft | ResizeHandle::BottomRight => orig_height - dy,
+            };
+            
+            // Determine which dimension to follow (use the one with larger relative change)
+            let w_scale = (natural_w / orig_width).abs();
+            let h_scale = (natural_h / orig_height).abs();
+            
+            let (new_w, new_h) = if w_scale > h_scale {
+                // Width is dominant, adjust height
+                (natural_w, natural_w / ratio)
+            } else {
+                // Height is dominant, adjust width
+                (natural_h * ratio, natural_h)
+            };
+            
+            // Back-calculate dx and dy to achieve new_w and new_h
+            match handle {
+                ResizeHandle::TopLeft => {
+                    dx = orig_width - new_w;
+                    dy = new_h - orig_height;
+                }
+                ResizeHandle::TopRight => {
+                    dx = new_w - orig_width;
+                    dy = new_h - orig_height;
+                }
+                ResizeHandle::BottomLeft => {
+                    dx = orig_width - new_w;
+                    dy = orig_height - new_h;
+                }
+                ResizeHandle::BottomRight => {
+                    dx = new_w - orig_width;
+                    dy = orig_height - new_h;
+                }
+            }
+        }
         
         // Calculate new bounds based on which handle is being dragged
         let (new_x, new_y, new_width, new_height) = match handle {
