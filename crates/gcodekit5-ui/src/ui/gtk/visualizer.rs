@@ -576,6 +576,7 @@ impl GcodeVisualizer {
             } else {
                 vis.zoom_in();
             }
+            drop(vis);
 
             update_scroll_clone();
 
@@ -608,6 +609,7 @@ impl GcodeVisualizer {
             // Invert Y for pan because canvas Y is flipped
             vis.x_offset = sx + dx as f32;
             vis.y_offset = sy - dy as f32;
+            drop(vis);
 
             update_drag();
 
@@ -675,6 +677,7 @@ impl GcodeVisualizer {
             }
         }
 
+        drop(vis);
         self.update_scrollbars();
         self.drawing_area.queue_draw();
     }
