@@ -1639,6 +1639,9 @@ impl DesignerCanvas {
             if obj.selected {
                 cr.set_source_rgb(1.0, 0.0, 0.0); // Red for selected
                 cr.set_line_width(2.0);
+            } else if obj.group_id.is_some() {
+                cr.set_source_rgb(0.0, 0.5, 0.0); // Green for grouped
+                cr.set_line_width(1.0);
             } else {
                 cr.set_source_rgb(0.0, 0.0, 0.0); // Black for normal
                 cr.set_line_width(1.0);

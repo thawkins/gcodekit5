@@ -30,6 +30,7 @@
   - Renders generated toolpaths directly on the canvas.
   - Visualizes rapid moves (red dashed) and cutting moves (green solid).
   - Automatically updates preview when design changes if enabled.
+- **Designer**: Grouped shapes are now rendered in green to distinguish them from ungrouped shapes.
 
 ### Fixed
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.
