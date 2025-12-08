@@ -8,6 +8,7 @@
 ### Fixed
 - **Designer**: Fixed panic in "Fit to View" caused by RefCell borrowing conflict during scrollbar update.
 - **Visualizer**: Fixed panic in "Fit to View" caused by RefCell borrowing conflict during scrollbar update.
+- **Machine Control**: Fixed progress bar not resetting when eStop is clicked.
 
 ## [0.2.4-alpha.0] - 2025-12-08
 
