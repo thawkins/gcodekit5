@@ -1,5 +1,10 @@
 ## [0.2.5-alpha.2] - 2025-12-08
 
+### Added
+- **Designer**: Implemented alignment tools (Left, Right, Top, Bottom, Center Horizontal, Center Vertical).
+  - Accessible via keyboard shortcuts (Alt+L, Alt+R, Alt+T, Alt+B, Alt+H, Alt+V).
+  - Aligns selected shapes relative to the selection bounding box.
+
 ### Fixed
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.
 - **Designer**: Fixed toolbox width issue where it would expand unnecessarily.

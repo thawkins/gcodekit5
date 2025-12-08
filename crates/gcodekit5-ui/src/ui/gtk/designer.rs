@@ -1066,6 +1066,48 @@ impl DesignerCanvas {
         
         self.widget.queue_draw();
     }
+
+    pub fn align_left(&self) {
+        let mut state = self.state.borrow_mut();
+        state.align_selected_horizontal_left();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
+    pub fn align_right(&self) {
+        let mut state = self.state.borrow_mut();
+        state.align_selected_horizontal_right();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
+    pub fn align_top(&self) {
+        let mut state = self.state.borrow_mut();
+        state.align_selected_vertical_top();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
+    pub fn align_bottom(&self) {
+        let mut state = self.state.borrow_mut();
+        state.align_selected_vertical_bottom();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
+    pub fn align_center_horizontal(&self) {
+        let mut state = self.state.borrow_mut();
+        state.align_selected_horizontal_center();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
+    pub fn align_center_vertical(&self) {
+        let mut state = self.state.borrow_mut();
+        state.align_selected_vertical_center();
+        drop(state);
+        self.widget.queue_draw();
+    }
     
     pub fn copy_selected(&self) {
         let mut state = self.state.borrow_mut();
@@ -1959,6 +2001,36 @@ impl DesignerView {
                 // Delete or Backspace - Delete selected
                 (Key::Delete, _) | (Key::BackSpace, _) => {
                     canvas_keys.delete_selected();
+                    gtk4::glib::Propagation::Stop
+                }
+                // Alt+L - Align Left
+                (Key::l, false) | (Key::L, false) if modifiers.contains(ModifierType::ALT_MASK) => {
+                    canvas_keys.align_left();
+                    gtk4::glib::Propagation::Stop
+                }
+                // Alt+R - Align Right
+                (Key::r, false) | (Key::R, false) if modifiers.contains(ModifierType::ALT_MASK) => {
+                    canvas_keys.align_right();
+                    gtk4::glib::Propagation::Stop
+                }
+                // Alt+T - Align Top
+                (Key::t, false) | (Key::T, false) if modifiers.contains(ModifierType::ALT_MASK) => {
+                    canvas_keys.align_top();
+                    gtk4::glib::Propagation::Stop
+                }
+                // Alt+B - Align Bottom
+                (Key::b, false) | (Key::B, false) if modifiers.contains(ModifierType::ALT_MASK) => {
+                    canvas_keys.align_bottom();
+                    gtk4::glib::Propagation::Stop
+                }
+                // Alt+H - Align Center Horizontal
+                (Key::h, false) | (Key::H, false) if modifiers.contains(ModifierType::ALT_MASK) => {
+                    canvas_keys.align_center_horizontal();
+                    gtk4::glib::Propagation::Stop
+                }
+                // Alt+V - Align Center Vertical
+                (Key::v, false) | (Key::V, false) if modifiers.contains(ModifierType::ALT_MASK) => {
+                    canvas_keys.align_center_vertical();
                     gtk4::glib::Propagation::Stop
                 }
                 _ => gtk4::glib::Propagation::Proceed

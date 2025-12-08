@@ -21,7 +21,7 @@ This document compares the functionality of the Designer in `gcodekit4` (Slint) 
 | **Basic Tools** | Select, Rect, Circle, Line, Ellipse, Polyline, Text | Same set of tools | ✅ Complete | - | - |
 | **Tool Setup** | Feed, Speed, Tool Dia, Depth, Step inputs in sidebar | Added to Toolbox | ✅ Complete | T-201 | 4h |
 | **Polyline** | Click-click creation | Click-click creation implemented | ✅ Complete | T-202 | 6h |
-| **Text** | Text creation & editing | Basic text creation | ⚠️ Partial | T-203 | 3h |
+| **Text** | Text creation & editing | Text creation & editing implemented | ✅ Complete | T-203 | 3h |
 
 ## 3. Properties Panel
 
@@ -46,7 +46,7 @@ This document compares the functionality of the Designer in `gcodekit4` (Slint) 
 | Feature | Slint Implementation | GTK4 Implementation | Status | Task ID | Est. Time |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Clipboard** | Cut, Copy, Paste | Cut, Copy, Paste | ✅ Complete | - | - |
-| **Alignment** | Align Left, Center, Right, Top, Mid, Bot | **Missing** | ❌ Missing | T-501 | 4h |
+| **Alignment** | Align Left, Center, Right, Top, Mid, Bot | Align Left, Center, Right, Top, Mid, Bot | ✅ Complete | T-501 | 4h |
 | **Arrays** | Linear, Circular, Grid Arrays | **Missing** | ❌ Missing | T-502 | 6h |
 | **Conversion** | Convert to Path, Convert to Rectangle | **Missing** | ❌ Missing | T-503 | 3h |
 
