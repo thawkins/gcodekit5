@@ -599,8 +599,9 @@ impl DesignerCanvas {
                 
                 // Check if we clicked on an existing shape
                 let mut clicked_shape_id = None;
+                let tolerance = 3.0;
                 for obj in state.canvas.shapes() {
-                    if obj.shape.contains_point(&point) {
+                    if obj.shape.contains_point(&point, tolerance) {
                         clicked_shape_id = Some(obj.id);
                     }
                 }
@@ -619,7 +620,7 @@ impl DesignerCanvas {
                 }
                 
                 // Try to select shape at click point with multi-select if Ctrl is held
-                if let Some(_selected_id) = state.canvas.select_at(&point, ctrl_pressed) {
+                if let Some(_selected_id) = state.canvas.select_at(&point, tolerance, ctrl_pressed) {
                     // Shape selected
                 } else if !ctrl_pressed {
                     // Click on empty space without Ctrl - deselect all
@@ -699,8 +700,9 @@ impl DesignerCanvas {
              
              // Check if we clicked on an existing shape
              let mut clicked_shape_id = None;
+             let tolerance = 3.0;
              for obj in state.canvas.shapes() {
-                 if obj.shape.contains_point(&point) {
+                 if obj.shape.contains_point(&point, tolerance) {
                      clicked_shape_id = Some(obj.id);
                  }
              }

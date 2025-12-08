@@ -44,6 +44,7 @@
 - **Designer**: Fixed panic in properties panel when updating selection due to RefCell borrowing conflict.
 - **Designer**: Fixed panic when using Pan tool (RefCell borrow error).
 - **Designer**: Fixed marquee appearing when using Pan tool.
+- **Designer**: Improved selection tolerance to be constant in screen pixels (3px) regardless of zoom level.
 - **UI**: Fixed window maximization and status bar visibility issues by ensuring main content expands correctly.
 - **Code Quality**: Cleared compiler warnings across all crates (`gcodekit5-ui`, `gcodekit5-visualizer`, `gcodekit5-designer`, `gcodekit5-camtools`, `gcodekit5-communication`).
   - Fixed unused variables, fields, and imports.

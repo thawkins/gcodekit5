@@ -126,6 +126,7 @@ impl SelectionManager {
         store: &mut ShapeStore,
         spatial_index: &SpatialIndex,
         point: &Point,
+        tolerance: f64,
         multi: bool,
     ) -> Option<u64> {
         let mut found_id = None;
@@ -165,10 +166,10 @@ impl SelectionManager {
                     processed_groups.insert(gid);
 
                     if let Some(&(min_x, min_y, max_x, max_y)) = group_bounds.get(&gid) {
-                        if point.x >= min_x
-                            && point.x <= max_x
-                            && point.y >= min_y
-                            && point.y <= max_y
+                        if point.x >= min_x - tolerance
+                            && point.x <= max_x + tolerance
+                            && point.y >= min_y - tolerance
+                            && point.y <= max_y + tolerance
                         {
                             found_id = Some(obj.id);
                             found_group_id = Some(gid);
@@ -178,7 +179,7 @@ impl SelectionManager {
                 } else {
                     // Handle single shape selection: use precise hit test
                     if candidates.contains(&obj.id) {
-                        if obj.shape.contains_point(point) {
+                        if obj.shape.contains_point(point, tolerance) {
                             found_id = Some(obj.id);
                             found_group_id = None;
                             break;
