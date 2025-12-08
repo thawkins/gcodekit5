@@ -8,6 +8,7 @@ pub mod editor;
 pub mod visualizer;
 pub mod designer;
 pub mod designer_toolbox;
+pub mod designer_properties;
 pub mod device_info;
 pub mod config_settings;
 pub mod tools_manager;

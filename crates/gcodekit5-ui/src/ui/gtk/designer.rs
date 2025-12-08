@@ -6,6 +6,7 @@ use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::shapes::{Shape, Point, Rectangle, Circle, Line, Ellipse};
 use gcodekit5_designer::canvas::DrawingObject;
 use crate::ui::gtk::designer_toolbox::{DesignerToolbox, DesignerTool};
+use crate::ui::gtk::designer_properties::PropertiesPanel;
 
 pub struct DesignerCanvas {
     pub widget: DrawingArea,
@@ -23,6 +24,7 @@ pub struct DesignerView {
     pub widget: Box,
     canvas: Rc<DesignerCanvas>,
     toolbox: Rc<DesignerToolbox>,
+    properties: Rc<PropertiesPanel>,
     status_label: Label,
     coord_label: Label,
 }
@@ -572,7 +574,7 @@ impl DesignerView {
         // Create designer state
         let state = Rc::new(RefCell::new(DesignerState::new()));
         
-        // Create main horizontal layout (toolbox + canvas)
+        // Create main horizontal layout (toolbox + canvas + properties)
         let main_box = Box::new(Orientation::Horizontal, 0);
         main_box.set_hexpand(true);
         main_box.set_vexpand(true);
@@ -584,6 +586,17 @@ impl DesignerView {
         // Create canvas
         let canvas = DesignerCanvas::new(state.clone(), Some(toolbox.clone()));
         main_box.append(&canvas.widget);
+        
+        // Create properties panel
+        let properties = PropertiesPanel::new(state.clone());
+        
+        // Set up redraw callback for properties
+        let canvas_redraw = canvas.clone();
+        properties.set_redraw_callback(move || {
+            canvas_redraw.widget.queue_draw();
+        });
+        
+        main_box.append(&properties.widget);
         
         container.append(&main_box);
         
@@ -630,10 +643,20 @@ impl DesignerView {
         
         let view = Rc::new(Self {
             widget: container,
-            canvas,
+            canvas: canvas.clone(),
             toolbox,
+            properties: properties.clone(),
             status_label,
             coord_label,
+        });
+        
+        // Update properties panel when selection changes
+        let props_update = properties.clone();
+        let canvas_props = canvas.clone();
+        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            // Check if we need to update properties (when canvas is redrawn or selection changes)
+            props_update.update_from_selection();
+            gtk4::glib::ControlFlow::Continue
         });
         
         view
