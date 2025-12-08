@@ -48,7 +48,7 @@ This document compares the functionality of the Designer in `gcodekit4` (Slint) 
 | **Clipboard** | Cut, Copy, Paste | Cut, Copy, Paste | ✅ Complete | - | - |
 | **Alignment** | Align Left, Center, Right, Top, Mid, Bot | Align Left, Center, Right, Top, Mid, Bot | ✅ Complete | T-501 | 4h |
 | **Arrays** | Linear, Circular, Grid Arrays | Backend implemented (UI pending) | ✅ Complete | T-502 | 6h |
-| **Conversion** | Convert to Path, Convert to Rectangle | **Missing** | ❌ Missing | T-503 | 3h |
+| **Conversion** | Convert to Path, Convert to Rectangle | Convert to Path, Convert to Rectangle implemented | ✅ Complete | T-503 | 3h |
 
 ## 6. File Operations
 

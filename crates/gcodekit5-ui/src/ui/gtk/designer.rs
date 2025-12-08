@@ -464,6 +464,8 @@ impl DesignerCanvas {
                     "delete" => canvas.delete_selected(),
                     "group" => canvas.group_selected(),
                     "ungroup" => canvas.ungroup_selected(),
+                    "convert_to_path" => canvas.convert_to_path(),
+                    "convert_to_rectangle" => canvas.convert_to_rectangle(),
                     _ => {}
                 }
             });
@@ -480,6 +482,10 @@ impl DesignerCanvas {
         
         vbox.append(&create_item("Group", "group", can_group));
         vbox.append(&create_item("Ungroup", "ungroup", can_ungroup));
+
+        vbox.append(&Separator::new(Orientation::Horizontal));
+        vbox.append(&create_item("Convert to Path", "convert_to_path", has_selection));
+        vbox.append(&create_item("Convert to Rectangle", "convert_to_rectangle", has_selection));
 
         menu.set_child(Some(&vbox));
         menu.popup();
@@ -1216,6 +1222,32 @@ impl DesignerCanvas {
     pub fn ungroup_selected(&self) {
         let mut state = self.state.borrow_mut();
         state.ungroup_selected();
+        drop(state);
+        
+        // Refresh layers panel
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        
+        self.widget.queue_draw();
+    }
+
+    pub fn convert_to_path(&self) {
+        let mut state = self.state.borrow_mut();
+        state.convert_selected_to_path();
+        drop(state);
+        
+        // Refresh layers panel
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        
+        self.widget.queue_draw();
+    }
+
+    pub fn convert_to_rectangle(&self) {
+        let mut state = self.state.borrow_mut();
+        state.convert_selected_to_rectangle();
         drop(state);
         
         // Refresh layers panel

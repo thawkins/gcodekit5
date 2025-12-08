@@ -7,6 +7,10 @@
 - **Designer**: Implemented backend support for Linear, Grid, and Circular arrays.
   - Added `create_linear_array`, `create_grid_array`, `create_circular_array` to `DesignerCanvas`.
   - Implemented `rotate` method for all shape types (`Rectangle`, `Circle`, `Line`, `Ellipse`, `PathShape`, `TextShape`).
+- **Designer**: Implemented shape conversion tools.
+  - Added "Convert to Path" and "Convert to Rectangle" to context menu.
+  - Allows converting any shape to a generic path for node editing (future).
+  - Allows converting shapes back to bounding rectangles.
 
 ### Fixed
 - **Designer**: Made toolbox scrollable to prevent layout issues on smaller screens.
