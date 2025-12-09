@@ -7,28 +7,28 @@ import "../../../assets/fonts/fira-code/FiraCode-Regular.ttf";
 import { Button, ComboBox, LineEdit, TextEdit, VerticalBox, HorizontalBox, ScrollView, SpinBox, CheckBox, Palette } from "std-widgets.slint";
 
 // Import all panel components
-import { GcodeEditorPanel, TextLine } from "ui_panels/gcode_editor.slint";
+import { GcodeEditorPanel, TextLine } from "ui/legacy/ui_panels/gcode_editor.slint";
 export { TextLine }
-import { DeviceConsolePanel } from "ui_panels/device_console.slint";
-import { MachineControlPanel } from "ui_panels/machine_control.slint";
-import { ConfigSettingsPanel, ConfigSetting } from "ui_panels/config_settings.slint";
-import { DeviceInfoPanel, CapabilityItem } from "ui_panels/device_info.slint";
+import { DeviceConsolePanel } from "ui/legacy/ui_panels/device_console.slint";
+import { MachineControlPanel } from "ui/legacy/ui_panels/machine_control.slint";
+import { ConfigSettingsPanel, ConfigSetting } from "ui/legacy/ui_panels/config_settings.slint";
+import { DeviceInfoPanel, CapabilityItem } from "ui/legacy/ui_panels/device_info.slint";
 import { GcodeVisualizerPanel } from "../gcodekit5-visualizer/ui/legacy/gcode_visualizer.slint";
 import { DesignerPanel } from "../gcodekit5-designer/ui/designer.slint";
-import { CAMToolsPanel } from "ui_panels/cam_tools.slint";
-import { MaterialsManager, MaterialData } from "ui_panels/materials_manager.slint";
-import { ToolsManager, ToolData } from "ui_panels/tools_manager.slint";
-import { SettingsDialog, SettingItem } from "../gcodekit5-settings/ui/settings_dialog.slint";
-import { DeviceManagerPanel, DeviceProfileUiModel } from "../gcodekit5-devicedb/ui/device_manager.slint";
-import { TabbedBoxDialog } from "../gcodekit5-camtools/ui/tabbed_box_dialog.slint";
-import { SpoilboardSurfacingDialog } from "../gcodekit5-camtools/ui/spoilboard_surfacing_dialog.slint";
-import { SpoilboardGridDialog } from "../gcodekit5-camtools/ui/spoilboard_grid_dialog.slint";
-import { SpeedsFeedsDialog } from "../gcodekit5-camtools/ui/speeds_feeds_dialog.slint";
-import { JigsawPuzzleDialog } from "../gcodekit5-camtools/ui/jigsaw_puzzle_dialog.slint";
-import { LaserEngraverDialog } from "../gcodekit5-camtools/ui/laser_engraver_dialog.slint";
-import { VectorEngraverDialog } from "../gcodekit5-camtools/ui/vector_engraver_dialog.slint";
-import { ErrorDialog } from "ui_panels/error_dialog.slint";
-import { SuccessDialog } from "ui_panels/success_dialog.slint";
+import { CAMToolsPanel } from "ui/legacy/ui_panels/cam_tools.slint";
+import { MaterialsManager, MaterialData } from "ui/legacy/ui_panels/materials_manager.slint";
+import { ToolsManager, ToolData } from "ui/legacy/ui_panels/tools_manager.slint";
+import { SettingsDialog, SettingItem } from "../gcodekit5-settings/ui/legacy/settings_dialog.slint";
+import { DeviceManagerPanel, DeviceProfileUiModel } from "../gcodekit5-devicedb/ui/legacy/device_manager.slint";
+import { TabbedBoxDialog } from "../gcodekit5-camtools/ui/legacy/tabbed_box_dialog.slint";
+import { SpoilboardSurfacingDialog } from "../gcodekit5-camtools/ui/legacy/spoilboard_surfacing_dialog.slint";
+import { SpoilboardGridDialog } from "../gcodekit5-camtools/ui/legacy/spoilboard_grid_dialog.slint";
+import { SpeedsFeedsDialog } from "../gcodekit5-camtools/ui/legacy/speeds_feeds_dialog.slint";
+import { JigsawPuzzleDialog } from "../gcodekit5-camtools/ui/legacy/jigsaw_puzzle_dialog.slint";
+import { LaserEngraverDialog } from "../gcodekit5-camtools/ui/legacy/laser_engraver_dialog.slint";
+import { VectorEngraverDialog } from "../gcodekit5-camtools/ui/legacy/vector_engraver_dialog.slint";
+import { ErrorDialog } from "ui/legacy/ui_panels/error_dialog.slint";
+import { SuccessDialog } from "ui/legacy/ui_panels/success_dialog.slint";
 
 export { 
     TabbedBoxDialog, SpoilboardSurfacingDialog, SpoilboardGridDialog, 
@@ -36,7 +36,7 @@ export {
     VectorEngraverDialog, ErrorDialog, SuccessDialog
 }
 
-import { Theme } from "ui/theme.slint";
+import { Theme } from "ui/legacy/ui/theme.slint";
 
 component TabItem inherits Rectangle {
     in property <string> text;
