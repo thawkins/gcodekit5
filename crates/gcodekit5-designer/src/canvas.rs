@@ -401,6 +401,11 @@ impl Canvas {
         false
     }
 
+    /// Sets the canvas size (viewport dimensions).
+    pub fn set_canvas_size(&mut self, width: f64, height: f64) {
+        self.viewport.set_canvas_size(width, height);
+    }
+
     /// Sets zoom level (1.0 = 100%).
     pub fn set_zoom(&mut self, zoom: f64) {
         self.viewport.set_zoom(zoom);

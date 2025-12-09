@@ -121,16 +121,23 @@ impl DesignerCanvas {
         let creation_current_clone = creation_current.clone();
         let polyline_points_clone = polyline_points.clone();
         let preview_toolpaths_clone = preview_toolpaths.clone();
+        let device_manager_draw = device_manager.clone();
         
         let state_draw = state_clone.clone();
         widget.set_draw_func(move |_, cr, width, height| {
+            // Update viewport size to match widget dimensions
+            if let Ok(mut state) = state_draw.try_borrow_mut() {
+                state.canvas.set_canvas_size(width as f64, height as f64);
+            }
+
             let state = state_draw.borrow();
             let mouse = *mouse_pos_clone.borrow();
             let preview_start = *creation_start_clone.borrow();
             let preview_current = *creation_current_clone.borrow();
             let poly_points = polyline_points_clone.borrow();
             let toolpaths = preview_toolpaths_clone.borrow();
-            Self::draw(cr, &state, width as f64, height as f64, mouse, preview_start, preview_current, &poly_points, &toolpaths);
+            let bounds = compute_device_bbox(&device_manager_draw);
+            Self::draw(cr, &state, width as f64, height as f64, mouse, preview_start, preview_current, &poly_points, &toolpaths, bounds);
         });
 
         let canvas = Rc::new(Self {
@@ -839,7 +846,7 @@ impl DesignerCanvas {
             }
             DesignerTool::Pan => {
                 *self.creation_start.borrow_mut() = Some((x, y)); // Screen coords for pan
-                *self.last_drag_offset.borrow_mut() = (x, y); // Use last offset to track previous position
+                *self.last_drag_offset.borrow_mut() = (0.0, 0.0); // Reset offset tracker (offsets start at 0)
                 self.widget.set_cursor_from_name(Some("grabbing"));
             }
             _ => {
@@ -1712,7 +1719,7 @@ impl DesignerCanvas {
         self.widget.queue_draw();
     }
 
-    fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64), preview_start: Option<(f64, f64)>, preview_current: Option<(f64, f64)>, polyline_points: &[Point], toolpaths: &[Toolpath]) {
+    fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64), preview_start: Option<(f64, f64)>, preview_current: Option<(f64, f64)>, polyline_points: &[Point], toolpaths: &[Toolpath], device_bounds: (f64, f64, f64, f64)) {
         // Clear background
         cr.set_source_rgb(0.95, 0.95, 0.95); // Light grey background
         cr.paint().expect("Invalid cairo surface state");
@@ -1740,8 +1747,20 @@ impl DesignerCanvas {
             Self::draw_grid(cr, width, height);
         }
         
+        // Draw Device Bounds
+        let (min_x, min_y, max_x, max_y) = device_bounds;
+        let width = max_x - min_x;
+        let height = max_y - min_y;
+        
+        cr.save().unwrap();
+        cr.set_source_rgb(0.0, 0.0, 1.0); // Blue
+        cr.set_line_width(2.0 / zoom); // 2px wide on screen
+        cr.rectangle(min_x, min_y, width, height);
+        cr.stroke().unwrap();
+        cr.restore().unwrap();
+        
         // Draw Origin Crosshair
-        Self::draw_origin_crosshair(cr);
+        Self::draw_origin_crosshair(cr, zoom);
         
         // Draw Toolpaths (if enabled)
         if state.show_toolpaths {
@@ -2019,27 +2038,23 @@ impl DesignerCanvas {
         cr.restore().unwrap();
     }
     
-    fn draw_origin_crosshair(cr: &gtk4::cairo::Context) {
+    fn draw_origin_crosshair(cr: &gtk4::cairo::Context, zoom: f64) {
         cr.save().unwrap();
         
-        // Draw crosshair at origin
-        cr.set_source_rgb(1.0, 0.0, 0.0); // Red
-        cr.set_line_width(2.0);
+        // Draw Origin Axes (Full World Extent)
+        let extent = core_constants::WORLD_EXTENT_MM as f64;
+        cr.set_line_width(1.0 / zoom); // Thinner line for full axes
         
-        let size = 15.0;
-        
-        // Horizontal line
-        cr.move_to(-size, 0.0);
-        cr.line_to(size, 0.0);
-        
-        // Vertical line
-        cr.move_to(0.0, -size);
-        cr.line_to(0.0, size);
-        
+        // X Axis Red
+        cr.set_source_rgb(1.0, 0.0, 0.0); 
+        cr.move_to(-extent, 0.0);
+        cr.line_to(extent, 0.0);
         cr.stroke().unwrap();
-        
-        // Draw circle
-        cr.arc(0.0, 0.0, size * 0.7, 0.0, 2.0 * std::f64::consts::PI);
+
+        // Y Axis Green
+        cr.set_source_rgb(0.0, 1.0, 0.0); 
+        cr.move_to(0.0, -extent);
+        cr.line_to(0.0, extent);
         cr.stroke().unwrap();
         
         cr.restore().unwrap();
@@ -2412,7 +2427,17 @@ impl DesignerView {
         container.connect_map(move |_| {
             let canvas_run = canvas_map.clone();
             gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                canvas_run.zoom_fit();
+                // Ensure viewport knows the correct size before fitting
+                let width = canvas_run.widget.width() as f64;
+                let height = canvas_run.widget.height() as f64;
+                if width > 0.0 && height > 0.0 {
+                    if let Ok(mut state) = canvas_run.state.try_borrow_mut() {
+                        state.canvas.set_canvas_size(width, height);
+                    }
+                }
+
+                // Always fit to device on initialization as per user request
+                canvas_run.fit_to_device_area();
                 canvas_run.widget.queue_draw();
                 gtk4::glib::ControlFlow::Break
             });

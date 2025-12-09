@@ -605,11 +605,8 @@ impl GcodeVisualizer {
                 let height = da.height() as f32;
                 if width > 0.0 && height > 0.0 {
                     let mut v = vis.borrow_mut();
-                    if v.get_command_count() > 0 {
-                        v.fit_to_view(width, height);
-                    } else {
-                        Self::apply_fit_to_device(&mut v, &dev_mgr, width, height);
-                    }
+                    // Always fit to device on initialization as per user request
+                    Self::apply_fit_to_device(&mut v, &dev_mgr, width, height);
                     drop(v);
                     update();
                     da.queue_draw();
@@ -875,16 +872,20 @@ impl GcodeVisualizer {
             }
         }
 
-        // Draw Origin
-        cr.set_line_width(2.0 / vis.zoom_scale as f64);
-        cr.set_source_rgb(1.0, 0.0, 0.0); // X Axis Red
-        cr.move_to(0.0, 0.0);
-        cr.line_to(20.0, 0.0);
+        // Draw Origin Axes (Full World Extent)
+        let extent = core_constants::WORLD_EXTENT_MM as f64;
+        cr.set_line_width(1.0 / vis.zoom_scale as f64); // Thinner line for full axes
+        
+        // X Axis Red
+        cr.set_source_rgb(1.0, 0.0, 0.0); 
+        cr.move_to(-extent, 0.0);
+        cr.line_to(extent, 0.0);
         cr.stroke().unwrap();
 
-        cr.set_source_rgb(0.0, 1.0, 0.0); // Y Axis Green
-        cr.move_to(0.0, 0.0);
-        cr.line_to(0.0, 20.0);
+        // Y Axis Green
+        cr.set_source_rgb(0.0, 1.0, 0.0); 
+        cr.move_to(0.0, -extent);
+        cr.line_to(0.0, extent);
         cr.stroke().unwrap();
 
         // Draw Toolpath - Phase 1, 2 & 3 Optimization: Batched Rendering + Viewport Culling + LOD
