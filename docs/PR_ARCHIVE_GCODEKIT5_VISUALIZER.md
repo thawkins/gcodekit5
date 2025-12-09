@@ -1,5 +1,7 @@
 # PR: Archive Slint UI — gcodekit5-visualizer
 
+PR: https://github.com/thawkins/gcodekit5/pull/1
+
 Purpose
 - Archive the Slint UI file `gcode_visualizer.slint` by moving it to `ui/legacy`.
 - Update imports in `crates/gcodekit5-ui/ui.slint` to import from the new `legacy` path.
