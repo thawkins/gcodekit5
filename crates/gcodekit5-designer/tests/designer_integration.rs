@@ -140,13 +140,7 @@ fn test_canvas_multi_shapes() {
     let circle_id = canvas.add_circle(Point::new(25.0, 25.0), 5.0);
     let line_id = canvas.add_line(Point::new(50.0, 0.0), Point::new(50.0, 50.0));
 
-    println!("DEBUG: shape_count = {}", canvas.shape_count());
-    for obj in canvas.shapes() {
-        println!("DEBUG: id={} name={} bbox={:?} selected={}", obj.id, obj.name, obj.shape.bounding_box(), obj.selected);
-    }
-    println!("DEBUG: spatial candidates at (5,5) = {:?}", canvas.spatial_manager.query_point(5.0, 5.0));
-    println!("DEBUG: spatial candidates at (25,25) = {:?}", canvas.spatial_manager.query_point(25.0, 25.0));
-    println!("DEBUG: spatial candidates at (50,25) = {:?}", canvas.spatial_manager.query_point(50.0, 25.0));
+    // debug prints removed
     assert_eq!(canvas.shape_count(), 3);
 
     // Select each shape
