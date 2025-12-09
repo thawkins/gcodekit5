@@ -148,10 +148,9 @@ fn test_fit_to_view_margin_applied() {
     // Canvas is 1000x1000 - should fit with margin
     viz.fit_to_view(1000.0, 1000.0);
 
-    // With 5% margin on each side, effective content is 110x110
-    // Available space is 1000-40 = 960
-    // Scale should be ~8.7 (960/110)
-    assert!(viz.zoom_scale < 9.0 && viz.zoom_scale > 8.0);
+    // With 10% margin per side (20% total margin), content fits with scale = 8
+    // Test accepts a small range to avoid false negatives on rounding
+    assert!(viz.zoom_scale <= 9.0 && viz.zoom_scale >= 8.0);
 }
 
 #[test]
