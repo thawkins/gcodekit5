@@ -203,7 +203,6 @@ mod tests {
 
     #[test]
     fn test_persistence() {
-        use std::fs;
 
         // Create a test material
         let test_material = Material::new(

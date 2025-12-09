@@ -1,6 +1,6 @@
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::canvas::DrawingMode;
-use gcodekit5_designer::shapes::Point;
+// Point not used directly in this test file
 
 #[test]
 fn test_designer_state_new() {

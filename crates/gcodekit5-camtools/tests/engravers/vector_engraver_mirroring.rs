@@ -1,6 +1,6 @@
 use gcodekit5_camtools::vector_engraver::{VectorEngraver, VectorEngravingParameters};
 use std::io::Write;
-use lyon::math::point;
+// removed unused import of lyon::math::point
 
 #[test]
 fn test_svg_mirroring() {

@@ -1,5 +1,5 @@
 use gcodekit5_designer::import::SvgImporter;
-use gcodekit5_designer::shapes::{Shape, Rectangle};
+use gcodekit5_designer::shapes::Rectangle;
 
 #[test]
 fn test_svg_import_mirroring() {

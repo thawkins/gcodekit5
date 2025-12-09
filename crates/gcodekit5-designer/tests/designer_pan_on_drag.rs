@@ -112,7 +112,7 @@ fn test_pan_affects_shape_visibility() {
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
 
     // Get its screen position
-    let (pixel_x, pixel_y) = canvas.world_to_pixel(100.0, 100.0);
+    let (pixel_x, _pixel_y) = canvas.world_to_pixel(100.0, 100.0);
     assert_eq!(pixel_x, 100.0);
     // Y is inverted (height - y), assuming height 600
     // assert_eq!(pixel_y, 100.0); // This fails if Y is inverted

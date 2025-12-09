@@ -1,5 +1,4 @@
 use gcodekit5_communication::firmware::grbl::response_parser::*;
-use gcodekit5_core::{CNCPoint, Units};
 
 #[test]
 fn test_parse_ok() {

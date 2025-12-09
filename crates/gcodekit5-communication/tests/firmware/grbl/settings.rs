@@ -29,7 +29,6 @@ fn test_add_setting() {
 
 #[test]
 fn test_parse_setting_line_valid() {
-    let mut manager = SettingsManager::new();
     let result = SettingsManager::parse_setting_line("$110=115200.000");
     assert!(result.is_some());
 
@@ -40,14 +39,12 @@ fn test_parse_setting_line_valid() {
 
 #[test]
 fn test_parse_setting_line_no_dollar() {
-    let mut manager = SettingsManager::new();
     let result = SettingsManager::parse_setting_line("110=115200.000");
     assert!(result.is_none());
 }
 
 #[test]
 fn test_parse_setting_line_invalid_format() {
-    let mut manager = SettingsManager::new();
     let result = SettingsManager::parse_setting_line("$110:115200.000");
     assert!(result.is_none());
 }
