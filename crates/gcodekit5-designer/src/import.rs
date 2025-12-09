@@ -406,12 +406,8 @@ impl SvgImporter {
             .map(|s| s.convert(center_y, self.offset_x, self.offset_y))
             .collect();
 
-        // Compute layer count; prefer actual <g> tags if present, otherwise default to 1
-        let mut layer_count = svg_content.matches("<g").count();
-        if layer_count == 0 {
-            // Ensure at least one layer exists for empty SVGs or simple SVGs without groups
-            layer_count = 1;
-        }
+        // Default to 0 layers for SVG import unless more explicit layer logic is implemented
+        let layer_count = 0usize;
 
         Ok(ImportedDesign {
             shapes,
