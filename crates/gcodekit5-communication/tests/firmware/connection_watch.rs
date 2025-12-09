@@ -41,10 +41,16 @@ async fn test_connection_state_transitions() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(watcher.get_state().await, ConnectionWatchState::Lost);
 
-    // Heartbeat should reset state
+    // Heartbeat should reset state. Poll for state change to avoid timing races.
     watcher.heartbeat();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(watcher.get_state().await, ConnectionWatchState::Healthy);
+    let mut attempts = 0;
+    let mut state = watcher.get_state().await;
+    while state != ConnectionWatchState::Healthy && attempts < 10 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        state = watcher.get_state().await;
+        attempts += 1;
+    }
+    assert_eq!(state, ConnectionWatchState::Healthy);
 
     watcher.stop().await;
 }

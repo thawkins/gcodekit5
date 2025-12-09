@@ -61,6 +61,8 @@
   - Fixed mutable variable warnings.
   - Resolved `RefCell` borrowing issues in `visualizer.rs`.
   - Fixed deprecation warnings for `glib::clone!` and `StyleContext` in `gcodekit5-ui`.
+- **Visualizer**: Improved `fit_to_view` unit test to accept boundary zoom_scale values and avoid false negatives when margin calculation results in exact scaling.
+- **Communication**: Made `ConnectionWatcher` test more robust by polling for `Healthy` state instead of relying on a fixed short sleep, reducing flakiness due to timing.
 
 ## [0.2.5-alpha.1] - 2025-12-08
 
