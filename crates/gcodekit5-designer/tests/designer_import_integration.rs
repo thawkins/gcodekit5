@@ -25,7 +25,7 @@ fn test_svg_import_empty_string() {
     let design = result.unwrap();
     assert_eq!(design.format, FileFormat::Svg);
     // Empty SVG still creates at least one layer
-    assert!(design.layer_count >= 0);
+    assert!(design.layer_count > 0);
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn test_imported_design_properties() {
     assert_eq!(design.dimensions.0, 100.0);
     assert_eq!(design.dimensions.1, 100.0);
     assert_eq!(design.format, FileFormat::Svg);
-    assert!(design.layer_count >= 0);
+    assert!(design.layer_count > 0);
 }
 
 #[test]

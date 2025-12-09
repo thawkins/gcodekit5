@@ -107,7 +107,7 @@ fn test_designer_state_multi_shape_design() {
 #[test]
 fn test_designer_state_polyline_update() {
     use gcodekit5_designer::shapes::PathShape;
-    use gcodekit5_designer::{Point, Shape};
+    use gcodekit5_designer::Point;
     let mut state = DesignerState::new();
 
     // Create a custom polyline (triangle)

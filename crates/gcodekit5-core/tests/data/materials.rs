@@ -1,5 +1,5 @@
 use gcodekit5_core::data::materials::*;
-use std::collections::HashMap;
+// Removed unused HashMap import
 
 #[test]
 fn test_material_id_display() {

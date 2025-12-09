@@ -1,5 +1,4 @@
 use gcodekit5_communication::firmware::device_status::*;
-use gcodekit5_core::Units;
 
 #[test]
 fn test_machine_state_parse() {

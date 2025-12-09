@@ -1,4 +1,4 @@
-use gcodekit5_designer::shapes::{Circle, Ellipse, Line, Point, Rectangle, Shape};
+use gcodekit5_designer::shapes::{Circle, Ellipse, Line, Point, Rectangle};
 
 #[test]
 fn test_point_distance() {
