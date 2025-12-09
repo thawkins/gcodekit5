@@ -4,8 +4,8 @@
 The project has migrated from Slint to GTK4 for the UI framework.
 This file is maintained as per agent instructions, but primary UI development is now focused on GTK4 / gtk-rs.
 
-## Slint archival notes
-- The `.slint` UI files have been moved to `ui/legacy/` in their respective crates as part of a staged archival process.
+-## Slint archival notes
+- The `.slint` UI files have been removed from the repository as part of the migration away from Slint.
 - The Slint bridge types are gated under `slint_legacy_tests` feature flags to allow the codebase to build without Slint by default.
 - A non-UI editor bridge `EditorBridgeBackend` exists in `gcodekit5-gcodeeditor` to decouple core editor functionality from UI bridges.
 

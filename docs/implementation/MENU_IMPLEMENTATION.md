@@ -23,7 +23,7 @@ The GCodeKit5 menu system has been fully implemented with functional menu items 
 
 ## Implementation Details
 
-### Slint UI Changes (src/ui.slint)
+### UI Changes (formerly Slint; now GTK4) (src/ui/)
 - Replaced generic menu callbacks with specific menu action callbacks
 - Implemented dropdown menu UI with:
   - File, Edit, View, and Help menu items

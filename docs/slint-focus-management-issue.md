@@ -113,8 +113,7 @@ if condition : SomeComponent {
 - **Language**: Rust + Slint
 - **Project**: [gcodekit5](https://github.com/thawkins/gcodekit5) - G-code editor for CNC machines
 - **Related Files**:
-  - `crates/gcodekit5-ui/ui.slint` - Main UI with tabbed views
-  - `crates/gcodekit5-ui/ui_panels/gcode_editor.slint` - CustomTextEdit implementation
+  The Slint files mentioned previously (e.g., `crates/gcodekit5-ui/ui.slint` and `crates/gcodekit5-ui/ui_panels/gcode_editor.slint`) have been removed as part of the Slint UI deletion effort.
   - `src/main.rs` - View switching logic
 
 ## Questions for Slint Team

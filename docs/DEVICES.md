@@ -83,7 +83,7 @@ pub struct DeviceProfile {
 
 ## UI Design
 
-The UI is implemented in `crates/gcodekit5-devicedb/ui/device_manager.slint` and integrated into the main application as a dedicated tab.
+The legacy Slint UI has been removed; the UI is now implemented in the crate's GTK-based UI under `crates/gcodekit5-devicedb/ui/device_manager` and integrated into the main application as a dedicated tab.
 
 ### Layout
 

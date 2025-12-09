@@ -333,7 +333,7 @@ RUST_LOG=debug cargo run
 ```
 src/
 ├── main.rs                    # Application entry point, event handlers
-├── ui.slint                   # Main window layout and structure
+├── UI (GTK4/gtk-rs)          # Main window layout and structure
 │
 ├── communication/             # Device communication layer
 │   ├── mod.rs                # Serial, TCP, WebSocket traits
@@ -366,11 +366,11 @@ src/
 │   └── gcode_editor.rs       # Editor state management
 │
 ├── ui_panels/                 # Tab panel components
-│   ├── machine_control.slint # Machine control interface
-│   ├── gcode_editor.slint    # G-code editor UI
-│   ├── designer.slint        # CAD/CAM designer
-│   ├── config_settings.slint # Settings editor
-│   └── device_info.slint     # Device information display
+│   ├── machine_control       # Machine control interface (GTK4)
+│   ├── gcode_editor          # G-code editor UI (GTK4)
+│   ├── designer              # CAD/CAM designer (GTK4)
+│   ├── config_settings       # Settings editor (GTK4)
+│   └── device_info           # Device information display (GTK4)
 │
 ├── utils/                     # Utilities and helpers
 │   ├── config.rs             # Configuration file management
