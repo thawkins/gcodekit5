@@ -10,7 +10,7 @@ fn test_single_handle_resize() {
 
     // Add and select a rectangle
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     // Resize from top-left corner (handle 0)
     canvas.resize_selected(0, 10.0, 10.0);
@@ -35,7 +35,7 @@ fn test_sequential_handle_drags() {
 
     // Add and select a rectangle
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     // First: Resize from top-left corner (handle 0)
     canvas.resize_selected(0, 10.0, 10.0);
@@ -92,7 +92,7 @@ fn test_top_right_handle_drag() {
 
     // Add and select a rectangle
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     // Resize from top-right corner (handle 1)
     // Top-right is at (200, 100), moving it by (10, -10) should make it (210, 90)
@@ -118,7 +118,7 @@ fn test_bottom_left_handle_drag() {
 
     // Add and select a rectangle
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     // Resize from bottom-left corner (handle 2)
     // Bottom-left is at (100, 200), moving it by (-10, 10) should make it (90, 210)
@@ -144,7 +144,7 @@ fn test_alternating_corner_drags_no_jump() {
 
     // Add and select a rectangle at (100, 100) to (200, 200)
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     // Drag top-left (0) by 5, 5
     canvas.resize_selected(0, 5.0, 5.0);
@@ -189,7 +189,7 @@ fn test_move_handle_drag() {
 
     // Add and select a rectangle
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     // Drag center handle (4) to move the entire shape
     canvas.resize_selected(4, 20.0, 30.0);

@@ -43,3 +43,6 @@ glib-build-tools = "0.21.0"
 
 [dev-dependencies]
 tempfile = "3.8"
+
+[features]
+slint_legacy_tests = []

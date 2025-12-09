@@ -35,7 +35,7 @@ fn test_canvas_snap_selected_to_mm() {
 
     // Select the rectangle
     let point = Point::new(100.3, 100.7);
-    canvas.select_at(&point, false);
+    canvas.select_at(&point, 0.0, false);
     assert!(canvas.selected_id().is_some());
 
     // Snap selected to mm
@@ -59,7 +59,7 @@ fn test_shift_key_snapping_scenario() {
     canvas.add_rectangle(50.2, 60.8, 100.0, 80.0);
 
     // Select it
-    canvas.select_at(&Point::new(60.2, 70.8), false);
+    canvas.select_at(&Point::new(60.2, 70.8), 0.0, false);
     assert!(canvas.selected_id().is_some());
 
     // Move by fractional amount
@@ -88,7 +88,7 @@ fn test_shift_key_callback_infrastructure() {
 
     // Create test shape
     canvas.add_rectangle(10.5, 20.5, 50.0, 50.0);
-    canvas.select_at(&Point::new(10.5, 20.5), false);
+    canvas.select_at(&Point::new(10.5, 20.5), 0.0, false);
 
     // Verify snap function works
     canvas.snap_selected_to_mm();
@@ -107,7 +107,7 @@ fn test_canvas_focus_for_keyboard_events() {
     canvas.add_circle(Point::new(100.0, 100.0), 25.0);
 
     // Select first shape
-    canvas.select_at(&Point::new(25.0, 25.0), false);
+    canvas.select_at(&Point::new(25.0, 25.0), 0.0, false);
     assert_eq!(canvas.selected_id(), Some(1));
 
     // Perform a move (simulating what happens when focus is set)

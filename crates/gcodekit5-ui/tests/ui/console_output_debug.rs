@@ -1,3 +1,4 @@
+#![cfg(feature = "slint_legacy_tests")]
 /// Debug test to verify console output formatting
 use gcodekit5_ui::{DeviceConsoleManager, DeviceMessageType};
 

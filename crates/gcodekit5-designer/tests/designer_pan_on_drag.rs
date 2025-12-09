@@ -161,7 +161,7 @@ fn test_pan_with_selection_should_move_shape() {
 
     // Add and select a rectangle
     canvas.add_rectangle(100.0, 100.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(150.0, 150.0), false);
+    canvas.select_at(&Point::new(150.0, 150.0), 0.0, false);
 
     assert_eq!(canvas.selected_id(), Some(1));
 

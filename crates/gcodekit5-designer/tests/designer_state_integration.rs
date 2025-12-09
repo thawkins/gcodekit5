@@ -29,7 +29,7 @@ fn test_designer_state_complete_workflow() {
     assert!(state.canvas.zoom() > initial_zoom);
 
     // Test selection
-    state.canvas.select_at(&Point::new(25.0, 15.0), false);
+    state.canvas.select_at(&Point::new(25.0, 15.0), 0.0, false);
     assert!(state.canvas.selected_id().is_some());
 
     // Test deletion
@@ -119,7 +119,7 @@ fn test_designer_state_polyline_update() {
     state.canvas.add_polyline(vertices.clone());
     
     // Select it
-    state.canvas.select_at(&Point::new(50.0, 10.0), false);
+    state.canvas.select_at(&Point::new(50.0, 10.0), 0.0, false);
     assert!(state.canvas.selected_id().is_some());
     
     // Verify it's a PathShape

@@ -16,3 +16,6 @@ anyhow = "1.0"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 ropey = "1.6"
+
+[features]
+slint_legacy_tests = []

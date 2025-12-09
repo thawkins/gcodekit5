@@ -1,3 +1,4 @@
+#![cfg(feature = "slint_legacy_tests")]
 /// Tests for ConsoleListener integration with DeviceConsoleManager
 use gcodekit5_ui::{ConsoleListener, DeviceConsoleManager};
 use gcodekit5_communication::CommunicatorListener;

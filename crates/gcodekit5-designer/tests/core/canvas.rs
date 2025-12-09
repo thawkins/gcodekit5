@@ -17,7 +17,7 @@ fn test_canvas_select() {
     canvas.add_rectangle(0.0, 0.0, 10.0, 10.0);
 
     let p = Point::new(5.0, 5.0);
-    let selected = canvas.select_at(&p, false);
+    let selected = canvas.select_at(&p, 0.0, false);
 
     assert!(selected.is_some());
     assert_eq!(canvas.selected_id(), selected);
@@ -50,7 +50,7 @@ fn test_canvas_clear() {
 fn test_resize_handle_sequence() {
     let mut canvas = Canvas::with_size(1200.0, 800.0);
     canvas.add_rectangle(0.0, 0.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(50.0, 50.0), false);
+    canvas.select_at(&Point::new(50.0, 50.0), 0.0, false);
 
     // Verify initial state
     let shapes: Vec<_> = canvas.shapes().collect();
@@ -82,13 +82,13 @@ fn test_deselect_by_clicking_empty_space() {
 
     // Select the rectangle
     let p = Point::new(5.0, 5.0);
-    let selected = canvas.select_at(&p, false);
+    let selected = canvas.select_at(&p, 0.0, false);
     assert_eq!(selected, Some(rect_id));
     assert_eq!(canvas.selected_id(), Some(rect_id));
 
     // Click on empty space (far away from rectangle)
     let empty_point = Point::new(100.0, 100.0);
-    let result = canvas.select_at(&empty_point, false);
+    let result = canvas.select_at(&empty_point, 0.0, false);
 
     // Should return None (no shape at that point)
     assert_eq!(result, None);

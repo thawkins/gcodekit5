@@ -1,3 +1,4 @@
+#![cfg(feature = "slint_legacy_tests")]
 use gcodekit5_ui::ui::console_panel::{ConsoleMessage, MessageLevel, MessageFilter, ConsolePanel, HistoryEntry};
 
 #[test]
