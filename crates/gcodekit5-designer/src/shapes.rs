@@ -518,7 +518,7 @@ impl Line {
         let dist_to_end = self.end.distance_to(point);
         let line_length = self.length();
 
-        (dist_to_start + dist_to_end - line_length).abs() < tolerance
+        (dist_to_start + dist_to_end - line_length).abs() <= tolerance
     }
 
     pub fn translate(&mut self, dx: f64, dy: f64) {
