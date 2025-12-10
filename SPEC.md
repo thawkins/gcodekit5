@@ -1,10 +1,14 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.2.5-alpha.4
-**Last Updated**: 2025-12-09
+**Version**: 0.26.0-alpha.0
+**Last Updated**: 2025-12-10
 **Status**: Feature Release
 
-### Latest Release (v0.2.5-alpha.4) - Refactoring & Integration
+### Latest Release (v0.26.0-alpha.0) - Maintenance
+- ✅ **Version**
+  - Bumped version to 0.26.0-alpha.0.
+
+### Previous Release (v0.2.5-alpha.4) - Refactoring & Integration
 - ✅ **Refactor**
   - Major refactor of Designer and Visualizer integration.
   - Improved coordinate handling and rendering performance.

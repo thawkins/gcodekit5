@@ -1,5 +1,5 @@
 # Project Statistics
-Last Updated: 2025-12-09 (alpha.6)
+Last Updated: 2025-12-10 (0.26.0-alpha.0)
 
 ===============================================================================
  Language            Files        Lines         Code     Comments       Blanks

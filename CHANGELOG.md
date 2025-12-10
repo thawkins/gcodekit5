@@ -1,3 +1,8 @@
+## [0.26.0-alpha.0] - 2025-12-10
+
+### Changed
+- **Version**: Bumped version to 0.26.0-alpha.0.
+
 ## [0.2.5-alpha.6] - 2025-12-09
 
 ### Fixed
