@@ -5,6 +5,7 @@ use gtk4::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
+use tracing::error;
 
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
@@ -795,7 +796,7 @@ impl DeviceManagerWindow {
 
             // Save
             if let Err(e) = self.controller.update_profile_from_ui(model) {
-                eprintln!("Failed to save device profile: {}", e);
+                error!("Failed to save device profile: {}", e);
             }
 
             self.load_devices();

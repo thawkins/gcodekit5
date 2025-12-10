@@ -8,6 +8,7 @@ use crate::{
 };
 use crate::commands::*;
 use gcodekit5_core::Units;
+use tracing::error;
 
 /// Tool settings for the designer
 #[derive(Clone, Debug)]
@@ -1474,7 +1475,7 @@ impl DesignerState {
         let offsets = match crate::arrays::ArrayGenerator::generate(&operation) {
             Ok(offsets) => offsets,
             Err(e) => {
-                eprintln!("Failed to generate array offsets: {}", e);
+                error!("Failed to generate array offsets: {}", e);
                 return;
             }
         };

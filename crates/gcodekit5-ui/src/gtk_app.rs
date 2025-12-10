@@ -21,6 +21,7 @@ use gtk4::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
+use tracing::{info, debug};
 
 pub fn main() {
     let app = Application::builder()
@@ -290,7 +291,7 @@ pub fn main() {
 
         // Connect eStop
         status_bar.estop_btn.connect_clicked(|_| {
-            println!("Emergency Stop Triggered!");
+            info!("Emergency Stop Triggered!");
             // TODO: Implement actual eStop logic
         });
 
@@ -550,7 +551,7 @@ pub fn main() {
         for name in action_names {
             let action = gio::SimpleAction::new(name, None);
             action.connect_activate(move |_, _| {
-                println!("Action triggered: {}", name);
+                debug!("Action triggered: {}", name);
             });
             app.add_action(&action);
         }

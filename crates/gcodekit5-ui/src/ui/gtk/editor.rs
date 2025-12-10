@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::fs;
 use std::rc::Rc;
+use tracing::error;
 use std::thread;
 use std::sync::mpsc;
 use glib;
@@ -581,7 +582,7 @@ impl GcodeEditor {
                                 buffer.place_cursor(&start_iter);
                             }
                             Err(e) => {
-                                eprintln!("Error reading file: {}", e);
+                                error!("Error reading file: {}", e);
                                 // TODO: Show error dialog
                             }
                         }
@@ -603,7 +604,7 @@ impl GcodeEditor {
             let content = self.buffer.text(&start, &end, true);
             
             if let Err(e) = fs::write(&path, content.as_str()) {
-                eprintln!("Error saving file: {}", e);
+                error!("Error saving file: {}", e);
                 // TODO: Show error dialog
             }
         } else {
@@ -653,7 +654,7 @@ impl GcodeEditor {
                                 *current_file.borrow_mut() = Some(path);
                             }
                             Err(e) => {
-                                eprintln!("Error saving file: {}", e);
+                                error!("Error saving file: {}", e);
                                 // TODO: Show error dialog
                             }
                         }

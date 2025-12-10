@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{Box, Button, Label, ListBox, Orientation, ScrolledWindow, Entry};
 use std::rc::Rc;
 use std::cell::RefCell;
+use tracing::warn;
 
 use gcodekit5_designer::designer_state::DesignerState;
 
@@ -220,12 +221,12 @@ impl LayersPanel {
 
     fn group_selected_shapes(_state: &Rc<RefCell<DesignerState>>) {
         // TODO: Implement grouping logic when group support is added
-        println!("Group selected shapes - not yet implemented");
+        warn!("Group selected shapes - not yet implemented");
     }
 
     fn ungroup_selected_shapes(_state: &Rc<RefCell<DesignerState>>) {
         // TODO: Implement ungrouping logic when group support is added
-        println!("Ungroup selected shapes - not yet implemented");
+        warn!("Ungroup selected shapes - not yet implemented");
     }
 
     fn bring_to_front(state: &Rc<RefCell<DesignerState>>) {

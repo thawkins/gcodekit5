@@ -721,9 +721,9 @@ impl MachineControlView {
                 let mut content = String::new();
                 if let Some(ed) = editor.as_ref() {
                     content = ed.get_text();
-                    // println!("DEBUG: Retrieved {} chars from editor", content.len());
+
                 } else {
-                    // println!("DEBUG: Editor is None");
+
                 }
 
                 if content.trim().is_empty() {
@@ -757,7 +757,7 @@ impl MachineControlView {
                         queue.push_back(line.clone());
                     }
                     *total_lines.lock().unwrap() = queue.len();
-                    // println!("DEBUG: Queued {} lines", queue.len());
+
                 }
                 
                 *is_streaming.lock().unwrap() = true;
@@ -768,14 +768,14 @@ impl MachineControlView {
                 if let Ok(mut comm) = communicator.lock() {
                     let mut queue = send_queue.lock().unwrap();
                     if let Some(cmd) = queue.pop_front() {
-                        // println!("DEBUG: Kickstarting with: {}", cmd);
+
                         let _ = comm.send_command(&cmd);
                         *waiting_for_ack.lock().unwrap() = true;
                     } else {
-                        // println!("DEBUG: Queue empty on kickstart");
+
                     }
                 } else {
-                    // println!("DEBUG: Failed to lock communicator for kickstart");
+
                 }
             });
         }
@@ -1064,7 +1064,7 @@ impl MachineControlView {
                                     if let Ok(response_bytes) = comm.receive() {
                                         if !response_bytes.is_empty() {
                                             let s = String::from_utf8_lossy(&response_bytes);
-                                            // println!("DEBUG: Received: {}", s.trim());
+
                                             response_buffer.push_str(&s);
                                             
                                             // Process complete lines
@@ -1137,7 +1137,7 @@ impl MachineControlView {
                                                               }
 
                                                               if let Some(next_cmd) = queue.pop_front() {
-                                                                   // println!("DEBUG: Sending next: {}", next_cmd);
+
                                                                    let _ = comm.send_command(&next_cmd);
                                                                     *waiting_for_ack_poll.lock().unwrap() = true;
                                                               } else {

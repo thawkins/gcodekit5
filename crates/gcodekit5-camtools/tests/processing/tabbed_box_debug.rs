@@ -15,12 +15,8 @@ fn test_various_configurations() {
         ("Large kerf, inside", 3.0, 1.0, true),
     ];
 
-    for (name, thickness, burn, outside) in configs {
-        println!("\n=== {} ===", name);
-        println!(
-            "Thickness: {}mm, Burn: {}mm, Outside dims: {}",
-            thickness, burn, outside
-        );
+    for (_name, thickness, burn, outside) in configs {
+
 
         let params = BoxParameters {
             x: 100.0,
@@ -74,36 +70,25 @@ fn test_various_configurations() {
         }
 
         let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-        let max_y = y_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let _max_y = y_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-        let max_x = x_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let _max_x = x_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
 
-        println!("X range: {:.2} to {:.2}", min_x, max_x);
-        println!("Y range: {:.2} to {:.2}", min_y, max_y);
+
 
         if min_y < -0.1 {
             let tab_depth_y = min_y.abs();
-            println!("Tab protrusion in Y direction: {:.2}mm", tab_depth_y);
+
             if (tab_depth_y - thickness).abs() > 0.1 {
-                println!(
-                    "⚠️  WARNING: Tab depth {:.2}mm != thickness {:.2}mm (diff: {:.2}mm)",
-                    tab_depth_y,
-                    thickness,
-                    tab_depth_y - thickness
-                );
+
             }
         }
 
         if min_x < -0.1 {
             let tab_depth_x = min_x.abs();
-            println!("Tab protrusion in X direction: {:.2}mm", tab_depth_x);
+
             if (tab_depth_x - thickness).abs() > 0.1 {
-                println!(
-                    "⚠️  WARNING: Tab depth {:.2}mm != thickness {:.2}mm (diff: {:.2}mm)",
-                    tab_depth_x,
-                    thickness,
-                    tab_depth_x - thickness
-                );
+
             }
         }
     }

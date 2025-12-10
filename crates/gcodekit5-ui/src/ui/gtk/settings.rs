@@ -8,6 +8,7 @@ use libadwaita::{
     ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow, PreferencesWindow,
 };
 use std::rc::Rc;
+use tracing::error;
 
 use gcodekit5_settings::controller::{SettingUiModel, SettingsController};
 use gcodekit5_settings::view_model::SettingsCategory;
@@ -116,7 +117,7 @@ impl SettingsWindow {
                 switch.connect_state_set(move |_, state| {
                     controller_clone.update_setting(&id_clone, &state.to_string());
                     if let Err(e) = controller_clone.save() {
-                        eprintln!("Failed to save settings: {}", e);
+                        error!("Failed to save settings: {}", e);
                     }
                     glib::Propagation::Proceed
                 });

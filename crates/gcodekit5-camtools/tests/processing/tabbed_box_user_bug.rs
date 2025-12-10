@@ -57,17 +57,13 @@ fn test_user_reported_bug_thickness_1_5mm() {
     }
 
     let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-    let min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
+    let _min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
 
-    println!("\n=== USER BUG REPRODUCTION ===");
-    println!("Thickness parameter: 1.5mm");
-    println!("User reports actual cut tab depth: 6.7mm");
-    println!("Min Y in G-code: {:.2}", min_y);
-    println!("Min X in G-code: {:.2}", min_x);
+
 
     if min_y < 0.0 {
         let tab_depth = min_y.abs();
-        println!("Measured tab depth (Y): {:.2}mm", tab_depth);
+
 
         if (tab_depth - 6.7).abs() < 0.5 {
             panic!(
@@ -75,16 +71,9 @@ fn test_user_reported_bug_thickness_1_5mm() {
                 tab_depth
             );
         } else if (tab_depth - 1.5).abs() > 0.1 {
-            println!("WARNING: Tab depth {:.2}mm != expected 1.5mm", tab_depth);
-            println!("But also != user's 6.7mm measurement");
+
         }
     }
 
-    // Print first 50 lines of G-code for inspection
-    println!("\nFirst 50 G-code lines:");
-    for (i, line) in gcode.lines().take(50).enumerate() {
-        if line.contains("Y-") || line.contains("X-") {
-            println!("{}: {}", i, line);
-        }
-    }
+
 }

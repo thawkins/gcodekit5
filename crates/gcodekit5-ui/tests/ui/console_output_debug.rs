@@ -11,12 +11,7 @@ fn test_console_output_format() {
 
     let output = console_manager.get_output();
 
-    println!("\n=== Console Output Debug ===");
-    println!("Output:\n{}", output);
-    println!("Output length: {}", output.len());
-    println!("Contains 'GCodeKit4': {}", output.contains("GCodeKit4"));
-    println!("Contains 'Ready': {}", output.contains("Ready"));
-    println!("Output lines: {}", output.lines().count());
+
 
     assert!(!output.is_empty(), "Console output should not be empty");
     assert!(
@@ -41,8 +36,7 @@ fn test_console_output_with_connection() {
 
     let output = console_manager.get_output();
 
-    println!("\n=== Connection Messages ===");
-    println!("Output:\n{}", output);
+
 
     assert!(
         output.contains("Connecting"),

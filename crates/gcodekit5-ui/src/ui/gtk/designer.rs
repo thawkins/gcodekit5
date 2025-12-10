@@ -13,6 +13,7 @@ use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
 use crate::ui::gtk::designer_toolbox::{DesignerToolbox, DesignerTool};
 use gcodekit5_devicedb::DeviceManager;
 use std::sync::Arc;
+use tracing::error;
 use gcodekit5_core::constants as core_constants;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_layers::LayersPanel;
@@ -2832,7 +2833,7 @@ impl DesignerView {
                                 status_label.set_text(&format!("Loaded: {}", path.display()));
                             }
                             Err(e) => {
-                                eprintln!("Error loading file: {}", e);
+                                error!("Error loading file: {}", e);
                                 status_label.set_text(&format!("Error loading file: {}", e));
                             }
                         }
@@ -2919,7 +2920,7 @@ impl DesignerView {
                                 status_label.set_text(&format!("Imported: {}", path.display()));
                             }
                             Err(e) => {
-                                eprintln!("Error importing file: {}", e);
+                                error!("Error importing file: {}", e);
                                 status_label.set_text(&format!("Error importing file: {}", e));
                             }
                         }
@@ -2993,7 +2994,7 @@ impl DesignerView {
                                 status_label.set_text(&format!("Saved: {}", path.display()));
                             }
                             Err(e) => {
-                                eprintln!("Error saving file: {}", e);
+                                error!("Error saving file: {}", e);
                                 status_label.set_text(&format!("Error saving file: {}", e));
                             }
                         }
@@ -3026,7 +3027,7 @@ impl DesignerView {
                 self.set_status(&format!("Saved: {}", path.display()));
             }
             Err(e) => {
-                eprintln!("Error saving file: {}", e);
+                error!("Error saving file: {}", e);
                 self.set_status(&format!("Error saving file: {}", e));
             }
         }
@@ -3083,7 +3084,7 @@ impl DesignerView {
                                 status_label.set_text(&format!("Exported G-Code: {}", path.display()));
                             }
                             Err(e) => {
-                                eprintln!("Error exporting G-Code: {}", e);
+                                error!("Error exporting G-Code: {}", e);
                                 status_label.set_text(&format!("Error exporting G-Code: {}", e));
                             }
                         }
@@ -3223,7 +3224,7 @@ impl DesignerView {
                                 status_label.set_text(&format!("Exported SVG: {}", path.display()));
                             }
                             Err(e) => {
-                                eprintln!("Error exporting SVG: {}", e);
+                                error!("Error exporting SVG: {}", e);
                                 status_label.set_text(&format!("Error exporting SVG: {}", e));
                             }
                         }

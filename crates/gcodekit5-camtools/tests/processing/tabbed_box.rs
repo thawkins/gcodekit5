@@ -58,19 +58,15 @@ fn test_tab_protrusion_equals_thickness_no_kerf() {
     }
 
     let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-    let max_y = y_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-    let max_x = x_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let _max_y = y_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let _min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
+    let _max_x = x_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
 
-    println!("\n=== Test: No Kerf ===");
-    println!("Material thickness: 3.0mm");
-    println!("Y coordinate range: {:.2} to {:.2}", min_y, max_y);
-    println!("X coordinate range: {:.2} to {:.2}", min_x, max_x);
+
 
     if min_y < 0.0 {
         let tab_depth = min_y.abs();
-        println!("Measured tab protrusion depth: {:.2}mm", tab_depth);
-        println!("Expected: 6.0mm (2x thickness)");
+
         assert!(
             (tab_depth - 6.0).abs() < 0.1,
             "Tab depth {:.2}mm != expected 6.0mm (2x thickness)",
@@ -124,16 +120,11 @@ fn test_tab_protrusion_with_kerf() {
 
     let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
 
-    println!("\n=== Test: With Kerf 0.5mm ===");
-    println!("Material thickness: 3.0mm");
-    println!("Kerf: 0.5mm");
-    println!("Min Y coordinate: {:.2}", min_y);
+
 
     if min_y < 0.0 {
         let tab_depth = min_y.abs();
-        println!("Measured tab protrusion depth: {:.2}mm", tab_depth);
-        println!("Note: Current implementation uses thickness without kerf compensation");
-        println!("For proper fit, tab depth might need to be thickness + kerf = 3.5mm");
+
     }
 }
 
