@@ -26,6 +26,7 @@ pub struct SettingUiModel {
 pub struct SettingsController {
     pub dialog: Rc<RefCell<SettingsDialog>>,
     pub persistence: Rc<RefCell<SettingsPersistence>>,
+    listeners: Rc<RefCell<Vec<Box<dyn Fn(&str, &str)>>>>,
 }
 
 impl SettingsController {
@@ -37,7 +38,16 @@ impl SettingsController {
         Self {
             dialog,
             persistence,
+            listeners: Rc::new(RefCell::new(Vec::new())),
         }
+    }
+
+    /// Register a callback to be notified when a setting changes
+    pub fn on_setting_changed<F>(&self, callback: F)
+    where
+        F: Fn(&str, &str) + 'static,
+    {
+        self.listeners.borrow_mut().push(Box::new(callback));
     }
 
     /// Get settings formatted for UI display, optionally filtered by category
@@ -130,6 +140,12 @@ impl SettingsController {
 
         if let Some(val) = new_value_opt {
             dialog.update_setting(id, val);
+            
+            // Notify listeners
+            let listeners = self.listeners.borrow();
+            for listener in listeners.iter() {
+                listener(id, value);
+            }
         }
     }
 

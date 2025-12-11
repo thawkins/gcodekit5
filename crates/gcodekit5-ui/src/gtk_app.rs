@@ -2,7 +2,7 @@ use crate::ui::gtk::cam_tools::CamToolsView;
 use crate::ui::gtk::config_settings::ConfigSettingsView;
 use crate::ui::gtk::designer::DesignerView;
 use crate::ui::gtk::device_console::DeviceConsoleView;
-use crate::ui::gtk::device_info::DeviceInfoView;
+// DeviceInfoView is now embedded in the Device Config panel; standalone import removed.
 use crate::ui::gtk::device_manager::DeviceManagerWindow;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::machine_control::MachineControlView;
@@ -12,7 +12,10 @@ use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::tools_manager::ToolsManagerView;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
 use gcodekit5_communication::Communicator;
+use gcodekit5_settings::config::{Theme, StartupTab};
 use crate::device_status;
+use crate::i18n;
+use crate::t;
 use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{
@@ -29,6 +32,20 @@ pub fn main() {
         .build();
 
     app.connect_startup(|_| {
+        // Load settings early to get language preference
+        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
+            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+        
+        let language = if config_path.exists() {
+            gcodekit5_settings::SettingsPersistence::load_from_file(&config_path)
+                .map(|p| p.config().ui.language.clone())
+                .unwrap_or_else(|_| "system".to_string())
+        } else {
+            "system".to_string()
+        };
+
+        i18n::init(Some(language));
+        libadwaita::init().expect("Failed to initialize LibAdwaita");
         load_resources();
         load_css();
     });
@@ -66,6 +83,22 @@ pub fn main() {
             .borrow()
             .populate_dialog(&mut settings_dialog.borrow_mut());
 
+        // Apply initial theme
+        let current_theme = settings_persistence.borrow().config().ui.theme;
+        apply_theme(current_theme);
+
+        // Listen for theme changes
+        settings_controller.on_setting_changed(move |key, value| {
+            if key == "theme" {
+                let theme = match value {
+                    "Light" => Theme::Light,
+                    "Dark" => Theme::Dark,
+                    _ => Theme::System,
+                };
+                apply_theme(theme);
+            }
+        });
+
         let config_dir = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let device_config_path = config_dir.join("gcodekit5").join("devices.json");
         if let Some(parent) = device_config_path.parent() {
@@ -81,7 +114,7 @@ pub fn main() {
 
         let window = ApplicationWindow::builder()
             .application(app)
-            .title("GCodeKit5")
+            .title(t!("GCodeKit5"))
             .default_width(1200)
             .default_height(800)
             .build();
@@ -96,39 +129,39 @@ pub fn main() {
         let menu_bar_model = gio::Menu::new();
 
         let file_menu = gio::Menu::new();
-        file_menu.append(Some("New"), Some("app.file_new"));
-        file_menu.append(Some("Open"), Some("app.file_open"));
-        file_menu.append(Some("Save"), Some("app.file_save"));
-        file_menu.append(Some("Save As..."), Some("app.file_save_as"));
-        file_menu.append(Some("Import"), Some("app.file_import"));
-        file_menu.append(Some("Export G-Code..."), Some("app.file_export_gcode"));
-        file_menu.append(Some("Export SVG..."), Some("app.file_export_svg"));
-        file_menu.append(Some("Run"), Some("app.file_run"));
-        file_menu.append(Some("Quit"), Some("app.quit"));
-        menu_bar_model.append_submenu(Some("File"), &file_menu);
+        file_menu.append(Some(&t!("New")), Some("app.file_new"));
+        file_menu.append(Some(&t!("Open")), Some("app.file_open"));
+        file_menu.append(Some(&t!("Save")), Some("app.file_save"));
+        file_menu.append(Some(&t!("Save As...")), Some("app.file_save_as"));
+        file_menu.append(Some(&t!("Import")), Some("app.file_import"));
+        file_menu.append(Some(&t!("Export G-Code...")), Some("app.file_export_gcode"));
+        file_menu.append(Some(&t!("Export SVG...")), Some("app.file_export_svg"));
+        file_menu.append(Some(&t!("Run")), Some("app.file_run"));
+        file_menu.append(Some(&t!("Quit")), Some("app.quit"));
+        menu_bar_model.append_submenu(Some(&t!("File")), &file_menu);
 
         let edit_menu = gio::Menu::new();
-        edit_menu.append(Some("Undo"), Some("app.edit_undo"));
-        edit_menu.append(Some("Redo"), Some("app.edit_redo"));
-        edit_menu.append(Some("Cut"), Some("app.edit_cut"));
-        edit_menu.append(Some("Copy"), Some("app.edit_copy"));
-        edit_menu.append(Some("Paste"), Some("app.edit_paste"));
-        edit_menu.append(Some("Preferences"), Some("app.preferences"));
-        menu_bar_model.append_submenu(Some("Edit"), &edit_menu);
+        edit_menu.append(Some(&t!("Undo")), Some("app.edit_undo"));
+        edit_menu.append(Some(&t!("Redo")), Some("app.edit_redo"));
+        edit_menu.append(Some(&t!("Cut")), Some("app.edit_cut"));
+        edit_menu.append(Some(&t!("Copy")), Some("app.edit_copy"));
+        edit_menu.append(Some(&t!("Paste")), Some("app.edit_paste"));
+        edit_menu.append(Some(&t!("Preferences")), Some("app.preferences"));
+        menu_bar_model.append_submenu(Some(&t!("Edit")), &edit_menu);
 
 
 
         let machine_menu = gio::Menu::new();
-        machine_menu.append(Some("Connect"), Some("app.machine_connect"));
-        machine_menu.append(Some("Disconnect"), Some("app.machine_disconnect"));
-        machine_menu.append(Some("Home"), Some("app.machine_home"));
-        machine_menu.append(Some("Reset"), Some("app.machine_reset"));
-        menu_bar_model.append_submenu(Some("Machine"), &machine_menu);
+        machine_menu.append(Some(&t!("Connect")), Some("app.machine_connect"));
+        machine_menu.append(Some(&t!("Disconnect")), Some("app.machine_disconnect"));
+        machine_menu.append(Some(&t!("Home")), Some("app.machine_home"));
+        machine_menu.append(Some(&t!("Reset")), Some("app.machine_reset"));
+        menu_bar_model.append_submenu(Some(&t!("Machine")), &machine_menu);
 
         let help_menu = gio::Menu::new();
-        help_menu.append(Some("Documentation"), Some("app.help_docs"));
-        help_menu.append(Some("About"), Some("app.about"));
-        menu_bar_model.append_submenu(Some("Help"), &help_menu);
+        help_menu.append(Some(&t!("Documentation")), Some("app.help_docs"));
+        help_menu.append(Some(&t!("About")), Some("app.about"));
+        menu_bar_model.append_submenu(Some(&t!("Help")), &help_menu);
 
         let menu_bar = PopoverMenuBar::from_model(Some(&menu_bar_model));
         main_box.append(&menu_bar);
@@ -154,7 +187,7 @@ pub fn main() {
         let editor = Rc::new(GcodeEditor::new(Some(status_bar.clone())));
 
         // 4. Visualizer (Created early for MachineControl dependency)
-        let visualizer = Rc::new(GcodeVisualizer::new(Some(device_manager.clone())));
+        let visualizer = Rc::new(GcodeVisualizer::new(Some(device_manager.clone()), settings_controller.clone()));
 
         // 2. Machine Control
         let machine_control = MachineControlView::new(
@@ -162,13 +195,13 @@ pub fn main() {
             Some(device_console.clone()),
             Some(editor.clone()),
             Some(visualizer.clone()),
+            Some(settings_controller.clone()),
         );
-        stack.add_titled(&machine_control.widget, Some("machine"), "Machine Control");
+        stack.add_titled(&machine_control.widget, Some("machine"), &t!("Machine Control"));
 
         // Machine Control event handlers are wired up internally in MachineControlView::new()
 
-        // Add Device Console to stack
-        stack.add_titled(&device_console.widget, Some("console"), "Device Console");
+        // Device Console is now embedded in the Machine Control right-hand panel
 
         // Wire up console send
         let communicator = machine_control.communicator.clone();
@@ -204,10 +237,10 @@ pub fn main() {
         // Polling is now handled centrally by MachineControlView to avoid race conditions on serial read
 
         // Add Editor to Stack
-        stack.add_titled(&editor.widget, Some("editor"), "G-Code Editor");
+        stack.add_titled(&editor.widget, Some("editor"), &t!("G-Code Editor"));
 
         // 4. Visualizer (Already created)
-        stack.add_titled(&visualizer.widget, Some("visualizer"), "Visualizer");
+        stack.add_titled(&visualizer.widget, Some("visualizer"), &t!("Visualizer"));
 
         // Connect Editor to Visualizer
         let vis_clone = visualizer.clone();
@@ -226,11 +259,11 @@ pub fn main() {
             stack_clone_for_cam.set_visible_child_name("editor");
             editor_clone.grab_focus();
         });
-        stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
+        stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), &t!("CAM Tools"));
 
         // 6. Designer
-        let designer = DesignerView::new(Some(device_manager.clone()), Some(settings_persistence.clone()));
-        stack.add_titled(&designer.widget, Some("designer"), "Designer");
+        let designer = DesignerView::new(Some(device_manager.clone()), settings_controller.clone());
+        stack.add_titled(&designer.widget, Some("designer"), &t!("Designer"));
 
         // Connect Designer G-Code Generation to Editor
         let editor_clone_gen = editor.clone();
@@ -241,18 +274,13 @@ pub fn main() {
             editor_clone_gen.grab_focus();
         });
 
-        // 7. Device Info
-        let device_info = DeviceInfoView::new();
-        stack.add_titled(&device_info.container, Some("device_info"), "Device Info");
-
-        // 8. Device Config
+        // 7. Device Config (single panel now includes device info on the left)
         let config_settings = ConfigSettingsView::new();
         config_settings.set_communicator(machine_control.communicator.clone());
         config_settings.set_device_console(device_console.clone());
-        stack.add_titled(&config_settings.container, Some("config"), "Device Config");
+        stack.add_titled(&config_settings.container, Some("config"), &t!("Device Config"));
 
         // Connect device info and config to machine control connection state
-        let device_info_clone = device_info.clone();
         let config_settings_clone = config_settings.clone();
         let communicator_for_device = machine_control.communicator.clone();
         
@@ -270,17 +298,11 @@ pub fn main() {
                     status.port_name.as_deref().unwrap_or("CNC Device")
                 });
                 
-                device_info_clone.set_connected(
-                    true,
-                    device_name,
-                    firmware_type,
-                    firmware_version
-                );
-                device_info_clone.load_sample_capabilities();
                 config_settings_clone.set_connected(true);
+                config_settings_clone.set_device_info(true, device_name, firmware_type, firmware_version);
             } else {
-                device_info_clone.set_connected(false, "", "", "");
                 config_settings_clone.set_connected(false);
+                config_settings_clone.set_device_info(false, "", "", "");
             }
             
             glib::ControlFlow::Continue
@@ -291,16 +313,16 @@ pub fn main() {
         stack.add_titled(
             &device_manager_view.widget,
             Some("devices"),
-            "Device Manager",
+            &t!("Device Manager"),
         );
 
         // 10. CNC Tools
         let tools_manager = ToolsManagerView::new();
-        stack.add_titled(&tools_manager.widget, Some("tools"), "CNC Tools");
+        stack.add_titled(&tools_manager.widget, Some("tools"), &t!("CNC Tools"));
 
         // 11. Materials
         let materials_manager = MaterialsManagerView::new();
-        stack.add_titled(&materials_manager.widget, Some("materials"), "Materials");
+        stack.add_titled(&materials_manager.widget, Some("materials"), &t!("Materials"));
 
         main_box.append(&content_box);
 
@@ -341,8 +363,13 @@ pub fn main() {
 
         let stack_clone = stack.clone();
         let console_action = gio::SimpleAction::new("view_console", None);
+        let machine_control_clone_for_console = machine_control.clone();
         console_action.connect_activate(move |_, _| {
-            stack_clone.set_visible_child_name("console");
+            stack_clone.set_visible_child_name("machine");
+            // Focus the console input on request
+            if let Some(console_view) = machine_control_clone_for_console.device_console.as_ref() {
+                console_view.command_entry.grab_focus();
+            }
         });
         app.add_action(&console_action);
 
@@ -463,12 +490,12 @@ pub fn main() {
         let about_action = gio::SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {
             let about_dialog = gtk4::AboutDialog::builder()
-                .program_name("GCodeKit5")
+                .program_name(t!("GCodeKit5"))
                 .version(env!("CARGO_PKG_VERSION"))
-                .comments("GCode Toolkit for CNC/Laser Machines")
+                .comments(t!("GCode Toolkit for CNC/Laser Machines"))
                 .website("https://github.com/thawkins/gcodekit5")
                 .license_type(gtk4::License::MitX11)
-                .authors(vec!["GCodeKit Contributors".to_string()])
+                .authors(vec![t!("GCodeKit Contributors")])
                 .logo_icon_name("application-x-executable")
                 .build();
 
@@ -568,9 +595,18 @@ pub fn main() {
 
         for name in action_names {
             let action = gio::SimpleAction::new(name, None);
-            action.connect_activate(move |_, _| {
-                debug!("Action triggered: {}", name);
-            });
+            if name == "quit" {
+                let app_for_quit = app.clone();
+                action.connect_activate(move |_, _| {
+                    // Gracefully quit the application
+                    app_for_quit.quit();
+                });
+            } else {
+                let name = name.to_string();
+                action.connect_activate(move |_, _| {
+                    debug!("Action triggered: {}", name);
+                });
+            }
             app.add_action(&action);
         }
         
@@ -639,6 +675,23 @@ pub fn main() {
         app.set_accels_for_action("app.machine_home", &["<Control>h"]);
         // app.set_accels_for_action("app.machine_reset", &["F5"]); // Disabled as F5 is mapped to Run now if desired, or keep F5 for refresh/reset? keeping both might be conflict using alternate for Run
 
+        // Set initial tab based on settings
+        let startup_tab = settings_persistence.borrow().config().ui.startup_tab;
+        let tab_name = match startup_tab {
+            StartupTab::Machine => "machine",
+            StartupTab::Console => "machine",
+            StartupTab::Editor => "editor",
+            StartupTab::Visualizer => "visualizer",
+            StartupTab::CamTools => "cam_tools",
+            StartupTab::Designer => "designer",
+            StartupTab::DeviceInfo => "config",
+            StartupTab::Config => "config",
+            StartupTab::Devices => "devices",
+            StartupTab::Tools => "tools",
+            StartupTab::Materials => "materials",
+        };
+        stack.set_visible_child_name(tab_name);
+
         window.present();
     });
 
@@ -661,4 +714,13 @@ fn load_css() {
         &provider,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+}
+
+fn apply_theme(theme: Theme) {
+    let manager = libadwaita::StyleManager::default();
+    match theme {
+        Theme::System => manager.set_color_scheme(libadwaita::ColorScheme::Default),
+        Theme::Light => manager.set_color_scheme(libadwaita::ColorScheme::ForceLight),
+        Theme::Dark => manager.set_color_scheme(libadwaita::ColorScheme::ForceDark),
+    }
 }

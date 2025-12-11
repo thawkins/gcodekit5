@@ -281,13 +281,11 @@ impl StockSimulator2D {
         let z = self.stock.thickness - z_depth.abs();
         
         // Debug first few moves
-        static mut MOVE_COUNT: usize = 0;
-        unsafe {
-            if MOVE_COUNT < 5 {
-                eprintln!("DEBUG: Linear move {} - z_depth={}, calculated z={}, stock.thickness={}", 
-                    MOVE_COUNT, z_depth, z, self.stock.thickness);
-                MOVE_COUNT += 1;
-            }
+        static MOVE_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let count = MOVE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if count < 5 {
+            eprintln!("DEBUG: Linear move {} - z_depth={}, calculated z={}, stock.thickness={}", 
+                count, z_depth, z, self.stock.thickness);
         }
         
         let dx = end.x - start.x;
@@ -365,13 +363,11 @@ impl StockSimulator2D {
         let (center_px, center_py) = self.height_map.world_to_pixel(cx, cy);
         
         // Debug first few footprint calls
-        static mut FOOTPRINT_COUNT: usize = 0;
-        unsafe {
-            if FOOTPRINT_COUNT < 5 {
-                eprintln!("DEBUG: apply_tool_footprint #{} - pos:({:.2},{:.2}), z:{:.2}, tool_radius:{:.2}, radius_px:{}, center_px:({},{})", 
-                    FOOTPRINT_COUNT, cx, cy, cz, self.tool_radius, radius_px, center_px, center_py);
-                FOOTPRINT_COUNT += 1;
-            }
+        static FOOTPRINT_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let count = FOOTPRINT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if count < 5 {
+            eprintln!("DEBUG: apply_tool_footprint #{} - pos:({:.2},{:.2}), z:{:.2}, tool_radius:{:.2}, radius_px:{}, center_px:({},{})", 
+                count, cx, cy, cz, self.tool_radius, radius_px, center_px, center_py);
         }
 
         // Iterate over a square bounding box around the tool

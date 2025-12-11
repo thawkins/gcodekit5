@@ -2,6 +2,7 @@
 
 ### Changed
 - **Visualizer**: Removed debug println! statements to clean up console output.
+- **Designer**: Added unit labels (mm, deg) to the Properties Panel for better clarity.
 - **Version**: Bumped version to 0.29.0-alpha.0.
 
 ## [0.28.0-alpha.0] - 2025-12-11

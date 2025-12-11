@@ -8,6 +8,7 @@ pub mod editor;
 pub mod device_status;
 pub mod helpers;
 pub mod types;
+pub mod i18n;
 
 // Re-export settings for convenience if needed
 pub use gcodekit5_settings::{

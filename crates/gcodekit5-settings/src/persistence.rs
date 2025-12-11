@@ -101,9 +101,26 @@ impl SettingsPersistence {
             Setting::new(
                 "measurement_system",
                 "Measurement System",
-                SettingValue::Enum(ui.measurement_system.clone(), systems),
+                SettingValue::Enum(ui.measurement_system.to_string(), systems),
             )
             .with_description("Units for display and input (Metric/mm or Imperial/inch)")
+            .with_category(SettingsCategory::General),
+        );
+
+        // Feed Rate Units
+        let feed_units = vec![
+            "mm/min".to_string(),
+            "mm/sec".to_string(),
+            "in/min".to_string(),
+            "in/sec".to_string(),
+        ];
+        dialog.add_setting(
+            Setting::new(
+                "feed_rate_units",
+                "Feed Rate Units",
+                SettingValue::Enum(ui.feed_rate_units.to_string(), feed_units),
+            )
+            .with_description("Units for feed rate display and input")
             .with_category(SettingsCategory::General),
         );
 
@@ -124,14 +141,67 @@ impl SettingsPersistence {
         let ui = &self.config.ui;
 
         // Theme
-        let themes = vec!["Dark".to_string(), "Light".to_string(), "System".to_string()];
+        let themes = vec!["System".to_string(), "Light".to_string(), "Dark".to_string()];
         dialog.add_setting(
             Setting::new(
                 "theme",
                 "Theme",
-                SettingValue::Enum(ui.theme.clone(), themes),
+                SettingValue::Enum(ui.theme.to_string(), themes),
             )
             .with_description("Application color theme (Light, Dark, or System default)")
+            .with_category(SettingsCategory::UserInterface),
+        );
+
+        // Language
+        let languages = vec![
+            "System".to_string(),
+            "English".to_string(),
+            "French".to_string(),
+            "German".to_string(),
+            "Spanish".to_string(),
+            "Portuguese".to_string(),
+            "Italian".to_string(),
+        ];
+        let current_language = match ui.language.as_str() {
+            "en" => "English",
+            "fr" => "French",
+            "de" => "German",
+            "es" => "Spanish",
+            "pt" => "Portuguese",
+            "it" => "Italian",
+            _ => "System",
+        };
+        dialog.add_setting(
+            Setting::new(
+                "language",
+                "Language",
+                SettingValue::Enum(current_language.to_string(), languages),
+            )
+            .with_description("User interface language (requires restart)")
+            .with_category(SettingsCategory::UserInterface),
+        );
+
+        // Startup Tab
+        let startup_tabs = vec![
+            "Machine".to_string(),
+            "Console".to_string(),
+            "Editor".to_string(),
+            "Visualizer".to_string(),
+            "CamTools".to_string(),
+            "Designer".to_string(),
+            "DeviceInfo".to_string(),
+            "Config".to_string(),
+            "Devices".to_string(),
+            "Tools".to_string(),
+            "Materials".to_string(),
+        ];
+        dialog.add_setting(
+            Setting::new(
+                "startup_tab",
+                "Startup Tab",
+                SettingValue::Enum(ui.startup_tab.to_string(), startup_tabs),
+            )
+            .with_description("Tab to show when application starts")
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -261,7 +331,21 @@ impl SettingsPersistence {
     /// Update General settings in config from dialog
     fn update_general_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
         if let Some(setting) = dialog.get_setting("measurement_system") {
-            self.config.ui.measurement_system = setting.value.as_str();
+            let system_str = setting.value.as_str();
+            self.config.ui.measurement_system = match system_str.as_str() {
+                "Imperial" => crate::config::MeasurementSystem::Imperial,
+                _ => crate::config::MeasurementSystem::Metric,
+            };
+        }
+
+        if let Some(setting) = dialog.get_setting("feed_rate_units") {
+            let units_str = setting.value.as_str();
+            self.config.ui.feed_rate_units = match units_str.as_str() {
+                "mm/sec" => crate::config::FeedRateUnits::MmPerSec,
+                "in/min" => crate::config::FeedRateUnits::InPerMin,
+                "in/sec" => crate::config::FeedRateUnits::InPerSec,
+                _ => crate::config::FeedRateUnits::MmPerMin,
+            };
         }
 
         if let Some(setting) = dialog.get_setting("default_directory") {
@@ -276,7 +360,43 @@ impl SettingsPersistence {
     /// Update UI settings in config from dialog
     fn update_ui_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
         if let Some(setting) = dialog.get_setting("theme") {
-            self.config.ui.theme = setting.value.as_str();
+            let theme_str = setting.value.as_str();
+            self.config.ui.theme = match theme_str.as_str() {
+                "Light" => crate::config::Theme::Light,
+                "Dark" => crate::config::Theme::Dark,
+                _ => crate::config::Theme::System,
+            };
+        }
+
+        if let Some(setting) = dialog.get_setting("language") {
+            let lang_str = setting.value.as_str();
+            self.config.ui.language = match lang_str.as_str() {
+                "English" => "en".to_string(),
+                "French" => "fr".to_string(),
+                "German" => "de".to_string(),
+                "Spanish" => "es".to_string(),
+                "Portuguese" => "pt".to_string(),
+                "Italian" => "it".to_string(),
+                _ => "system".to_string(),
+            };
+        }
+
+        if let Some(setting) = dialog.get_setting("startup_tab") {
+            let tab_str = setting.value.as_str();
+            self.config.ui.startup_tab = match tab_str.as_str() {
+                "Machine" => crate::config::StartupTab::Machine,
+                "Console" => crate::config::StartupTab::Console,
+                "Editor" => crate::config::StartupTab::Editor,
+                "Visualizer" => crate::config::StartupTab::Visualizer,
+                "CamTools" => crate::config::StartupTab::CamTools,
+                "Designer" => crate::config::StartupTab::Designer,
+                "DeviceInfo" => crate::config::StartupTab::DeviceInfo,
+                "Config" => crate::config::StartupTab::Config,
+                "Devices" => crate::config::StartupTab::Devices,
+                "Tools" => crate::config::StartupTab::Tools,
+                "Materials" => crate::config::StartupTab::Materials,
+                _ => crate::config::StartupTab::Machine,
+            };
         }
 
         if let Some(setting) = dialog.get_setting("window_width") {

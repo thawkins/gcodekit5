@@ -37,6 +37,8 @@ arboard = "3.4"
 glam = "0.29"
 glow = "0.14"
 libloading = "0.8"
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
+sys-locale = "0.3"
 
 [build-dependencies]
 chrono = "0.4"

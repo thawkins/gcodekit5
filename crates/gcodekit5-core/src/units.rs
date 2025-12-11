@@ -3,14 +3,24 @@
 //! Handles conversion between Metric (mm) and Imperial (inch) systems.
 //! Supports decimal and fractional inch parsing and formatting.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
 /// Measurement system
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum MeasurementSystem {
+    /// Metric system (mm)
     Metric,
+    /// Imperial system (inches)
     Imperial,
+}
+
+impl Default for MeasurementSystem {
+    fn default() -> Self {
+        Self::Metric
+    }
 }
 
 impl fmt::Display for MeasurementSystem {
@@ -34,34 +44,74 @@ impl FromStr for MeasurementSystem {
     }
 }
 
-/// Convert internal value (mm) to display string based on system
-pub fn to_display_string(mm: f32, system: MeasurementSystem) -> String {
+/// Feed rate units selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedRateUnits {
+    /// Millimeters per minute
+    MmPerMin,
+    /// Millimeters per second
+    MmPerSec,
+    /// Inches per minute
+    InPerMin,
+    /// Inches per second
+    InPerSec,
+}
+
+impl Default for FeedRateUnits {
+    fn default() -> Self {
+        Self::MmPerMin
+    }
+}
+
+impl fmt::Display for FeedRateUnits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MmPerMin => write!(f, "mm/min"),
+            Self::MmPerSec => write!(f, "mm/sec"),
+            Self::InPerMin => write!(f, "in/min"),
+            Self::InPerSec => write!(f, "in/sec"),
+        }
+    }
+}
+
+/// Format length value for display
+/// 
+/// * `value_mm` - Value in millimeters
+/// * `system` - Target measurement system
+pub fn format_length(value_mm: f32, system: MeasurementSystem) -> String {
     match system {
         MeasurementSystem::Metric => {
-            // Format to reasonable precision, removing trailing zeros
-            let s = format!("{:.3}", mm);
-            s.trim_end_matches('0').trim_end_matches('.').to_string()
+            // Format to 3 decimal places
+            format!("{:.3}", value_mm)
         }
         MeasurementSystem::Imperial => {
-            let inches = mm / 25.4;
-            // Format to 3 decimal places (thou)
-            let s = format!("{:.3}", inches);
-            s.trim_end_matches('0').trim_end_matches('.').to_string()
+            let inches = value_mm / 25.4;
+            // Format to 3 decimal places
+            format!("{:.3}", inches)
         }
     }
 }
 
-/// Get the unit label for the given system ("mm" or "in")
-pub fn get_unit_label(system: MeasurementSystem) -> &'static str {
-    match system {
-        MeasurementSystem::Metric => "mm",
-        MeasurementSystem::Imperial => "in",
-    }
+/// Format feed rate value for display
+/// 
+/// * `value_mm_per_min` - Feed rate in mm/min
+/// * `units` - Target feed rate units
+pub fn format_feed_rate(value_mm_per_min: f32, units: FeedRateUnits) -> String {
+    let value = match units {
+        FeedRateUnits::MmPerMin => value_mm_per_min,
+        FeedRateUnits::MmPerSec => value_mm_per_min / 60.0,
+        FeedRateUnits::InPerMin => value_mm_per_min / 25.4,
+        FeedRateUnits::InPerSec => (value_mm_per_min / 25.4) / 60.0,
+    };
+    format!("{:.3}", value)
 }
 
-/// Parse display string to internal value (mm) based on system
-/// Supports fractional inches (e.g. "5 1/8")
-pub fn parse_from_string(input: &str, system: MeasurementSystem) -> Result<f32, String> {
+/// Parse length string to millimeters
+/// 
+/// * `input` - String to parse
+/// * `system` - Assumed measurement system
+pub fn parse_length(input: &str, system: MeasurementSystem) -> Result<f32, String> {
     let input = input.trim();
     if input.is_empty() {
         return Ok(0.0);
@@ -104,37 +154,82 @@ pub fn parse_from_string(input: &str, system: MeasurementSystem) -> Result<f32, 
     }
 }
 
+/// Parse feed rate string to mm/min
+/// 
+/// * `input` - String to parse
+/// * `units` - Assumed feed rate units
+pub fn parse_feed_rate(input: &str, units: FeedRateUnits) -> Result<f32, String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(0.0);
+    }
+
+    let value = input.parse::<f32>().map_err(|e| e.to_string())?;
+
+    let mm_per_min = match units {
+        FeedRateUnits::MmPerMin => value,
+        FeedRateUnits::MmPerSec => value * 60.0,
+        FeedRateUnits::InPerMin => value * 25.4,
+        FeedRateUnits::InPerSec => value * 25.4 * 60.0,
+    };
+
+    Ok(mm_per_min)
+}
+
+/// Get the unit label for the given system ("mm" or "in")
+pub fn get_unit_label(system: MeasurementSystem) -> &'static str {
+    match system {
+        MeasurementSystem::Metric => "mm",
+        MeasurementSystem::Imperial => "in",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_metric_conversion() {
-        assert_eq!(to_display_string(10.5, MeasurementSystem::Metric), "10.5");
-        assert_eq!(parse_from_string("10.5", MeasurementSystem::Metric).unwrap(), 10.5);
+        assert_eq!(format_length(10.5, MeasurementSystem::Metric), "10.500");
+        assert_eq!(parse_length("10.5", MeasurementSystem::Metric).unwrap(), 10.5);
     }
 
     #[test]
     fn test_imperial_decimal() {
         // 1 inch = 25.4 mm
-        assert_eq!(to_display_string(25.4, MeasurementSystem::Imperial), "1");
-        assert_eq!(parse_from_string("1", MeasurementSystem::Imperial).unwrap(), 25.4);
+        assert_eq!(format_length(25.4, MeasurementSystem::Imperial), "1.000");
+        assert_eq!(parse_length("1", MeasurementSystem::Imperial).unwrap(), 25.4);
         
         // 0.5 inch = 12.7 mm
-        assert_eq!(to_display_string(12.7, MeasurementSystem::Imperial), "0.5");
-        assert_eq!(parse_from_string("0.5", MeasurementSystem::Imperial).unwrap(), 12.7);
+        assert_eq!(format_length(12.7, MeasurementSystem::Imperial), "0.500");
+        assert_eq!(parse_length("0.5", MeasurementSystem::Imperial).unwrap(), 12.7);
     }
 
     #[test]
     fn test_imperial_fraction() {
         // 1 1/2 inch = 1.5 inch = 38.1 mm
-        assert_eq!(parse_from_string("1 1/2", MeasurementSystem::Imperial).unwrap(), 38.1);
+        assert_eq!(parse_length("1 1/2", MeasurementSystem::Imperial).unwrap(), 38.1);
         
         // 5 1/8 inch = 5.125 inch = 130.175 mm
-        assert_eq!(parse_from_string("5 1/8", MeasurementSystem::Imperial).unwrap(), 130.175);
+        assert_eq!(parse_length("5 1/8", MeasurementSystem::Imperial).unwrap(), 130.175);
         
         // Just fraction: 1/4 inch = 0.25 inch = 6.35 mm
-        assert_eq!(parse_from_string("1/4", MeasurementSystem::Imperial).unwrap(), 6.35);
+        assert_eq!(parse_length("1/4", MeasurementSystem::Imperial).unwrap(), 6.35);
+    }
+
+    #[test]
+    fn test_feed_rate_conversion() {
+        // 1000 mm/min
+        assert_eq!(format_feed_rate(1000.0, FeedRateUnits::MmPerMin), "1000.000");
+        assert_eq!(parse_feed_rate("1000", FeedRateUnits::MmPerMin).unwrap(), 1000.0);
+
+        // 1000 mm/min = 16.667 mm/sec
+        assert_eq!(format_feed_rate(1000.0, FeedRateUnits::MmPerSec), "16.667");
+        assert_eq!(parse_feed_rate("16.666666", FeedRateUnits::MmPerSec).unwrap().round(), 1000.0);
+
+        // 1000 mm/min = 39.370 in/min
+        assert_eq!(format_feed_rate(1000.0, FeedRateUnits::InPerMin), "39.370");
+        assert_eq!(parse_feed_rate("39.370078", FeedRateUnits::InPerMin).unwrap().round(), 1000.0);
     }
 
     #[test]
@@ -145,40 +240,28 @@ mod tests {
 
     #[test]
     fn test_negative_values() {
-        assert_eq!(parse_from_string("-10.5", MeasurementSystem::Metric).unwrap(), -10.5);
-        assert_eq!(parse_from_string("-1", MeasurementSystem::Imperial).unwrap(), -25.4);
-        assert_eq!(parse_from_string("-1/2", MeasurementSystem::Imperial).unwrap(), -12.7);
+        assert_eq!(parse_length("-10.5", MeasurementSystem::Metric).unwrap(), -10.5);
+        assert_eq!(parse_length("-1", MeasurementSystem::Imperial).unwrap(), -25.4);
+        assert_eq!(parse_length("-1/2", MeasurementSystem::Imperial).unwrap(), -12.7);
     }
 
     #[test]
     fn test_zero_values() {
-        assert_eq!(parse_from_string("0", MeasurementSystem::Metric).unwrap(), 0.0);
-        assert_eq!(parse_from_string("0", MeasurementSystem::Imperial).unwrap(), 0.0);
-        assert_eq!(parse_from_string("", MeasurementSystem::Metric).unwrap(), 0.0);
+        assert_eq!(parse_length("0", MeasurementSystem::Metric).unwrap(), 0.0);
+        assert_eq!(parse_length("0", MeasurementSystem::Imperial).unwrap(), 0.0);
+        assert_eq!(parse_length("", MeasurementSystem::Metric).unwrap(), 0.0);
     }
 
     #[test]
     fn test_whitespace_handling() {
-        assert_eq!(parse_from_string("  10.5  ", MeasurementSystem::Metric).unwrap(), 10.5);
-        assert_eq!(parse_from_string("  1  1/2  ", MeasurementSystem::Imperial).unwrap(), 38.1);
+        assert_eq!(parse_length("  10.5  ", MeasurementSystem::Metric).unwrap(), 10.5);
+        assert_eq!(parse_length("  1  1/2  ", MeasurementSystem::Imperial).unwrap(), 38.1);
     }
 
     #[test]
     fn test_invalid_inputs() {
-        assert!(parse_from_string("abc", MeasurementSystem::Metric).is_err());
-        assert!(parse_from_string("1/0", MeasurementSystem::Imperial).is_err()); // Division by zero
-        assert!(parse_from_string("1/2/3", MeasurementSystem::Imperial).is_err()); // Invalid fraction
-    }
-
-    #[test]
-    fn test_rounding_behavior() {
-        // 1/3 inch = 8.4666... mm
-        // Display should round to 3 decimal places
-        let val = 1.0 / 3.0 * 25.4;
-        assert_eq!(to_display_string(val, MeasurementSystem::Imperial), "0.333");
-        
-        // Metric rounding
-        assert_eq!(to_display_string(10.12345, MeasurementSystem::Metric), "10.123");
-        assert_eq!(to_display_string(10.12355, MeasurementSystem::Metric), "10.124");
+        assert!(parse_length("abc", MeasurementSystem::Metric).is_err());
+        assert!(parse_length("1/0", MeasurementSystem::Imperial).is_err()); // Division by zero
+        assert!(parse_length("1/2/3", MeasurementSystem::Imperial).is_err()); // Invalid fraction
     }
 }

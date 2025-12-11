@@ -1,8 +1,34 @@
 /* GCodeKit5 Custom Styles */
 
+:root {
+    /* Semantic Colors mapped to GTK/Adwaita theme colors */
+    --bg-color: @theme_bg_color;
+    --fg-color: @theme_fg_color;
+    --border-color: @borders;
+    --accent-color: @accent_color;
+    --accent-bg-color: @accent_bg_color;
+    --accent-fg-color: @accent_fg_color;
+    --success-color: @success_color;
+    --warning-color: @warning_color;
+    --error-color: @error_color;
+    --window-bg-color: @window_bg_color;
+    --window-fg-color: @window_fg_color;
+    --view-bg-color: @view_bg_color;
+    --view-fg-color: @view_fg_color;
+    --card-bg-color: @card_bg_color;
+    --card-fg-color: @card_fg_color;
+    
+    /* Custom Semantic Colors */
+    --sidebar-bg: alpha(@window_bg_color, 0.95);
+    --console-bg: @view_bg_color;
+    --console-fg: @view_fg_color;
+    --status-bar-bg: @headerbar_bg_color; /* Fallback or specific */
+    --status-bar-fg: @headerbar_fg_color;
+}
+
 /* Visualizer Container */
 .visualizer-container {
-    background-color: #1e1e1e;
+    background-color: var(--view-bg-color);
 }
 
 /* Editor styling tweaks if needed */
@@ -10,47 +36,56 @@ textview {
     font-family: "Monospace";
 }
 
+/* Console TextView */
+.console-view textview {
+    background-color: var(--console-bg);
+    color: var(--console-fg);
+}
+
 /* Designer Canvas */
 .designer-canvas {
-    background-color: #f0f0f0;
+    background-color: var(--view-bg-color);
+    color: var(--view-fg-color);
 }
 
 /* Designer Toolbox */
 .designer-toolbox {
-    background-color: #34495e;
-    border-right: 1px solid #2c3e50;
+    background-color: var(--card-bg-color);
+    border-right: 1px solid var(--border-color);
 }
 
 .designer-toolbox button {
-    background-color: #2c3e50;
+    background-color: var(--card-bg-color);
     border: 2px solid transparent;
     border-radius: 4px;
-    color: #ecf0f1;
+    color: var(--card-fg-color);
     margin: 2px;
 }
 
 .designer-toolbox button:hover {
-    background-color: #3d5a80;
+    background-color: alpha(@accent_bg_color, 0.1);
 }
 
 .designer-toolbox button.selected-tool {
-    background-color: #3498db;
-    border-color: white;
+    background-color: var(--accent-bg-color);
+    border-color: var(--accent-fg-color);
+    color: var(--accent-fg-color);
 }
 
 .designer-toolbox button.selected-tool:hover {
-    background-color: #2980b9;
+    background-color: alpha(@accent_bg_color, 0.8);
 }
 
 /* Status Bar */
 .status-bar {
-    background-color: #2c3e50;
-    color: white;
+    background-color: var(--card-bg-color);
+    color: var(--card-fg-color);
     padding: 2px 5px;
+    border-top: 1px solid var(--border-color);
 }
 
 .estop-button {
-    background-color: #e74c3c;
+    background-color: var(--error-color);
     color: white;
     font-weight: bold;
     padding: 2px 10px;
@@ -58,7 +93,7 @@ textview {
 }
 
 .estop-button:hover {
-    background-color: #c0392b;
+    background-color: alpha(@error_color, 0.8);
 }
 
 .status-indicator {
@@ -66,15 +101,15 @@ textview {
 }
 
 .status-indicator.connected {
-    color: #2ecc71;
+    color: var(--success-color);
 }
 
 .status-indicator.disconnected {
-    color: #e74c3c;
+    color: var(--error-color);
 }
 
 .status-text {
-    color: white;
+    color: var(--fg-color);
     font-size: 13px;
 }
 
@@ -83,21 +118,21 @@ textview {
 }
 
 /* Machine States */
-.state-alarm { color: #e74c3c; font-weight: bold; }
-.state-run { color: #2ecc71; font-weight: bold; }
-.state-hold { color: #e67e22; font-weight: bold; }
-.state-idle { color: #f1c40f; font-weight: bold; }
+.state-alarm { color: var(--error-color); font-weight: bold; }
+.state-run { color: var(--success-color); font-weight: bold; }
+.state-hold { color: var(--warning-color); font-weight: bold; }
+.state-idle { color: var(--accent-color); font-weight: bold; }
 
 /* Machine Control Panel */
 .sidebar {
-    background-color: #2d2d2d;
-    border-right: 1px solid #1e1e1e;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
     padding-left: 10px;
 }
 
 .dro-axis {
-    background-color: #252526;
-    border: 1px solid #333;
+    background-color: var(--card-bg-color);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 10px;
 }
@@ -105,37 +140,48 @@ textview {
 .dro-label {
     font-size: 32px;
     font-weight: bold;
-    color: #2ecc71;
+    color: var(--success-color);
 }
 
 .dro-value {
     font-size: 32px;
     font-family: "Monospace";
-    color: #ffffff;
+    color: var(--fg-color);
 }
 
 .estop-big {
-    background-color: #f1c40f;
-    color: #000000;
+    background-color: var(--error-color);
+    color: white;
     font-weight: bold;
     font-size: 18px;
     border-radius: 10px;
-    border: 2px solid #e67e22;
+    border: 2px solid alpha(var(--fg-color), 0.2);
 }
 
 .estop-big:hover {
-    background-color: #f39c12;
+    background-color: alpha(var(--error-color), 0.8);
 }
 
 .estop-big:active {
-    background-color: #d35400;
+    background-color: alpha(var(--error-color), 0.6);
 }
 
 .dim-label {
-    color: #888888;
+    color: alpha(var(--fg-color), 0.5);
     font-weight: bold;
 }
 
+.warning-box {
+    background-color: alpha(var(--warning-color), 0.1);
+    border: 1px solid var(--warning-color);
+    border-radius: 4px;
+    padding: 5px;
+    color: var(--warning-color);
+}
+
+.accent-color {
+    color: var(--accent-color);
+}
 
 .active-badge {
     background-color: #2ecc71;
@@ -149,16 +195,16 @@ textview {
 
 /* Visualizer Floating OSD Panels */
 .visualizer-osd {
-    background-color: rgba(30, 30, 30, 0.85);
+    background-color: alpha(var(--window-bg-color), 0.85);
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid alpha(var(--fg-color), 0.1);
     padding: 4px 8px;
     min-height: 28px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .visualizer-osd label {
-    color: #ffffff;
+    color: var(--fg-color);
     font-size: 12px;
 }
 
@@ -167,24 +213,24 @@ textview {
     min-height: 28px;
     padding: 0;
     border-radius: 4px;
-    background-color: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #ffffff;
+    background-color: alpha(var(--fg-color), 0.1);
+    border: 1px solid alpha(var(--fg-color), 0.2);
+    color: var(--fg-color);
     font-size: 13px;
 }
 
 .visualizer-osd button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: alpha(var(--fg-color), 0.2);
 }
 
 .visualizer-osd button:active {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: alpha(var(--fg-color), 0.3);
 }
 
 /* Vector Preview Frame */
 frame.vector-preview {
-    background-color: #e0e0e0;
-    border: 1px solid #cccccc;
+    background-color: var(--view-bg-color);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
 }
 
@@ -194,13 +240,13 @@ frame.vector-preview {
 }
 
 .list-header {
-    background-color: #2d2d2d;
+    background-color: var(--card-bg-color);
     padding: 8px 0;
-    border-bottom: 1px solid #1e1e1e;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .alternating-row {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: alpha(var(--fg-color), 0.02);
 }
 
 .pill {
@@ -210,25 +256,55 @@ frame.vector-preview {
 }
 
 .success-bg {
-    background-color: rgba(46, 204, 113, 0.2);
+    background-color: alpha(var(--success-color), 0.2);
 }
 
 .error-bg {
-    background-color: rgba(231, 76, 60, 0.2);
+    background-color: alpha(var(--error-color), 0.2);
 }
 
 .success {
-    color: #2ecc71;
+    color: var(--success-color);
 }
 
 .error {
-    color: #e74c3c;
+    color: var(--error-color);
 }
 
 .accent {
-    color: #3498db;
+    color: var(--accent-color);
 }
 
 .font-bold {
     font-weight: bold;
+}
+
+/* Nav Cube */
+.nav-cube-container {
+    margin: 10px;
+}
+
+.nav-cube {
+    background-color: transparent;
+}
+
+.nav-btn {
+    padding: 0;
+    min-width: 24px;
+    min-height: 24px;
+    font-size: 10px;
+    background-color: alpha(var(--window-bg-color), 0.8);
+    color: var(--fg-color);
+    border: 1px solid alpha(var(--fg-color), 0.2);
+    border-radius: 4px;
+}
+
+.nav-btn:hover {
+    background-color: var(--accent-bg-color);
+    color: var(--accent-fg-color);
+    border-color: var(--accent-fg-color);
+}
+
+.nav-btn:active {
+    background-color: alpha(var(--accent-bg-color), 0.8);
 }

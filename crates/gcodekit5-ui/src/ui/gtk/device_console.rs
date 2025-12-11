@@ -19,50 +19,16 @@ impl DeviceConsoleView {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
+    
 
-        // ═════════════════════════════════════════════
-        // LEFT SIDEBAR
-        // ═════════════════════════════════════════════
-        let sidebar = Box::new(Orientation::Vertical, 10);
-        sidebar.add_css_class("sidebar");
-        sidebar.set_margin_start(10);
-        sidebar.set_margin_end(10);
-        sidebar.set_margin_top(10);
-        sidebar.set_margin_bottom(10);
-
-        // Warning Box
-        let warning_frame = Frame::new(None);
-        warning_frame.add_css_class("warning-box"); // We'll need to add this to CSS
-        // Or just style it directly/via specific class if CSS isn't easily editable right now
-        // Slint had red background.
-        
-        let warning_box = Box::new(Orientation::Vertical, 5);
-        warning_box.set_margin_top(10);
-        warning_box.set_margin_bottom(10);
-        warning_box.set_margin_start(10);
-        warning_box.set_margin_end(10);
-        let warning_label = Label::new(Some("The Console log scrolls down and the most recent entry is at the top."));
-        warning_label.set_wrap(true);
-        warning_label.set_justify(gtk4::Justification::Center);
-        warning_box.append(&warning_label);
-        warning_frame.set_child(Some(&warning_box));
-        sidebar.append(&warning_frame);
-
-        // Actions
-        let actions_label = Label::new(Some("Console Actions"));
-        actions_label.add_css_class("title-4");
-        actions_label.set_halign(Align::Start);
-        sidebar.append(&actions_label);
-
+        // We'll move 'Clear' and 'Copy' buttons into the main console area (above the output)
         let clear_btn = Button::from_icon_name("user-trash-symbolic");
         clear_btn.set_label("Clear");
         clear_btn.set_tooltip_text(Some("Clear Console Output"));
-        sidebar.append(&clear_btn);
 
         let copy_btn = Button::from_icon_name("edit-copy-symbolic");
         copy_btn.set_label("Copy");
         copy_btn.set_tooltip_text(Some("Copy to Clipboard"));
-        sidebar.append(&copy_btn);
 
         // ═════════════════════════════════════════════
         // MAIN AREA
@@ -75,11 +41,18 @@ impl DeviceConsoleView {
         main_area.set_margin_start(10);
         main_area.set_margin_end(10);
 
+        // Toolbar above Console Output
+        let console_toolbar = Box::new(Orientation::Horizontal, 5);
+        console_toolbar.set_halign(Align::End);
+        console_toolbar.append(&clear_btn);
+        console_toolbar.append(&copy_btn);
+
         // Console Output
         let scroll = ScrolledWindow::new();
         scroll.set_hexpand(true);
         scroll.set_vexpand(true);
         scroll.add_css_class("view"); // Standard frame look
+        scroll.add_css_class("console-view"); // Custom styling
 
         let console_text = TextView::new();
         console_text.set_editable(false);
@@ -92,6 +65,7 @@ impl DeviceConsoleView {
         // console_text.set_right_margin(10);
         
         scroll.set_child(Some(&console_text));
+        main_area.append(&console_toolbar);
         main_area.append(&scroll);
 
         // Command Input
@@ -114,7 +88,7 @@ impl DeviceConsoleView {
         main_area.append(&input_box);
 
         // Setup Paned
-        widget.set_start_child(Some(&sidebar));
+      
         widget.set_end_child(Some(&main_area));
 
         // Dynamic resizing for 20% sidebar width

@@ -123,7 +123,7 @@ fn test_tab_protrusion_with_kerf() {
 
 
     if min_y < 0.0 {
-        let tab_depth = min_y.abs();
+        let _tab_depth = min_y.abs();
 
     }
 }

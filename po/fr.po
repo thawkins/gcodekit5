@@ -1,0 +1,130 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: GCodeKit5\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-12-11 12:00+0000\n"
+"PO-Revision-Date: 2025-12-11 12:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: French\n"
+"Language: fr_FR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "GCodeKit5"
+msgstr "GCodeKit5"
+
+msgid "New"
+msgstr "Nouveau"
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Save As..."
+msgstr "Enregistrer sous..."
+
+msgid "Import"
+msgstr "Importer"
+
+msgid "Export G-Code..."
+msgstr "Exporter G-Code..."
+
+msgid "Export SVG..."
+msgstr "Exporter SVG..."
+
+msgid "Run"
+msgstr "Exécuter"
+
+msgid "Quit"
+msgstr "Quitter"
+
+msgid "File"
+msgstr "Fichier"
+
+msgid "Undo"
+msgstr "Annuler"
+
+msgid "Redo"
+msgstr "Rétablir"
+
+msgid "Cut"
+msgstr "Couper"
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "Paste"
+msgstr "Coller"
+
+msgid "Preferences"
+msgstr "Préférences"
+
+msgid "Edit"
+msgstr "Édition"
+
+msgid "Connect"
+msgstr "Connecter"
+
+msgid "Disconnect"
+msgstr "Déconnecter"
+
+msgid "Home"
+msgstr "Origine"
+
+msgid "Reset"
+msgstr "Réinitialiser"
+
+msgid "Machine"
+msgstr "Machine"
+
+msgid "Documentation"
+msgstr "Documentation"
+
+msgid "About"
+msgstr "À propos"
+
+msgid "Help"
+msgstr "Aide"
+
+msgid "Machine Control"
+msgstr "Contrôle machine"
+
+msgid "Device Console"
+msgstr "Console du périphérique"
+
+msgid "G-Code Editor"
+msgstr "Éditeur G-Code"
+
+msgid "Visualizer"
+msgstr "Visualiseur"
+
+msgid "CAM Tools"
+msgstr "Outils FAO"
+
+msgid "Designer"
+msgstr "Concepteur"
+
+msgid "Device Info"
+msgstr "Info périphérique"
+
+msgid "Device Config"
+msgstr "Config périphérique"
+
+msgid "Device Manager"
+msgstr "Gestionnaire de périphériques"
+
+msgid "CNC Tools"
+msgstr "Outils CNC"
+
+msgid "Materials"
+msgstr "Matériaux"
+
+msgid "GCode Toolkit for CNC/Laser Machines"
+msgstr "Boîte à outils GCode pour machines CNC/Laser"
+
+msgid "GCodeKit Contributors"
+msgstr "Contributeurs GCodeKit"

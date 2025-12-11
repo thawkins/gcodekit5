@@ -28,6 +28,7 @@ fn test_save_and_load() {
         pocket_depth: 0.0,
         step_down: 0.0,
         step_in: 0.0,
+        start_depth: 0.0,
         text_content: String::new(),
         font_size: 0.0,
         path_data: String::new(),

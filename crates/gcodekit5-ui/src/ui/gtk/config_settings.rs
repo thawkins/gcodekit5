@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, ComboBoxText, Dialog, DialogFlags, Entry, Grid, Label, ListBox,
-    ListBoxRow, Orientation, PolicyType, ResponseType, ScrolledWindow, SearchEntry,
+    ListBoxRow, Orientation, PolicyType, ResponseType, ScrolledWindow, SearchEntry, Separator,
 };
 use gtk4::glib;
 use std::cell::RefCell;
@@ -47,9 +47,11 @@ impl From<&Setting> for ConfigSettingRow {
 }
 
 use crate::ui::gtk::device_console::DeviceConsoleView;
+use crate::ui::gtk::device_info::DeviceInfoView;
 
 pub struct ConfigSettingsView {
     pub container: Box,
+    pub device_info_view: Rc<DeviceInfoView>,
     settings_manager: Rc<RefCell<SettingsManager>>,
     settings_list: ListBox,
     search_entry: SearchEntry,
@@ -60,10 +62,35 @@ pub struct ConfigSettingsView {
     restore_btn: Button,
     communicator: Rc<RefCell<Option<Arc<Mutex<SerialCommunicator>>>>>,
     device_console: Rc<RefCell<Option<Rc<DeviceConsoleView>>>>,
-}
+} 
 
 impl ConfigSettingsView {
     pub fn new() -> Rc<Self> {
+        // Outer container splits into left (Device Info) and right (Config Settings)
+        let outer = Box::new(Orientation::Horizontal, 10);
+        outer.set_hexpand(true);
+        outer.set_vexpand(true);
+        outer.set_margin_top(10);
+        outer.set_margin_bottom(10);
+        outer.set_margin_start(10);
+        outer.set_margin_end(10);
+
+        // Left panel - Device Info (embedded)
+        let left_panel = Box::new(Orientation::Vertical, 0);
+        left_panel.set_width_request(320);
+        left_panel.set_margin_top(10);
+        left_panel.set_margin_bottom(10);
+        left_panel.set_margin_start(10);
+        left_panel.set_margin_end(10);
+
+        // Create DeviceInfoView and add to left panel
+        let device_info_view = DeviceInfoView::new();
+        left_panel.append(&device_info_view.container);
+
+        // Separator
+        let sep = Separator::new(Orientation::Vertical);
+
+        // Right panel - Config Settings content
         let container = Box::new(Orientation::Vertical, 10);
         container.set_hexpand(true);
         container.set_vexpand(true);
@@ -95,7 +122,7 @@ impl ConfigSettingsView {
 
         container.append(&toolbar);
 
-        // Filter bar
+        // Filter bar (right panel)
         let filter_bar = Box::new(Orientation::Horizontal, 10);
 
         let filter_label = Label::new(Some("Filter:"));
@@ -179,7 +206,7 @@ impl ConfigSettingsView {
         scroll.set_child(Some(&settings_list));
         container.append(&scroll);
 
-        // Status Bar
+        // Status Bar (right panel)
         let status_bar = Box::new(Orientation::Horizontal, 10);
         status_bar.add_css_class("status-bar");
         status_bar.set_margin_start(5);
@@ -199,10 +226,16 @@ impl ConfigSettingsView {
 
         container.append(&status_bar);
 
+        // Construct view with device_info embedded
         let settings_manager = Rc::new(RefCell::new(SettingsManager::new()));
 
+        outer.append(&left_panel);
+        outer.append(&sep);
+        outer.append(&container);
+
         let view = Rc::new(Self {
-            container,
+            container: outer,
+            device_info_view: device_info_view.clone(),
             settings_manager: settings_manager.clone(),
             settings_list: settings_list.clone(),
             search_entry: search_entry.clone(),
@@ -324,6 +357,14 @@ impl ConfigSettingsView {
             self.status_label.set_text("Connected - Ready to retrieve settings");
         } else {
             self.status_label.set_text("Not connected");
+        }
+    }
+
+    pub fn set_device_info(&self, connected: bool, device_name: &str, firmware: &str, version: &str) {
+        // Forward to embedded DeviceInfoView
+        self.device_info_view.set_connected(connected, device_name, firmware, version);
+        if connected {
+            self.device_info_view.load_sample_capabilities();
         }
     }
 

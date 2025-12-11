@@ -19,7 +19,7 @@ pub fn point_to_2d(x: f32, y: f32) -> Point {
 pub fn create_linear_segment(
     from_x: f32,
     from_y: f32,
-    from_z: f32,
+    _from_z: f32,
     to_x: f32,
     to_y: f32,
     to_z: f32,
@@ -51,7 +51,7 @@ pub fn create_linear_segment(
 pub fn create_arc_segment(
     from_x: f32,
     from_y: f32,
-    from_z: f32,
+    _from_z: f32,
     to_x: f32,
     to_y: f32,
     to_z: f32,
@@ -89,9 +89,9 @@ mod tests {
     
     #[test]
     fn test_point_conversion() {
-        let p2d = point_to_2d(10.5, 20.3);
+        let p2d = point_to_2d(10.5, 20.5);
         assert_eq!(p2d.x, 10.5);
-        assert_eq!(p2d.y, 20.3);
+        assert_eq!(p2d.y, 20.5);
     }
     
     #[test]

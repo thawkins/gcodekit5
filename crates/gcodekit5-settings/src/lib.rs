@@ -10,7 +10,7 @@ pub mod view_model;
 
 pub use config::{
     Config, ConnectionSettings, ConnectionType, FileProcessingSettings, FirmwareSettings,
-    MachineSettings, UiSettings,
+    MachineSettings, Theme, UiSettings,
 };
 pub use controller::{SettingUiModel, SettingsController};
 pub use manager::SettingsManager;

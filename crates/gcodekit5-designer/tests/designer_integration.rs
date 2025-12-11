@@ -19,7 +19,8 @@ fn test_designer_workflow_rectangle() {
     assert!(canvas.selected_id().is_none());
 
     // Select the rectangle
-    let select_point = Point::new(35.0, 25.0);
+    // Select on the edge (x=10, y=25 is on the left edge)
+    let select_point = Point::new(10.0, 25.0);
     let selected = canvas.select_at(&select_point, 0.0, false);
     assert_eq!(selected, Some(rect_id));
     assert_eq!(canvas.selected_id(), Some(rect_id));
@@ -37,7 +38,8 @@ fn test_designer_workflow_circle() {
     assert_eq!(canvas.shape_count(), 1);
 
     // Select the circle
-    let select_point = Point::new(50.0, 50.0);
+    // Select on the boundary (x=70, y=50 is on the right edge)
+    let select_point = Point::new(70.0, 50.0);
     let selected = canvas.select_at(&select_point, 0.0, false);
     assert_eq!(selected, Some(circle_id));
 }
@@ -77,7 +79,8 @@ fn test_toolpath_generation_rectangle() {
     gen.set_cut_depth(-3.0);
 
     let rect = Rectangle::new(0.0, 0.0, 20.0, 10.0);
-    let toolpath = gen.generate_rectangle_contour(&rect);
+    let toolpaths = gen.generate_rectangle_contour(&rect, 0.0);
+    let toolpath = &toolpaths[0];
 
     // Verify toolpath properties
     assert!(toolpath.segments.len() > 0);
@@ -93,7 +96,8 @@ fn test_toolpath_generation_rectangle() {
 fn test_toolpath_generation_circle() {
     let gen = ToolpathGenerator::new();
     let circle = Circle::new(Point::new(0.0, 0.0), 10.0);
-    let toolpath = gen.generate_circle_contour(&circle);
+    let toolpaths = gen.generate_circle_contour(&circle, 0.0);
+    let toolpath = &toolpaths[0];
 
     assert!(toolpath.segments.len() > 0);
     assert!(toolpath.total_length() > 50.0); // Circumference is ~62.8
@@ -103,7 +107,8 @@ fn test_toolpath_generation_circle() {
 fn test_toolpath_generation_line() {
     let gen = ToolpathGenerator::new();
     let line = Line::new(Point::new(0.0, 0.0), Point::new(50.0, 50.0));
-    let toolpath = gen.generate_line_contour(&line);
+    let toolpaths = gen.generate_line_contour(&line, 0.0);
+    let toolpath = &toolpaths[0];
 
     assert!(toolpath.segments.len() > 0);
 }
@@ -113,11 +118,12 @@ fn test_gcode_export_from_rectangle() {
     // Create a rectangle and generate toolpath
     let gen = ToolpathGenerator::new();
     let rect = Rectangle::new(0.0, 0.0, 25.4, 25.4); // 1 inch square
-    let toolpath = gen.generate_rectangle_contour(&rect);
+    let toolpaths = gen.generate_rectangle_contour(&rect, 0.0);
+    let toolpath = &toolpaths[0];
 
     // Generate G-code
     let gcode_gen = ToolpathToGcode::new(Units::MM, 10.0);
-    let gcode = gcode_gen.generate(&toolpath);
+    let gcode = gcode_gen.generate(toolpath);
 
     // Verify G-code structure
     assert!(gcode.contains("Generated G-code from Designer tool"));
@@ -144,8 +150,11 @@ fn test_canvas_multi_shapes() {
     assert_eq!(canvas.shape_count(), 3);
 
     // Select each shape
-    assert_eq!(canvas.select_at(&Point::new(5.0, 5.0), 0.0, false), Some(rect_id));
-    assert_eq!(canvas.select_at(&Point::new(25.0, 25.0), 0.0, false), Some(circle_id));
+    // Select rect on edge (0, 5)
+    assert_eq!(canvas.select_at(&Point::new(0.0, 5.0), 0.0, false), Some(rect_id));
+    // Select circle on edge (30, 25)
+    assert_eq!(canvas.select_at(&Point::new(30.0, 25.0), 0.0, false), Some(circle_id));
+    // Select line on the line (50, 25)
     assert_eq!(canvas.select_at(&Point::new(50.0, 25.0), 0.0, false), Some(line_id));
 
     // Remove the selected shape (line)
@@ -168,11 +177,12 @@ fn test_designer_complete_workflow() {
     gen.set_feed_rate(120.0);
 
     let rect = Rectangle::new(0.0, 0.0, 50.0, 30.0);
-    let toolpath = gen.generate_rectangle_contour(&rect);
+    let toolpaths = gen.generate_rectangle_contour(&rect, 0.0);
+    let toolpath = &toolpaths[0];
 
     // Export to G-code
     let gcode_gen = ToolpathToGcode::new(Units::MM, 10.0);
-    let gcode = gcode_gen.generate(&toolpath);
+    let gcode = gcode_gen.generate(toolpath);
 
     // Verify we have complete G-code
     assert!(gcode.contains("G90"));

@@ -20,7 +20,7 @@ pub struct GcodeEditor {
     current_file: Rc<RefCell<Option<PathBuf>>>,
     _search_context: SearchContext,
     _search_settings: SearchSettings,
-    status_bar: Option<StatusBar>,
+    _status_bar: Option<StatusBar>,
 }
 
 impl GcodeEditor {
@@ -444,7 +444,7 @@ impl GcodeEditor {
             current_file: Rc::new(RefCell::new(None)),
             _search_context: search_context,
             _search_settings: search_settings,
-            status_bar,
+            _status_bar: status_bar,
         };
 
         // Update line counter when cursor moves

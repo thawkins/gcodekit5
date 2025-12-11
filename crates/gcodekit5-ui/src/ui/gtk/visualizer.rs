@@ -3,15 +3,16 @@ use gcodekit5_core::constants as core_constants;
 use gcodekit5_visualizer::visualizer::GCodeCommand;
 use gcodekit5_visualizer::{Visualizer, Camera3D};
 use gcodekit5_designer::stock_removal::{StockMaterial, SimulationResult};
-use gcodekit5_designer::stock_removal::visualization::generate_2d_contours;
+// use gcodekit5_designer::stock_removal::visualization::generate_2d_contours;
 use gcodekit5_visualizer::visualizer::{StockSimulator3D, generate_surface_mesh};
 use crate::ui::gtk::shaders::StockRemovalShaderProgram;
+use gcodekit5_settings::controller::SettingsController;
 use glam::Vec3;
 
 // Stock removal visualization cache
 #[derive(Clone)]
 struct ContourLayer {
-    z_height: f32,
+    _z_height: f32,
     color: (f32, f32, f32),
     contours: Vec<Vec<(f32, f32)>>,
 }
@@ -21,6 +22,7 @@ struct StockRemovalVisualization {
     contour_layers: Vec<ContourLayer>,
 }
 use crate::ui::gtk::nav_cube::NavCube;
+use tracing::debug;
 use crate::ui::gtk::renderer_3d::{RenderBuffers, generate_vertex_data, generate_grid_data, generate_axis_data, generate_tool_marker_data, generate_bounds_data};
 use crate::ui::gtk::shaders::ShaderProgram;
 use glow::HasContext;
@@ -140,7 +142,7 @@ pub struct GcodeVisualizer {
     gl_area: GLArea,
     visualizer: Rc<RefCell<Visualizer>>,
     camera: Rc<RefCell<Camera3D>>,
-    renderer_state: Rc<RefCell<Option<RendererState>>>,
+    _renderer_state: Rc<RefCell<Option<RendererState>>>,
     // Phase 4: Render cache
     render_cache: Rc<RefCell<RenderCache>>,
     // Visibility toggles
@@ -154,12 +156,12 @@ pub struct GcodeVisualizer {
     // Stock removal simulation (2D)
     stock_material: Rc<RefCell<Option<StockMaterial>>>,
     simulation_result: Rc<RefCell<Option<SimulationResult>>>,
-    simulation_visualization: Rc<RefCell<Option<StockRemovalVisualization>>>,
-    simulation_resolution: Rc<RefCell<f32>>,
-    simulation_running: Rc<RefCell<bool>>,
+    _simulation_visualization: Rc<RefCell<Option<StockRemovalVisualization>>>,
+    _simulation_resolution: Rc<RefCell<f32>>,
+    _simulation_running: Rc<RefCell<bool>>,
     // Stock removal simulation (3D)
-    stock_simulator_3d: Rc<RefCell<Option<StockSimulator3D>>>,
-    stock_simulation_3d_pending: Rc<RefCell<bool>>,
+    _stock_simulator_3d: Rc<RefCell<Option<StockSimulator3D>>>,
+    _stock_simulation_3d_pending: Rc<RefCell<bool>>,
     // Scrollbars
     hadjustment: Adjustment,
     vadjustment: Adjustment,
@@ -172,6 +174,7 @@ pub struct GcodeVisualizer {
     avg_s_label: Label,
     _status_label: Label,
     device_manager: Option<Arc<DeviceManager>>,
+    settings_controller: Rc<SettingsController>,
     current_pos: Rc<RefCell<(f32, f32, f32)>>,
 }
 
@@ -244,7 +247,7 @@ impl GcodeVisualizer {
         }
     }
 
-    pub fn new(device_manager: Option<Arc<DeviceManager>>) -> Self {
+    pub fn new(device_manager: Option<Arc<DeviceManager>>, settings_controller: Rc<SettingsController>) -> Self {
         let container = Paned::new(Orientation::Horizontal);
         container.add_css_class("visualizer-container");
         container.set_hexpand(true);
@@ -630,13 +633,27 @@ impl GcodeVisualizer {
         let update_status_fn = {
             let label = status_label.clone();
             let vis = visualizer.clone();
+            let settings = settings_controller.clone();
             move || {
                 let v = vis.borrow();
+                let system = settings.persistence.borrow().config().ui.measurement_system;
+                let unit_label = gcodekit5_core::units::get_unit_label(system);
+                
+                // Note: Visualizer offsets are negative of center, so we negate them to show center
+                let center_x = -v.x_offset;
+                let center_y = -v.y_offset;
+                
+                let x_str = gcodekit5_core::units::format_length(center_x, system);
+                let y_str = gcodekit5_core::units::format_length(center_y, system);
+                let grid_str = gcodekit5_core::units::format_length(10.0, system);
+                
                 label.set_text(&format!(
-                    "{:.0}%   X: {:.1}   Y: {:.1}   10.0mm",
+                    "{:.0}%   X: {}   Y: {}   {} {}",
                     v.zoom_scale * 100.0,
-                    -v.x_offset, // Display inverted because visualizer offset compensates for center
-                    -v.y_offset
+                    x_str,
+                    y_str,
+                    grid_str,
+                    unit_label
                 ));
             }
         };
@@ -896,6 +913,8 @@ impl GcodeVisualizer {
 
         let da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
+        let _da_update = drawing_area.clone();
+        let _gl_update = gl_area.clone();
         show_rapid.connect_toggled(move |_| { da_update.queue_draw(); gl_update.queue_render(); });
         let da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
@@ -912,11 +931,11 @@ impl GcodeVisualizer {
         let da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
         show_laser.connect_toggled(move |_| { da_update.queue_draw(); gl_update.queue_render(); });
-        let da_update = drawing_area.clone();
+        let _da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
         let visualizer_stock = visualizer.clone();
-        let simulation_result_stock = simulation_result.clone();
-        let simulation_visualization_stock = simulation_visualization.clone();
+        let _simulation_result_stock = simulation_result.clone();
+        let _simulation_visualization_stock = simulation_visualization.clone();
         let stock_material_stock = stock_material.clone();
         let tool_radius_stock = tool_radius.clone();
         let simulation_running_flag = simulation_running.clone();
@@ -1004,7 +1023,7 @@ impl GcodeVisualizer {
                         use gcodekit5_visualizer::{StockSimulator3D, VoxelGrid};
                         
                         let resolution = 0.25; // 0.25mm voxel resolution (doubled from 0.5mm)
-                        let mut grid = VoxelGrid::new(
+                        let _grid = VoxelGrid::new(
                             stock_clone.width,
                             stock_clone.height,
                             stock_clone.thickness,
@@ -1140,7 +1159,7 @@ impl GcodeVisualizer {
         let current_pos_3d = current_pos.clone();
         let device_manager_3d = device_manager.clone();
         let stock_simulator_3d_render = stock_simulator_3d.clone();
-        let stock_material_3d = stock_material.clone();
+        let _stock_material_3d = stock_material.clone();
         let stock_simulation_3d_pending_render = stock_simulation_3d_pending.clone();
         
         // Capture checkbox states
@@ -1361,7 +1380,7 @@ impl GcodeVisualizer {
                             shader.unbind();
                         }
                     } else {
-                        println!("No stock simulator available for rendering");
+                        debug!("No stock simulator available for rendering");
                     }
                 }
             }
@@ -1512,7 +1531,7 @@ impl GcodeVisualizer {
             gl_area,
             visualizer,
             camera,
-            renderer_state,
+            _renderer_state: renderer_state,
             render_cache: Rc::new(RefCell::new(RenderCache::default())),
             _show_rapid: show_rapid,
             _show_cut: show_cut,
@@ -1523,11 +1542,11 @@ impl GcodeVisualizer {
             show_stock_removal,
             stock_material,
             simulation_result,
-            simulation_visualization: Rc::new(RefCell::new(None)),
-            simulation_resolution,
-            simulation_running,
-            stock_simulator_3d,
-            stock_simulation_3d_pending,
+            _simulation_visualization: Rc::new(RefCell::new(None)),
+            _simulation_resolution: simulation_resolution,
+            _simulation_running: simulation_running,
+            _stock_simulator_3d: stock_simulator_3d,
+            _stock_simulation_3d_pending: stock_simulation_3d_pending,
             hadjustment,
             vadjustment,
             hadjustment_3d,
@@ -1538,6 +1557,7 @@ impl GcodeVisualizer {
             avg_s_label,
             _status_label: status_label,
             device_manager,
+            settings_controller,
             current_pos,
         }
     }
@@ -1644,9 +1664,16 @@ impl GcodeVisualizer {
 
         // Update bounds label
         let (min_x, max_x, min_y, max_y) = vis.get_bounds();
+        
+        let system = self.settings_controller.persistence.borrow().config().ui.measurement_system;
+        let min_x_str = gcodekit5_core::units::format_length(min_x, system);
+        let max_x_str = gcodekit5_core::units::format_length(max_x, system);
+        let min_y_str = gcodekit5_core::units::format_length(min_y, system);
+        let max_y_str = gcodekit5_core::units::format_length(max_y, system);
+        
         self.bounds_label.set_text(&format!(
-            "Bounds\nX: {:.1} to {:.1}\nY: {:.1} to {:.1}",
-            min_x, max_x, min_y, max_y
+            "Bounds\nX: {} to {}\nY: {} to {}",
+            min_x_str, max_x_str, min_y_str, max_y_str
         ));
 
         // Calculate S statistics
@@ -1799,9 +1826,9 @@ impl GcodeVisualizer {
         show_intensity: bool,
         show_laser: bool,
         show_stock_removal: bool,
-        simulation_result: &Option<SimulationResult>,
+        _simulation_result: &Option<SimulationResult>,
         simulation_visualization: &Option<StockRemovalVisualization>,
-        stock_material: &Option<StockMaterial>,
+        _stock_material: &Option<StockMaterial>,
         current_pos: (f32, f32, f32),
         device_manager: &Option<Arc<DeviceManager>>,
     ) {
@@ -2306,6 +2333,7 @@ impl GcodeVisualizer {
         }
     }
     
+    #[allow(dead_code)]
     fn generate_stock_visualization(result: &SimulationResult, stock: &StockMaterial) -> StockRemovalVisualization {
         use gcodekit5_designer::stock_removal::visualization::generate_2d_contours;
         
@@ -2330,7 +2358,7 @@ impl GcodeVisualizer {
                 .collect();
             
             contour_layers.push(ContourLayer {
-                z_height,
+                _z_height: z_height,
                 color: (r, g, b),
                 contours,
             });

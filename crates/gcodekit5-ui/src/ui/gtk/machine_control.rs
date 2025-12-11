@@ -2,6 +2,8 @@ use gcodekit5_communication::{
     Communicator, ConnectionDriver, ConnectionParams, SerialCommunicator,
 };
 use gcodekit5_communication::firmware::grbl::status_parser::StatusParser;
+use gcodekit5_core::units::{format_length, MeasurementSystem};
+use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, ComboBoxText, Frame, Grid, Label, Orientation, Paned, Picture,
@@ -64,6 +66,7 @@ pub struct MachineControlView {
     pub is_streaming: Arc<Mutex<bool>>,
     pub is_paused: Arc<Mutex<bool>>,
     pub waiting_for_ack: Arc<Mutex<bool>>,
+    pub current_units: Arc<Mutex<MeasurementSystem>>,
 }
 
 impl MachineControlView {
@@ -72,6 +75,7 @@ impl MachineControlView {
         device_console: Option<Rc<DeviceConsoleView>>,
         editor: Option<Rc<GcodeEditor>>,
         visualizer: Option<Rc<GcodeVisualizer>>,
+        settings_controller: Option<Rc<SettingsController>>,
     ) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
@@ -414,8 +418,41 @@ impl MachineControlView {
         main_area.append(&jog_area);
         
         // Setup Paned
+        // Use an inner paned so we have: [sidebar] | [main area] | [device console]
+        let inner_paned = Paned::new(Orientation::Horizontal);
+        inner_paned.set_start_child(Some(&main_area));
+
+        let console_container = Box::new(Orientation::Vertical, 10);
+        console_container.set_hexpand(true);
+        console_container.set_vexpand(true);
+        console_container.set_margin_top(10);
+        console_container.set_margin_bottom(10);
+        console_container.set_margin_start(10);
+        console_container.set_margin_end(10);
+
+        // Embed Device Console if present
+        if let Some(ref console_view) = device_console {
+            console_container.append(&console_view.widget);
+        } else {
+            let placeholder = Label::new(Some("Device Console not available"));
+            placeholder.set_halign(Align::Center);
+            console_container.append(&placeholder);
+        }
+
+        inner_paned.set_end_child(Some(&console_container));
+
+        // Dynamic resizing for main area vs console (70% main / 30% console)
+        inner_paned.add_tick_callback(|paned, _clock| {
+            let width = paned.width();
+            let target = (width as f64 * 0.7) as i32;
+            if (paned.position() - target).abs() > 2 {
+                paned.set_position(target);
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
+
         widget.set_start_child(Some(&sidebar));
-        widget.set_end_child(Some(&main_area));
+        widget.set_end_child(Some(&inner_paned));
         
         // Dynamic resizing for 20% sidebar width
         widget.add_tick_callback(|paned, _clock| {
@@ -428,6 +465,30 @@ impl MachineControlView {
         });
 
         let communicator = Arc::new(Mutex::new(SerialCommunicator::new()));
+
+        // Initialize units from settings if available
+        let initial_units = if let Some(controller) = &settings_controller {
+            controller.persistence.borrow().config().ui.measurement_system
+        } else {
+            MeasurementSystem::Metric
+        };
+        let current_units = Arc::new(Mutex::new(initial_units));
+
+        // Listen for unit changes
+        if let Some(controller) = &settings_controller {
+            let units_clone = current_units.clone();
+            controller.on_setting_changed(move |key, value| {
+                if key == "measurement_system" {
+                    let new_units = match value {
+                        "Imperial" => MeasurementSystem::Imperial,
+                        _ => MeasurementSystem::Metric,
+                    };
+                    if let Ok(mut u) = units_clone.lock() {
+                        *u = new_units;
+                    }
+                }
+            });
+        }
 
         let view = Self {
             widget,
@@ -474,6 +535,7 @@ impl MachineControlView {
             is_streaming: Arc::new(Mutex::new(false)),
             is_paused: Arc::new(Mutex::new(false)),
             waiting_for_ack: Arc::new(Mutex::new(false)),
+            current_units,
         };
 
         view.refresh_ports();
@@ -1038,6 +1100,7 @@ impl MachineControlView {
                             let device_console_poll = view_clone.device_console.clone();
                             let visualizer_poll = view_clone.visualizer.clone();
                             let total_lines_poll = view_clone.total_lines.clone();
+                            let current_units_poll = view_clone.current_units.clone();
                             
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
@@ -1175,9 +1238,12 @@ impl MachineControlView {
                                                     
                                                     // Parse and update machine position
                                                     if let Some(mpos) = StatusParser::parse_mpos(&line) {
-                                                        x_dro_poll.set_text(&format!("{:.3}", mpos.x));
-                                                        y_dro_poll.set_text(&format!("{:.3}", mpos.y));
-                                                        z_dro_poll.set_text(&format!("{:.3}", mpos.z));
+                                                        let units = *current_units_poll.lock().unwrap();
+                                                        let unit_label = gcodekit5_core::units::get_unit_label(units);
+                                                        
+                                                        x_dro_poll.set_text(&format!("{} {}", format_length(mpos.x as f32, units), unit_label));
+                                                        y_dro_poll.set_text(&format!("{} {}", format_length(mpos.y as f32, units), unit_label));
+                                                        z_dro_poll.set_text(&format!("{} {}", format_length(mpos.z as f32, units), unit_label));
                                                         device_status::update_machine_position(mpos);
                                                         
                                                         // Update StatusBar with position
@@ -1188,7 +1254,8 @@ impl MachineControlView {
                                                                 mpos.z as f32,
                                                                 mpos.a.unwrap_or(0.0) as f32,
                                                                 mpos.b.unwrap_or(0.0) as f32,
-                                                                mpos.c.unwrap_or(0.0) as f32
+                                                                mpos.c.unwrap_or(0.0) as f32,
+                                                                units
                                                             );
                                                         }
 

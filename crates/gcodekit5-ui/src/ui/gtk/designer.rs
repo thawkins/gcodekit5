@@ -17,6 +17,7 @@ use tracing::error;
 use gcodekit5_core::constants as core_constants;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_layers::LayersPanel;
+use gcodekit5_settings::controller::SettingsController;
 //use crate::ui::gtk::designer_file_ops; // Temporarily disabled
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,7 +128,7 @@ impl DesignerCanvas {
         let device_manager_draw = device_manager.clone();
         
         let state_draw = state_clone.clone();
-        widget.set_draw_func(move |_, cr, width, height| {
+        widget.set_draw_func(move |drawing_area, cr, width, height| {
             // Update viewport size to match widget dimensions
             if let Ok(mut state) = state_draw.try_borrow_mut() {
                 state.canvas.set_canvas_size(width as f64, height as f64);
@@ -140,7 +141,10 @@ impl DesignerCanvas {
             let poly_points = polyline_points_clone.borrow();
             let toolpaths = preview_toolpaths_clone.borrow();
             let bounds = compute_device_bbox(&device_manager_draw);
-            Self::draw(cr, &state, width as f64, height as f64, mouse, preview_start, preview_current, &poly_points, &toolpaths, bounds);
+            
+            let style_context = drawing_area.style_context();
+            
+            Self::draw(cr, &state, width as f64, height as f64, mouse, preview_start, preview_current, &poly_points, &toolpaths, bounds, &style_context);
         });
 
         let canvas = Rc::new(Self {
@@ -1739,10 +1743,11 @@ impl DesignerCanvas {
         self.widget.queue_draw();
     }
 
-    fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64), preview_start: Option<(f64, f64)>, preview_current: Option<(f64, f64)>, polyline_points: &[Point], toolpaths: &[Toolpath], device_bounds: (f64, f64, f64, f64)) {
-        // Clear background
-        cr.set_source_rgb(0.95, 0.95, 0.95); // Light grey background
-        cr.paint().expect("Invalid cairo surface state");
+    fn draw(cr: &gtk4::cairo::Context, state: &DesignerState, width: f64, height: f64, mouse_pos: (f64, f64), preview_start: Option<(f64, f64)>, preview_current: Option<(f64, f64)>, polyline_points: &[Point], toolpaths: &[Toolpath], device_bounds: (f64, f64, f64, f64), style_context: &gtk4::StyleContext) {
+        // Background handled by CSS
+        
+        let fg_color = style_context.color();
+        let accent_color = style_context.lookup_color("accent_color").unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
 
         // Setup coordinate system
         // Designer uses Y-up (Cartesian), Cairo uses Y-down
@@ -1764,7 +1769,7 @@ impl DesignerCanvas {
 
         // Draw Grid
         if state.show_grid {
-            Self::draw_grid(cr, width, height);
+            Self::draw_grid(cr, width, height, &fg_color);
         }
         
         // Draw Device Bounds
@@ -1874,7 +1879,7 @@ impl DesignerCanvas {
                 cr.set_source_rgb(0.0, 0.5, 0.0); // Green for grouped
                 cr.set_line_width(2.0 / zoom);
             } else {
-                cr.set_source_rgb(0.0, 0.0, 0.0); // Black for normal
+                cr.set_source_rgba(fg_color.red() as f64, fg_color.green() as f64, fg_color.blue() as f64, fg_color.alpha() as f64);
                 cr.set_line_width(2.0 / zoom);
             }
 
@@ -1979,7 +1984,7 @@ impl DesignerCanvas {
             // Draw resize handles for selected shapes
             if obj.selected {
                 let bounds = obj.shape.bounding_box();
-                Self::draw_resize_handles(cr, &bounds, zoom);
+                Self::draw_resize_handles(cr, &bounds, zoom, &accent_color);
             }
             
             cr.restore().unwrap();
@@ -2007,7 +2012,7 @@ impl DesignerCanvas {
         }
     }
 
-    fn draw_grid(cr: &gtk4::cairo::Context, width: f64, height: f64) {
+    fn draw_grid(cr: &gtk4::cairo::Context, width: f64, height: f64, fg_color: &gtk4::gdk::RGBA) {
         cr.save().unwrap();
         
         // Grid spacing in mm (10mm major grid)
@@ -2022,7 +2027,7 @@ impl DesignerCanvas {
         let y1 = (height - matrix.y0()) / matrix.yy();
         
         // Minor grid lines (lighter)
-        cr.set_source_rgba(0.85, 0.85, 0.85, 0.5);
+        cr.set_source_rgba(fg_color.red() as f64, fg_color.green() as f64, fg_color.blue() as f64, 0.2);
         cr.set_line_width(0.5);
         
         // Vertical minor grid lines
@@ -2050,7 +2055,7 @@ impl DesignerCanvas {
         }
         
         // Major grid lines (darker)
-        cr.set_source_rgba(0.7, 0.7, 0.7, 0.6);
+        cr.set_source_rgba(fg_color.red() as f64, fg_color.green() as f64, fg_color.blue() as f64, 0.4);
         cr.set_line_width(1.0);
         
         // Vertical major grid lines
@@ -2072,7 +2077,7 @@ impl DesignerCanvas {
         }
         
         // Draw axes (thicker, darker) - only if they're visible
-        cr.set_source_rgba(0.3, 0.3, 0.3, 0.8);
+        cr.set_source_rgba(fg_color.red() as f64, fg_color.green() as f64, fg_color.blue() as f64, 0.8);
         cr.set_line_width(2.0);
         
         // X-axis (y=0)
@@ -2295,7 +2300,7 @@ impl DesignerCanvas {
         }
     }
     
-    fn draw_resize_handles(cr: &gtk4::cairo::Context, bounds: &(f64, f64, f64, f64), zoom: f64) {
+    fn draw_resize_handles(cr: &gtk4::cairo::Context, bounds: &(f64, f64, f64, f64), zoom: f64, accent_color: &gtk4::gdk::RGBA) {
         let handle_size = 8.0 / zoom;
         let half_size = handle_size / 2.0;
         
@@ -2317,8 +2322,8 @@ impl DesignerCanvas {
             cr.rectangle(cx - half_size, cy - half_size, handle_size, handle_size);
             cr.fill().unwrap();
             
-            // Draw blue border
-            cr.set_source_rgb(0.0, 0.5, 1.0);
+            // Draw accent border
+            cr.set_source_rgba(accent_color.red() as f64, accent_color.green() as f64, accent_color.blue() as f64, accent_color.alpha() as f64);
             cr.set_line_width(2.0 / zoom);
             cr.rectangle(cx - half_size, cy - half_size, handle_size, handle_size);
             cr.stroke().unwrap();
@@ -2329,7 +2334,7 @@ impl DesignerCanvas {
 }
 
 impl DesignerView {
-    pub fn new(device_manager: Option<Arc<DeviceManager>>, settings_persistence: Option<Rc<RefCell<gcodekit5_settings::SettingsPersistence>>>) -> Rc<Self> {
+    pub fn new(device_manager: Option<Arc<DeviceManager>>, settings_controller: Rc<SettingsController>) -> Rc<Self> {
         let container = Box::new(Orientation::Vertical, 0);
         container.set_hexpand(true);
         container.set_vexpand(true);
@@ -2343,7 +2348,7 @@ impl DesignerView {
         main_box.set_vexpand(true);
         
         // Create toolbox
-        let toolbox = DesignerToolbox::new(state.clone());
+        let toolbox = DesignerToolbox::new(state.clone(), settings_controller.clone());
         main_box.append(&toolbox.widget);
         
         // Create canvas
@@ -2501,7 +2506,7 @@ impl DesignerView {
         right_sidebar.set_width_request(250);
         
         // Create properties panel
-        let properties = PropertiesPanel::new(state.clone());
+        let properties = PropertiesPanel::new(state.clone(), settings_controller.persistence.clone());
         properties.widget.set_vexpand(true);
         properties.widget.set_valign(gtk4::Align::Fill);
         
@@ -2582,26 +2587,44 @@ impl DesignerView {
         // Update coordinate label on mouse move
         let coord_label_clone = coord_label.clone();
         let canvas_coord = canvas.clone();
+        let settings_coord = settings_controller.clone();
         gtk4::glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
             let (x, y) = *canvas_coord.mouse_pos.borrow();
-            coord_label_clone.set_text(&format!("X: {:.2}  Y: {:.2}", x, y));
+            
+            let system = settings_coord.persistence.borrow().config().ui.measurement_system;
+            let unit_label = gcodekit5_core::units::get_unit_label(system);
+            let x_str = gcodekit5_core::units::format_length(x as f32, system);
+            let y_str = gcodekit5_core::units::format_length(y as f32, system);
+            
+            coord_label_clone.set_text(&format!("X: {} {}  Y: {} {}", x_str, unit_label, y_str, unit_label));
             gtk4::glib::ControlFlow::Continue
         });
 
         // Update status OSD
         let status_osd_clone = status_label_osd.clone();
         let canvas_osd = canvas.clone();
+        let settings_osd = settings_controller.clone();
         gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             let state = canvas_osd.state.borrow();
             let zoom = state.canvas.zoom();
             let pan_x = state.canvas.pan_x();
             let pan_y = state.canvas.pan_y();
             
+            let system = settings_osd.persistence.borrow().config().ui.measurement_system;
+            let unit_label = gcodekit5_core::units::get_unit_label(system);
+            let pan_x_str = gcodekit5_core::units::format_length(pan_x as f32, system);
+            let pan_y_str = gcodekit5_core::units::format_length(pan_y as f32, system);
+            
+            // Grid spacing is 10.0mm
+            let grid_str = gcodekit5_core::units::format_length(10.0, system);
+            
             status_osd_clone.set_text(&format!(
-                "{:.0}%   X: {:.1}   Y: {:.1}   10.0mm",
+                "{:.0}%   X: {}   Y: {}   {} {}",
                 zoom * 100.0,
-                pan_x,
-                pan_y
+                pan_x_str,
+                pan_y_str,
+                grid_str,
+                unit_label
             ));
             gtk4::glib::ControlFlow::Continue
         });
@@ -2652,7 +2675,7 @@ impl DesignerView {
             _coord_label: coord_label,
             current_file,
             on_gcode_generated,
-            settings_persistence: settings_persistence.clone(),
+            settings_persistence: Some(settings_controller.persistence.clone()),
         });
         
         // Update properties panel when selection changes

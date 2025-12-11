@@ -10,7 +10,8 @@ fn test_point_distance() {
 #[test]
 fn test_rectangle_contains_point() {
     let rect = Rectangle::new(0.0, 0.0, 10.0, 10.0);
-    assert!(rect.contains_point(&Point::new(5.0, 5.0), 0.0));
+    // Test point on the edge (since shapes are hollow for selection)
+    assert!(rect.contains_point(&Point::new(0.0, 5.0), 0.0));
     assert!(!rect.contains_point(&Point::new(15.0, 5.0), 0.0));
 }
 
@@ -30,9 +31,11 @@ fn test_line_length() {
 #[test]
 fn test_ellipse_contains_point() {
     let ellipse = Ellipse::new(Point::new(0.0, 0.0), 5.0, 3.0);
-    assert!(ellipse.contains_point(&Point::new(0.0, 0.0), 0.0));
-    assert!(ellipse.contains_point(&Point::new(4.0, 0.0), 0.0));
-    assert!(!ellipse.contains_point(&Point::new(6.0, 0.0), 0.0));
+    // Test point on the boundary (since shapes are hollow for selection)
+    // Use a small tolerance for floating point comparisons
+    assert!(ellipse.contains_point(&Point::new(5.0, 0.0), 1e-6));
+    assert!(ellipse.contains_point(&Point::new(-5.0, 0.0), 1e-6));
+    assert!(!ellipse.contains_point(&Point::new(6.0, 0.0), 1e-6));
 }
 
 #[test]

@@ -16,7 +16,8 @@ fn test_canvas_select() {
     let mut canvas = Canvas::new();
     canvas.add_rectangle(0.0, 0.0, 10.0, 10.0);
 
-    let p = Point::new(5.0, 5.0);
+    // Select on the edge
+    let p = Point::new(0.0, 5.0);
     let selected = canvas.select_at(&p, 0.0, false);
 
     assert!(selected.is_some());
@@ -50,7 +51,8 @@ fn test_canvas_clear() {
 fn test_resize_handle_sequence() {
     let mut canvas = Canvas::with_size(1200.0, 800.0);
     canvas.add_rectangle(0.0, 0.0, 100.0, 100.0);
-    canvas.select_at(&Point::new(50.0, 50.0), 0.0, false);
+    // Select on the edge
+    canvas.select_at(&Point::new(0.0, 50.0), 0.0, false);
 
     // Verify initial state
     let shapes: Vec<_> = canvas.shapes().collect();
@@ -80,8 +82,8 @@ fn test_deselect_by_clicking_empty_space() {
     let mut canvas = Canvas::new();
     let rect_id = canvas.add_rectangle(0.0, 0.0, 10.0, 10.0);
 
-    // Select the rectangle
-    let p = Point::new(5.0, 5.0);
+    // Select the rectangle (on the edge)
+    let p = Point::new(0.0, 5.0);
     let selected = canvas.select_at(&p, 0.0, false);
     assert_eq!(selected, Some(rect_id));
     assert_eq!(canvas.selected_id(), Some(rect_id));

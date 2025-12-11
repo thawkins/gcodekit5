@@ -10,6 +10,7 @@
 //! - Machine preferences (limits, jog settings)
 //! - Firmware-specific settings
 
+pub use gcodekit5_core::units::{FeedRateUnits, MeasurementSystem};
 use gcodekit5_core::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -67,6 +68,81 @@ impl Default for ConnectionSettings {
     }
 }
 
+/// Theme selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    /// Follow system preference
+    System,
+    /// Force light theme
+    Light,
+    /// Force dark theme
+    Dark,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::System => write!(f, "System"),
+            Self::Light => write!(f, "Light"),
+            Self::Dark => write!(f, "Dark"),
+        }
+    }
+}
+
+/// Measurement system selection
+// Removed local definition, imported from gcodekit5_core::units
+
+/// Feed rate units selection
+// Removed local definition, imported from gcodekit5_core::units
+
+/// Startup tab selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartupTab {
+    Machine,
+    Console,
+    Editor,
+    Visualizer,
+    CamTools,
+    Designer,
+    DeviceInfo,
+    Config,
+    Devices,
+    Tools,
+    Materials,
+}
+
+impl Default for StartupTab {
+    fn default() -> Self {
+        Self::Machine
+    }
+}
+
+impl std::fmt::Display for StartupTab {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Machine => write!(f, "Machine Control"),
+            Self::Console => write!(f, "Device Console"),
+            Self::Editor => write!(f, "G-Code Editor"),
+            Self::Visualizer => write!(f, "Visualizer"),
+            Self::CamTools => write!(f, "CAM Tools"),
+            Self::Designer => write!(f, "Designer"),
+            Self::DeviceInfo => write!(f, "Device Info"),
+            Self::Config => write!(f, "Device Config"),
+            Self::Devices => write!(f, "Device Manager"),
+            Self::Tools => write!(f, "CNC Tools"),
+            Self::Materials => write!(f, "Materials"),
+        }
+    }
+}
+
 /// UI preference settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiSettings {
@@ -77,7 +153,8 @@ pub struct UiSettings {
     /// Whether panels are visible (by name)
     pub panel_visibility: HashMap<String, bool>,
     /// Selected theme (light/dark/system)
-    pub theme: String,
+    #[serde(default)]
+    pub theme: Theme,
     /// Font size in points
     pub font_size: u8,
     /// UI language code (e.g., "en", "es", "fr")
@@ -85,7 +162,14 @@ pub struct UiSettings {
     /// Show keyboard shortcuts in menus
     pub show_menu_shortcuts: bool,
     /// Measurement system (Metric or Imperial)
-    pub measurement_system: String,
+    #[serde(default)]
+    pub measurement_system: MeasurementSystem,
+    /// Feed rate units preference
+    #[serde(default)]
+    pub feed_rate_units: FeedRateUnits,
+    /// Startup tab
+    #[serde(default)]
+    pub startup_tab: StartupTab,
 }
 
 impl Default for UiSettings {
@@ -100,11 +184,13 @@ impl Default for UiSettings {
             window_width: 1400,
             window_height: 900,
             panel_visibility: visibility,
-            theme: "dark".to_string(),
+            theme: Theme::default(),
             font_size: 12,
             language: "en".to_string(),
             show_menu_shortcuts: true,
-            measurement_system: "Metric".to_string(),
+            measurement_system: MeasurementSystem::default(),
+            feed_rate_units: FeedRateUnits::default(),
+            startup_tab: StartupTab::default(),
         }
     }
 }
@@ -327,7 +413,11 @@ impl Config {
         if other.connection.timeout_ms > 0 {
             self.connection = other.connection.clone();
         }
-        if !other.ui.theme.is_empty() {
+        // Theme is an enum, so we can't check for empty string. 
+        // We assume if it's not default (System), we might want to merge it, 
+        // but merging logic is tricky with enums. 
+        // For now, let's assume if the other config has a specific theme set (not System), we take it.
+        if other.ui.theme != Theme::System {
             self.ui = other.ui.clone();
         }
         if other.file_processing.arc_segment_length > 0.0 {

@@ -7,10 +7,11 @@ use gcodekit5_core::Units;
 fn test_gcode_generation() {
     let gen = ToolpathGenerator::new();
     let rect = Rectangle::new(0.0, 0.0, 10.0, 10.0);
-    let toolpath = gen.generate_rectangle_contour(&rect);
+    let toolpaths = gen.generate_rectangle_contour(&rect, 0.0);
+    let toolpath = &toolpaths[0];
 
     let gcode_gen = ToolpathToGcode::new(Units::MM, 10.0);
-    let gcode = gcode_gen.generate(&toolpath);
+    let gcode = gcode_gen.generate(toolpath);
 
     assert!(gcode.contains("G90"));
     assert!(gcode.contains("G21"));

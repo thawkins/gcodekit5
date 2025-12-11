@@ -1,5 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::{Box, Label, Button, ProgressBar, Orientation, Align};
+use gcodekit5_core::units::{format_length, MeasurementSystem, get_unit_label};
 
 #[derive(Clone)]
 pub struct StatusBar {
@@ -167,10 +168,17 @@ impl StatusBar {
         }
     }
 
-    pub fn set_position(&self, x: f32, y: f32, z: f32, a: f32, b: f32, c: f32) {
+    pub fn set_position(&self, x: f32, y: f32, z: f32, a: f32, b: f32, c: f32, system: MeasurementSystem) {
+        let unit_label = get_unit_label(system);
         self.position_label.set_text(&format!(
-            "X: {:.3}  Y: {:.3}  Z: {:.3}  A: {:.3}  B: {:.3}  C: {:.3}",
-            x, y, z, a, b, c
+            "X: {}  Y: {}  Z: {}  A: {}  B: {}  C: {} ({})",
+            format_length(x, system),
+            format_length(y, system),
+            format_length(z, system),
+            format_length(a, system),
+            format_length(b, system),
+            format_length(c, system),
+            unit_label
         ));
     }
 

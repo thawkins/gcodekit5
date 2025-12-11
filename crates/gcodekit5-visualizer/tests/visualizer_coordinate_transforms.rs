@@ -131,7 +131,7 @@ fn test_bounds_include_origin() {
     let gcode = "G0 X100 Y100\nG1 X200 Y200";
     viz.parse_gcode(gcode);
 
-    let (min_x, _max_x, min_y, _max_y, _, _) = viz.get_bounds();
+    let (min_x, _max_x, min_y, _max_y) = viz.get_bounds();
 
     // Bounds should be extended to include origin
     assert!(min_x <= 0.0, "Min X should include origin");

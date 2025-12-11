@@ -1,0 +1,130 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: GCodeKit5\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-12-11 12:00+0000\n"
+"PO-Revision-Date: 2025-12-11 12:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Italian\n"
+"Language: it_IT\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "GCodeKit5"
+msgstr "GCodeKit5"
+
+msgid "New"
+msgstr "Nuovo"
+
+msgid "Open"
+msgstr "Apri"
+
+msgid "Save"
+msgstr "Salva"
+
+msgid "Save As..."
+msgstr "Salva con nome..."
+
+msgid "Import"
+msgstr "Importa"
+
+msgid "Export G-Code..."
+msgstr "Esporta G-Code..."
+
+msgid "Export SVG..."
+msgstr "Esporta SVG..."
+
+msgid "Run"
+msgstr "Esegui"
+
+msgid "Quit"
+msgstr "Esci"
+
+msgid "File"
+msgstr "File"
+
+msgid "Undo"
+msgstr "Annulla"
+
+msgid "Redo"
+msgstr "Ripeti"
+
+msgid "Cut"
+msgstr "Taglia"
+
+msgid "Copy"
+msgstr "Copia"
+
+msgid "Paste"
+msgstr "Incolla"
+
+msgid "Preferences"
+msgstr "Preferenze"
+
+msgid "Edit"
+msgstr "Modifica"
+
+msgid "Connect"
+msgstr "Connetti"
+
+msgid "Disconnect"
+msgstr "Disconnetti"
+
+msgid "Home"
+msgstr "Home"
+
+msgid "Reset"
+msgstr "Reset"
+
+msgid "Machine"
+msgstr "Macchina"
+
+msgid "Documentation"
+msgstr "Documentazione"
+
+msgid "About"
+msgstr "Informazioni"
+
+msgid "Help"
+msgstr "Aiuto"
+
+msgid "Machine Control"
+msgstr "Controllo Macchina"
+
+msgid "Device Console"
+msgstr "Console Dispositivo"
+
+msgid "G-Code Editor"
+msgstr "Editor G-Code"
+
+msgid "Visualizer"
+msgstr "Visualizzatore"
+
+msgid "CAM Tools"
+msgstr "Strumenti CAM"
+
+msgid "Designer"
+msgstr "Designer"
+
+msgid "Device Info"
+msgstr "Info Dispositivo"
+
+msgid "Device Config"
+msgstr "Configurazione Dispositivo"
+
+msgid "Device Manager"
+msgstr "Gestione Dispositivi"
+
+msgid "CNC Tools"
+msgstr "Strumenti CNC"
+
+msgid "Materials"
+msgstr "Materiali"
+
+msgid "GCode Toolkit for CNC/Laser Machines"
+msgstr "Toolkit GCode per Macchine CNC/Laser"
+
+msgid "GCodeKit Contributors"
+msgstr "Contributori di GCodeKit"
