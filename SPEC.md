@@ -1898,6 +1898,24 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 
 ### Designer Grid and View Controls (November 2025)
 - **Grid Rendering**: Dynamic grid with adaptive spacing (10mm/100mm) covering full canvas.
+
+## Visualizer Updates (December 2025)
+
+### 3D Stock Removal Simulation
+- **Voxel Engine**: Implemented a 400x400x20 voxel grid (0.5mm resolution) for real-time material removal simulation.
+- **Rendering**: Face-based mesh generation with efficient culling of hidden faces.
+- **Visualization**:
+  - Depth-based coloring (Yellow -> Red -> Blue) to indicate cut depth.
+  - Edge highlighting for better geometry perception.
+  - Configurable stock dimensions and tool radius.
+- **Performance**: Background thread processing to keep UI responsive.
+- **Integration**: Fully integrated into the GTK4 Visualizer widget with toggle controls.
+
+### 3D View Improvements
+- **Camera**: Added gimbal lock prevention (pitch clamped to +/- 89.9 degrees).
+- **Navigation**: Added 3D Navigation Cube and improved orbit/pan controls.
+- **Visuals**: Added tool marker (cone) and device bounds visualization.
+
 - **Origin Indicator**: Crosshair at (0,0) for reference.
 - **View Controls**: Zoom In/Out, Fit to Content, Reset View.
 - **Default View**: Origin at bottom-left with 5px margin.

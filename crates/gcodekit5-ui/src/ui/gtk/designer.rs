@@ -99,6 +99,7 @@ pub struct DesignerView {
     _coord_label: Label,
     current_file: Rc<RefCell<Option<PathBuf>>>,
     on_gcode_generated: Rc<RefCell<Option<std::boxed::Box<dyn Fn(String)>>>>,
+    settings_persistence: Option<Rc<RefCell<gcodekit5_settings::SettingsPersistence>>>,
 }
 
 impl DesignerCanvas {
@@ -2328,7 +2329,7 @@ impl DesignerCanvas {
 }
 
 impl DesignerView {
-    pub fn new(device_manager: Option<Arc<DeviceManager>>) -> Rc<Self> {
+    pub fn new(device_manager: Option<Arc<DeviceManager>>, settings_persistence: Option<Rc<RefCell<gcodekit5_settings::SettingsPersistence>>>) -> Rc<Self> {
         let container = Box::new(Orientation::Vertical, 0);
         container.set_hexpand(true);
         container.set_vexpand(true);
@@ -2651,6 +2652,7 @@ impl DesignerView {
             _coord_label: coord_label,
             current_file,
             on_gcode_generated,
+            settings_persistence: settings_persistence.clone(),
         });
         
         // Update properties panel when selection changes
@@ -2837,6 +2839,17 @@ impl DesignerView {
             }
         }
         
+        // Set initial directory from settings
+        if let Some(ref settings) = self.settings_persistence {
+            if let Ok(settings_ref) = settings.try_borrow() {
+                let default_dir = &settings_ref.config().file_processing.output_directory;
+                if default_dir.exists() {
+                    let file = gtk4::gio::File::for_path(default_dir);
+                    let _ = dialog.set_current_folder(Some(&file));
+                }
+            }
+        }
+        
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("GCodeKit Design Files"));
         filter.add_pattern("*.gckd");
@@ -2909,6 +2922,17 @@ impl DesignerView {
         if let Some(root) = self.widget.root() {
             if let Some(window) = root.downcast_ref::<gtk4::Window>() {
                 dialog.set_transient_for(Some(window));
+            }
+        }
+        
+        // Set initial directory from settings
+        if let Some(ref settings) = self.settings_persistence {
+            if let Ok(settings_ref) = settings.try_borrow() {
+                let default_dir = &settings_ref.config().file_processing.output_directory;
+                if default_dir.exists() {
+                    let file = gtk4::gio::File::for_path(default_dir);
+                    let _ = dialog.set_current_folder(Some(&file));
+                }
             }
         }
         
@@ -3006,6 +3030,17 @@ impl DesignerView {
         if let Some(root) = self.widget.root() {
             if let Some(window) = root.downcast_ref::<gtk4::Window>() {
                 dialog.set_transient_for(Some(window));
+            }
+        }
+        
+        // Set initial directory from settings
+        if let Some(ref settings) = self.settings_persistence {
+            if let Ok(settings_ref) = settings.try_borrow() {
+                let default_dir = &settings_ref.config().file_processing.output_directory;
+                if default_dir.exists() {
+                    let file = gtk4::gio::File::for_path(default_dir);
+                    let _ = dialog.set_current_folder(Some(&file));
+                }
             }
         }
         

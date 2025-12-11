@@ -5,6 +5,7 @@ use crate::{
     shapes::{OperationType, PathShape, Shape, TextShape},
     canvas::DrawingObject,
     Canvas, Circle, DrawingMode, Line, Point, Rectangle, Ellipse, ToolpathGenerator, ToolpathToGcode,
+    stock_removal::{StockMaterial, SimulationResult},
 };
 use crate::commands::*;
 use gcodekit5_core::Units;
@@ -51,6 +52,11 @@ pub struct DesignerState {
     pub default_properties_shape: crate::canvas::DrawingObject,
     undo_stack: Vec<DesignerCommand>,
     redo_stack: Vec<DesignerCommand>,
+    // Stock removal simulation
+    pub stock_material: Option<StockMaterial>,
+    pub show_stock_removal: bool,
+    pub simulation_resolution: f32,
+    pub simulation_result: Option<SimulationResult>,
 }
 
 impl DesignerState {
@@ -71,6 +77,15 @@ impl DesignerState {
             default_properties_shape: crate::canvas::DrawingObject::new(0, crate::shapes::Shape::Rectangle(crate::shapes::Rectangle::new(0.0, 0.0, 0.0, 0.0))),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            stock_material: Some(StockMaterial {
+                width: 200.0,
+                height: 200.0,
+                thickness: 10.0,
+                origin: (0.0, 0.0, 0.0),
+            }),
+            show_stock_removal: false,
+            simulation_resolution: 0.1,
+            simulation_result: None,
         }
     }
 
@@ -78,6 +93,19 @@ impl DesignerState {
     /// Pushes a command to the undo stack and executes it.
     pub fn push_command(&mut self, mut cmd: DesignerCommand) {
         cmd.apply(&mut self.canvas);
+        self.undo_stack.push(cmd);
+        self.redo_stack.clear();
+        // Limit stack size to 50
+        if self.undo_stack.len() > 50 {
+            self.undo_stack.remove(0);
+        }
+        self.is_modified = true;
+        self.gcode_generated = false;
+    }
+
+    /// Records a command that has already been applied
+    /// Use this when the action has already happened and you just want to record it for undo
+    pub fn record_command(&mut self, cmd: DesignerCommand) {
         self.undo_stack.push(cmd);
         self.redo_stack.clear();
         // Limit stack size to 50
@@ -434,7 +462,9 @@ impl DesignerState {
     pub fn generate_gcode(&mut self) -> String {
         let mut gcode = String::new();
         let gcode_gen = ToolpathToGcode::new(Units::MM, 10.0);
-        let mut toolpaths = Vec::new();
+        
+        // Store shape-to-toolpath mapping
+        let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>)> = Vec::new();
 
         for shape in self.canvas.shapes() {
             // Set strategy for this shape
@@ -454,7 +484,7 @@ impl DesignerState {
             // This ensures that the depth set on the shape is respected for both pockets and profiles.
             self.toolpath_generator.set_cut_depth(shape.pocket_depth);
 
-            let shape_toolpaths = match &shape.shape {
+            let toolpaths = match &shape.shape {
                 crate::shapes::Shape::Rectangle(rect) => {
                     if shape.operation_type == OperationType::Pocket {
                         self.toolpath_generator.generate_rectangle_pocket(
@@ -511,25 +541,33 @@ impl DesignerState {
                     self.toolpath_generator.generate_text_toolpath(text, shape.step_down as f64)
                 }
             };
-            toolpaths.extend(shape_toolpaths);
+            shape_toolpaths.push((shape.clone(), toolpaths));
         }
 
-        let total_length: f64 = toolpaths.iter().map(|tp| tp.total_length()).sum();
+        // Calculate total length from all toolpaths
+        let total_length: f64 = shape_toolpaths.iter()
+            .flat_map(|(_, tps)| tps.iter())
+            .map(|tp| tp.total_length())
+            .sum();
 
         // Use settings from first toolpath if available, or defaults
         let (header_speed, header_feed, header_diam, header_depth) =
-            if let Some(first) = toolpaths.first() {
-                let s = first
-                    .segments
-                    .first()
-                    .map(|seg| seg.spindle_speed)
-                    .unwrap_or(3000);
-                let f = first
-                    .segments
-                    .first()
-                    .map(|seg| seg.feed_rate)
-                    .unwrap_or(100.0);
-                (s, f, first.tool_diameter, first.depth)
+            if let Some((_, tps)) = shape_toolpaths.first() {
+                if let Some(first) = tps.first() {
+                    let s = first
+                        .segments
+                        .first()
+                        .map(|seg| seg.spindle_speed)
+                        .unwrap_or(3000);
+                    let f = first
+                        .segments
+                        .first()
+                        .map(|seg| seg.feed_rate)
+                        .unwrap_or(100.0);
+                    (s, f, first.tool_diameter, first.depth)
+                } else {
+                    (3000, 100.0, 3.175, -5.0)
+                }
             } else {
                 (3000, 100.0, 3.175, -5.0)
             };
@@ -543,10 +581,54 @@ impl DesignerState {
         ));
 
         let mut line_number = 10;
-        for toolpath in toolpaths {
-            gcode.push_str(&gcode_gen.generate_body(&toolpath, line_number));
-            // Estimate line count increment (rough)
-            line_number += (toolpath.segments.len() as u32) * 10;
+        
+        for (shape, toolpaths) in shape_toolpaths.iter() {
+            // Add shape metadata as comments
+            gcode.push_str(&format!("\n; Shape ID={}, Type={:?}\n", shape.id, shape.shape.shape_type()));
+            gcode.push_str(&format!("; Name: {}\n", shape.name));
+            gcode.push_str(&format!("; Operation: {:?}\n", shape.operation_type));
+            
+            // Add shape-specific data
+            match &shape.shape {
+                crate::shapes::Shape::Rectangle(rect) => {
+                    let (x1, y1, x2, y2) = rect.bounding_box();
+                    gcode.push_str(&format!("; Position: ({:.3}, {:.3}) to ({:.3}, {:.3})\n", x1, y1, x2, y2));
+                    gcode.push_str(&format!("; Corner radius: {:.3}mm\n", rect.corner_radius));
+                }
+                crate::shapes::Shape::Circle(circle) => {
+                    gcode.push_str(&format!("; Center: ({:.3}, {:.3}), Radius: {:.3}mm\n", circle.center.x, circle.center.y, circle.radius));
+                }
+                crate::shapes::Shape::Line(line) => {
+                    gcode.push_str(&format!("; Start: ({:.3}, {:.3}), End: ({:.3}, {:.3})\n", line.start.x, line.start.y, line.end.x, line.end.y));
+                }
+                crate::shapes::Shape::Ellipse(ellipse) => {
+                    let (x1, y1, x2, y2) = ellipse.bounding_box();
+                    gcode.push_str(&format!("; Position: ({:.3}, {:.3}) to ({:.3}, {:.3})\n", x1, y1, x2, y2));
+                }
+                crate::shapes::Shape::Path(path) => {
+                    let (x1, y1, x2, y2) = path.bounding_box();
+                    gcode.push_str(&format!("; Path bounds: ({:.3}, {:.3}) to ({:.3}, {:.3})\n", x1, y1, x2, y2));
+                }
+                crate::shapes::Shape::Text(text) => {
+                    gcode.push_str(&format!("; Text: \"{}\", Font size: {:.3}mm\n", text.text, text.font_size));
+                    gcode.push_str(&format!("; Position: ({:.3}, {:.3})\n", text.x, text.y));
+                }
+            }
+            
+            if shape.operation_type == OperationType::Pocket {
+                gcode.push_str(&format!("; Pocket depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n", 
+                    shape.pocket_depth, shape.step_down, shape.step_in));
+                gcode.push_str(&format!("; Strategy: {:?}\n", shape.pocket_strategy));
+            } else {
+                gcode.push_str(&format!("; Cut depth: {:.3}mm, Step down: {:.3}mm\n", 
+                    shape.pocket_depth, shape.step_down));
+            }
+            
+            // Generate G-code for all toolpaths associated with this shape
+            for toolpath in toolpaths {
+                gcode.push_str(&gcode_gen.generate_body(toolpath, line_number));
+                line_number += (toolpath.segments.len() as u32) * 10;
+            }
         }
 
         gcode.push_str(&gcode_gen.generate_footer());
@@ -649,6 +731,14 @@ impl DesignerState {
             commands,
             name: "Ungroup Shapes".to_string(),
         });
+        self.push_command(cmd);
+    }
+
+    /// Adds a shape to the canvas with undo/redo support.
+    pub fn add_shape_with_undo(&mut self, shape: Shape) {
+        let id = self.canvas.generate_id();
+        let obj = DrawingObject::new(id, shape);
+        let cmd = DesignerCommand::AddShape(AddShape { id, object: Some(obj) });
         self.push_command(cmd);
     }
 

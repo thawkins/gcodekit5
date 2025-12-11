@@ -321,19 +321,24 @@ impl PocketGenerator {
     /// Prepares a polygon for offsetting by removing duplicates and enforcing CW orientation.
     fn prepare_polygon(vertices: &[Point]) -> Polyline {
         let mut clean_vertices = Vec::new();
+        let tolerance = 0.01; // 0.01mm tolerance for duplicate detection
+        
         if let Some(first) = vertices.first() {
             clean_vertices.push(*first);
             for p in vertices.iter().skip(1) {
                 let last = clean_vertices.last().unwrap();
-                if (p.x - last.x).abs() > 1e-6 || (p.y - last.y).abs() > 1e-6 {
+                let dist = ((p.x - last.x).powi(2) + (p.y - last.y).powi(2)).sqrt();
+                if dist > tolerance {
                     clean_vertices.push(*p);
                 }
             }
             
+            // Remove closing vertex if it's the same as the first
             if clean_vertices.len() > 1 {
                 let first = clean_vertices.first().unwrap();
                 let last = clean_vertices.last().unwrap();
-                if (last.x - first.x).abs() < 1e-6 && (last.y - first.y).abs() < 1e-6 {
+                let dist = ((last.x - first.x).powi(2) + (last.y - first.y).powi(2)).sqrt();
+                if dist < tolerance {
                     clean_vertices.pop();
                 }
             }
@@ -379,6 +384,7 @@ impl PocketGenerator {
             let mut current_offset = tool_radius;
             let has_paths = true;
 
+
             while has_paths {
                 // Offset inwards
                 let offsets = polyline.parallel_offset(-current_offset);
@@ -387,9 +393,9 @@ impl PocketGenerator {
                     break;
                 }
 
-                for offset_path in offsets {
+                for (_path_idx, offset_path) in offsets.iter().enumerate() {
                     let mut points = Vec::new();
-                    for v in offset_path.vertex_data {
+                    for v in &offset_path.vertex_data {
                         points.push(Point::new(v.x, v.y));
                     }
                     

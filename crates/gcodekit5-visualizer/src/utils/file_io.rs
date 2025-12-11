@@ -533,7 +533,6 @@ impl Default for RecentFilesManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-   
 
     #[test]
     fn test_file_encoding_detection() {

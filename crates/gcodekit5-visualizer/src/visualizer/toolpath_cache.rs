@@ -86,7 +86,12 @@ impl ToolpathCache {
 
         for cmd in &self.commands {
             match cmd {
-                GCodeCommand::Move { from, to, rapid, intensity: _ } => {
+                GCodeCommand::Move {
+                    from,
+                    to,
+                    rapid,
+                    intensity: _,
+                } => {
                     if *rapid {
                         let _ = write!(
                             self.cached_rapid_path,

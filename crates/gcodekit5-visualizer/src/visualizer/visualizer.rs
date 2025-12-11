@@ -2,8 +2,8 @@
 //! Parses G-Code toolpaths for canvas-based visualization
 
 use super::toolpath_cache::ToolpathCache;
-use gcodekit5_core::constants as core_constants;
 use super::viewport::{Bounds, ViewportTransform};
+use gcodekit5_core::constants as core_constants;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -297,8 +297,9 @@ impl Visualizer {
             }
         }
 
-        (self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z) =
-            bounds.finalize_with_padding(BOUNDS_PADDING_FACTOR);
+        (
+            self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z,
+        ) = bounds.finalize_with_padding(BOUNDS_PADDING_FACTOR);
         self.current_pos = current_pos;
 
         self.toolpath_cache.update(new_hash, commands);
@@ -682,7 +683,14 @@ impl Visualizer {
         }
 
         if has_cutting_moves && bounds.is_valid() {
-            Some((bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y, bounds.min_z, bounds.max_z))
+            Some((
+                bounds.min_x,
+                bounds.max_x,
+                bounds.min_y,
+                bounds.max_y,
+                bounds.min_z,
+                bounds.max_z,
+            ))
         } else {
             None
         }

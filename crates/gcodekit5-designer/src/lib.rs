@@ -87,6 +87,7 @@ pub mod spatial_index;
 pub mod svg_renderer;
 pub mod templates;
 pub mod tool_library;
+pub mod stock_removal;
 pub mod toolpath;
 pub mod toolpath_simulation;
 pub mod vcarve;
@@ -96,6 +97,7 @@ pub mod viewport;
 pub mod designer_state;
 pub mod designer_editor_integration;
 pub mod designer_visualizer_integration;
+pub mod gcode_converter;
 
 // Re-export all public types from submodules
 pub use adaptive::{AdaptiveClearing, AdaptiveAlgorithm, MaterialProperties, MaterialType, LoadMonitor, DynamicStepover};
@@ -113,6 +115,7 @@ pub use pocket_operations::{Island, PocketGenerator, PocketOperation};
 pub use render_optimizer::{RenderOptimizer, RenderStats};
 pub use shapes::{Point, Circle, Rectangle, Line, Ellipse, Shape, ShapeType};
 pub use spatial_index::{Bounds, SpatialIndex, SpatialIndexStats};
+pub use stock_removal::{HeightMap2D, SimulationResult, StockMaterial};
 pub use templates::*;
 pub use tool_library::{CoolantType, MaterialProfile, Tool, ToolLibrary, ToolType};
 pub use toolpath::{Toolpath, ToolpathGenerator, ToolpathSegment, ToolpathSegmentType};
@@ -122,3 +125,4 @@ pub use viewport::Viewport;
 
 // State and integration
 pub use designer_state::DesignerState;
+pub use gcode_converter::{create_linear_segment, create_arc_segment, point_to_2d};

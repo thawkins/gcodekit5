@@ -235,6 +235,99 @@ impl DesignerToolbox {
         
         content_box.append(&expander);
 
+        // Stock Settings
+        let stock_box = Box::new(Orientation::Vertical, 5);
+        stock_box.set_margin_start(2);
+        stock_box.set_margin_end(2);
+
+        // Helper for stock settings
+        let create_stock_setting = |label_text: &str, value: f32, tooltip: &str| -> Entry {
+            let label = Label::builder()
+                .label(label_text)
+                .halign(Align::Start)
+                .build();
+            label.add_css_class("small-label");
+            stock_box.append(&label);
+
+            let entry = Entry::builder()
+                .text(&format!("{:.2}", value))
+                .tooltip_text(tooltip)
+                .build();
+            stock_box.append(&entry);
+            entry
+        };
+
+        let stock_state = state.borrow();
+        let stock_material = stock_state.stock_material.as_ref();
+        let stock_width = stock_material.map(|s| s.width).unwrap_or(200.0);
+        let stock_height = stock_material.map(|s| s.height).unwrap_or(200.0);
+        let stock_thickness = stock_material.map(|s| s.thickness).unwrap_or(10.0);
+        let sim_resolution = stock_state.simulation_resolution;
+        drop(stock_state);
+
+        // Stock dimensions
+        let stock_width_entry = create_stock_setting("Stock Width (mm)", stock_width, "Stock material width");
+        let state_stock_w = state.clone();
+        stock_width_entry.connect_changed(move |entry| {
+            if let Ok(val) = entry.text().parse::<f32>() {
+                let mut s = state_stock_w.borrow_mut();
+                if let Some(ref mut stock) = s.stock_material {
+                    stock.width = val;
+                }
+            }
+        });
+
+        let stock_height_entry = create_stock_setting("Stock Height (mm)", stock_height, "Stock material height");
+        let state_stock_h = state.clone();
+        stock_height_entry.connect_changed(move |entry| {
+            if let Ok(val) = entry.text().parse::<f32>() {
+                let mut s = state_stock_h.borrow_mut();
+                if let Some(ref mut stock) = s.stock_material {
+                    stock.height = val;
+                }
+            }
+        });
+
+        let stock_thickness_entry = create_stock_setting("Stock Thickness (mm)", stock_thickness, "Stock material thickness");
+        let state_stock_t = state.clone();
+        stock_thickness_entry.connect_changed(move |entry| {
+            if let Ok(val) = entry.text().parse::<f32>() {
+                let mut s = state_stock_t.borrow_mut();
+                if let Some(ref mut stock) = s.stock_material {
+                    stock.thickness = val;
+                }
+            }
+        });
+
+        // Resolution
+        let res_entry = create_stock_setting("Resolution (mm)", sim_resolution, "Simulation resolution (lower = more detail)");
+        let state_res = state.clone();
+        res_entry.connect_changed(move |entry| {
+            if let Ok(val) = entry.text().parse::<f32>() {
+                state_res.borrow_mut().simulation_resolution = val.max(0.01).min(2.0);
+            }
+        });
+
+        // Show Stock Removal checkbox
+        let show_stock_check = gtk4::CheckButton::with_label("Show Stock Removal");
+        show_stock_check.set_tooltip_text(Some("Enable stock removal visualization"));
+        show_stock_check.set_margin_top(5);
+        let show_stock_state = state.borrow().show_stock_removal;
+        show_stock_check.set_active(show_stock_state);
+        let state_show_stock = state.clone();
+        show_stock_check.connect_toggled(move |cb| {
+            state_show_stock.borrow_mut().show_stock_removal = cb.is_active();
+        });
+        stock_box.append(&show_stock_check);
+
+        let stock_expander = Expander::builder()
+            .label("Stock Settings")
+            .child(&stock_box)
+            .expanded(false)
+            .build();
+        
+        content_box.append(&stock_expander);
+
         // Generate G-Code Button
         let generate_btn = Button::with_label("Generate G-Code");
         generate_btn.add_css_class("suggested-action");

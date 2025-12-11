@@ -36,8 +36,26 @@ pub fn main() {
     app.connect_activate(|app| {
         // Initialize Controllers
         let settings_dialog = Rc::new(RefCell::new(gcodekit5_settings::SettingsDialog::new()));
-        let settings_persistence =
-            Rc::new(RefCell::new(gcodekit5_settings::SettingsPersistence::new()));
+        
+        // Load settings from file if it exists, otherwise use defaults
+        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
+            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+        let settings_persistence = if config_path.exists() {
+            match gcodekit5_settings::SettingsPersistence::load_from_file(&config_path) {
+                Ok(persistence) => {
+                    info!("Loaded settings from {:?}", config_path);
+                    Rc::new(RefCell::new(persistence))
+                }
+                Err(e) => {
+                    info!("Failed to load settings: {}, using defaults", e);
+                    Rc::new(RefCell::new(gcodekit5_settings::SettingsPersistence::new()))
+                }
+            }
+        } else {
+            info!("Config file not found at {:?}, using defaults", config_path);
+            Rc::new(RefCell::new(gcodekit5_settings::SettingsPersistence::new()))
+        };
+        
         let settings_controller = Rc::new(gcodekit5_settings::SettingsController::new(
             settings_dialog.clone(),
             settings_persistence.clone(),
@@ -45,7 +63,7 @@ pub fn main() {
 
         // Populate settings from persistence so the dialog isn't empty
         settings_persistence
-            .borrow_mut()
+            .borrow()
             .populate_dialog(&mut settings_dialog.borrow_mut());
 
         let config_dir = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -211,7 +229,7 @@ pub fn main() {
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), "CAM Tools");
 
         // 6. Designer
-        let designer = DesignerView::new(Some(device_manager.clone()));
+        let designer = DesignerView::new(Some(device_manager.clone()), Some(settings_persistence.clone()));
         stack.add_titled(&designer.widget, Some("designer"), "Designer");
 
         // Connect Designer G-Code Generation to Editor

@@ -1,6 +1,7 @@
 pub mod settings;
 pub mod shaders;
 pub mod renderer_3d;
+pub mod stock_texture;
 pub mod device_console;
 pub mod device_manager;
 pub mod cam_tools;

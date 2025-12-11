@@ -3,8 +3,6 @@
 use lyon::path::Path;
 use lyon::math::point;
 use lyon::algorithms::aabb::bounding_box;
-use lyon::algorithms::hit_test::hit_test_path;
-use lyon::path::FillRule;
 use lyon::path::iterator::PathIterator;
 use std::any::Any;
 use crate::font_manager;
@@ -297,12 +295,31 @@ impl Rectangle {
     }
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
+        // Only select if near the boundary, not inside
         let center = Point::new(self.x + self.width / 2.0, self.y + self.height / 2.0);
         let p = rotate_point(*point, center, -self.rotation);
-        p.x >= self.x - tolerance
-            && p.x <= self.x + self.width + tolerance
-            && p.y >= self.y - tolerance
-            && p.y <= self.y + self.height + tolerance
+        
+        // Check if point is near any of the four edges
+        let left = self.x;
+        let right = self.x + self.width;
+        let top = self.y;
+        let bottom = self.y + self.height;
+        
+        // Distance to each edge
+        let dist_to_left = (p.x - left).abs();
+        let dist_to_right = (p.x - right).abs();
+        let dist_to_top = (p.y - top).abs();
+        let dist_to_bottom = (p.y - bottom).abs();
+        
+        // Check if near vertical edges (and within vertical bounds)
+        let near_left = dist_to_left <= tolerance && p.y >= top - tolerance && p.y <= bottom + tolerance;
+        let near_right = dist_to_right <= tolerance && p.y >= top - tolerance && p.y <= bottom + tolerance;
+        
+        // Check if near horizontal edges (and within horizontal bounds)
+        let near_top = dist_to_top <= tolerance && p.x >= left - tolerance && p.x <= right + tolerance;
+        let near_bottom = dist_to_bottom <= tolerance && p.x >= left - tolerance && p.x <= right + tolerance;
+        
+        near_left || near_right || near_top || near_bottom
     }
 
     pub fn translate(&mut self, dx: f64, dy: f64) {
@@ -419,7 +436,9 @@ impl Circle {
     }
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
-        self.center.distance_to(point) <= self.radius + tolerance
+        // Only select if near the boundary (circumference), not inside
+        let dist = self.center.distance_to(point);
+        (dist - self.radius).abs() <= tolerance
     }
 
     pub fn translate(&mut self, dx: f64, dy: f64) {
@@ -654,11 +673,18 @@ impl Ellipse {
     }
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
+        // Only select if near the boundary (ellipse stroke), not inside
         let dx = point.x - self.center.x;
         let dy = point.y - self.center.y;
-        let rx = self.rx + tolerance;
-        let ry = self.ry + tolerance;
-        (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1.0
+        
+        // Calculate the distance from point to ellipse boundary
+        // Approximate using parametric form
+        let theta = dy.atan2(dx);
+        let boundary_x = self.center.x + self.rx * theta.cos();
+        let boundary_y = self.center.y + self.ry * theta.sin();
+        let boundary_point = Point::new(boundary_x, boundary_y);
+        
+        point.distance_to(&boundary_point) <= tolerance
     }
 
     pub fn translate(&mut self, dx: f64, dy: f64) {
@@ -821,17 +847,7 @@ impl PathShape {
 
         let target = point(local_p.x as f32, local_p.y as f32);
 
-        // First check if it's inside (fill)
-        if hit_test_path(
-            &target,
-            self.path.iter(),
-            FillRule::NonZero,
-            tolerance as f32
-        ) {
-            return true;
-        }
-
-        // If not inside, check distance to stroke (for open paths or edges)
+        // Only check distance to stroke (path boundary), not fill
         let mut min_dist_sq = f64::INFINITY;
         
         // Flatten the path to line segments
@@ -1417,13 +1433,7 @@ impl TextShape {
     }
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
-        // For hit testing, we need unrotated bounding box
-        // So we rotate point backwards around center of unrotated box
-        // But we need to calculate unrotated box first.
-        // This is inefficient to do every time.
-        // But for now it's fine.
-        
-        // Duplicate logic to get unrotated bounds
+        // For hit testing text, check if near the boundary of text bounding box
         let font = font_manager::get_font();
         let scale = Scale::uniform(self.font_size as f32);
         let v_metrics = font.v_metrics(scale);
@@ -1458,7 +1468,19 @@ impl TextShape {
         
         let center = Point::new((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
         let p = rotate_point(*point, center, -self.rotation);
-        p.x >= min_x - tolerance && p.x <= max_x + tolerance && p.y >= min_y - tolerance && p.y <= max_y + tolerance
+        
+        // Check if near the boundary edges
+        let dist_to_left = (p.x - min_x).abs();
+        let dist_to_right = (p.x - max_x).abs();
+        let dist_to_top = (p.y - min_y).abs();
+        let dist_to_bottom = (p.y - max_y).abs();
+        
+        let near_left = dist_to_left <= tolerance && p.y >= min_y - tolerance && p.y <= max_y + tolerance;
+        let near_right = dist_to_right <= tolerance && p.y >= min_y - tolerance && p.y <= max_y + tolerance;
+        let near_top = dist_to_top <= tolerance && p.x >= min_x - tolerance && p.x <= max_x + tolerance;
+        let near_bottom = dist_to_bottom <= tolerance && p.x >= min_x - tolerance && p.x <= max_x + tolerance;
+        
+        near_left || near_right || near_top || near_bottom
     }
 
     pub fn translate(&mut self, dx: f64, dy: f64) {

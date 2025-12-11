@@ -136,7 +136,7 @@ pub fn render_intensity_overlay(
     max_intensity: f32,
 ) -> Vec<String> {
     let mut layers = vec![String::new(); 10];
-    
+
     // Pre-allocate some capacity
     let estimated_capacity = visualizer.get_command_count() * 10;
     for layer in &mut layers {
@@ -148,7 +148,12 @@ pub fn render_intensity_overlay(
 
     for cmd in visualizer.commands() {
         match cmd {
-            GCodeCommand::Move { from, to, rapid, intensity } => {
+            GCodeCommand::Move {
+                from,
+                to,
+                rapid,
+                intensity,
+            } => {
                 if *rapid {
                     // Reset last positions on rapid moves
                     last_pos = [None; 10];
@@ -156,10 +161,14 @@ pub fn render_intensity_overlay(
                 }
 
                 if let Some(s) = intensity {
-                    if *s <= 0.0 { continue; }
-                    
+                    if *s <= 0.0 {
+                        continue;
+                    }
+
                     let ratio = (*s / max_intensity).clamp(0.0, 1.0);
-                    if ratio <= 0.0 { continue; }
+                    if ratio <= 0.0 {
+                        continue;
+                    }
 
                     // Map 0.0-1.0 to 0-9 bucket
                     let bucket = ((ratio * 10.0).floor() as usize).min(9);
@@ -174,12 +183,22 @@ pub fn render_intensity_overlay(
                     *last = Some(*to);
                 }
             }
-            GCodeCommand::Arc { from, to, center, clockwise, intensity } => {
+            GCodeCommand::Arc {
+                from,
+                to,
+                center,
+                clockwise,
+                intensity,
+            } => {
                 if let Some(s) = intensity {
-                    if *s <= 0.0 { continue; }
-                    
+                    if *s <= 0.0 {
+                        continue;
+                    }
+
                     let ratio = (*s / max_intensity).clamp(0.0, 1.0);
-                    if ratio <= 0.0 { continue; }
+                    if ratio <= 0.0 {
+                        continue;
+                    }
 
                     let bucket = ((ratio * 10.0).floor() as usize).min(9);
 

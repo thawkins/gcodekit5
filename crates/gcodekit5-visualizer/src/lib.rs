@@ -3,16 +3,17 @@
 //! G-code visualization, parsing, and processing for GCodeKit4.
 //! Includes parser, preprocessors, stream readers, and visualizer components.
 
-pub mod visualizer;
 pub mod gcode;
-pub mod utils;
 pub mod helpers;
+pub mod utils;
+pub mod visualizer;
 
 pub use visualizer::{
-    Visualizer, Point3D, GCodeCommand, VisualizerControls, Scene, Camera, Camera3D, Renderer,
-    render_grid_to_path, render_origin_to_path, render_rapid_moves_to_path, render_toolpath_to_path,
-    render_g1_to_path, render_g2_to_path, render_g3_to_path, render_g4_to_path,
-    render_intensity_overlay,
+    generate_surface_mesh, render_g1_to_path, render_g2_to_path, render_g3_to_path,
+    render_g4_to_path, render_grid_to_path, render_intensity_overlay, render_origin_to_path,
+    render_rapid_moves_to_path, render_toolpath_to_path, Camera, Camera3D, GCodeCommand, Point3D,
+    Renderer, Scene, StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer,
+    VisualizerControls, VoxelGrid,
 };
 
 pub use gcode::{

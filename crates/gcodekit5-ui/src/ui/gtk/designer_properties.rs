@@ -10,6 +10,7 @@ pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
     state: Rc<RefCell<DesignerState>>,
     _content: Box,
+    header: Label,
     // Property widgets
     pos_x_entry: Entry,
     pos_y_entry: Entry,
@@ -278,6 +279,7 @@ impl PropertiesPanel {
             step_down_entry: step_down_entry.clone(),
             step_in_entry: step_in_entry.clone(),
             strategy_combo: strategy_combo.clone(),
+            header: header.clone(),
             redraw_callback: Rc::new(RefCell::new(None)),
             updating: Rc::new(RefCell::new(false)),
             has_focus: Rc::new(RefCell::new(false)),
@@ -645,37 +647,61 @@ impl PropertiesPanel {
         // Extract data first to avoid holding the borrow while updating widgets
         let selection_data = {
             let designer_state = self.state.borrow();
-            if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                if let Some(obj) = designer_state.canvas.shape_store.get(id) {
-                    Some((
-                        obj.shape.clone(),
-                        obj.operation_type,
-                        obj.pocket_depth,
-                        obj.step_down,
-                        obj.step_in,
-                        obj.pocket_strategy,
-                    ))
-                } else {
-                    None
-                }
-            } else {
+            let selected: Vec<_> = designer_state.canvas.shapes()
+                .filter(|s| s.selected)
+                .collect();
+            
+            if selected.is_empty() {
                 None
+            } else if selected.len() == 1 {
+                // Single selection - show all properties
+                let obj = &selected[0];
+                Some((
+                    vec![obj.id],
+                    Some(obj.shape.clone()),
+                    obj.operation_type,
+                    obj.pocket_depth,
+                    obj.step_down,
+                    obj.step_in,
+                    obj.pocket_strategy,
+                ))
+            } else {
+                // Multiple selection - only show CAM properties (use first shape's values)
+                let obj = &selected[0];
+                Some((
+                    selected.iter().map(|s| s.id).collect(),
+                    None, // No shape data for multi-selection
+                    obj.operation_type,
+                    obj.pocket_depth,
+                    obj.step_down,
+                    obj.step_in,
+                    obj.pocket_strategy,
+                ))
             }
         };
 
-        if let Some((shape, op_type, depth, step_down, step_in, strategy)) = selection_data {
+        if let Some((ids, shape_opt, op_type, depth, step_down, step_in, strategy)) = selection_data {
             // Set flag to prevent feedback loop during updates
             *self.updating.borrow_mut() = true;
 
-            // Enable all controls by default
-            self.pos_x_entry.set_sensitive(true);
-            self.pos_y_entry.set_sensitive(true);
-            self.width_entry.set_sensitive(true);
-            self.height_entry.set_sensitive(true);
-            self.rotation_entry.set_sensitive(true);
+            // Update header with shape ID(s)
+            if ids.len() == 1 {
+                self.header.set_text(&format!("Properties [{}]", ids[0]));
+            } else {
+                self.header.set_text(&format!("Properties [{} shapes]", ids.len()));
+            }
 
-            // Update spin buttons based on shape type
-            match shape {
+            if let Some(shape) = shape_opt {
+                // Single selection - show all properties
+                // Enable all controls by default
+                self.pos_x_entry.set_sensitive(true);
+                self.pos_y_entry.set_sensitive(true);
+                self.width_entry.set_sensitive(true);
+                self.height_entry.set_sensitive(true);
+                self.rotation_entry.set_sensitive(true);
+
+                // Update spin buttons based on shape type
+                match shape {
                 Shape::Rectangle(rect) => {
                     self.pos_x_entry.set_text(&format!("{:.2}", rect.x));
                     self.pos_y_entry.set_text(&format!("{:.2}", rect.y));
@@ -770,8 +796,30 @@ impl PropertiesPanel {
                     self.font_size_entry.set_sensitive(false);
                 }
             }
+            } else {
+                // Multiple selection - disable geometry properties
+                self.pos_x_entry.set_sensitive(false);
+                self.pos_y_entry.set_sensitive(false);
+                self.width_entry.set_sensitive(false);
+                self.height_entry.set_sensitive(false);
+                self.rotation_entry.set_sensitive(false);
+                self.corner_radius_entry.set_sensitive(false);
+                self.is_slot_check.set_sensitive(false);
+                self.text_entry.set_sensitive(false);
+                self.font_size_entry.set_sensitive(false);
+                
+                // Clear values
+                self.pos_x_entry.set_text("");
+                self.pos_y_entry.set_text("");
+                self.width_entry.set_text("");
+                self.height_entry.set_text("");
+                self.rotation_entry.set_text("");
+                self.corner_radius_entry.set_text("");
+                self.text_entry.set_text("");
+                self.font_size_entry.set_text("");
+            }
             
-            // Update CAM properties
+            // Update CAM properties (always enabled for single or multi-selection)
             self.op_type_combo.set_selected(match op_type {
                 OperationType::Profile => 0,
                 OperationType::Pocket => 1,
@@ -795,7 +843,9 @@ impl PropertiesPanel {
             // Clear flag
             *self.updating.borrow_mut() = false;
         } else {
-            // No selection - disable controls
+            // No selection - reset header and disable controls
+            self.header.set_text("Properties");
+            
             self.pos_x_entry.set_sensitive(false);
             self.pos_y_entry.set_sensitive(false);
             self.width_entry.set_sensitive(false);

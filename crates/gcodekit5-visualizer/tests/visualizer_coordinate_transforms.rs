@@ -150,7 +150,11 @@ fn test_fit_to_view_margin_applied() {
 
     // With 5% per-edge margin (10% total margin), content fits with scale = 9
     // Accept a small delta to avoid rounding false negatives
-    assert!((viz.zoom_scale - 9.0).abs() < 0.2, "zoom_scale {} expected near 9.0", viz.zoom_scale);
+    assert!(
+        (viz.zoom_scale - 9.0).abs() < 0.2,
+        "zoom_scale {} expected near 9.0",
+        viz.zoom_scale
+    );
 }
 
 #[test]

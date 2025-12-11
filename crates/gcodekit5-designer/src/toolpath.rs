@@ -24,6 +24,8 @@ pub struct ToolpathSegment {
     pub center: Option<Point>,
     pub feed_rate: f64,
     pub spindle_speed: u32,
+    /// Z depth for this segment (negative = below stock top)
+    pub z_depth: Option<f64>,
 }
 
 impl ToolpathSegment {
@@ -42,6 +44,7 @@ impl ToolpathSegment {
             center: None,
             feed_rate,
             spindle_speed,
+            z_depth: None,
         }
     }
 
@@ -61,7 +64,14 @@ impl ToolpathSegment {
             center: Some(center),
             feed_rate,
             spindle_speed,
+            z_depth: None,
         }
+    }
+    
+    /// Set the Z depth for this segment
+    pub fn with_z_depth(mut self, z: f64) -> Self {
+        self.z_depth = Some(z);
+        self
     }
 }
 
@@ -524,15 +534,17 @@ impl ToolpathGenerator {
             let h = rect.height;
             
             if r > 0.001 {
-                let segments = 8;
+                // Use more segments for better approximation (32 instead of 8)
+                let segments = 32;
                 
-                // Helper to add arc points
-                let mut add_arc_points = |center: Point, start_angle: f64, end_angle: f64| {
+                // Helper to add arc points (excluding start point to avoid duplicates)
+                let mut add_arc_points = |center: Point, start_angle: f64, end_angle: f64, include_start: bool| {
                     let start_rad = start_angle.to_radians();
                     let end_rad = end_angle.to_radians();
                     let step = (end_rad - start_rad) / segments as f64;
                     
-                    for i in 0..=segments {
+                    let start_i = if include_start { 0 } else { 1 };
+                    for i in start_i..=segments {
                         let angle = start_rad + step * i as f64;
                         vertices.push(Point::new(
                             center.x + r * angle.cos(),
@@ -541,32 +553,18 @@ impl ToolpathGenerator {
                     }
                 };
                 
-                // BR Corner (270 -> 360) (assuming y up? or y down?)
-                // In standard math (y up), 0 is right, 90 is up.
-                // If y is down (SVG), 90 is down.
-                // Let's assume standard Cartesian for generation, consistent with arc logic.
+                // Generate rounded rectangle corners (clockwise from bottom-right)
+                // BR Corner (270 -> 360) - include start point
+                add_arc_points(Point::new(x + w - r, y + r), 270.0, 360.0, true);
                 
-                // BR Corner
-                add_arc_points(Point::new(x + w - r, y + h - r), 0.0, 90.0); // This looks like TR in Cartesian if y+ is up
+                // TR Corner (0 -> 90) - exclude start point (overlaps with BR end)
+                add_arc_points(Point::new(x + w - r, y + h - r), 0.0, 90.0, false);
                 
-                // Let's stick to the order in original code but use x,y,w,h
-                // Original:
-                // BR Corner (270 -> 360) -> Point(x + w - r, y + r) -> This assumes y is down (y+ is down)?
-                // If y+ is down, y+r is top (visually), y+h-r is bottom.
+                // TL Corner (90 -> 180) - exclude start point (overlaps with TR end)
+                add_arc_points(Point::new(x + r, y + h - r), 90.0, 180.0, false);
                 
-                // Let's just use the corners logic from original but with x,y,w,h
-                
-                // BR Corner (270 -> 360)
-                add_arc_points(Point::new(x + w - r, y + r), 270.0, 360.0);
-                
-                // TR Corner (0 -> 90)
-                add_arc_points(Point::new(x + w - r, y + h - r), 0.0, 90.0);
-                
-                // TL Corner (90 -> 180)
-                add_arc_points(Point::new(x + r, y + h - r), 90.0, 180.0);
-                
-                // BL Corner (180 -> 270)
-                add_arc_points(Point::new(x + r, y + r), 180.0, 270.0);
+                // BL Corner (180 -> 270) - exclude start point (overlaps with TL end)
+                add_arc_points(Point::new(x + r, y + r), 180.0, 270.0, false);
             } else {
                 vertices.push(Point::new(x, y));
                 vertices.push(Point::new(x + w, y));

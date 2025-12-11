@@ -1,3 +1,31 @@
+## [0.29.0-alpha.0] - 2025-12-11
+
+### Changed
+- **Visualizer**: Removed debug println! statements to clean up console output.
+- **Version**: Bumped version to 0.29.0-alpha.0.
+
+## [0.28.0-alpha.0] - 2025-12-11
+
+### Added
+- **Visualizer**: Implemented full 3D stock removal visualization using voxel-based simulation.
+  - 400×400×20 voxel grid at 0.5mm resolution for accurate material removal tracking.
+  - Real-time volumetric rendering with GPU shaders showing remaining stock and cut geometry.
+  - Depth-based color gradient (Yellow → Orange → Red → Blue) showing cut depth.
+  - Edge detection to highlight perpendicular walls and cut features.
+  - Background threading to prevent UI blocking during simulation.
+  - Configurable stock dimensions (Width, Height, Thickness, Tool Radius).
+- **Visualizer**: Added camera gimbal lock prevention (pitch clamped to ±89.9°).
+
+### Changed
+- **Visualizer**: Stock removal now renders from Z=0 downward (negative Z) matching G-code conventions.
+- **Visualizer**: Improved lighting and shading for better 3D depth perception.
+- **Visualizer**: Enhanced transparency handling for interior removed material.
+
+### Fixed
+- **Visualizer**: Fixed Z-coordinate handling for negative G-code values in stock removal simulation.
+- **Visualizer**: Fixed camera jumping and discontinuities when rotating near vertical angles.
+- **Visualizer**: Fixed memory issues with large voxel grids by optimizing resolution.
+
 ## [0.27.0-alpha.0] - 2025-12-10
 
 ### Added

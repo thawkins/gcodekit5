@@ -66,37 +66,33 @@ impl Camera {
         // Re-derive basis vectors from yaw/pitch
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
         let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
-        
+
         // Forward vector (camera to target)
         // Using Z-up convention:
         // x = r * cos(pitch) * cos(yaw)
         // y = r * cos(pitch) * sin(yaw)
         // z = r * sin(pitch)
-        
-        let offset_dir = Vec3::new(
-            cos_pitch * cos_yaw,
-            cos_pitch * sin_yaw,
-            sin_pitch
-        ).normalize();
-        
+
+        let offset_dir = Vec3::new(cos_pitch * cos_yaw, cos_pitch * sin_yaw, sin_pitch).normalize();
+
         // Camera Forward is -offset_dir (looking at target)
         let forward = -offset_dir;
-        
+
         // Handle singularity when looking straight up/down
         let world_up = if forward.cross(Vec3::Z).length_squared() < 0.001 {
             Vec3::Y
         } else {
             Vec3::Z
         };
-        
+
         // Camera Right
         let cam_right = forward.cross(world_up).normalize();
-        
+
         // Camera Up
         let cam_up = cam_right.cross(forward).normalize();
 
         // Scale factor for panning speed
-        let scale = self.distance * 0.001; 
+        let scale = self.distance * 0.001;
 
         // Move target
         self.target -= cam_right * delta_x * scale;
@@ -108,11 +104,7 @@ impl Camera {
         let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
 
         // Z-up convention
-        let offset = Vec3::new(
-            cos_pitch * cos_yaw,
-            cos_pitch * sin_yaw,
-            sin_pitch
-        ) * self.distance;
+        let offset = Vec3::new(cos_pitch * cos_yaw, cos_pitch * sin_yaw, sin_pitch) * self.distance;
 
         self.target + offset
     }
@@ -120,7 +112,7 @@ impl Camera {
     pub fn get_view_matrix(&self) -> Mat4 {
         let eye = self.get_eye_position();
         let forward = (self.target - eye).normalize();
-        
+
         // Check if forward is parallel to Z (up)
         let up = if forward.cross(Vec3::Z).length_squared() < 0.001 {
             // Forward is vertical, use Y as up
@@ -131,7 +123,7 @@ impl Camera {
         } else {
             Vec3::Z
         };
-        
+
         Mat4::look_at_rh(eye, self.target, up)
     }
 
@@ -158,15 +150,15 @@ impl Camera {
         let center = (min + max) * 0.5;
         let size = max - min;
         let max_dim = size.max_element();
-        
+
         self.target = center;
-        
+
         // Calculate distance needed to see the object
         // tan(fov/2) = (size/2) / distance
         // distance = (size/2) / tan(fov/2)
         let fov_rad = self.fov.to_radians();
         let distance = (max_dim * 1.2) / (fov_rad / 2.0).tan(); // 1.2 factor for margin
-        
+
         self.distance = distance.clamp(self.min_distance, self.max_distance);
     }
 }

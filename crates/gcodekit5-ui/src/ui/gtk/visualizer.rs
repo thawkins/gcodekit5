@@ -2,7 +2,24 @@ use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_visualizer::visualizer::GCodeCommand;
 use gcodekit5_visualizer::{Visualizer, Camera3D};
+use gcodekit5_designer::stock_removal::{StockMaterial, SimulationResult};
+use gcodekit5_designer::stock_removal::visualization::generate_2d_contours;
+use gcodekit5_visualizer::visualizer::{StockSimulator3D, generate_surface_mesh};
+use crate::ui::gtk::shaders::StockRemovalShaderProgram;
 use glam::Vec3;
+
+// Stock removal visualization cache
+#[derive(Clone)]
+struct ContourLayer {
+    z_height: f32,
+    color: (f32, f32, f32),
+    contours: Vec<Vec<(f32, f32)>>,
+}
+
+#[derive(Clone)]
+struct StockRemovalVisualization {
+    contour_layers: Vec<ContourLayer>,
+}
 use crate::ui::gtk::nav_cube::NavCube;
 use crate::ui::gtk::renderer_3d::{RenderBuffers, generate_vertex_data, generate_grid_data, generate_axis_data, generate_tool_marker_data, generate_bounds_data};
 use crate::ui::gtk::shaders::ShaderProgram;
@@ -93,6 +110,8 @@ struct RendererState {
     axis_buffers: RenderBuffers,
     tool_buffers: RenderBuffers,
     bounds_buffers: RenderBuffers,
+    stock_removal_shader: Option<StockRemovalShaderProgram>,
+    stock_removal_buffers: Option<RenderBuffers>,
 }
 
 impl Default for RenderCache {
@@ -131,6 +150,16 @@ pub struct GcodeVisualizer {
     _show_bounds: CheckButton,
     _show_intensity: CheckButton,
     show_laser: CheckButton,
+    show_stock_removal: CheckButton,
+    // Stock removal simulation (2D)
+    stock_material: Rc<RefCell<Option<StockMaterial>>>,
+    simulation_result: Rc<RefCell<Option<SimulationResult>>>,
+    simulation_visualization: Rc<RefCell<Option<StockRemovalVisualization>>>,
+    simulation_resolution: Rc<RefCell<f32>>,
+    simulation_running: Rc<RefCell<bool>>,
+    // Stock removal simulation (3D)
+    stock_simulator_3d: Rc<RefCell<Option<StockSimulator3D>>>,
+    stock_simulation_3d_pending: Rc<RefCell<bool>>,
     // Scrollbars
     hadjustment: Adjustment,
     vadjustment: Adjustment,
@@ -309,6 +338,35 @@ impl GcodeVisualizer {
             .label("Show Laser/Spindle")
             .active(true)
             .build();
+        let show_stock_removal = CheckButton::builder()
+            .label("Show Stock Removal")
+            .active(false)
+            .build();
+        
+        // Stock configuration
+        let stock_config_label = Label::builder()
+            .label("Stock Dimensions (mm)")
+            .css_classes(vec!["heading"])
+            .halign(gtk4::Align::Start)
+            .margin_top(12)
+            .build();
+        
+        let stock_width_entry = gtk4::Entry::builder()
+            .placeholder_text("Width")
+            .text("200.0")
+            .build();
+        let stock_height_entry = gtk4::Entry::builder()
+            .placeholder_text("Height")
+            .text("200.0")
+            .build();
+        let stock_thickness_entry = gtk4::Entry::builder()
+            .placeholder_text("Thickness")
+            .text("10.0")
+            .build();
+        let stock_tool_radius_entry = gtk4::Entry::builder()
+            .placeholder_text("Tool Radius")
+            .text("1.5875")
+            .build();
 
         sidebar.append(&show_rapid);
         sidebar.append(&show_cut);
@@ -316,6 +374,12 @@ impl GcodeVisualizer {
         sidebar.append(&show_bounds);
         sidebar.append(&show_intensity);
         sidebar.append(&show_laser);
+        sidebar.append(&show_stock_removal);
+        sidebar.append(&stock_config_label);
+        sidebar.append(&stock_width_entry);
+        sidebar.append(&stock_height_entry);
+        sidebar.append(&stock_thickness_entry);
+        sidebar.append(&stock_tool_radius_entry);
 
         // Bounds Info
         let bounds_label = Label::builder()
@@ -352,7 +416,14 @@ impl GcodeVisualizer {
         sidebar.append(&max_s_label);
         sidebar.append(&avg_s_label);
 
-        container.set_start_child(Some(&sidebar));
+        // Wrap sidebar in a scrolled window
+        let scrolled_sidebar = gtk4::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .child(&sidebar)
+            .build();
+
+        container.set_start_child(Some(&scrolled_sidebar));
 
         // Drawing Area
         let drawing_area = DrawingArea::builder()
@@ -432,6 +503,22 @@ impl GcodeVisualizer {
         let camera = Rc::new(RefCell::new(Camera3D::default()));
         let renderer_state = Rc::new(RefCell::new(None));
         let is_updating_3d = Rc::new(RefCell::new(false));
+        
+        // Stock removal simulation - use default sensible values
+        let initial_stock = Some(StockMaterial {
+            width: 200.0,
+            height: 200.0,
+            thickness: 10.0,
+            origin: (0.0, 0.0, 0.0),
+        });
+        let stock_material = Rc::new(RefCell::new(initial_stock));
+        let tool_radius = Rc::new(RefCell::new(1.5875f32)); // Default 1/16" end mill
+        let simulation_result = Rc::new(RefCell::new(None));
+        let simulation_visualization = Rc::new(RefCell::new(None));
+        let simulation_resolution = Rc::new(RefCell::new(0.1));
+        let simulation_running = Rc::new(RefCell::new(false));
+        let stock_simulator_3d = Rc::new(RefCell::new(None));
+        let stock_simulation_3d_pending = Rc::new(RefCell::new(false));
 
         // Overlay for floating controls
         let overlay = Overlay::new();
@@ -698,6 +785,10 @@ impl GcodeVisualizer {
         let show_bounds_draw = show_bounds.clone();
         let show_intensity_draw = show_intensity.clone();
         let show_laser_draw = show_laser.clone();
+        let show_stock_removal_draw = show_stock_removal.clone();
+        let simulation_result_draw = simulation_result.clone();
+        let simulation_visualization_draw = simulation_visualization.clone();
+        let stock_material_draw = stock_material.clone();
         let device_manager_draw = device_manager.clone();
         let current_pos_draw = current_pos.clone();
 
@@ -717,6 +808,10 @@ impl GcodeVisualizer {
                 show_bounds_draw.is_active(),
                 show_intensity_draw.is_active(),
                 show_laser_draw.is_active(),
+                show_stock_removal_draw.is_active(),
+                &simulation_result_draw.borrow(),
+                &simulation_visualization_draw.borrow(),
+                &stock_material_draw.borrow(),
                 pos,
                 &device_manager_draw,
             );
@@ -817,6 +912,198 @@ impl GcodeVisualizer {
         let da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
         show_laser.connect_toggled(move |_| { da_update.queue_draw(); gl_update.queue_render(); });
+        let da_update = drawing_area.clone();
+        let gl_update = gl_area.clone();
+        let visualizer_stock = visualizer.clone();
+        let simulation_result_stock = simulation_result.clone();
+        let simulation_visualization_stock = simulation_visualization.clone();
+        let stock_material_stock = stock_material.clone();
+        let tool_radius_stock = tool_radius.clone();
+        let simulation_running_flag = simulation_running.clone();
+        let stock_simulator_3d_stock = stock_simulator_3d.clone();
+        let stock_simulation_3d_pending_toggle = stock_simulation_3d_pending.clone();
+        show_stock_removal.connect_toggled(move |checkbox| {
+            if checkbox.is_active() {
+                // Check if simulation is already running
+                if *simulation_running_flag.borrow() {
+                    return;
+                }
+                
+                *simulation_running_flag.borrow_mut() = true;
+                
+                // Run simulation when enabled
+                let vis = visualizer_stock.borrow();
+                
+                if let Some(stock) = stock_material_stock.borrow().as_ref() {
+                    use std::sync::{Arc, Mutex};
+                    
+                    // Run simulation in background thread
+                    let stock_clone = stock.clone();
+                    let tool_radius_value = *tool_radius_stock.borrow();
+                    let result_3d_ref = stock_simulator_3d_stock.clone();
+                    let gl_ref = gl_update.clone();
+                    
+                    // Convert GCode commands to toolpath segments for 3D
+                    use gcodekit5_visualizer::{ToolpathSegment, ToolpathSegmentType};
+                    let mut toolpath_segments_3d = Vec::new();
+                    
+                    // G-code Z is typically negative when cutting (Z=-5 means 5mm below surface)
+                    // Voxel grid expects Z from 0 (bottom) to thickness (top)
+                    // So we convert: voxel_z = stock_thickness + gcode_z
+                    let stock_thickness = stock_clone.thickness;
+                    
+                    for cmd in vis.commands() {
+                        match cmd {
+                            GCodeCommand::Move { from, to, rapid, .. } => {
+                                let seg_type = if *rapid {
+                                    ToolpathSegmentType::RapidMove
+                                } else {
+                                    ToolpathSegmentType::LinearMove
+                                };
+                                // Convert G-code Z (negative) to voxel Z (positive from bottom)
+                                let start_z = stock_thickness + from.z;
+                                let end_z = stock_thickness + to.z;
+                                toolpath_segments_3d.push(ToolpathSegment {
+                                    segment_type: seg_type,
+                                    start: (from.x, from.y, start_z),
+                                    end: (to.x, to.y, end_z),
+                                    center: None,
+                                    feed_rate: 100.0,
+                                    spindle_speed: 3000.0,
+                                });
+                            }
+                            GCodeCommand::Arc { from, to, center, clockwise, .. } => {
+                                let seg_type = if *clockwise {
+                                    ToolpathSegmentType::ArcCW
+                                } else {
+                                    ToolpathSegmentType::ArcCCW
+                                };
+                                // Convert G-code Z (negative) to voxel Z (positive from bottom)
+                                let start_z = stock_thickness + from.z;
+                                let end_z = stock_thickness + to.z;
+                                toolpath_segments_3d.push(ToolpathSegment {
+                                    segment_type: seg_type,
+                                    start: (from.x, from.y, start_z),
+                                    end: (to.x, to.y, end_z),
+                                    center: Some((center.x, center.y)),
+                                    feed_rate: 100.0,
+                                    spindle_speed: 3000.0,
+                                });
+                            }
+                            GCodeCommand::Dwell { .. } => {
+                                // Dwell commands don't remove material, skip
+                            }
+                        }
+                    }
+                    
+                    // Use Arc<Mutex<>> for thread-safe sharing
+                    let result_arc = Arc::new(Mutex::new(None));
+                    let result_arc_clone = result_arc.clone();
+                    
+                    std::thread::spawn(move || {
+                        use gcodekit5_visualizer::{StockSimulator3D, VoxelGrid};
+                        
+                        let resolution = 0.25; // 0.25mm voxel resolution (doubled from 0.5mm)
+                        let mut grid = VoxelGrid::new(
+                            stock_clone.width,
+                            stock_clone.height,
+                            stock_clone.thickness,
+                            resolution
+                        );
+                        
+                        let mut simulator = StockSimulator3D::new(
+                            stock_clone.width,
+                            stock_clone.height,
+                            stock_clone.thickness,
+                            resolution,
+                            tool_radius_value
+                        );
+                        simulator.simulate_toolpath(&toolpath_segments_3d);
+                        
+                        let result_sim = simulator;
+                        
+                        // Store in Arc
+                        *result_arc_clone.lock().unwrap() = Some(result_sim);
+                    });
+                    
+                    // Poll for completion on main thread with timeout limit
+                    let result_arc_poll = result_arc.clone();
+                    let poll_count = Rc::new(RefCell::new(0u32));
+                    let poll_count_clone = poll_count.clone();
+                    let sim_running_poll = simulation_running_flag.clone();
+                    
+                    let pending_flag = stock_simulation_3d_pending_toggle.clone();
+                    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                        *poll_count_clone.borrow_mut() += 1;
+                        
+                        // Stop after 300 iterations (30 seconds)
+                        if *poll_count_clone.borrow() > 300 {
+
+                            *sim_running_poll.borrow_mut() = false;
+                            return glib::ControlFlow::Break;
+                        }
+                        
+                        if let Ok(mut guard) = result_arc_poll.try_lock() {
+                            if let Some(result_simulator) = guard.take() {
+                                *result_3d_ref.borrow_mut() = Some(result_simulator);
+                                *pending_flag.borrow_mut() = true;
+                                
+                                *sim_running_poll.borrow_mut() = false;
+                                gl_ref.queue_render();
+                                
+                                return glib::ControlFlow::Break;
+                            }
+                        }
+                        glib::ControlFlow::Continue
+                    });
+                } else {
+
+                    *stock_simulator_3d_stock.borrow_mut() = None;
+                    *simulation_running_flag.borrow_mut() = false;
+                }
+            } else {
+                // Clear simulation when disabled
+                *stock_simulator_3d_stock.borrow_mut() = None;
+                *simulation_running_flag.borrow_mut() = false;
+                gl_update.queue_render();
+            }
+        });
+        
+        // Stock dimension entry handlers
+        let stock_material_width = stock_material.clone();
+        // Stock parameter changes - update values only, don't trigger simulation
+        stock_width_entry.connect_changed(move |entry| {
+            if let Ok(width) = entry.text().parse::<f32>() {
+                if let Some(ref mut stock) = *stock_material_width.borrow_mut() {
+                    stock.width = width;
+                }
+            }
+        });
+        
+        let stock_material_height = stock_material.clone();
+        stock_height_entry.connect_changed(move |entry| {
+            if let Ok(height) = entry.text().parse::<f32>() {
+                if let Some(ref mut stock) = *stock_material_height.borrow_mut() {
+                    stock.height = height;
+                }
+            }
+        });
+        
+        let stock_material_thickness = stock_material.clone();
+        stock_thickness_entry.connect_changed(move |entry| {
+            if let Ok(thickness) = entry.text().parse::<f32>() {
+                if let Some(ref mut stock) = *stock_material_thickness.borrow_mut() {
+                    stock.thickness = thickness;
+                }
+            }
+        });
+        
+        let tool_radius = tool_radius.clone();
+        stock_tool_radius_entry.connect_changed(move |entry| {
+            if let Ok(radius) = entry.text().parse::<f32>() {
+                *tool_radius.borrow_mut() = radius;
+            }
+        });
 
         // Mouse Interaction
         Self::setup_interaction(&drawing_area, &visualizer, update_ui.clone());
@@ -852,6 +1139,9 @@ impl GcodeVisualizer {
         let camera_3d = camera.clone();
         let current_pos_3d = current_pos.clone();
         let device_manager_3d = device_manager.clone();
+        let stock_simulator_3d_render = stock_simulator_3d.clone();
+        let stock_material_3d = stock_material.clone();
+        let stock_simulation_3d_pending_render = stock_simulation_3d_pending.clone();
         
         // Capture checkbox states
         let show_rapid_3d = show_rapid.clone();
@@ -859,6 +1149,7 @@ impl GcodeVisualizer {
         let show_grid_3d = show_grid.clone();
         let show_bounds_3d = show_bounds.clone();
         let show_laser_3d = show_laser.clone();
+        let show_stock_removal_3d = show_stock_removal.clone();
 
         gl_area.connect_render(move |area, _context| {
             if let Some(err) = area.error() {
@@ -903,6 +1194,8 @@ impl GcodeVisualizer {
                             axis_buffers,
                             tool_buffers,
                             bounds_buffers,
+                            stock_removal_shader: None,
+                            stock_removal_buffers: None,
                         });
                     }
                     (shader, rapid, cut, grid, axis, tool, bounds) => {
@@ -1009,6 +1302,68 @@ impl GcodeVisualizer {
                 }
                 
                 state.shader.unbind();
+                
+                // Draw 3D Stock Removal
+                if show_stock_removal_3d.is_active() {
+                    if let Some(simulator) = stock_simulator_3d_render.borrow().as_ref() {
+                        // Initialize stock removal shader if needed
+                        if state.stock_removal_shader.is_none() {
+                            match StockRemovalShaderProgram::new(gl.clone()) {
+                                Ok(stock_shader) => state.stock_removal_shader = Some(stock_shader),
+                                Err(e) => eprintln!("Failed to create stock removal shader: {}", e),
+                            }
+                        }
+
+                        // Rebuild mesh when pending or buffers missing
+                        if state.stock_removal_buffers.is_none() || *stock_simulation_3d_pending_render.borrow() {
+                            let mesh_vertices = generate_surface_mesh(simulator.get_grid());
+                            match RenderBuffers::new(gl.clone(), glow::TRIANGLES) {
+                                Ok(mut buffers) => {
+                                    buffers.update_mesh(&mesh_vertices);
+                                    state.stock_removal_buffers = Some(buffers);
+                                }
+                                Err(e) => eprintln!("Failed to create stock removal mesh buffers: {}", e),
+                            }
+                            *stock_simulation_3d_pending_render.borrow_mut() = false;
+                        }
+
+                        if let (Some(shader), Some(buffers)) = (&state.stock_removal_shader, &state.stock_removal_buffers) {
+                            shader.bind();
+
+                            if let Some(loc) = shader.get_uniform_location("uModelViewProjection") {
+                                unsafe {
+                                    gl.uniform_matrix_4_f32_slice(Some(&loc), false, &mvp.to_cols_array());
+                                }
+                            }
+
+                            if let Some(loc) = shader.get_uniform_location("uNormalMatrix") {
+                                let normal_matrix = glam::Mat3::from_mat4(view).inverse().transpose();
+                                unsafe {
+                                    gl.uniform_matrix_3_f32_slice(Some(&loc), false, &normal_matrix.to_cols_array());
+                                }
+                            }
+
+                            if let Some(loc) = shader.get_uniform_location("uLightDir") {
+                                unsafe {
+                                    gl.uniform_3_f32(Some(&loc), 0.35, 0.35, 1.0);
+                                }
+                            }
+
+                            unsafe {
+                                gl.enable(glow::CULL_FACE);
+                                gl.cull_face(glow::BACK);
+                            }
+                            buffers.draw();
+                            unsafe {
+                                gl.disable(glow::CULL_FACE);
+                            }
+
+                            shader.unbind();
+                        }
+                    } else {
+                        println!("No stock simulator available for rendering");
+                    }
+                }
             }
             
             gtk4::glib::Propagation::Stop
@@ -1165,6 +1520,14 @@ impl GcodeVisualizer {
             _show_bounds: show_bounds,
             _show_intensity: show_intensity,
             show_laser,
+            show_stock_removal,
+            stock_material,
+            simulation_result,
+            simulation_visualization: Rc::new(RefCell::new(None)),
+            simulation_resolution,
+            simulation_running,
+            stock_simulator_3d,
+            stock_simulation_3d_pending,
             hadjustment,
             vadjustment,
             hadjustment_3d,
@@ -1367,6 +1730,57 @@ impl GcodeVisualizer {
             self.stack.set_visible_child_name("2d");
         }
 
+        // Run stock removal simulation if enabled
+        if self.show_stock_removal.is_active() {
+            if let Some(stock) = self.stock_material.borrow().as_ref() {
+                use gcodekit5_designer::stock_removal::StockSimulator2D;
+                use gcodekit5_designer::{create_linear_segment, create_arc_segment};
+                
+                // Convert GCode commands to toolpath segments
+                let mut toolpath_segments = Vec::new();
+                for cmd in vis.commands() {
+                    match cmd {
+                        GCodeCommand::Move { from, to, rapid, .. } => {
+                            let segment = create_linear_segment(
+                                from.x, from.y, from.z,
+                                to.x, to.y, to.z,
+                                *rapid,
+                                100.0, // Default feed rate
+                                3000,  // Default spindle speed
+                            );
+                            toolpath_segments.push(segment);
+                        }
+                        GCodeCommand::Arc { from, to, center, clockwise, .. } => {
+                            let segment = create_arc_segment(
+                                from.x, from.y, from.z,
+                                to.x, to.y, to.z,
+                                center.x, center.y,
+                                *clockwise,
+                                100.0, // Default feed rate
+                                3000,  // Default spindle speed
+                            );
+                            toolpath_segments.push(segment);
+                        }
+                        GCodeCommand::Dwell { .. } => {
+                            // Dwell commands don't remove material, skip
+                        }
+                    }
+                }
+                
+                // Create simulator with default tool radius
+                let tool_radius = 1.585; // 3.17mm diameter / 2
+                let resolution = 0.1; // 0.1mm resolution
+                let mut simulator = StockSimulator2D::new(stock.clone(), tool_radius, resolution);
+                
+                // Run simulation
+                simulator.simulate_toolpath(&toolpath_segments);
+                let result = simulator.get_simulation_result();
+                *self.simulation_result.borrow_mut() = Some(result);
+            }
+        } else {
+            *self.simulation_result.borrow_mut() = None;
+        }
+
         drop(vis);
         self.update_scrollbars();
         self.drawing_area.queue_draw();
@@ -1384,6 +1798,10 @@ impl GcodeVisualizer {
         show_bounds: bool,
         show_intensity: bool,
         show_laser: bool,
+        show_stock_removal: bool,
+        simulation_result: &Option<SimulationResult>,
+        simulation_visualization: &Option<StockRemovalVisualization>,
+        stock_material: &Option<StockMaterial>,
         current_pos: (f32, f32, f32),
         device_manager: &Option<Arc<DeviceManager>>,
     ) {
@@ -1467,6 +1885,17 @@ impl GcodeVisualizer {
         cr.move_to(0.0, -extent);
         cr.line_to(0.0, extent);
         cr.stroke().unwrap();
+
+        // Draw Stock Removal - only draw cached result, don't regenerate
+        if show_stock_removal {
+            if let Some(cached_viz) = simulation_visualization {
+                static DRAW_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                let count = DRAW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if count % 10 == 0 {
+                }
+                Self::draw_stock_removal_cached(cr, vis, cached_viz);
+            }
+        }
 
         // Draw Toolpath - Phase 1, 2 & 3 Optimization: Batched Rendering + Viewport Culling + LOD
         cr.set_line_width(1.5 / vis.zoom_scale as f64);
@@ -1847,6 +2276,69 @@ impl GcodeVisualizer {
         }
 
         cr.stroke().unwrap();
+    }
+
+    fn draw_stock_removal_cached(
+        cr: &gtk4::cairo::Context,
+        vis: &Visualizer,
+        cached_viz: &StockRemovalVisualization,
+    ) {
+        // Just draw the pre-computed contours - NO computation here!
+        cr.set_line_width(1.5 / vis.zoom_scale as f64);
+        
+        for layer in &cached_viz.contour_layers {
+            cr.set_source_rgba(
+                layer.color.0 as f64,
+                layer.color.1 as f64,
+                layer.color.2 as f64,
+                0.7
+            );
+            
+            for contour in &layer.contours {
+                if contour.len() < 2 { continue; }
+                
+                cr.move_to(contour[0].0 as f64, contour[0].1 as f64);
+                for point in &contour[1..] {
+                    cr.line_to(point.0 as f64, point.1 as f64);
+                }
+                cr.stroke().unwrap();
+            }
+        }
+    }
+    
+    fn generate_stock_visualization(result: &SimulationResult, stock: &StockMaterial) -> StockRemovalVisualization {
+        use gcodekit5_designer::stock_removal::visualization::generate_2d_contours;
+        
+        // Reduce contour count dramatically - only 3 levels
+        let num_contours = 3;
+        let mut contour_layers = Vec::new();
+        
+        for i in 0..num_contours {
+            let t = i as f32 / (num_contours - 1) as f32;
+            let z_height = stock.thickness * t;
+            
+            // Simple color gradient from yellow (shallow) to blue (deep)
+            let r = 1.0 - t;
+            let g = 0.7 - t * 0.5;
+            let b = t;
+            
+            let contours = generate_2d_contours(&result.height_map, z_height);
+            
+            // Convert Vec<Vec<Point2D>> to Vec<Vec<(f32, f32)>>
+            let contours: Vec<Vec<(f32, f32)>> = contours.into_iter()
+                .map(|contour| contour.into_iter().map(|p| (p.x, p.y)).collect())
+                .collect();
+            
+            contour_layers.push(ContourLayer {
+                z_height,
+                color: (r, g, b),
+                contours,
+            });
+        }
+        
+        StockRemovalVisualization {
+            contour_layers,
+        }
     }
 }
 

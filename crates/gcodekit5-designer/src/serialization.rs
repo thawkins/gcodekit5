@@ -99,6 +99,12 @@ pub struct ToolpathParameters {
     pub tool_diameter: f64,
     #[serde(default = "default_cut_depth")]
     pub cut_depth: f64,
+    #[serde(default = "default_stock_width")]
+    pub stock_width: f32,
+    #[serde(default = "default_stock_height")]
+    pub stock_height: f32,
+    #[serde(default = "default_stock_thickness")]
+    pub stock_thickness: f32,
 }
 
 fn default_feed_rate() -> f64 {
@@ -113,6 +119,15 @@ fn default_tool_diameter() -> f64 {
 fn default_cut_depth() -> f64 {
     -5.0
 }
+fn default_stock_width() -> f32 {
+    200.0
+}
+fn default_stock_height() -> f32 {
+    200.0
+}
+fn default_stock_thickness() -> f32 {
+    10.0
+}
 
 impl Default for ToolpathParameters {
     fn default() -> Self {
@@ -121,6 +136,9 @@ impl Default for ToolpathParameters {
             spindle_speed: default_spindle_speed(),
             tool_diameter: default_tool_diameter(),
             cut_depth: default_cut_depth(),
+            stock_width: default_stock_width(),
+            stock_height: default_stock_height(),
+            stock_thickness: default_stock_thickness(),
         }
     }
 }
