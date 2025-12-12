@@ -549,7 +549,7 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 0.32.0-alpha.0
+**Current Version**: 0.33.0-alpha.0
 **Status**: Active Development
 **Stability**: Alpha (breaking changes may occur)
 

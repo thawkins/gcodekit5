@@ -1,10 +1,10 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.32.0-alpha.0
+**Version**: 0.33.0-alpha.0
 **Last Updated**: 2025-12-12
 **Status**: Alpha Release
 
-### Latest Release (v0.32.0-alpha.0) - Designer Text + UX
+### Latest Release (v0.33.0-alpha.0) - Designer Text + UX
 - ✅ **Designer**
   - Text tool implemented with font selection (family/bold/italic) and point-size UI mapped to mm in the design file.
   - Improved layer management UX (selection behavior, group/ungroup actions, draggable separator) and inspector polish.
@@ -14,7 +14,7 @@
 - ✅ **Preferences/About**
   - Added “Show About on startup” preference; About dialog supports background artwork and startup auto-dismiss.
 - ✅ **Version**
-  - Bumped version to 0.32.0-alpha.0.
+  - Bumped version to 0.33.0-alpha.0.
 
 ### Previous Release (v0.30.0-alpha.0) - UI Polish + Status
 - ✅ **Machine Control**

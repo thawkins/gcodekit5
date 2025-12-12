@@ -1,4 +1,4 @@
-## [0.32.0-alpha.0] - 2025-12-12
+## [0.33.0-alpha.0] - 2025-12-12
 
 ### Added
 - **Designer**: Text tool with font family/style selection and point-size UI (stored as mm in design file).
@@ -7,7 +7,7 @@
 ### Changed
 - **Designer/Visualizer**: Standardized Fit actions and long-running progress + cancel UX.
 - **Designer**: Improved Layers/Inspector UX (selection behavior, separator resizing, group/ungroup wiring).
-- **Version**: Bumped version to 0.32.0-alpha.0.
+- **Version**: Bumped version to 0.33.0-alpha.0.
 
 ## [0.30.0-alpha.0] - 2025-12-12
 
