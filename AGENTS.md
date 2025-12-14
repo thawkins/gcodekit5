@@ -87,7 +87,10 @@ All tests **MUST** be located in the `tests/` inside each crate, if the test is 
 4. Also when you are trying to debug a problem, change only one thing at a time, if it does not fix the problem then revert it, before trying another possible solution. 
 5. DO NOT perform tempoary solutions or fixes, alway provide a complete solution. 
 6. DO NOT declare an issue as fixed unless it has been confirmed, 90% of assetions of completion turn out to be false.
-7. Latest Screenshots can be found in the folder ~/Pictures/screenshots 
+7. Latest Screenshots can be found in the folder ~/Pictures/screenshots.
+8. when asked to recomend cleanups for an area of the codebase, review the code, and create a series of recomendations about the aesthetics and functionality and place them into a file called REVIEW.<Code area name>.md. each recomendation should be a descrete actionable change, that can be executed out of sequence, each should also have a recomendation number that allows it to be identified, and should have a prompt attached that describes the location of the code and the remediation task in detail. do not execute the tasks just document them.
+9. When asked to implement the recomendations, reread the recommendations in the REVIEW file as the user may have edited them. 
+
 
 ## Versioning
 

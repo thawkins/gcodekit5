@@ -12,6 +12,7 @@
 
 pub mod gtc_import;
 pub mod materials;
+pub mod materials_mpi_static;
 pub mod tools;
 
 use serde::{Deserialize, Serialize};

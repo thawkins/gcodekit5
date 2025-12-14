@@ -95,6 +95,7 @@ pub struct DeviceProfile {
     pub has_coolant: bool,
     pub max_feed_rate: f64,
     pub max_s_value: f64,
+    pub max_spindle_speed_rpm: u32,
 
     // Power
     pub cnc_spindle_watts: f64,
@@ -138,6 +139,7 @@ impl Default for DeviceProfile {
             has_coolant: false,
             max_feed_rate: 1000.0,
             max_s_value: 1000.0,
+            max_spindle_speed_rpm: 12000,
             cnc_spindle_watts: 500.0,
             laser_watts: 5.0,
             connection_type: "Serial".to_string(),

@@ -34,3 +34,16 @@
 - **Hide/show panel UX**: use a normal “Hide” button inside the panel and a floating “Show …” button in an overlay; persist visibility in settings.
 - **Modal on startup**: for “About on startup”, set the transient parent to the main window and center it (and optionally auto-close with `glib::timeout_add_local_once`).
 - **Workspace versioning**: bump `[workspace.package].version` in the root `Cargo.toml`; `cargo check` will refresh `Cargo.lock` workspace package versions.
+
+## In-app Help Browser (Markdown from GResources)
+- **Approach**: Store help topics as markdown files in `crates/gcodekit5-ui/resources/markdown/` and add them to `resources/gresources.xml`.
+- **Loading**: Use `gio::resources_lookup_data("/com/gcodekit5/help/<topic>.md", ...)` to fetch the document text.
+- **Rendering**: For a lightweight solution without a full markdown renderer, convert a small markdown subset to Pango markup and display using a wrapping `gtk::Label`.
+- **Navigation**: Use `Label::connect_activate_link` with `help:<topic>` links to switch topics (and keep back/forward history in-memory).
+
+
+## Materials/Tools List Patterns
+- **Empty state panes**: For editor-style tabs, a `gtk4::Stack` with an `empty` page + `edit` page makes selection-driven UIs feel much clearer.
+- **ListBox placeholders**: `ListBox::set_placeholder(Some(&Label))` is an easy way to show “No results” when filtering/searching.
+- **Store row metadata**: Prefer `ListBoxRow::set_data("key", value)` over hidden widgets for IDs; retrieve via `row.data::<T>("key")`.
+- **Icon+label buttons**: Build a `Box` with `Image::from_icon_name` + `Label` and set it as `Button::set_child` for consistent look (avoid emoji labels).

@@ -330,7 +330,8 @@ pub fn main() {
         });
 
         // 9. Device Manager
-        let device_manager_view = DeviceManagerWindow::new(device_controller.clone());
+        let device_manager_view =
+            DeviceManagerWindow::new(device_controller.clone(), settings_controller.clone());
         stack.add_titled(
             &device_manager_view.widget,
             Some("devices"),
@@ -338,7 +339,7 @@ pub fn main() {
         );
 
         // 10. CNC Tools
-        let tools_manager = ToolsManagerView::new();
+        let tools_manager = ToolsManagerView::new(settings_controller.clone());
         stack.add_titled(&tools_manager.widget, Some("tools"), &t!("CNC Tools"));
 
         // 11. Materials

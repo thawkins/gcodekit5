@@ -1249,6 +1249,34 @@ impl TabbedBoxMaker {
             self.pack_paths();
         }
 
+        // Normalize so (offset_x, offset_y) is always the minimum XY.
+        // Without this, finger joints can protrude into negative coordinates even with 0 offsets.
+        // Note: guard against accidental NaNs preventing normalization.
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        for path in &self.paths {
+            for p in path {
+                if p.x.is_finite() {
+                    min_x = min_x.min(p.x);
+                }
+                if p.y.is_finite() {
+                    min_y = min_y.min(p.y);
+                }
+            }
+        }
+        if min_x.is_finite() && min_y.is_finite() {
+            for path in &mut self.paths {
+                for p in path {
+                    if p.x.is_finite() {
+                        p.x -= min_x;
+                    }
+                    if p.y.is_finite() {
+                        p.y -= min_y;
+                    }
+                }
+            }
+        }
+
         // Apply global offset to all paths
         if self.params.offset_x != 0.0 || self.params.offset_y != 0.0 {
             for path in &mut self.paths {
@@ -1353,6 +1381,28 @@ impl TabbedBoxMaker {
             5.0, self.params.feed_rate
         ));
 
+        // Ensure emitted coordinates honour user offsets (offset_x/offset_y represent desired minimum XY).
+        // This also guards against any upstream layout producing negative min bounds.
+        let (shift_x, shift_y) = {
+            let mut min_x = f32::INFINITY;
+            let mut min_y = f32::INFINITY;
+            for path in &self.paths {
+                for p in path {
+                    if p.x.is_finite() {
+                        min_x = min_x.min(p.x);
+                    }
+                    if p.y.is_finite() {
+                        min_y = min_y.min(p.y);
+                    }
+                }
+            }
+            if min_x.is_finite() && min_y.is_finite() {
+                (self.params.offset_x - min_x, self.params.offset_y - min_y)
+            } else {
+                (0.0, 0.0)
+            }
+        };
+
         let panel_names = ["Wall 1", "Wall 2", "Wall 4", "Wall 3", "Top", "Bottom"];
 
         for (i, path) in self.paths.iter().enumerate() {
@@ -1365,7 +1415,8 @@ impl TabbedBoxMaker {
             if let Some(first_point) = path.first() {
                 gcode.push_str(&format!(
                     "G0 X{:.2} Y{:.2} ; Rapid to start\n",
-                    first_point.x, first_point.y
+                    first_point.x + shift_x,
+                    first_point.y + shift_y
                 ));
 
                 for pass_num in 1..=self.params.laser_passes {
@@ -1379,10 +1430,16 @@ impl TabbedBoxMaker {
                         if idx == 0 {
                             gcode.push_str(&format!(
                                 "G1 X{:.2} Y{:.2} F{:.0}\n",
-                                point.x, point.y, self.params.feed_rate
+                                point.x + shift_x,
+                                point.y + shift_y,
+                                self.params.feed_rate
                             ));
                         } else {
-                            gcode.push_str(&format!("G1 X{:.2} Y{:.2}\n", point.x, point.y));
+                            gcode.push_str(&format!(
+                                "G1 X{:.2} Y{:.2}\n",
+                                point.x + shift_x,
+                                point.y + shift_y
+                            ));
                         }
                     }
 
@@ -1391,7 +1448,8 @@ impl TabbedBoxMaker {
                     if pass_num < self.params.laser_passes {
                         gcode.push_str(&format!(
                             "G0 X{:.2} Y{:.2} ; Return to start\n",
-                            first_point.x, first_point.y
+                            first_point.x + shift_x,
+                            first_point.y + shift_y
                         ));
                     }
                 }

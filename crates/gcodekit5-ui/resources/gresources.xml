@@ -10,7 +10,28 @@
     <file compressed="true" alias="text.svg">icons/text.svg</file>
     <file compressed="true" alias="grab.svg">icons/grab.svg</file>
   </gresource>
-   <gresource prefix="/com/gcodekit5/images">
+  <gresource prefix="/com/gcodekit5/images">
     <file compressed="true" alias="gcodekit5.png">images/gcodekit5.png</file>
+  </gresource>
+  <gresource prefix="/com/gcodekit5/help">
+    <file compressed="true" alias="index.md">markdown/index.md</file>
+    <file compressed="true" alias="machine_control.md">markdown/machine_control.md</file>
+    <file compressed="true" alias="device_console.md">markdown/device_console.md</file>
+    <file compressed="true" alias="gcode_editor.md">markdown/gcode_editor.md</file>
+    <file compressed="true" alias="visualizer.md">markdown/visualizer.md</file>
+    <file compressed="true" alias="cam_tools.md">markdown/cam_tools.md</file>
+    <file compressed="true" alias="tabbed_box_maker.md">markdown/tabbed_box_maker.md</file>
+    <file compressed="true" alias="designer.md">markdown/designer.md</file>
+    <file compressed="true" alias="device_config.md">markdown/device_config.md</file>
+    <file compressed="true" alias="device_manager.md">markdown/device_manager.md</file>
+    <file compressed="true" alias="tools_manager.md">markdown/tools_manager.md</file>
+    <file compressed="true" alias="materials_manager.md">markdown/materials_manager.md</file>
+    <file compressed="true" alias="settings.md">markdown/settings.md</file>
+    <file compressed="true" alias="jigsaw_puzzle.md">markdown/jigsaw_puzzle.md</file>
+    <file compressed="true" alias="laser_image_engraver.md">markdown/laser_image_engraver.md</file>
+    <file compressed="true" alias="laser_vector_engraver.md">markdown/laser_vector_engraver.md</file>
+    <file compressed="true" alias="speeds_feeds_calculator.md">markdown/speeds_feeds_calculator.md</file>
+    <file compressed="true" alias="spoilboard_surfacing.md">markdown/spoilboard_surfacing.md</file>
+    <file compressed="true" alias="spoilboard_grid.md">markdown/spoilboard_grid.md</file>
   </gresource>
 </gresources>

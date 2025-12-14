@@ -180,7 +180,7 @@ impl SettingsController {
 
     /// Save settings to disk
     pub fn save(&self) -> Result<(), String> {
-        let dialog = self.dialog.borrow();
+        let mut dialog = self.dialog.borrow_mut();
         let mut persistence = self.persistence.borrow_mut();
 
         persistence
@@ -194,7 +194,7 @@ impl SettingsController {
             .save_to_file(&config_path)
             .map_err(|e| e.to_string())?;
 
-        self.dialog.borrow_mut().has_unsaved_changes = false;
+        dialog.has_unsaved_changes = false;
 
         Ok(())
     }

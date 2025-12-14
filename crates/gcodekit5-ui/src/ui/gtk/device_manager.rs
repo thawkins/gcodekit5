@@ -1,7 +1,8 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, Grid, Label, ListBox, Orientation, Paned,
-    PolicyType, ScrolledWindow, Stack, StackSwitcher,
+    Align, Box, Button, CheckButton, ComboBoxText, Entry, Grid, Label, ListBox, ListBoxRow,
+    MessageDialog, MessageType, Orientation, Paned, PolicyType, ResponseType, ScrolledWindow,
+    SearchEntry, Stack, StackSwitcher,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -10,11 +11,21 @@ use tracing::error;
 use crate::device_status;
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
+use gcodekit5_core::units::{
+    format_feed_rate, format_length, get_unit_label, parse_feed_rate, parse_length, FeedRateUnits,
+    MeasurementSystem,
+};
+use gcodekit5_settings::controller::SettingsController;
+use gcodekit5_settings::manager::SettingsManager;
+
 #[derive(Clone)]
 pub struct DeviceManagerWindow {
     pub widget: Paned,
     controller: Rc<DeviceUiController>,
+    current_units: Rc<RefCell<MeasurementSystem>>,
+    current_feed_units: Rc<RefCell<FeedRateUnits>>,
     devices_list: ListBox,
+    search_entry: SearchEntry,
 
     // Edit form widgets
     edit_name: Entry,
@@ -33,12 +44,20 @@ pub struct DeviceManagerWindow {
     edit_y_max: Entry,
     edit_z_min: Entry,
     edit_z_max: Entry,
+    edit_x_min_unit: Label,
+    edit_x_max_unit: Label,
+    edit_y_min_unit: Label,
+    edit_y_max_unit: Label,
+    edit_z_min_unit: Label,
+    edit_z_max_unit: Label,
     edit_has_spindle: CheckButton,
     edit_has_laser: CheckButton,
     edit_has_coolant: CheckButton,
     edit_max_feed_rate: Entry,
+    edit_max_feed_rate_unit: Label,
     edit_max_s_value: Entry,
     edit_spindle_watts: Entry,
+    edit_max_spindle_speed_rpm: Entry,
     edit_laser_watts: Entry,
 
     // State
@@ -56,10 +75,28 @@ pub struct DeviceManagerWindow {
 }
 
 impl DeviceManagerWindow {
-    pub fn new(controller: Rc<DeviceUiController>) -> Rc<Self> {
+    pub fn new(
+        controller: Rc<DeviceUiController>,
+        settings_controller: Rc<SettingsController>,
+    ) -> Rc<Self> {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
+
+        // Units are stored internally as mm (and mm/min); convert for display/input.
+        let (initial_units, initial_feed_units) =
+            if let Ok(path) = SettingsManager::config_file_path() {
+                if let Ok(mgr) = SettingsManager::load_from_file(&path) {
+                    (mgr.config().ui.measurement_system, mgr.config().ui.feed_rate_units)
+                } else {
+                    (MeasurementSystem::Metric, FeedRateUnits::default())
+                }
+            } else {
+                (MeasurementSystem::Metric, FeedRateUnits::default())
+            };
+
+        let current_units = Rc::new(RefCell::new(initial_units));
+        let current_feed_units = Rc::new(RefCell::new(initial_feed_units));
 
         // LEFT SIDEBAR - Devices List
         let sidebar = Box::new(Orientation::Vertical, 10);
@@ -78,6 +115,11 @@ impl DeviceManagerWindow {
         title.set_halign(Align::Start);
         header_box.append(&title);
         sidebar.append(&header_box);
+
+        // Search
+        let search_entry = SearchEntry::new();
+        search_entry.set_placeholder_text(Some("Search devices…"));
+        sidebar.append(&search_entry);
 
         // Devices list
         let scroll = ScrolledWindow::new();
@@ -152,17 +194,25 @@ impl DeviceManagerWindow {
             edit_y_max,
             edit_z_min,
             edit_z_max,
-        ) = Self::create_dimensions_tab();
+            edit_x_min_unit,
+            edit_x_max_unit,
+            edit_y_min_unit,
+            edit_y_max_unit,
+            edit_z_min_unit,
+            edit_z_max_unit,
+        ) = Self::create_dimensions_tab(*current_units.borrow());
         let (
             capabilities_page,
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
             edit_max_feed_rate,
+            edit_max_feed_rate_unit,
             edit_max_s_value,
             edit_spindle_watts,
+            edit_max_spindle_speed_rpm,
             edit_laser_watts,
-        ) = Self::create_capabilities_tab();
+        ) = Self::create_capabilities_tab(*current_feed_units.borrow());
 
         stack.add_titled(&general_page, Some("general"), "General");
         stack.add_titled(&connection_page, Some("connection"), "Connection");
@@ -200,20 +250,24 @@ impl DeviceManagerWindow {
 
         widget.set_end_child(Some(&edit_stack));
 
-        // Set initial position
-        widget.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.2) as i32;
-            if (paned.position() - target).abs() > 2 {
-                paned.set_position(target);
-            }
-            gtk4::glib::ControlFlow::Continue
+        // Set initial position (once)
+        widget.connect_map(|paned| {
+            let paned = paned.clone();
+            gtk4::glib::idle_add_local_once(move || {
+                let width = paned.width();
+                if width > 0 {
+                    paned.set_position((width as f64 * 0.2) as i32);
+                }
+            });
         });
 
         let view = Rc::new(Self {
             widget,
             controller: controller.clone(),
+            current_units,
+            current_feed_units,
             devices_list,
+            search_entry,
             edit_name,
             edit_description,
             edit_device_type,
@@ -230,12 +284,20 @@ impl DeviceManagerWindow {
             edit_y_max,
             edit_z_min,
             edit_z_max,
+            edit_x_min_unit,
+            edit_x_max_unit,
+            edit_y_min_unit,
+            edit_y_max_unit,
+            edit_z_min_unit,
+            edit_z_max_unit,
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
             edit_max_feed_rate,
+            edit_max_feed_rate_unit,
             edit_max_s_value,
             edit_spindle_watts,
+            edit_max_spindle_speed_rpm,
             edit_laser_watts,
             selected_device: Rc::new(RefCell::new(None)),
             save_btn,
@@ -246,7 +308,37 @@ impl DeviceManagerWindow {
             edit_stack,
         });
 
+        {
+            let view = view.clone();
+            settings_controller.on_setting_changed(move |key, value| {
+                if key == "measurement_system" || key == "units.measurement_system" {
+                    let new_units = match value {
+                        "Imperial" => MeasurementSystem::Imperial,
+                        _ => MeasurementSystem::Metric,
+                    };
+                    {
+                        *view.current_units.borrow_mut() = new_units;
+                    }
+                    view.refresh_units_display();
+                }
+
+                if key == "feed_rate_units" {
+                    let new_units = match value {
+                        "mm/sec" => FeedRateUnits::MmPerSec,
+                        "in/min" => FeedRateUnits::InPerMin,
+                        "in/sec" => FeedRateUnits::InPerSec,
+                        _ => FeedRateUnits::MmPerMin,
+                    };
+                    {
+                        *view.current_feed_units.borrow_mut() = new_units;
+                    }
+                    view.refresh_units_display();
+                }
+            });
+        }
+
         view.setup_event_handlers();
+        view.update_connection_field_sensitivity();
         view.load_devices();
 
         view
@@ -254,6 +346,42 @@ impl DeviceManagerWindow {
 
     pub fn widget(&self) -> &Paned {
         &self.widget
+    }
+
+    fn refresh_units_display(&self) {
+        let units = *self.current_units.borrow();
+        let feed_units = *self.current_feed_units.borrow();
+
+        let unit_label = get_unit_label(units);
+        self.edit_x_min_unit.set_text(unit_label);
+        self.edit_x_max_unit.set_text(unit_label);
+        self.edit_y_min_unit.set_text(unit_label);
+        self.edit_y_max_unit.set_text(unit_label);
+        self.edit_z_min_unit.set_text(unit_label);
+        self.edit_z_max_unit.set_text(unit_label);
+
+        self.edit_max_feed_rate_unit.set_text(&feed_units.to_string());
+
+        let model_opt = self.selected_device.borrow().clone();
+        if let Some(profile) = model_opt {
+            self.edit_x_min
+                .set_text(&format_length(profile.x_min.parse::<f32>().unwrap_or(0.0), units));
+            self.edit_x_max
+                .set_text(&format_length(profile.x_max.parse::<f32>().unwrap_or(200.0), units));
+            self.edit_y_min
+                .set_text(&format_length(profile.y_min.parse::<f32>().unwrap_or(0.0), units));
+            self.edit_y_max
+                .set_text(&format_length(profile.y_max.parse::<f32>().unwrap_or(200.0), units));
+            self.edit_z_min
+                .set_text(&format_length(profile.z_min.parse::<f32>().unwrap_or(0.0), units));
+            self.edit_z_max
+                .set_text(&format_length(profile.z_max.parse::<f32>().unwrap_or(100.0), units));
+
+            self.edit_max_feed_rate.set_text(&format_feed_rate(
+                profile.max_feed_rate.parse::<f32>().unwrap_or(1000.0),
+                feed_units,
+            ));
+        }
     }
 
     fn create_general_tab() -> (ScrolledWindow, Entry, Entry, ComboBoxText, ComboBoxText) {
@@ -292,12 +420,12 @@ impl DeviceManagerWindow {
         let type_label = Label::new(Some("Device Type:"));
         type_label.set_halign(Align::Start);
         let edit_device_type = ComboBoxText::new();
-        edit_device_type.append_text("CNC Mill");
-        edit_device_type.append_text("CNC Lathe");
-        edit_device_type.append_text("Laser Cutter");
-        edit_device_type.append_text("3D Printer");
-        edit_device_type.append_text("Plotter");
-        edit_device_type.set_active(Some(0));
+        edit_device_type.append(Some("CNC Mill"), "CNC Mill");
+        edit_device_type.append(Some("CNC Lathe"), "CNC Lathe");
+        edit_device_type.append(Some("Laser Cutter"), "Laser Cutter");
+        edit_device_type.append(Some("3D Printer"), "3D Printer");
+        edit_device_type.append(Some("Plotter"), "Plotter");
+        edit_device_type.set_active_id(Some("CNC Mill"));
         grid.attach(&type_label, 0, row, 1, 1);
         grid.attach(&edit_device_type, 1, row, 1, 1);
         row += 1;
@@ -306,13 +434,13 @@ impl DeviceManagerWindow {
         let ctrl_label = Label::new(Some("Controller:"));
         ctrl_label.set_halign(Align::Start);
         let edit_controller_type = ComboBoxText::new();
-        edit_controller_type.append_text("GRBL");
-        edit_controller_type.append_text("TinyG");
-        edit_controller_type.append_text("g2core");
-        edit_controller_type.append_text("Smoothieware");
-        edit_controller_type.append_text("FluidNC");
-        edit_controller_type.append_text("Marlin");
-        edit_controller_type.set_active(Some(0));
+        edit_controller_type.append(Some("GRBL"), "GRBL");
+        edit_controller_type.append(Some("TinyG"), "TinyG");
+        edit_controller_type.append(Some("g2core"), "g2core");
+        edit_controller_type.append(Some("Smoothieware"), "Smoothieware");
+        edit_controller_type.append(Some("FluidNC"), "FluidNC");
+        edit_controller_type.append(Some("Marlin"), "Marlin");
+        edit_controller_type.set_active_id(Some("GRBL"));
         grid.attach(&ctrl_label, 0, row, 1, 1);
         grid.attach(&edit_controller_type, 1, row, 1, 1);
 
@@ -352,10 +480,10 @@ impl DeviceManagerWindow {
         let conn_label = Label::new(Some("Connection Type:"));
         conn_label.set_halign(Align::Start);
         let edit_connection_type = ComboBoxText::new();
-        edit_connection_type.append_text("Serial");
-        edit_connection_type.append_text("TCP/IP");
-        edit_connection_type.append_text("WebSocket");
-        edit_connection_type.set_active(Some(0));
+        edit_connection_type.append(Some("Serial"), "Serial");
+        edit_connection_type.append(Some("TCP/IP"), "TCP/IP");
+        edit_connection_type.append(Some("WebSocket"), "WebSocket");
+        edit_connection_type.set_active_id(Some("Serial"));
         grid.attach(&conn_label, 0, row, 1, 1);
         grid.attach(&edit_connection_type, 1, row, 1, 1);
         row += 1;
@@ -373,13 +501,13 @@ impl DeviceManagerWindow {
         let baud_label = Label::new(Some("Baud Rate:"));
         baud_label.set_halign(Align::Start);
         let edit_baud_rate = ComboBoxText::new();
-        edit_baud_rate.append_text("9600");
-        edit_baud_rate.append_text("19200");
-        edit_baud_rate.append_text("38400");
-        edit_baud_rate.append_text("57600");
-        edit_baud_rate.append_text("115200");
-        edit_baud_rate.append_text("250000");
-        edit_baud_rate.set_active(Some(4));
+        edit_baud_rate.append(Some("9600"), "9600");
+        edit_baud_rate.append(Some("19200"), "19200");
+        edit_baud_rate.append(Some("38400"), "38400");
+        edit_baud_rate.append(Some("57600"), "57600");
+        edit_baud_rate.append(Some("115200"), "115200");
+        edit_baud_rate.append(Some("250000"), "250000");
+        edit_baud_rate.set_active_id(Some("115200"));
         grid.attach(&baud_label, 0, row, 1, 1);
         grid.attach(&edit_baud_rate, 1, row, 1, 1);
         row += 1;
@@ -388,7 +516,8 @@ impl DeviceManagerWindow {
         let tcp_label = Label::new(Some("TCP Port:"));
         tcp_label.set_halign(Align::Start);
         let edit_tcp_port = Entry::new();
-        edit_tcp_port.set_placeholder_text(Some("23"));
+        edit_tcp_port.set_input_purpose(gtk4::InputPurpose::Number);
+        edit_tcp_port.set_text("23");
         grid.attach(&tcp_label, 0, row, 1, 1);
         grid.attach(&edit_tcp_port, 1, row, 1, 1);
         row += 1;
@@ -397,6 +526,7 @@ impl DeviceManagerWindow {
         let timeout_label = Label::new(Some("Timeout (ms):"));
         timeout_label.set_halign(Align::Start);
         let edit_timeout = Entry::new();
+        edit_timeout.set_input_purpose(gtk4::InputPurpose::Number);
         edit_timeout.set_text("5000");
         grid.attach(&timeout_label, 0, row, 1, 1);
         grid.attach(&edit_timeout, 1, row, 1, 1);
@@ -418,7 +548,23 @@ impl DeviceManagerWindow {
         )
     }
 
-    fn create_dimensions_tab() -> (ScrolledWindow, Entry, Entry, Entry, Entry, Entry, Entry) {
+    fn create_dimensions_tab(
+        units: MeasurementSystem,
+    ) -> (
+        ScrolledWindow,
+        Entry,
+        Entry,
+        Entry,
+        Entry,
+        Entry,
+        Entry,
+        Label,
+        Label,
+        Label,
+        Label,
+        Label,
+        Label,
+    ) {
         let scroll = ScrolledWindow::new();
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
 
@@ -430,72 +576,135 @@ impl DeviceManagerWindow {
         grid.set_column_spacing(10);
         grid.set_row_spacing(10);
 
+        let unit_label = get_unit_label(units);
+
         let mut row = 0;
 
         // X Axis
         let x_label = Label::new(Some("X Axis:"));
         x_label.set_halign(Align::Start);
+
         let x_min_label = Label::new(Some("Min:"));
         let edit_x_min = Entry::new();
-        edit_x_min.set_text("0.0");
+        edit_x_min.set_input_purpose(gtk4::InputPurpose::Number);
         edit_x_min.set_width_chars(8);
+
+        let edit_x_min_unit = Label::new(Some(unit_label));
+        edit_x_min_unit.set_width_chars(4);
+        edit_x_min_unit.set_halign(Align::End);
+        edit_x_min_unit.set_xalign(1.0);
+
         let x_max_label = Label::new(Some("Max:"));
         let edit_x_max = Entry::new();
-        edit_x_max.set_text("300.0");
+        edit_x_max.set_input_purpose(gtk4::InputPurpose::Number);
         edit_x_max.set_width_chars(8);
+
+        let edit_x_max_unit = Label::new(Some(unit_label));
+        edit_x_max_unit.set_width_chars(4);
+        edit_x_max_unit.set_halign(Align::End);
+        edit_x_max_unit.set_xalign(1.0);
+
         grid.attach(&x_label, 0, row, 1, 1);
         grid.attach(&x_min_label, 1, row, 1, 1);
         grid.attach(&edit_x_min, 2, row, 1, 1);
-        grid.attach(&x_max_label, 3, row, 1, 1);
-        grid.attach(&edit_x_max, 4, row, 1, 1);
+        grid.attach(&edit_x_min_unit, 3, row, 1, 1);
+        grid.attach(&x_max_label, 4, row, 1, 1);
+        grid.attach(&edit_x_max, 5, row, 1, 1);
+        grid.attach(&edit_x_max_unit, 6, row, 1, 1);
         row += 1;
 
         // Y Axis
         let y_label = Label::new(Some("Y Axis:"));
         y_label.set_halign(Align::Start);
+
         let y_min_label = Label::new(Some("Min:"));
         let edit_y_min = Entry::new();
-        edit_y_min.set_text("0.0");
+        edit_y_min.set_input_purpose(gtk4::InputPurpose::Number);
         edit_y_min.set_width_chars(8);
+
+        let edit_y_min_unit = Label::new(Some(unit_label));
+        edit_y_min_unit.set_width_chars(4);
+        edit_y_min_unit.set_halign(Align::End);
+        edit_y_min_unit.set_xalign(1.0);
+
         let y_max_label = Label::new(Some("Max:"));
         let edit_y_max = Entry::new();
-        edit_y_max.set_text("300.0");
+        edit_y_max.set_input_purpose(gtk4::InputPurpose::Number);
         edit_y_max.set_width_chars(8);
+
+        let edit_y_max_unit = Label::new(Some(unit_label));
+        edit_y_max_unit.set_width_chars(4);
+        edit_y_max_unit.set_halign(Align::End);
+        edit_y_max_unit.set_xalign(1.0);
+
         grid.attach(&y_label, 0, row, 1, 1);
         grid.attach(&y_min_label, 1, row, 1, 1);
         grid.attach(&edit_y_min, 2, row, 1, 1);
-        grid.attach(&y_max_label, 3, row, 1, 1);
-        grid.attach(&edit_y_max, 4, row, 1, 1);
+        grid.attach(&edit_y_min_unit, 3, row, 1, 1);
+        grid.attach(&y_max_label, 4, row, 1, 1);
+        grid.attach(&edit_y_max, 5, row, 1, 1);
+        grid.attach(&edit_y_max_unit, 6, row, 1, 1);
         row += 1;
 
         // Z Axis
         let z_label = Label::new(Some("Z Axis:"));
         z_label.set_halign(Align::Start);
+
         let z_min_label = Label::new(Some("Min:"));
         let edit_z_min = Entry::new();
-        edit_z_min.set_text("0.0");
+        edit_z_min.set_input_purpose(gtk4::InputPurpose::Number);
         edit_z_min.set_width_chars(8);
+
+        let edit_z_min_unit = Label::new(Some(unit_label));
+        edit_z_min_unit.set_width_chars(4);
+        edit_z_min_unit.set_halign(Align::End);
+        edit_z_min_unit.set_xalign(1.0);
+
         let z_max_label = Label::new(Some("Max:"));
         let edit_z_max = Entry::new();
-        edit_z_max.set_text("100.0");
+        edit_z_max.set_input_purpose(gtk4::InputPurpose::Number);
         edit_z_max.set_width_chars(8);
+
+        let edit_z_max_unit = Label::new(Some(unit_label));
+        edit_z_max_unit.set_width_chars(4);
+        edit_z_max_unit.set_halign(Align::End);
+        edit_z_max_unit.set_xalign(1.0);
+
         grid.attach(&z_label, 0, row, 1, 1);
         grid.attach(&z_min_label, 1, row, 1, 1);
         grid.attach(&edit_z_min, 2, row, 1, 1);
-        grid.attach(&z_max_label, 3, row, 1, 1);
-        grid.attach(&edit_z_max, 4, row, 1, 1);
+        grid.attach(&edit_z_min_unit, 3, row, 1, 1);
+        grid.attach(&z_max_label, 4, row, 1, 1);
+        grid.attach(&edit_z_max, 5, row, 1, 1);
+        grid.attach(&edit_z_max_unit, 6, row, 1, 1);
 
         scroll.set_child(Some(&grid));
         (
-            scroll, edit_x_min, edit_x_max, edit_y_min, edit_y_max, edit_z_min, edit_z_max,
+            scroll,
+            edit_x_min,
+            edit_x_max,
+            edit_y_min,
+            edit_y_max,
+            edit_z_min,
+            edit_z_max,
+            edit_x_min_unit,
+            edit_x_max_unit,
+            edit_y_min_unit,
+            edit_y_max_unit,
+            edit_z_min_unit,
+            edit_z_max_unit,
         )
     }
 
-    fn create_capabilities_tab() -> (
+    fn create_capabilities_tab(
+        feed_units: FeedRateUnits,
+    ) -> (
         ScrolledWindow,
         CheckButton,
         CheckButton,
         CheckButton,
+        Entry,
+        Label,
         Entry,
         Entry,
         Entry,
@@ -525,15 +734,23 @@ impl DeviceManagerWindow {
         let feed_label = Label::new(Some("Max Feed Rate:"));
         feed_label.set_halign(Align::Start);
         let edit_max_feed_rate = Entry::new();
+        edit_max_feed_rate.set_input_purpose(gtk4::InputPurpose::Number);
         edit_max_feed_rate.set_text("1000");
+
+        let edit_max_feed_rate_unit = Label::new(Some(&feed_units.to_string()));
+        edit_max_feed_rate_unit.set_width_chars(6);
+        edit_max_feed_rate_unit.set_halign(Align::End);
+        edit_max_feed_rate_unit.set_xalign(1.0);
 
         let s_label = Label::new(Some("Max S-Value:"));
         s_label.set_halign(Align::Start);
         let edit_max_s_value = Entry::new();
+        edit_max_s_value.set_input_purpose(gtk4::InputPurpose::Number);
         edit_max_s_value.set_text("1000");
 
         limits_grid.attach(&feed_label, 0, 0, 1, 1);
         limits_grid.attach(&edit_max_feed_rate, 1, 0, 1, 1);
+        limits_grid.attach(&edit_max_feed_rate_unit, 2, 0, 1, 1);
         limits_grid.attach(&s_label, 0, 1, 1, 1);
         limits_grid.attach(&edit_max_s_value, 1, 1, 1, 1);
 
@@ -555,10 +772,23 @@ impl DeviceManagerWindow {
         spindle_label.set_halign(Align::Start);
         spindle_label.set_width_request(150);
         let edit_spindle_watts = Entry::new();
+        edit_spindle_watts.set_input_purpose(gtk4::InputPurpose::Number);
         edit_spindle_watts.set_text("0");
         spindle_box.append(&spindle_label);
         spindle_box.append(&edit_spindle_watts);
         vbox.append(&spindle_box);
+
+        // Max Spindle Speed
+        let spindle_speed_box = Box::new(Orientation::Horizontal, 10);
+        let spindle_speed_label = Label::new(Some("Max Spindle Speed (RPM):"));
+        spindle_speed_label.set_halign(Align::Start);
+        spindle_speed_label.set_width_request(150);
+        let edit_max_spindle_speed_rpm = Entry::new();
+        edit_max_spindle_speed_rpm.set_input_purpose(gtk4::InputPurpose::Number);
+        edit_max_spindle_speed_rpm.set_text("12000");
+        spindle_speed_box.append(&spindle_speed_label);
+        spindle_speed_box.append(&edit_max_spindle_speed_rpm);
+        vbox.append(&spindle_speed_box);
 
         // Has Laser
         let edit_has_laser = CheckButton::with_label("Has Laser");
@@ -570,6 +800,7 @@ impl DeviceManagerWindow {
         laser_label.set_halign(Align::Start);
         laser_label.set_width_request(150);
         let edit_laser_watts = Entry::new();
+        edit_laser_watts.set_input_purpose(gtk4::InputPurpose::Number);
         edit_laser_watts.set_text("0");
         laser_box.append(&laser_label);
         laser_box.append(&edit_laser_watts);
@@ -586,8 +817,10 @@ impl DeviceManagerWindow {
             edit_has_laser,
             edit_has_coolant,
             edit_max_feed_rate,
+            edit_max_feed_rate_unit,
             edit_max_s_value,
             edit_spindle_watts,
+            edit_max_spindle_speed_rpm,
             edit_laser_watts,
         )
     }
@@ -623,27 +856,30 @@ impl DeviceManagerWindow {
             view.set_as_active();
         });
 
+        // Search
+        let view = self.clone();
+        self.search_entry
+            .connect_search_changed(move |_| view.load_devices());
+
+        // Connection field toggles
+        let view = self.clone();
+        self.edit_connection_type
+            .connect_changed(move |_| view.update_connection_field_sensitivity());
+
+        // Capability field toggles
+        let view = self.clone();
+        self.edit_has_spindle
+            .connect_toggled(move |_| view.update_capabilities_field_sensitivity());
+        let view = self.clone();
+        self.edit_has_laser
+            .connect_toggled(move |_| view.update_capabilities_field_sensitivity());
+
         // List selection
         let view = self.clone();
         self.devices_list.connect_row_activated(move |_, row| {
-            if let Some(row_box) = row.child().and_then(|w| w.downcast::<Box>().ok()) {
-                let mut child = row_box.first_child();
-                let mut id_label: Option<Label> = None;
-
-                while let Some(widget) = child.clone() {
-                    if let Ok(label) = widget.clone().downcast::<Label>() {
-                        if !label.is_visible() {
-                            id_label = Some(label.clone());
-                            break;
-                        }
-                    }
-                    child = widget.next_sibling();
-                }
-
-                if let Some(label) = id_label {
-                    let device_id = label.label().to_string();
-                    view.load_device_for_edit(&device_id);
-                }
+            let device_id = row.widget_name();
+            if !device_id.is_empty() {
+                view.load_device_for_edit(device_id.as_str());
             }
         });
     }
@@ -654,17 +890,25 @@ impl DeviceManagerWindow {
             self.devices_list.remove(&child);
         }
 
-        let profiles = self.controller.get_ui_profiles();
+        let mut profiles = self.controller.get_ui_profiles();
+        let q = self.search_entry.text().trim().to_lowercase();
+        if !q.is_empty() {
+            profiles.retain(|p| {
+                let hay = format!(
+                    "{}\n{}\n{}\n{}\n{}",
+                    p.name, p.description, p.device_type, p.controller_type, p.connection_type
+                )
+                .to_lowercase();
+                hay.contains(&q)
+            });
+        }
+
         let status = device_status::get_status();
         let connected_port = status.port_name.clone().unwrap_or_default();
         let is_connected = status.is_connected;
 
         for profile in profiles {
             let row_box = Box::new(Orientation::Vertical, 5);
-            row_box.set_margin_top(5);
-            row_box.set_margin_bottom(5);
-            row_box.set_margin_start(10);
-            row_box.set_margin_end(10);
 
             // Name Label (Wrapped)
             let name_label = Label::new(Some(&profile.name));
@@ -686,8 +930,12 @@ impl DeviceManagerWindow {
             info_label.set_hexpand(true); // Pushes badge to the right
             details_box.append(&info_label);
 
-            // Connected badge (match on port)
-            if is_connected && !connected_port.is_empty() && profile.port == connected_port {
+            // Connected badge (serial-only for now)
+            if is_connected
+                && profile.connection_type == "Serial"
+                && !connected_port.is_empty()
+                && profile.port.trim() == connected_port.trim()
+            {
                 let badge = Label::new(Some("Connected"));
                 badge.add_css_class("active-badge");
                 badge.set_halign(Align::End);
@@ -706,12 +954,15 @@ impl DeviceManagerWindow {
 
             row_box.append(&details_box);
 
-            // Store device ID as hidden label
-            let id_label = Label::new(Some(&profile.id));
-            id_label.set_visible(false);
-            row_box.append(&id_label);
+            let row = ListBoxRow::new();
+            row.set_margin_top(5);
+            row.set_margin_bottom(5);
+            row.set_margin_start(10);
+            row.set_margin_end(10);
+            row.set_child(Some(&row_box));
+            row.set_widget_name(&profile.id);
 
-            self.devices_list.append(&row_box);
+            self.devices_list.append(&row);
         }
     }
 
@@ -736,24 +987,33 @@ impl DeviceManagerWindow {
             // Load into form
             self.edit_name.set_text(&profile.name);
             self.edit_description.set_text(&profile.description);
-            // Set combos by matching text (simplified)
+
+            self.edit_device_type
+                .set_active_id(Some(profile.device_type.as_str()));
+            self.edit_controller_type
+                .set_active_id(Some(profile.controller_type.as_str()));
+
+            self.edit_connection_type
+                .set_active_id(Some(profile.connection_type.as_str()));
             self.edit_port.set_text(&profile.port);
-            self.edit_tcp_port.set_text(&profile.tcp_port);
-            self.edit_timeout.set_text(&profile.timeout_ms);
+            self.edit_baud_rate.set_active_id(Some(profile.baud_rate.as_str()));
+            self.edit_tcp_port.set_text(profile.tcp_port.trim());
+            self.edit_timeout.set_text(profile.timeout_ms.trim());
             self.edit_auto_reconnect.set_active(profile.auto_reconnect);
-            self.edit_x_min.set_text(&profile.x_min);
-            self.edit_x_max.set_text(&profile.x_max);
-            self.edit_y_min.set_text(&profile.y_min);
-            self.edit_y_max.set_text(&profile.y_max);
-            self.edit_z_min.set_text(&profile.z_min);
-            self.edit_z_max.set_text(&profile.z_max);
+
+            self.refresh_units_display();
+
             self.edit_has_spindle.set_active(profile.has_spindle);
             self.edit_has_laser.set_active(profile.has_laser);
             self.edit_has_coolant.set_active(profile.has_coolant);
-            self.edit_max_feed_rate.set_text(&profile.max_feed_rate);
-            self.edit_max_s_value.set_text(&profile.max_s_value);
-            self.edit_spindle_watts.set_text(&profile.cnc_spindle_watts);
-            self.edit_laser_watts.set_text(&profile.laser_watts);
+            self.edit_max_s_value.set_text(profile.max_s_value.trim());
+            self.edit_spindle_watts.set_text(profile.cnc_spindle_watts.trim());
+            self.edit_max_spindle_speed_rpm
+                .set_text(profile.max_spindle_speed_rpm.trim());
+            self.edit_laser_watts.set_text(profile.laser_watts.trim());
+
+            self.update_connection_field_sensitivity();
+            self.update_capabilities_field_sensitivity();
 
             // Enable buttons
             self.save_btn.set_sensitive(true);
@@ -761,6 +1021,56 @@ impl DeviceManagerWindow {
             self.delete_btn.set_sensitive(true);
             self.set_active_btn.set_sensitive(!profile.is_active);
         }
+    }
+
+    fn update_connection_field_sensitivity(&self) {
+        let conn = self
+            .edit_connection_type
+            .active_id()
+            .map(|s| s.to_string())
+            .or_else(|| self.edit_connection_type.active_text().map(|s| s.to_string()))
+            .unwrap_or_else(|| "Serial".to_string());
+
+        match conn.as_str() {
+            "Serial" => {
+                self.edit_port.set_sensitive(true);
+                self.edit_baud_rate.set_sensitive(true);
+                self.edit_tcp_port.set_sensitive(false);
+            }
+            "TCP/IP" | "WebSocket" => {
+                self.edit_port.set_sensitive(false);
+                self.edit_baud_rate.set_sensitive(false);
+                self.edit_tcp_port.set_sensitive(true);
+            }
+            _ => {}
+        }
+    }
+
+    fn update_capabilities_field_sensitivity(&self) {
+        let has_spindle = self.edit_has_spindle.is_active();
+        self.edit_spindle_watts.set_sensitive(has_spindle);
+        self.edit_max_spindle_speed_rpm.set_sensitive(has_spindle);
+
+        let has_laser = self.edit_has_laser.is_active();
+        self.edit_laser_watts.set_sensitive(has_laser);
+    }
+
+    fn show_error_dialog(&self, title: &str, details: &str) {
+        let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() else {
+            return;
+        };
+
+        let dialog = MessageDialog::builder()
+            .transient_for(&window)
+            .modal(true)
+            .message_type(MessageType::Error)
+            .buttons(gtk4::ButtonsType::Ok)
+            .text(title)
+            .secondary_text(details)
+            .build();
+
+        dialog.connect_response(|d, _| d.close());
+        dialog.show();
     }
 
     fn save_device(&self) {
@@ -786,30 +1096,148 @@ impl DeviceManagerWindow {
             if let Some(txt) = self.edit_baud_rate.active_text() {
                 model.baud_rate = txt.to_string();
             }
-            model.tcp_port = self.edit_tcp_port.text().to_string();
-            model.timeout_ms = self.edit_timeout.text().to_string();
+            let tcp_port: u16 = match self.edit_tcp_port.text().trim().parse() {
+                Ok(v) => v,
+                Err(_) => {
+                    self.show_error_dialog("Invalid TCP Port", "TCP Port must be a number");
+                    return;
+                }
+            };
+            let timeout_ms: u32 = match self.edit_timeout.text().trim().parse() {
+                Ok(v) => v,
+                Err(_) => {
+                    self.show_error_dialog("Invalid Timeout", "Timeout must be a number (ms)");
+                    return;
+                }
+            };
+            model.tcp_port = tcp_port.to_string();
+            model.timeout_ms = timeout_ms.to_string();
             model.auto_reconnect = self.edit_auto_reconnect.is_active();
 
             // Dimensions
-            model.x_min = self.edit_x_min.text().to_string();
-            model.x_max = self.edit_x_max.text().to_string();
-            model.y_min = self.edit_y_min.text().to_string();
-            model.y_max = self.edit_y_max.text().to_string();
-            model.z_min = self.edit_z_min.text().to_string();
-            model.z_max = self.edit_z_max.text().to_string();
+            let units = *self.current_units.borrow();
+            let feed_units = *self.current_feed_units.borrow();
+
+            let x_min_mm = match parse_length(&self.edit_x_min.text(), units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid X Min", &e);
+                    return;
+                }
+            };
+            let x_max_mm = match parse_length(&self.edit_x_max.text(), units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid X Max", &e);
+                    return;
+                }
+            };
+            let y_min_mm = match parse_length(&self.edit_y_min.text(), units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid Y Min", &e);
+                    return;
+                }
+            };
+            let y_max_mm = match parse_length(&self.edit_y_max.text(), units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid Y Max", &e);
+                    return;
+                }
+            };
+            let z_min_mm = match parse_length(&self.edit_z_min.text(), units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid Z Min", &e);
+                    return;
+                }
+            };
+            let z_max_mm = match parse_length(&self.edit_z_max.text(), units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid Z Max", &e);
+                    return;
+                }
+            };
+            model.x_min = format!("{:.2}", x_min_mm);
+            model.x_max = format!("{:.2}", x_max_mm);
+            model.y_min = format!("{:.2}", y_min_mm);
+            model.y_max = format!("{:.2}", y_max_mm);
+            model.z_min = format!("{:.2}", z_min_mm);
+            model.z_max = format!("{:.2}", z_max_mm);
 
             // Capabilities
             model.has_spindle = self.edit_has_spindle.is_active();
             model.has_laser = self.edit_has_laser.is_active();
             model.has_coolant = self.edit_has_coolant.is_active();
-            model.max_feed_rate = self.edit_max_feed_rate.text().to_string();
-            model.max_s_value = self.edit_max_s_value.text().to_string();
-            model.cnc_spindle_watts = self.edit_spindle_watts.text().to_string();
-            model.laser_watts = self.edit_laser_watts.text().to_string();
+            let max_feed_mm_per_min = match parse_feed_rate(&self.edit_max_feed_rate.text(), feed_units) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.show_error_dialog("Invalid Max Feed Rate", &e);
+                    return;
+                }
+            };
+            let max_s_value: f32 = match self.edit_max_s_value.text().trim().parse() {
+                Ok(v) => v,
+                Err(_) => {
+                    self.show_error_dialog("Invalid Max S-Value", "Max S-Value must be a number");
+                    return;
+                }
+            };
+            let (spindle_watts, max_spindle_speed_rpm) = if model.has_spindle {
+                let spindle_watts: f32 = match self.edit_spindle_watts.text().trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        self.show_error_dialog(
+                            "Invalid Spindle Power",
+                            "Spindle power must be a number (W)",
+                        );
+                        return;
+                    }
+                };
+
+                let max_spindle_speed_rpm: u32 = match self.edit_max_spindle_speed_rpm.text().trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        self.show_error_dialog(
+                            "Invalid Max Spindle Speed",
+                            "Max spindle speed must be an integer (RPM)",
+                        );
+                        return;
+                    }
+                };
+
+                (spindle_watts, max_spindle_speed_rpm)
+            } else {
+                (0.0, 0)
+            };
+
+            let laser_watts: f32 = if model.has_laser {
+                match self.edit_laser_watts.text().trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        self.show_error_dialog(
+                            "Invalid Laser Power",
+                            "Laser power must be a number (W)",
+                        );
+                        return;
+                    }
+                }
+            } else {
+                0.0
+            };
+            model.max_feed_rate = format!("{:.0}", max_feed_mm_per_min);
+            model.max_s_value = format!("{:.0}", max_s_value);
+            model.max_spindle_speed_rpm = max_spindle_speed_rpm.to_string();
+            model.cnc_spindle_watts = format!("{:.0}", spindle_watts);
+            model.laser_watts = format!("{:.0}", laser_watts);
 
             // Save
             if let Err(e) = self.controller.update_profile_from_ui(model) {
                 error!("Failed to save device profile: {}", e);
+                self.show_error_dialog("Failed to save device", &e.to_string());
+                return;
             }
 
             self.load_devices();
@@ -817,13 +1245,38 @@ impl DeviceManagerWindow {
         }
     }
 
-    fn delete_device(&self) {
-        let id_opt = self.selected_device.borrow().as_ref().map(|d| d.id.clone());
-        if let Some(id) = id_opt {
-            let _ = self.controller.delete_profile(&id);
-            self.load_devices();
-            self.cancel_edit();
-        }
+    fn delete_device(self: &Rc<Self>) {
+        let Some(model) = self.selected_device.borrow().clone() else {
+            return;
+        };
+
+        let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() else {
+            return;
+        };
+
+        let dialog = MessageDialog::builder()
+            .transient_for(&window)
+            .modal(true)
+            .message_type(MessageType::Question)
+            .buttons(gtk4::ButtonsType::YesNo)
+            .text("Delete device?")
+            .secondary_text(format!(
+                "Delete “{}”? This cannot be undone.",
+                model.name
+            ))
+            .build();
+
+        let view = self.clone();
+        dialog.connect_response(move |d, resp| {
+            if resp == ResponseType::Yes {
+                let _ = view.controller.delete_profile(&model.id);
+                view.load_devices();
+                view.cancel_edit();
+            }
+            d.close();
+        });
+
+        dialog.show();
     }
 
     fn set_as_active(&self) {

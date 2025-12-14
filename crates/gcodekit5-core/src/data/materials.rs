@@ -384,10 +384,11 @@ pub fn init_standard_library() -> MaterialLibrary {
         "Hardwood".to_string(),
     );
     red_oak.description = "Dense American hardwood, good for general CNC work".to_string();
-    red_oak.density = 750.0;
+    red_oak.density = 705.0;
     red_oak.machinability_rating = 8;
+    red_oak.tensile_strength = Some(104.0);
     red_oak.surface_finish = SurfaceFinishability::Good;
-    red_oak.notes = "Good grain structure, moderate dulling of tools".to_string();
+    red_oak.notes = "Good grain structure, moderate dulling of tools\nDensity (12% MC): ~705 kg/m³ https://amesweb.info/Materials/Density-of-Wood.aspx\nTensile strength (parallel to grain): ~104 MPa (US FPL Wood Handbook, ch5) https://www.fpl.fs.usda.gov/documnts/fplgtr/fplgtr190/chapter_05.pdf".to_string();
 
     let mut oak_params = CuttingParameters::default();
     oak_params.rpm_range = (16000, 20000);
@@ -397,30 +398,6 @@ pub fn init_standard_library() -> MaterialLibrary {
     red_oak.set_cutting_params("endmill_flat".to_string(), oak_params);
 
     library.add_material(red_oak);
-
-    // Aluminum 6061 (non-ferrous metal)
-    let mut al6061 = Material::new(
-        MaterialId("metal_al_6061".to_string()),
-        "Aluminum 6061".to_string(),
-        MaterialCategory::NonFerrousMetal,
-        "Alloy".to_string(),
-    );
-    al6061.description = "Common aluminum alloy, excellent machinability".to_string();
-    al6061.density = 2700.0;
-    al6061.machinability_rating = 9;
-    al6061.chip_type = ChipType::Continuous;
-    al6061.heat_sensitivity = HeatSensitivity::Moderate;
-    al6061.coolant_required = true;
-    al6061.required_ppe = vec![PPE::EyeProtection, PPE::HearingProtection];
-
-    let mut al_params = CuttingParameters::default();
-    al_params.rpm_range = (3000, 5000);
-    al_params.feed_rate_range = (1500.0, 3000.0);
-    al_params.max_doc = 5.0;
-    al_params.coolant_type = CoolantType::WaterSoluble;
-    al6061.set_cutting_params("endmill_flat".to_string(), al_params);
-
-    library.add_material(al6061);
 
     // Acrylic
     let mut acrylic = Material::new(
@@ -432,9 +409,11 @@ pub fn init_standard_library() -> MaterialLibrary {
     acrylic.description = "Clear plastic, good for engraving and cutting".to_string();
     acrylic.density = 1190.0;
     acrylic.machinability_rating = 9;
+    acrylic.tensile_strength = Some(70.0);
+    acrylic.melting_point = Some(105.0);
     acrylic.surface_finish = SurfaceFinishability::Excellent;
     acrylic.heat_sensitivity = HeatSensitivity::High;
-    acrylic.notes = "Keep tool speed high and feed moderate to avoid melting".to_string();
+    acrylic.notes = "Keep tool speed high and feed moderate to avoid heat buildup.\nPMMA Tg (used for melting_point field): ~105 °C; tensile strength: ~70 MPa. Sources: https://polymers.netzsch.com/Materials/Details/29 ; https://matmake.com/materials-data/polymethyl-methacrylate-properties.html".to_string();
 
     let mut acrylic_params = CuttingParameters::default();
     acrylic_params.rpm_range = (18000, 24000);
@@ -444,6 +423,41 @@ pub fn init_standard_library() -> MaterialLibrary {
     acrylic.set_cutting_params("endmill_flat".to_string(), acrylic_params);
 
     library.add_material(acrylic);
+
+    // Aluminum 6061
+    let mut aluminum_6061 = Material::new(
+        MaterialId("metal_al_6061".to_string()),
+        "Aluminum 6061".to_string(),
+        MaterialCategory::NonFerrousMetal,
+        "Aluminum alloy".to_string(),
+    );
+    aluminum_6061.description = "General-purpose aluminum alloy (6061-T6)".to_string();
+    aluminum_6061.density = 2700.0;
+    aluminum_6061.machinability_rating = 8;
+    aluminum_6061.tensile_strength = Some(310.0);
+    aluminum_6061.melting_point = Some(582.0);
+    aluminum_6061.coolant_required = true;
+    aluminum_6061.required_ppe = vec![PPE::EyeProtection, PPE::HearingProtection];
+    aluminum_6061.notes = "6061-T6: density ~2700 kg/m³; UTS ~310 MPa; melting range ~582–652 °C (solidus–liquidus). Source: https://asm.matweb.com/search/specificmaterial.asp?bassnum=ma6061t6".to_string();
+
+    let mut aluminum_params = CuttingParameters::default();
+    aluminum_params.rpm_range = (8000, 12000);
+    aluminum_params.feed_rate_range = (900.0, 2200.0);
+    aluminum_params.plunge_rate_percent = 40.0;
+    aluminum_params.max_doc = 3.0;
+    aluminum_params.stepover_percent = (35.0, 65.0);
+    aluminum_params.surface_speed_m_min = Some(300.0);
+    aluminum_params.chip_load_mm = Some(0.05);
+    aluminum_params.coolant_type = CoolantType::WaterSoluble;
+    aluminum_params.notes = "12k spindle baseline (assumes ~6mm, 2-flute carbide endmill); adjust by tool diameter using surface speed + chip load. Sources: https://www.machiningdoctor.com/mds/?matId=3850 ; https://www.harveytool.com/resources/general-machining-guidelines".to_string();
+    aluminum_6061.set_cutting_params("endmill_flat".to_string(), aluminum_params);
+
+    library.add_material(aluminum_6061);
+
+    // MPI-derived materials (static)
+    for m in crate::data::materials_mpi_static::load_mpi_derived_materials() {
+        library.add_material(m);
+    }
 
     library
 }

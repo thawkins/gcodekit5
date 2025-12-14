@@ -114,6 +114,122 @@ impl Default for MaterialsManagerBackend {
     }
 }
 
+pub fn category_id_to_category(id: &str) -> Option<MaterialCategory> {
+    match id {
+        "wood" => Some(MaterialCategory::Wood),
+        "eng_wood" => Some(MaterialCategory::EngineeredWood),
+        "plastic" => Some(MaterialCategory::Plastic),
+        "non_ferrous" => Some(MaterialCategory::NonFerrousMetal),
+        "ferrous" => Some(MaterialCategory::FerrousMetal),
+        "composite" => Some(MaterialCategory::Composite),
+        "stone" => Some(MaterialCategory::StoneAndCeramic),
+        _ => None,
+    }
+}
+
+pub fn category_to_id(category: MaterialCategory) -> &'static str {
+    match category {
+        MaterialCategory::Wood => "wood",
+        MaterialCategory::EngineeredWood => "eng_wood",
+        MaterialCategory::Plastic => "plastic",
+        MaterialCategory::NonFerrousMetal => "non_ferrous",
+        MaterialCategory::FerrousMetal => "ferrous",
+        MaterialCategory::Composite => "composite",
+        MaterialCategory::StoneAndCeramic => "stone",
+    }
+}
+
+pub fn chip_type_id_to_chip_type(id: &str) -> ChipType {
+    match id {
+        "continuous" => ChipType::Continuous,
+        "segmented" => ChipType::Segmented,
+        "granular" => ChipType::Granular,
+        "small" => ChipType::Small,
+        _ => ChipType::Continuous,
+    }
+}
+
+pub fn chip_type_to_id(chip_type: ChipType) -> &'static str {
+    match chip_type {
+        ChipType::Continuous => "continuous",
+        ChipType::Segmented => "segmented",
+        ChipType::Granular => "granular",
+        ChipType::Small => "small",
+    }
+}
+
+pub fn heat_sensitivity_id_to_heat_sensitivity(id: &str) -> HeatSensitivity {
+    match id {
+        "low" => HeatSensitivity::Low,
+        "moderate" => HeatSensitivity::Moderate,
+        "high" => HeatSensitivity::High,
+        _ => HeatSensitivity::Low,
+    }
+}
+
+pub fn heat_sensitivity_to_id(heat: HeatSensitivity) -> &'static str {
+    match heat {
+        HeatSensitivity::Low => "low",
+        HeatSensitivity::Moderate => "moderate",
+        HeatSensitivity::High => "high",
+    }
+}
+
+pub fn abrasiveness_id_to_abrasiveness(id: &str) -> Abrasiveness {
+    match id {
+        "low" => Abrasiveness::Low,
+        "moderate" => Abrasiveness::Moderate,
+        "high" => Abrasiveness::High,
+        _ => Abrasiveness::Low,
+    }
+}
+
+pub fn abrasiveness_to_id(abrasiveness: Abrasiveness) -> &'static str {
+    match abrasiveness {
+        Abrasiveness::Low => "low",
+        Abrasiveness::Moderate => "moderate",
+        Abrasiveness::High => "high",
+    }
+}
+
+pub fn surface_finish_id_to_surface_finish(id: &str) -> SurfaceFinishability {
+    match id {
+        "excellent" => SurfaceFinishability::Excellent,
+        "good" => SurfaceFinishability::Good,
+        "fair" => SurfaceFinishability::Fair,
+        "rough" => SurfaceFinishability::Rough,
+        _ => SurfaceFinishability::Good,
+    }
+}
+
+pub fn surface_finish_to_id(surface: SurfaceFinishability) -> &'static str {
+    match surface {
+        SurfaceFinishability::Excellent => "excellent",
+        SurfaceFinishability::Good => "good",
+        SurfaceFinishability::Fair => "fair",
+        SurfaceFinishability::Rough => "rough",
+    }
+}
+
+pub fn hazard_level_id_to_hazard_level(id: &str) -> HazardLevel {
+    match id {
+        "none" => HazardLevel::None,
+        "minimal" => HazardLevel::Minimal,
+        "moderate" => HazardLevel::Moderate,
+        "high" => HazardLevel::High,
+        _ => HazardLevel::None,
+    }
+}
+
+pub fn hazard_level_to_id(hazard: HazardLevel) -> &'static str {
+    match hazard {
+        HazardLevel::None => "none",
+        HazardLevel::Minimal => "minimal",
+        HazardLevel::Moderate => "moderate",
+        HazardLevel::High => "high",
+    }
+}
+
 pub fn string_to_category(s: &str) -> Option<MaterialCategory> {
     match s {
         "Wood" => Some(MaterialCategory::Wood),

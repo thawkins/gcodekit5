@@ -177,6 +177,16 @@ separator.inspector-section-separator {
     padding-left: 10px;
 }
 
+/* Generic page padding helpers */
+.gk-page-padding {
+    margin: 20px;
+}
+
+.gk-page-padding-sm {
+    margin: 10px;
+}
+
+
 .mc-section {
     background-color: var(--card-bg-color);
     border: 1px solid var(--border-color);

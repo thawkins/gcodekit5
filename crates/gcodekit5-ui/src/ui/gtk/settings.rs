@@ -1,13 +1,10 @@
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Align, Box, Button, Entry, FileChooserAction, FileChooserNative, Orientation,
-    ResponseType, StringList, Switch,
+    glib, Align, Box, Button, Dialog, Entry, FileChooserAction, FileChooserNative, Label, Notebook,
+    Orientation, PositionType, PolicyType, ResponseType, ScrolledWindow, StringList, Switch,
 };
 use libadwaita::prelude::*;
-use libadwaita::{
-    ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow, PreferencesWindow,
-};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use libadwaita::{ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow};
 use std::rc::Rc;
 use tracing::error;
 
@@ -15,39 +12,60 @@ use gcodekit5_settings::controller::{SettingUiModel, SettingsController};
 use gcodekit5_settings::view_model::SettingsCategory;
 
 pub struct SettingsWindow {
-    window: PreferencesWindow,
+    dialog: Dialog,
+    notebook: Notebook,
     controller: Rc<SettingsController>,
 }
 
 impl SettingsWindow {
     pub fn new(controller: Rc<SettingsController>) -> Self {
-        let window = PreferencesWindow::builder()
+        let dialog = Dialog::builder()
             .title("Preferences")
             .modal(true)
             .default_width(800)
             .default_height(600)
             .build();
 
+        dialog.add_button("Cancel", ResponseType::Cancel);
+        dialog.add_button("Save", ResponseType::Accept);
+
+        let notebook = Notebook::new();
+        notebook.set_tab_pos(PositionType::Top);
+        notebook.set_vexpand(true);
+
+        dialog.content_area().append(&notebook);
+
         let settings_window = Self {
-            window: window.clone(),
+            dialog: dialog.clone(),
+            notebook: notebook.clone(),
             controller: controller.clone(),
         };
         settings_window.setup_pages();
 
-        // Save on close (AdwWindow does not support gtk_window_set_titlebar()).
         {
             let controller = controller.clone();
-            window.connect_close_request(move |_| {
-                let _ = catch_unwind(AssertUnwindSafe(|| {
-                    if let Err(e) = controller.save() {
-                        error!("Failed to save settings: {}", e);
-                    }
-                }))
-                .map_err(|_| {
-                    error!("Panic while saving settings on close");
-                });
-
+            dialog.connect_close_request(move |_| {
+                controller.discard_changes();
                 glib::Propagation::Proceed
+            });
+        }
+
+        {
+            let controller = controller.clone();
+            dialog.connect_response(move |d, response| {
+                match response {
+                    ResponseType::Accept => {
+                        if let Err(e) = controller.save() {
+                            error!("Failed to save settings: {}", e);
+                            return;
+                        }
+                    }
+                    _ => {
+                        controller.discard_changes();
+                    }
+                }
+
+                d.close();
             });
         }
 
@@ -55,66 +73,38 @@ impl SettingsWindow {
     }
 
     pub fn present(&self) {
-        self.window.present();
+        self.dialog.present();
     }
 
     fn setup_pages(&self) {
-        // General Page
-        self.add_page(SettingsCategory::General, "General", "system-run-symbolic");
-
-        // Controller Page
-        self.add_page(
-            SettingsCategory::Controller,
-            "Controller",
-            "input-gaming-symbolic",
-        );
-
-        // UI Page
-        self.add_page(
-            SettingsCategory::UserInterface,
-            "User Interface",
-            "preferences-desktop-display-symbolic",
-        );
-
-        // File Processing Page
-        self.add_page(
-            SettingsCategory::FileProcessing,
-            "File Processing",
-            "document-open-symbolic",
-        );
-
-        // Shortcuts Page
-        self.add_page(
-            SettingsCategory::KeyboardShortcuts,
-            "Shortcuts",
-            "input-keyboard-symbolic",
-        );
-
-        // Advanced Page
-        self.add_page(
-            SettingsCategory::Advanced,
-            "Advanced",
-            "preferences-system-symbolic",
-        );
+        self.add_page(SettingsCategory::General, "General");
+        self.add_page(SettingsCategory::Controller, "Controller");
+        self.add_page(SettingsCategory::UserInterface, "User Interface");
+        self.add_page(SettingsCategory::FileProcessing, "File Processing");
+        self.add_page(SettingsCategory::KeyboardShortcuts, "Shortcuts");
+        self.add_page(SettingsCategory::Advanced, "Advanced");
     }
 
-    fn add_page(&self, category: SettingsCategory, title: &str, icon_name: &str) {
-        let page = PreferencesPage::builder()
-            .title(title)
-            .icon_name(icon_name)
-            .build();
-
+    fn add_page(&self, category: SettingsCategory, title: &str) {
+        let page = PreferencesPage::builder().title(title).build();
         let group = PreferencesGroup::builder().title(title).build();
 
         let settings = self.controller.get_settings_for_ui(Some(category));
-
         for setting in settings {
             let row = self.create_setting_row(&setting);
             group.add(&row);
         }
 
         page.add(&group);
-        self.window.add(&page);
+
+        let scroller = ScrolledWindow::builder()
+            .hscrollbar_policy(PolicyType::Never)
+            .vexpand(true)
+            .child(&page)
+            .build();
+
+        let tab_label = Label::new(Some(title));
+        self.notebook.append_page(&scroller, Some(&tab_label));
     }
 
     fn create_setting_row(&self, setting: &SettingUiModel) -> PreferencesRow {
@@ -188,7 +178,7 @@ impl SettingsWindow {
                     .valign(Align::Center)
                     .build();
 
-                let parent_window = self.window.clone();
+                let parent_window = self.dialog.clone();
                 let entry_clone = entry.clone();
 
                 browse_btn.connect_clicked(move |_| {

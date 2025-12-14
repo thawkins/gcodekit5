@@ -178,7 +178,6 @@ pub struct UiSettings {
     /// Show experimental features (may be unstable)
     #[serde(default)]
     pub show_experimental: bool,
-
     /// Visualizer sidebar splitter position (Paned position in pixels)
     #[serde(default)]
     pub visualizer_sidebar_position: Option<i32>,
@@ -186,6 +185,34 @@ pub struct UiSettings {
     /// Device Config info sidebar splitter position (Paned position in pixels)
     #[serde(default)]
     pub device_config_sidebar_position: Option<i32>,
+
+    /// Tools tab sidebar splitter position (Paned position in pixels)
+    #[serde(default)]
+    pub tools_sidebar_position: Option<i32>,
+
+    /// Tools tab search text
+    #[serde(default)]
+    pub tools_manager_search: String,
+
+    /// Tools tab type filter active id
+    #[serde(default)]
+    pub tools_manager_type_filter: String,
+
+    /// Tools tab material filter active id
+    #[serde(default)]
+    pub tools_manager_material_filter: String,
+
+    /// Tools tab diameter min filter (mm)
+    #[serde(default)]
+    pub tools_manager_dia_min: Option<f32>,
+
+    /// Tools tab diameter max filter (mm)
+    #[serde(default)]
+    pub tools_manager_dia_max: Option<f32>,
+
+    /// Tools tab last selected tool id
+    #[serde(default)]
+    pub tools_manager_selected_tool: Option<String>,
 }
 
 impl Default for UiSettings {
@@ -213,6 +240,13 @@ impl Default for UiSettings {
             show_experimental: false,
             visualizer_sidebar_position: None,
             device_config_sidebar_position: None,
+            tools_sidebar_position: None,
+            tools_manager_search: String::new(),
+            tools_manager_type_filter: String::new(),
+            tools_manager_material_filter: String::new(),
+            tools_manager_dia_min: None,
+            tools_manager_dia_max: None,
+            tools_manager_selected_tool: None,
         }
     }
 }

@@ -2876,7 +2876,12 @@ impl GcodeVisualizer {
         drop(cache);
 
         // Update bounds
-        let (min_x, max_x, min_y, max_y) = vis.get_bounds();
+        // Note: Visualizer::get_bounds() includes viewport padding and an origin clamp (min <= 0) for nicer navigation.
+        // For the Inspector we want the true cutting extents.
+        let (min_x, max_x, min_y, max_y) = vis
+            .get_cutting_bounds()
+            .map(|(min_x, max_x, min_y, max_y, _min_z, _max_z)| (min_x, max_x, min_y, max_y))
+            .unwrap_or_else(|| vis.get_bounds());
 
         let system = self
             .settings_controller

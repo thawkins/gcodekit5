@@ -58,19 +58,14 @@ fn test_tab_protrusion_equals_thickness_no_kerf() {
     }
 
     let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-    let _max_y = y_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let _min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-    let _max_x = x_coords.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let min_x = x_coords.iter().cloned().fold(f32::INFINITY, f32::min);
 
-    if min_y < 0.0 {
-        let tab_depth = min_y.abs();
-
-        assert!(
-            (tab_depth - 6.0).abs() < 0.1,
-            "Tab depth {:.2}mm != expected 6.0mm (2x thickness)",
-            tab_depth
-        );
-    }
+    assert!(
+        min_x >= -0.001 && min_y >= -0.001,
+        "Expected non-negative coords with 0 offsets; got min_x={:.3}, min_y={:.3}",
+        min_x,
+        min_y
+    );
 }
 
 #[test]
@@ -117,20 +112,54 @@ fn test_tab_protrusion_with_kerf() {
     }
 
     let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-
-    if min_y < 0.0 {
-        let _tab_depth = min_y.abs();
-    }
+    assert!(min_y >= -0.001, "Expected non-negative Y coords; got min_y={:.3}", min_y);
 }
 
 #[test]
 fn test_default_box() {
-    let params = BoxParameters::default();
+    let mut params = BoxParameters::default();
+    params.offset_x = 0.0;
+    params.offset_y = 0.0;
+
     let mut maker = TabbedBoxMaker::new(params).unwrap();
     maker.generate().unwrap();
     let gcode = maker.to_gcode();
+
     assert!(gcode.contains("G21"));
     assert!(gcode.contains("M3"));
+    assert!(!gcode.contains("NaN"));
+
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    for line in gcode.lines() {
+        if line.starts_with("G1") || line.starts_with("G0") {
+            if let Some(x_start) = line.find('X') {
+                let x_str: String = line[x_start + 1..]
+                    .chars()
+                    .take_while(|c| c.is_numeric() || *c == '.' || *c == '-')
+                    .collect();
+                if let Ok(x) = x_str.parse::<f32>() {
+                    min_x = min_x.min(x);
+                }
+            }
+            if let Some(y_start) = line.find('Y') {
+                let y_str: String = line[y_start + 1..]
+                    .chars()
+                    .take_while(|c| c.is_numeric() || *c == '.' || *c == '-')
+                    .collect();
+                if let Ok(y) = y_str.parse::<f32>() {
+                    min_y = min_y.min(y);
+                }
+            }
+        }
+    }
+
+    assert!(
+        min_x >= -0.001 && min_y >= -0.001,
+        "Expected non-negative coords with 0 offsets; got min_x={:.3}, min_y={:.3}",
+        min_x,
+        min_y
+    );
 }
 
 #[test]

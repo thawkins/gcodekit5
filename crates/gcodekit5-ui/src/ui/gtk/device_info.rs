@@ -1,8 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty,
-    Align, Box, Button, Expander, Image, Label, ListBox, ListBoxRow, Orientation, PolicyType,
-    ScrolledWindow,
+    accessible::Property as AccessibleProperty, Align, Box, Button, Expander, Image, Label,
+    ListBox, ListBoxRow, Orientation, PolicyType, ScrolledWindow,
 };
 
 use crate::device_status;
@@ -156,7 +155,8 @@ impl DeviceInfoView {
             self.copy_btn.set_sensitive(true);
             self.capabilities_expander.set_sensitive(true);
         } else {
-            self.status_icon.set_icon_name(Some("network-offline-symbolic"));
+            self.status_icon
+                .set_icon_name(Some("network-offline-symbolic"));
             self.device_name_label.set_text("No device");
             self.firmware_label.set_text("-");
             self.firmware_label.remove_css_class("success");
@@ -174,7 +174,8 @@ impl DeviceInfoView {
         }
 
         for cap in capabilities {
-            self.capabilities_list.append(&Self::create_capability_row(&cap));
+            self.capabilities_list
+                .append(&Self::create_capability_row(&cap));
         }
     }
 

@@ -4,8 +4,90 @@
 //! including persistence for custom tools.
 
 use gcodekit5_core::data::gtc_import::{GtcImportResult, GtcImporter};
-use gcodekit5_core::data::tools::{Tool, ToolId, ToolLibrary, ToolMaterial, ToolType};
+use gcodekit5_core::data::tools::{
+    ShankType, Tool, ToolCoating, ToolCuttingParams, ToolId, ToolLibrary, ToolMaterial, ToolType,
+};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedTool {
+    pub id: ToolId,
+    pub name: String,
+    pub description: String,
+    pub tool_type: ToolType,
+
+    pub diameter: f32,
+    pub shaft_diameter: Option<f32>,
+    pub length: f32,
+    pub flute_length: f32,
+    pub flutes: u32,
+    pub corner_radius: Option<f32>,
+    pub tip_angle: Option<f32>,
+
+    pub material: ToolMaterial,
+    pub coating: Option<ToolCoating>,
+    pub shank: ShankType,
+
+    pub params: ToolCuttingParams,
+
+    pub manufacturer: Option<String>,
+    pub part_number: Option<String>,
+    pub cost: Option<f32>,
+    pub notes: String,
+    pub custom: bool,
+}
+
+impl From<&Tool> for PersistedTool {
+    fn from(t: &Tool) -> Self {
+        Self {
+            id: t.id.clone(),
+            name: t.name.clone(),
+            description: t.description.clone(),
+            tool_type: t.tool_type,
+            diameter: t.diameter,
+            shaft_diameter: t.shaft_diameter,
+            length: t.length,
+            flute_length: t.flute_length,
+            flutes: t.flutes,
+            corner_radius: t.corner_radius,
+            tip_angle: t.tip_angle,
+            material: t.material,
+            coating: t.coating,
+            shank: t.shank,
+            params: t.params.clone(),
+            manufacturer: t.manufacturer.clone(),
+            part_number: t.part_number.clone(),
+            cost: t.cost,
+            notes: t.notes.clone(),
+            custom: t.custom,
+        }
+    }
+}
+
+impl From<PersistedTool> for Tool {
+    fn from(t: PersistedTool) -> Self {
+        // Tool number is intentionally not persisted (it is not a device tool index).
+        // Use 0 as a stable placeholder.
+        let mut tool = Tool::new(t.id, 0, t.name, t.tool_type, t.diameter, t.length);
+        tool.description = t.description;
+        tool.shaft_diameter = t.shaft_diameter;
+        tool.flute_length = t.flute_length;
+        tool.flutes = t.flutes;
+        tool.corner_radius = t.corner_radius;
+        tool.tip_angle = t.tip_angle;
+        tool.material = t.material;
+        tool.coating = t.coating;
+        tool.shank = t.shank;
+        tool.params = t.params;
+        tool.manufacturer = t.manufacturer;
+        tool.part_number = t.part_number;
+        tool.cost = t.cost;
+        tool.notes = t.notes;
+        tool.custom = t.custom;
+        tool
+    }
+}
 
 pub struct ToolsManagerBackend {
     library: ToolLibrary,
@@ -42,17 +124,18 @@ impl ToolsManagerBackend {
 
     fn load_from_file(path: &PathBuf) -> Result<Vec<Tool>, Box<dyn std::error::Error>> {
         let contents = std::fs::read_to_string(path)?;
-        let tools: Vec<Tool> = serde_json::from_str(&contents)?;
-        Ok(tools)
+        let tools: Vec<PersistedTool> = serde_json::from_str(&contents)?;
+        Ok(tools.into_iter().map(Into::into).collect())
     }
 
     fn save_to_file(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // Only save custom tools
-        let custom_tools: Vec<&Tool> = self
+        // Only save custom tools (tool numbers are intentionally not persisted)
+        let custom_tools: Vec<PersistedTool> = self
             .library
             .get_all_tools()
             .into_iter()
             .filter(|t| t.custom)
+            .map(PersistedTool::from)
             .collect();
 
         let json = serde_json::to_string_pretty(&custom_tools)?;
@@ -108,6 +191,45 @@ impl ToolsManagerBackend {
 
     pub fn get_all_tools(&self) -> Vec<&Tool> {
         self.library.get_all_tools()
+    }
+
+    pub fn export_custom_tools<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let custom_tools: Vec<PersistedTool> = self
+            .library
+            .get_all_tools()
+            .into_iter()
+            .filter(|t| t.custom)
+            .map(PersistedTool::from)
+            .collect();
+
+        let json = serde_json::to_string_pretty(&custom_tools)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    pub fn reset_custom_tools(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Remove custom tools from library
+        let ids: Vec<ToolId> = self
+            .library
+            .get_all_tools()
+            .into_iter()
+            .filter(|t| t.custom)
+            .map(|t| t.id.clone())
+            .collect();
+
+        for id in ids {
+            let _ = self.library.remove_tool(&id);
+        }
+
+        // Remove persisted file
+        if self.storage_path.exists() {
+            let _ = std::fs::remove_file(&self.storage_path);
+        }
+
+        Ok(())
     }
 
     /// Import tools from a GTC package (.zip file)

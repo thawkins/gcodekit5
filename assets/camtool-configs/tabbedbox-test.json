@@ -1,7 +1,7 @@
 {
-  "x": 100.0,
-  "y": 250.0,
-  "h": 60.0,
+  "x": 70.0,
+  "y": 60.0,
+  "h": 40.0,
   "thickness": 3.0,
   "outside": false,
   "box_type": "NoTop",

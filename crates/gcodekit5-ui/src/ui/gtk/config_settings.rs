@@ -384,7 +384,8 @@ impl ConfigSettingsView {
             if self.last_synced_settings_count.get() > 0 {
                 self.status_label.set_text("Connected - settings loaded");
             } else {
-                self.status_label.set_text("Connected - loading settings...");
+                self.status_label
+                    .set_text("Connected - loading settings...");
             }
         } else {
             self.status_label.set_text("Not connected");
@@ -536,7 +537,11 @@ impl ConfigSettingsView {
                                         if let Some(setting) = manager.get_setting(number) {
                                             let mut updated = setting.clone();
                                             updated.value = value.clone();
-                                            updated.numeric_value = crate::device_status::get_grbl_setting_numeric(number).or_else(|| value.parse::<f64>().ok());
+                                            updated.numeric_value =
+                                                crate::device_status::get_grbl_setting_numeric(
+                                                    number,
+                                                )
+                                                .or_else(|| value.parse::<f64>().ok());
                                             manager.set_setting(updated);
                                             count += 1;
                                         }
@@ -976,7 +981,10 @@ impl ConfigSettingsView {
             Some("Export Settings"),
             Some(&window),
             gtk4::FileChooserAction::Save,
-            &[("Cancel", ResponseType::Cancel), ("Save", ResponseType::Accept)],
+            &[
+                ("Cancel", ResponseType::Cancel),
+                ("Save", ResponseType::Accept),
+            ],
         );
 
         dialog.set_current_name("grbl_settings.json");
@@ -1010,7 +1018,10 @@ impl ConfigSettingsView {
             Some("Import Settings"),
             Some(&window),
             gtk4::FileChooserAction::Open,
-            &[("Cancel", ResponseType::Cancel), ("Open", ResponseType::Accept)],
+            &[
+                ("Cancel", ResponseType::Cancel),
+                ("Open", ResponseType::Accept),
+            ],
         );
 
         let status_label = self.status_label.clone();

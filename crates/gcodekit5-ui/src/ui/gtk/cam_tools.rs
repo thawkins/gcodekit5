@@ -2,13 +2,16 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, ButtonsType, CheckButton, ComboBoxText, Entry, FileChooserAction,
-    FileChooserDialog, Grid, Image, Label, MessageDialog, MessageType, Orientation, Overlay, Paned,
+    FileChooserDialog, Image, Label, MessageDialog, MessageType, Orientation, Overlay, Paned,
     ResponseType, ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
+use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
+
+use crate::ui::gtk::help_browser;
 
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 use gcodekit5_camtools::laser_engraver::{
@@ -23,6 +26,23 @@ use gcodekit5_camtools::tabbed_box::{
     BoxParameters, BoxType, KeyDividerType, TabbedBoxMaker as Generator,
 };
 use gcodekit5_camtools::vector_engraver::{VectorEngraver, VectorEngravingParameters};
+
+fn set_paned_initial_fraction(paned: &Paned, fraction: f64) {
+    let done = Rc::new(Cell::new(false));
+    let done2 = done.clone();
+    paned.connect_map(move |paned| {
+        if done2.replace(true) {
+            return;
+        }
+        let paned = paned.clone();
+        glib::idle_add_local_once(move || {
+            let width = paned.width();
+            if width > 0 {
+                paned.set_position((width as f64 * fraction) as i32);
+            }
+        });
+    });
+}
 
 pub struct CamToolsView {
     pub content: Stack,
@@ -85,133 +105,300 @@ impl CamToolsView {
         &self.content
     }
 
-    fn create_dashboard(stack: &Stack) -> ScrolledWindow {
-        let container = Box::new(Orientation::Vertical, 24);
+    fn create_dashboard(stack: &Stack) -> Box {
+        // Compact dashboard: tool list (left) + details panel (right)
+        // with search + category filtering.
+        #[derive(Clone, Copy)]
+        struct Tool {
+            page: &'static str,
+            title: &'static str,
+            desc: &'static str,
+            icon: &'static str,
+            category: &'static str,
+        }
+
+        const TOOLS: &[Tool] = &[
+            Tool {
+                page: "tabbed_box",
+                title: "Tabbed Box Maker",
+                desc: "Generate G-code for laser/CNC cut boxes with finger joints",
+                icon: "object-select-symbolic",
+                category: "generators",
+            },
+            Tool {
+                page: "jigsaw",
+                title: "Jigsaw Puzzle Generator",
+                desc: "Create custom jigsaw puzzle patterns from images",
+                icon: "image-x-generic-symbolic",
+                category: "generators",
+            },
+            Tool {
+                page: "laser_image",
+                title: "Laser Image Engraver",
+                desc: "Convert raster images to G-code for laser engraving",
+                icon: "camera-photo-symbolic",
+                category: "engraving",
+            },
+            Tool {
+                page: "laser_vector",
+                title: "Laser Vector Engraver",
+                desc: "Convert SVG and DXF vector files to G-code",
+                icon: "insert-image-symbolic",
+                category: "engraving",
+            },
+            Tool {
+                page: "feeds",
+                title: "Speeds & Feeds Calculator",
+                desc: "Calculate cutting speeds and feeds for your materials",
+                icon: "accessories-calculator-symbolic",
+                category: "calculators",
+            },
+            Tool {
+                page: "surfacing",
+                title: "Spoilboard Surfacing",
+                desc: "Generate surfacing toolpaths to flatten your spoilboard",
+                icon: "view-refresh-symbolic",
+                category: "maintenance",
+            },
+            Tool {
+                page: "grid",
+                title: "Create Spoilboard Grid",
+                desc: "Generate grid patterns for spoilboard alignment",
+                icon: "view-grid-symbolic",
+                category: "maintenance",
+            },
+        ];
+
+        fn apply_filters(list: &gtk4::ListBox, query: &str, category: &str) {
+            let q = query.trim().to_lowercase();
+
+            let mut child = list.first_child();
+            while let Some(w) = child {
+                child = w.next_sibling();
+                let Ok(row) = w.downcast::<gtk4::ListBoxRow>() else {
+                    continue;
+                };
+                let idx = unsafe {
+                    row.data::<u32>("camtool-index")
+                        .map(|p| *p.as_ref() as usize)
+                };
+                let Some(idx) = idx else {
+                    continue;
+                };
+                let Some(tool) = TOOLS.get(idx) else {
+                    continue;
+                };
+
+                let matches_text = q.is_empty()
+                    || tool.title.to_lowercase().contains(&q)
+                    || tool.desc.to_lowercase().contains(&q);
+                let matches_cat = category == "all" || tool.category == category;
+                row.set_visible(matches_text && matches_cat);
+            }
+        }
+
+        let container = Box::new(Orientation::Vertical, 12);
         container.set_margin_top(24);
         container.set_margin_bottom(24);
         container.set_margin_start(24);
         container.set_margin_end(24);
+        container.set_hexpand(true);
+        container.set_vexpand(true);
 
+        let header = Box::new(Orientation::Vertical, 6);
         let title = Label::builder()
             .label("CAM Tools")
             .css_classes(vec!["title-1"])
             .halign(Align::Start)
             .build();
-        container.append(&title);
+        header.append(&title);
 
-        let grid = Grid::builder()
-            .column_spacing(24)
-            .row_spacing(24)
+        // Toolbar: Search + Category filter
+        let toolbar = Box::new(Orientation::Horizontal, 12);
+        toolbar.set_hexpand(true);
+
+        let search = gtk4::SearchEntry::builder()
+            .placeholder_text("Search tools…")
             .hexpand(true)
             .build();
 
-        // Row 1
-        grid.attach(
-            &Self::create_tool_card(
-                "Tabbed Box Maker",
-                "Generate G-code for laser/CNC cut boxes with finger joints",
-                "object-select-symbolic", // Placeholder icon
-                "tabbed_box",
-                stack,
-            ),
-            0,
-            0,
-            1,
-            1,
-        );
+        let category = ComboBoxText::new();
+        category.append(Some("all"), "All");
+        category.append(Some("generators"), "Generators");
+        category.append(Some("engraving"), "Engraving");
+        category.append(Some("calculators"), "Calculators");
+        category.append(Some("maintenance"), "Maintenance");
+        category.set_active_id(Some("all"));
 
-        grid.attach(
-            &Self::create_tool_card(
-                "Jigsaw Puzzle Generator",
-                "Create custom jigsaw puzzle patterns from images",
-                "image-x-generic-symbolic",
-                "jigsaw",
-                stack,
-            ),
-            1,
-            0,
-            1,
-            1,
-        );
+        toolbar.append(&search);
+        toolbar.append(&category);
+        header.append(&toolbar);
+        container.append(&header);
 
-        grid.attach(
-            &Self::create_tool_card(
-                "Laser Image Engraver",
-                "Convert raster images to G-code for laser engraving",
-                "camera-photo-symbolic",
-                "laser_image",
-                stack,
-            ),
-            2,
-            0,
-            1,
-            1,
-        );
+        // Main: tool list + details.
+        let paned = Paned::new(Orientation::Horizontal);
+        paned.set_hexpand(true);
+        paned.set_vexpand(true);
 
-        // Row 2
-        grid.attach(
-            &Self::create_tool_card(
-                "Laser Vector Engraver",
-                "Convert SVG and DXF vector files to G-code",
-                "insert-image",
-                "laser_vector",
-                stack,
-            ),
-            0,
-            1,
-            1,
-            1,
-        );
+        let list = gtk4::ListBox::new();
+        list.add_css_class("boxed-list");
 
-        grid.attach(
-            &Self::create_tool_card(
-                "Speeds & Feeds Calculator",
-                "Calculate optimal cutting speeds and feeds for your materials",
-                "accessories-calculator-symbolic",
-                "feeds",
-                stack,
-            ),
-            1,
-            1,
-            1,
-            1,
-        );
+        for (idx, tool) in TOOLS.iter().enumerate() {
+            let row = gtk4::ListBoxRow::new();
+            row.set_selectable(true);
+            unsafe {
+                row.set_data("camtool-index", idx as u32);
+            }
 
-        grid.attach(
-            &Self::create_tool_card(
-                "Spoilboard Surfacing",
-                "Generate surfacing toolpaths to flatten your spoilboard",
-                "view-refresh-symbolic",
-                "surfacing",
-                stack,
-            ),
-            2,
-            1,
-            1,
-            1,
-        );
+            let h = Box::new(Orientation::Horizontal, 12);
+            h.set_margin_top(10);
+            h.set_margin_bottom(10);
+            h.set_margin_start(12);
+            h.set_margin_end(12);
 
-        // Row 3
-        grid.attach(
-            &Self::create_tool_card(
-                "Create Spoilboard Grid",
-                "Generate grid patterns for spoilboard alignment",
-                "view-grid-symbolic",
-                "grid",
-                stack,
-            ),
-            0,
-            2,
-            1,
-            1,
-        );
+            let icon = Image::from_icon_name(tool.icon);
+            icon.set_pixel_size(24);
+            icon.set_valign(Align::Start);
 
-        container.append(&grid);
+            let v = Box::new(Orientation::Vertical, 2);
+            let t = Label::new(Some(tool.title));
+            t.set_xalign(0.0);
+            t.add_css_class("heading");
 
-        ScrolledWindow::builder()
+            let d = Label::new(Some(tool.desc));
+            d.set_xalign(0.0);
+            d.set_wrap(true);
+            d.add_css_class("caption");
+
+            v.append(&t);
+            v.append(&d);
+            h.append(&icon);
+            h.append(&v);
+
+            row.set_child(Some(&h));
+            list.append(&row);
+        }
+
+        let list_scroller = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
-            .child(&container)
-            .build()
+            .child(&list)
+            .min_content_width(320)
+            .build();
+        list_scroller.set_vexpand(true);
+        list_scroller.set_hexpand(true);
+
+        let details = Box::new(Orientation::Vertical, 12);
+        details.set_margin_top(12);
+        details.set_margin_bottom(12);
+        details.set_margin_start(12);
+        details.set_margin_end(12);
+        details.set_hexpand(true);
+        details.set_vexpand(true);
+
+        let details_title = Label::new(Some("Select a tool"));
+        details_title.set_xalign(0.0);
+        details_title.add_css_class("title-2");
+
+        let details_desc = Label::new(Some("Choose a tool from the list to see details."));
+        details_desc.set_xalign(0.0);
+        details_desc.set_wrap(true);
+
+        let open_btn = Button::with_label("Open");
+        open_btn.add_css_class("suggested-action");
+        open_btn.set_sensitive(false);
+
+        details.append(&details_title);
+        details.append(&details_desc);
+        details.append(&open_btn);
+
+        paned.set_start_child(Some(&list_scroller));
+        paned.set_end_child(Some(&details));
+
+        // Initial ratio only; user resizing should persist for the session.
+        set_paned_initial_fraction(&paned, 0.45);
+
+        // Selection -> details
+        {
+            let details_title = details_title.clone();
+            let details_desc = details_desc.clone();
+            let open_btn = open_btn.clone();
+            list.connect_row_selected(move |_, row| {
+                if let Some(row) = row {
+                    let idx = unsafe {
+                        row.data::<u32>("camtool-index")
+                            .map(|p| *p.as_ref() as usize)
+                    };
+                    if let Some(idx) = idx {
+                        if let Some(tool) = TOOLS.get(idx) {
+                            details_title.set_text(tool.title);
+                            details_desc.set_text(tool.desc);
+                        }
+                    }
+                    open_btn.set_sensitive(true);
+                } else {
+                    details_title.set_text("Select a tool");
+                    details_desc.set_text("Choose a tool from the list to see details.");
+                    open_btn.set_sensitive(false);
+                }
+            });
+        }
+
+        // Open selected tool
+        {
+            let stack_for_click = stack.clone();
+            let list_for_click = list.clone();
+            open_btn.connect_clicked(move |_| {
+                if let Some(row) = list_for_click.selected_row() {
+                    let idx = unsafe {
+                        row.data::<u32>("camtool-index")
+                            .map(|p| *p.as_ref() as usize)
+                    };
+                    if let Some(idx) = idx {
+                        if let Some(tool) = TOOLS.get(idx) {
+                            stack_for_click.set_visible_child_name(tool.page);
+                        }
+                    }
+                }
+            });
+
+            let stack_for_activate = stack.clone();
+            list.connect_row_activated(move |_, row| {
+                let idx = unsafe {
+                    row.data::<u32>("camtool-index")
+                        .map(|p| *p.as_ref() as usize)
+                };
+                if let Some(idx) = idx {
+                    if let Some(tool) = TOOLS.get(idx) {
+                        stack_for_activate.set_visible_child_name(tool.page);
+                    }
+                }
+            });
+        }
+
+        // Filtering
+        {
+            let list = list.clone();
+            let search = search.clone();
+            let category = category.clone();
+            search.connect_search_changed(move |s| {
+                apply_filters(&list, &s.text(), &category.active_id().unwrap_or_else(|| "all".into()));
+            });
+        }
+        {
+            let list = list.clone();
+            let search = search.clone();
+            category.connect_changed(move |c| {
+                apply_filters(&list, &search.text(), &c.active_id().unwrap_or_else(|| "all".into()));
+            });
+        }
+
+        container.append(&paned);
+
+        let root = Box::new(Orientation::Vertical, 0);
+        root.set_hexpand(true);
+        root.set_vexpand(true);
+        root.append(&container);
+        root
     }
 
     fn create_tool_card(
@@ -320,7 +507,11 @@ impl JigsawTool {
             .label("Jigsaw Puzzle Generator")
             .css_classes(vec!["title-2"])
             .build();
+        title.set_hexpand(true);
+        title.set_halign(Align::Start);
         header.append(&title);
+
+        header.append(&help_browser::make_help_button("jigsaw_puzzle"));
 
         content_box.append(&header);
 
@@ -460,15 +651,8 @@ impl JigsawTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-        // Sidebar sizing (40%)
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         let widgets = Rc::new(JigsawWidgets {
             width,
@@ -791,7 +975,11 @@ impl BitmapEngravingTool {
             .label("Laser Image Engraver")
             .css_classes(vec!["title-2"])
             .build();
+        title.set_hexpand(true);
+        title.set_halign(Align::Start);
         header.append(&title);
+
+        header.append(&help_browser::make_help_button("laser_image_engraver"));
 
         content_box.append(&header);
 
@@ -1006,16 +1194,8 @@ impl BitmapEngravingTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-
-        // Sidebar sizing (40%)
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         let widgets = Rc::new(BitmapEngravingWidgets {
             width_mm,
@@ -1555,7 +1735,11 @@ impl VectorEngravingTool {
             .label("Laser Vector Engraver")
             .css_classes(vec!["title-2"])
             .build();
+        title.set_hexpand(true);
+        title.set_halign(Align::Start);
         header.append(&title);
+
+        header.append(&help_browser::make_help_button("laser_vector_engraver"));
 
         content_box.append(&header);
 
@@ -1775,16 +1959,8 @@ impl VectorEngravingTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-
-        // Sidebar sizing (40%)
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         let widgets = Rc::new(VectorEngravingWidgets {
             feed_rate,
@@ -2422,6 +2598,10 @@ impl TabbedBoxMaker {
         });
 
         header.append(&back_btn);
+        let spacer = Box::new(Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        header.append(&spacer);
+        header.append(&help_browser::make_help_button("tabbed_box_maker"));
         content_box.append(&header);
 
         // Split View
@@ -2616,15 +2796,8 @@ impl TabbedBoxMaker {
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
 
-        // 40% Sidebar Dynamic Sizing
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         content_box.append(&paned);
 
@@ -2946,7 +3119,10 @@ impl SpeedsFeedsTool {
             .label("Speeds & Feeds Calculator")
             .css_classes(vec!["title-2"])
             .build();
+        title.set_hexpand(true);
+        title.set_halign(Align::Start);
         header.append(&title);
+        header.append(&help_browser::make_help_button("speeds_feeds_calculator"));
         content_box.append(&header);
 
         // Paned Layout
@@ -3069,16 +3245,8 @@ impl SpeedsFeedsTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-
-        // Sidebar sizing (40%)
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         content_box.append(&paned);
 
@@ -3145,7 +3313,10 @@ impl SpoilboardSurfacingTool {
             .label("Spoilboard Surfacing")
             .css_classes(vec!["title-2"])
             .build();
+        title.set_hexpand(true);
+        title.set_halign(Align::Start);
         header.append(&title);
+        header.append(&help_browser::make_help_button("spoilboard_surfacing"));
         content_box.append(&header);
 
         // Paned Layout
@@ -3250,16 +3421,8 @@ impl SpoilboardSurfacingTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-
-        // Sidebar sizing (40%)
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         content_box.append(&paned);
 
@@ -3496,7 +3659,10 @@ impl SpoilboardGridTool {
             .label("Spoilboard Grid")
             .css_classes(vec!["title-2"])
             .build();
+        title.set_hexpand(true);
+        title.set_halign(Align::Start);
         header.append(&title);
+        header.append(&help_browser::make_help_button("spoilboard_grid"));
         content_box.append(&header);
 
         // Paned Layout
@@ -3598,16 +3764,8 @@ impl SpoilboardGridTool {
 
         paned.set_start_child(Some(&sidebar));
         paned.set_end_child(Some(&right_panel));
-
-        // Sidebar sizing (40%)
-        paned.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.40) as i32;
-            if (paned.position() - target).abs() > 5 {
-                paned.set_position(target);
-            }
-            glib::ControlFlow::Continue
-        });
+        // Initial ratio only; do not fight user resizing.
+        set_paned_initial_fraction(&paned, 0.40);
 
         content_box.append(&paned);
 
