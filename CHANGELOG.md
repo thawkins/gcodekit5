@@ -1,3 +1,10 @@
+## [0.36.0-alpha.0] - 2025-12-14
+
+### Fixed
+- **Help Browser**: Fixed issue where help content was selected by default.
+- **Help Browser**: Changed help button icon to `info-outline-symbolic`.
+- **Device Console**: Added help button linking to Machine Control help topic.
+
 ## [0.35.0-alpha.0] - 2025-12-12
 
 ### Added

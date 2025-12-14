@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-camtools"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1178,7 +1178,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-communication"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1194,7 +1194,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-core"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-designer"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-devicedb"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -1242,14 +1242,14 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-gcodeeditor"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "ropey",
 ]
 
 [[package]]
 name = "gcodekit5-settings"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "dirs",
  "gcodekit5-core",
@@ -1260,7 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-ui"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1299,7 +1299,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-visualizer"
-version = "0.35.0-alpha.0"
+version = "0.36.0-alpha.0"
 dependencies = [
  "anyhow",
  "chrono",

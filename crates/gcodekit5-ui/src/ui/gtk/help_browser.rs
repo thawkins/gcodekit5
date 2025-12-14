@@ -151,8 +151,16 @@ fn show_help_image(parent: Option<&gtk4::Window>, href: &str) {
     let pic = gtk4::Picture::for_resource(&resource_path);
     pic.set_can_shrink(true);
     pic.set_keep_aspect_ratio(true);
+    pic.set_margin_top(5);
+    pic.set_margin_bottom(5);
+    pic.set_margin_start(5);
+    pic.set_margin_end(5);
 
-    let scroller = ScrolledWindow::builder().child(&pic).build();
+    // GtkViewport does not reliably honor direct-child margins; put margins on the content widget.
+    let pad = Box::new(Orientation::Vertical, 0);
+    pad.append(&pic);
+
+    let scroller = ScrolledWindow::builder().child(&pad).build();
     win.set_child(Some(&scroller));
     win.present();
 }
@@ -216,14 +224,45 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
     content_label.set_wrap(true);
     content_label.set_xalign(0.0);
     content_label.set_use_markup(true);
+    content_label.set_margin_top(5);
+    content_label.set_margin_bottom(5);
+    content_label.set_margin_start(5);
+    content_label.set_margin_end(5);
 
-    // Make links visually consistent.
-    content_label.add_css_class("help-content");
+    // Apply theme-aware background using CSS
+    let provider = gtk4::CssProvider::new();
+    provider.load_from_data(
+        ".help-container {
+            background-color: @theme_bg_color;
+            color: @theme_fg_color;
+        }
+        .help-text {
+            color: @theme_fg_color;
+        }"
+    );
+    
+    gtk4::style_context_add_provider_for_display(
+        &gtk4::gdk::Display::default().unwrap(),
+        &provider,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
+    
+    content_label.add_css_class("help-text");
+
+    // GtkViewport does not reliably honor direct-child margins; put margins on the content widget.
+    let content_pad = Box::new(Orientation::Vertical, 0);
+    content_pad.add_css_class("help-container");
+    content_pad.set_margin_top(10);
+    content_pad.set_margin_bottom(10);
+    content_pad.set_margin_start(10);
+    content_pad.set_margin_end(10);
+    content_pad.append(&content_label);
 
     let scroller = ScrolledWindow::builder()
-        .child(&content_label)
+        .child(&content_pad)
         .hscrollbar_policy(gtk4::PolicyType::Never)
         .build();
+    scroller.add_css_class("help-scroller");
     scroller.set_hexpand(true);
     scroller.set_vexpand(true);
 
@@ -243,6 +282,11 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
                     let markup = markdown_to_markup(&md);
                     title.set_text(topic);
                     content_label.set_markup(&markup);
+                    let label_clone = content_label.clone();
+                    glib::idle_add_local(move || {
+                        label_clone.select_region(0, 0);
+                        glib::ControlFlow::Break
+                    });
                 }
                 Err(e) => {
                     title.set_text("Help (missing topic)");
@@ -371,7 +415,7 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
 
 /// Create a small icon-only help button that opens the help browser.
 pub fn make_help_button(topic: &'static str) -> Button {
-    let btn = Button::from_icon_name("help-browser-symbolic");
+    let btn = Button::from_icon_name("info-outline-symbolic");
     btn.set_tooltip_text(Some("Help"));
 
     btn.connect_clicked(move |_| {

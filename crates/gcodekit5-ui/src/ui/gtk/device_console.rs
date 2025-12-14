@@ -4,6 +4,8 @@ use gtk4::{
 };
 use std::{borrow::Cow, rc::Rc};
 
+use crate::ui::gtk::help_browser;
+
 pub struct DeviceConsoleView {
     pub widget: Paned,
     pub console_text: TextView,
@@ -44,6 +46,9 @@ impl DeviceConsoleView {
         console_toolbar.set_halign(Align::End);
         console_toolbar.append(&clear_btn);
         console_toolbar.append(&copy_btn);
+
+        let help_btn = help_browser::make_help_button("machine_control");
+        console_toolbar.append(&help_btn);
 
         // Console Output
         let scroll = ScrolledWindow::new();

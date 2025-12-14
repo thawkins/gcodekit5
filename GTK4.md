@@ -47,3 +47,12 @@
 - **ListBox placeholders**: `ListBox::set_placeholder(Some(&Label))` is an easy way to show “No results” when filtering/searching.
 - **Store row metadata**: Prefer `ListBoxRow::set_data("key", value)` over hidden widgets for IDs; retrieve via `row.data::<T>("key")`.
 - **Icon+label buttons**: Build a `Box` with `Image::from_icon_name` + `Label` and set it as `Button::set_child` for consistent look (avoid emoji labels).
+
+## GTK Label Selection
+- **Issue**: `gtk::Label` with `selectable` set to true might show all text selected by default or when content changes if not handled carefully.
+- **Solution**: Use `glib::idle_add_local` to defer `label.select_region(0, 0)` after setting markup. Immediate calls might be overridden by layout or focus events.
+- **Gotcha**: Toggling `set_selectable(false)` then `true` might not clear selection or might trigger selection behavior in some contexts. Explicitly clearing selection is safer.
+
+## Versioning
+- **Workspace**: Bump `[workspace.package].version` in root `Cargo.toml`.
+- **Lockfile**: Run `cargo check` to update `Cargo.lock`.
