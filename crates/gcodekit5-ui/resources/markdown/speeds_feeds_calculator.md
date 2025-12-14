@@ -24,3 +24,5 @@ Provides quick reference cutting parameters (RPM + feed) for common tool/materia
 - [Materials](help:materials_manager)
 - [CNC Tools](help:tools_manager)
 - [Index](help:index)
+
+

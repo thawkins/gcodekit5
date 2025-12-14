@@ -1,3 +1,15 @@
+## [0.36.1-alpha.0] - 2025-12-14
+
+### Added
+- **CAM Tools**: Implemented unit switching support (Metric/Imperial) for all CAM tools (Jigsaw, Bitmap Engraver, Vector Engraver, Tabbed Box Maker, Spoilboard Surfacing, Spoilboard Grid).
+- **CAM Tools**: Added `create_dimension_row` helper to standardize dimension inputs with dynamic unit labels.
+- **CAM Tools**: Added unit update listeners to dynamically update UI labels and values when the system measurement setting changes.
+- **Documentation**: Updated `AGENTS.md` with guidelines for handling dimension and feed values.
+
+### Fixed
+- **CAM Tools**: Fixed type mismatch errors in `VectorEngravingTool` and `TabbedBoxMaker` by removing incorrect `as f64` casts.
+- **CAM Tools**: Fixed duplicate method definitions in `VectorEngravingTool`.
+
 ## [0.36.0-alpha.0] - 2025-12-14
 
 ### Fixed

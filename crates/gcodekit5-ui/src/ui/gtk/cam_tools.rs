@@ -12,6 +12,8 @@ use std::fs;
 use std::rc::Rc;
 
 use crate::ui::gtk::help_browser;
+use gcodekit5_settings::SettingsController;
+use gcodekit5_core::units::{self, MeasurementSystem};
 
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 use gcodekit5_camtools::laser_engraver::{
@@ -44,6 +46,33 @@ fn set_paned_initial_fraction(paned: &Paned, fraction: f64) {
     });
 }
 
+fn create_dimension_row(
+    title: &str,
+    initial_mm: f64,
+    settings: &Rc<SettingsController>,
+) -> (ActionRow, Entry, Label) {
+    let row = ActionRow::builder().title(title).build();
+    let box_ = Box::new(Orientation::Horizontal, 6);
+
+    let system = settings.persistence.borrow().config().ui.measurement_system;
+    let initial_text = units::format_length(initial_mm as f32, system);
+
+    let entry = Entry::builder()
+        .text(&initial_text)
+        .valign(Align::Center)
+        .width_chars(8)
+        .build();
+
+    let label = Label::new(Some(units::get_unit_label(system)));
+    label.add_css_class("dim-label");
+
+    box_.append(&entry);
+    box_.append(&label);
+    row.add_suffix(&box_);
+
+    (row, entry, label)
+}
+
 pub struct CamToolsView {
     pub content: Stack,
 }
@@ -60,7 +89,7 @@ impl CamToolsView {
         dialog.show();
     }
 
-    pub fn new<F: Fn(String) + 'static>(on_generate: F) -> Self {
+    pub fn new<F: Fn(String) + 'static>(settings: Rc<SettingsController>, on_generate: F) -> Self {
         let on_generate = Rc::new(on_generate);
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
@@ -70,32 +99,32 @@ impl CamToolsView {
         stack.add_named(&dashboard, Some("dashboard"));
 
         // Tool Pages
-        let tabbed_box = TabbedBoxMaker::new(&stack, on_generate.clone());
+        let tabbed_box = TabbedBoxMaker::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(tabbed_box.widget(), Some("tabbed_box"));
 
         // Placeholders for other tools
         // Jigsaw Puzzle Tool
-        let jigsaw_tool = JigsawTool::new(&stack, on_generate.clone());
+        let jigsaw_tool = JigsawTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(jigsaw_tool.widget(), Some("jigsaw"));
 
         // Bitmap Engraving Tool
-        let bitmap_tool = BitmapEngravingTool::new(&stack, on_generate.clone());
+        let bitmap_tool = BitmapEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(bitmap_tool.widget(), Some("laser_image"));
 
         // Vector Engraving Tool
-        let vector_tool = VectorEngravingTool::new(&stack, on_generate.clone());
+        let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(vector_tool.widget(), Some("laser_vector"));
 
         // Speeds & Feeds Calculator
-        let feeds_tool = SpeedsFeedsTool::new(&stack);
+        let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
         stack.add_named(feeds_tool.widget(), Some("feeds"));
 
         // Spoilboard Surfacing
-        let surfacing_tool = SpoilboardSurfacingTool::new(&stack, on_generate.clone());
+        let surfacing_tool = SpoilboardSurfacingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(surfacing_tool.widget(), Some("surfacing"));
 
         // Spoilboard Grid
-        let grid_tool = SpoilboardGridTool::new(&stack, on_generate.clone());
+        let grid_tool = SpoilboardGridTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(grid_tool.widget(), Some("grid"));
 
         Self { content: stack }
@@ -486,7 +515,11 @@ pub struct JigsawTool {
 }
 
 impl JigsawTool {
-    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+    pub fn new<F: Fn(String) + 'static>(
+        stack: &Stack,
+        settings: Rc<SettingsController>,
+        on_generate: Rc<F>,
+    ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header
@@ -554,20 +587,23 @@ impl JigsawTool {
             .build();
 
         // Widgets
-        let width = Entry::builder().text("200").valign(Align::Center).build();
-        let height = Entry::builder().text("150").valign(Align::Center).build();
+        let (width_row, width, width_unit) = create_dimension_row("Width:", 200.0, &settings);
+        let (height_row, height, height_unit) = create_dimension_row("Height:", 150.0, &settings);
         let pieces_across = Entry::builder().text("4").valign(Align::Center).build();
         let pieces_down = Entry::builder().text("3").valign(Align::Center).build();
-        let kerf = Entry::builder().text("0.5").valign(Align::Center).build();
+        let (kerf_row, kerf, kerf_unit) = create_dimension_row("Kerf:", 0.5, &settings);
         let seed = Entry::builder().text("42").valign(Align::Center).build();
         let tab_size = Entry::builder().text("20").valign(Align::Center).build();
         let jitter = Entry::builder().text("4").valign(Align::Center).build();
-        let corner_radius = Entry::builder().text("2.0").valign(Align::Center).build();
+        let (corner_radius_row, corner_radius, corner_radius_unit) =
+            create_dimension_row("Corner Radius:", 2.0, &settings);
         let passes = Entry::builder().text("3").valign(Align::Center).build();
         let power = Entry::builder().text("1000").valign(Align::Center).build();
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
-        let offset_x = Entry::builder().text("10").valign(Align::Center).build();
-        let offset_y = Entry::builder().text("10").valign(Align::Center).build();
+        let (offset_x_row, offset_x, offset_x_unit) =
+            create_dimension_row("Offset X:", 10.0, &settings);
+        let (offset_y_row, offset_y, offset_y_unit) =
+            create_dimension_row("Offset Y:", 10.0, &settings);
         let home_before = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -575,11 +611,11 @@ impl JigsawTool {
 
         // Groups
         let dim_group = PreferencesGroup::builder()
-            .title("Puzzle Dimensions (mm)")
+            .title("Puzzle Dimensions")
             .build();
-        dim_group.add(&Self::create_row("Width:", &width));
-        dim_group.add(&Self::create_row("Height:", &height));
-        dim_group.add(&Self::create_row("Corner Radius:", &corner_radius));
+        dim_group.add(&width_row);
+        dim_group.add(&height_row);
+        dim_group.add(&corner_radius_row);
         scroll_content.append(&dim_group);
 
         let grid_group = PreferencesGroup::builder()
@@ -592,7 +628,7 @@ impl JigsawTool {
         let param_group = PreferencesGroup::builder()
             .title("Puzzle Parameters")
             .build();
-        param_group.add(&Self::create_row("Kerf (mm):", &kerf));
+        param_group.add(&kerf_row);
         param_group.add(&Self::create_row("Tab Size (%):", &tab_size));
         param_group.add(&Self::create_row("Jitter (%):", &jitter));
 
@@ -615,10 +651,10 @@ impl JigsawTool {
         scroll_content.append(&laser_group);
 
         let offset_group = PreferencesGroup::builder()
-            .title("Work Offsets (mm)")
+            .title("Work Offsets")
             .build();
-        offset_group.add(&Self::create_row("Offset X:", &offset_x));
-        offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        offset_group.add(&offset_x_row);
+        offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
             .title("Home Device Before Start")
@@ -672,11 +708,60 @@ impl JigsawTool {
             home_before,
         });
 
+        // Unit update listener
+        {
+            let settings_clone = settings.clone();
+            let w = widgets.clone();
+            let width_unit = width_unit.clone();
+            let height_unit = height_unit.clone();
+            let kerf_unit = kerf_unit.clone();
+            let corner_radius_unit = corner_radius_unit.clone();
+            let offset_x_unit = offset_x_unit.clone();
+            let offset_y_unit = offset_y_unit.clone();
+
+            let last_system = Rc::new(Cell::new(
+                settings.persistence.borrow().config().ui.measurement_system,
+            ));
+
+            settings.on_setting_changed(move |key, _| {
+                if key == "measurement_system" {
+                    let new_system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let old_system = last_system.get();
+
+                    if new_system != old_system {
+                        let unit_label = units::get_unit_label(new_system);
+
+                        let update_entry = |entry: &Entry, label: &Label| {
+                            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                                entry.set_text(&units::format_length(val_mm, new_system));
+                            }
+                            label.set_text(unit_label);
+                        };
+
+                        update_entry(&w.width, &width_unit);
+                        update_entry(&w.height, &height_unit);
+                        update_entry(&w.kerf, &kerf_unit);
+                        update_entry(&w.corner_radius, &corner_radius_unit);
+                        update_entry(&w.offset_x, &offset_x_unit);
+                        update_entry(&w.offset_y, &offset_y_unit);
+
+                        last_system.set(new_system);
+                    }
+                }
+            });
+        }
+
         // Connect Generate
         let w_gen = widgets.clone();
         let on_gen = on_generate.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&w_gen);
+            let params = Self::collect_params(&w_gen, &settings_gen);
             let home_before = w_gen.home_before.is_active();
 
             // Create progress dialog
@@ -791,15 +876,17 @@ impl JigsawTool {
 
         // Save
         let w_save = widgets.clone();
+        let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&w_save);
+            let params = Self::collect_params(&w_save, &settings_save);
             Self::save_params(&params);
         });
 
         // Load
         let w_load = widgets.clone();
+        let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
-            Self::load_params(&w_load);
+            Self::load_params(&w_load, &settings_load);
         });
 
         // Cancel
@@ -823,22 +910,24 @@ impl JigsawTool {
         row
     }
 
-    fn collect_params(w: &JigsawWidgets) -> PuzzleParameters {
+    fn collect_params(w: &JigsawWidgets, settings: &Rc<SettingsController>) -> PuzzleParameters {
+        let system = settings.persistence.borrow().config().ui.measurement_system;
         PuzzleParameters {
-            width: w.width.text().parse().unwrap_or(200.0),
-            height: w.height.text().parse().unwrap_or(150.0),
+            width: units::parse_length(&w.width.text(), system).unwrap_or(200.0),
+            height: units::parse_length(&w.height.text(), system).unwrap_or(150.0),
             pieces_across: w.pieces_across.text().parse().unwrap_or(4),
             pieces_down: w.pieces_down.text().parse().unwrap_or(3),
-            kerf: w.kerf.text().parse().unwrap_or(0.5),
+            kerf: units::parse_length(&w.kerf.text(), system).unwrap_or(0.5),
             seed: w.seed.text().parse::<u32>().unwrap_or(42), // Handles empty or invalid
             tab_size_percent: w.tab_size.text().parse().unwrap_or(20.0),
             jitter_percent: w.jitter.text().parse().unwrap_or(4.0),
-            corner_radius: w.corner_radius.text().parse().unwrap_or(2.0),
+            corner_radius: units::parse_length(&w.corner_radius.text(), system).unwrap_or(2.0)
+               ,
             laser_passes: w.passes.text().parse().unwrap_or(3),
             laser_power: w.power.text().parse().unwrap_or(1000),
             feed_rate: w.feed_rate.text().parse().unwrap_or(500.0),
-            offset_x: w.offset_x.text().parse().unwrap_or(10.0),
-            offset_y: w.offset_y.text().parse().unwrap_or(10.0),
+            offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
+            offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
         }
     }
 
@@ -873,7 +962,7 @@ impl JigsawTool {
         dialog.show();
     }
 
-    fn load_params(w: &Rc<JigsawWidgets>) {
+    fn load_params(w: &Rc<JigsawWidgets>, settings: &Rc<SettingsController>) {
         let dialog = FileChooserDialog::new(
             Some("Load Puzzle Parameters"),
             None::<&gtk4::Window>,
@@ -886,13 +975,14 @@ impl JigsawTool {
         dialog.set_default_size(900, 700);
 
         let w_clone = w.clone();
+        let settings_clone = settings.clone();
         dialog.connect_response(move |d, response| {
             if response == ResponseType::Accept {
                 if let Some(file) = d.file() {
                     if let Some(path) = file.path() {
                         if let Ok(content) = fs::read_to_string(path) {
                             if let Ok(params) = serde_json::from_str::<PuzzleParameters>(&content) {
-                                Self::apply_params(&w_clone, &params);
+                                Self::apply_params(&w_clone, &params, &settings_clone);
                             }
                         }
                     }
@@ -904,21 +994,32 @@ impl JigsawTool {
         dialog.show();
     }
 
-    fn apply_params(w: &JigsawWidgets, p: &PuzzleParameters) {
-        w.width.set_text(&p.width.to_string());
-        w.height.set_text(&p.height.to_string());
+    fn apply_params(
+        w: &JigsawWidgets,
+        p: &PuzzleParameters,
+        settings: &Rc<SettingsController>,
+    ) {
+        let system = settings.persistence.borrow().config().ui.measurement_system;
+        w.width
+            .set_text(&units::format_length(p.width as f32, system));
+        w.height
+            .set_text(&units::format_length(p.height as f32, system));
         w.pieces_across.set_text(&p.pieces_across.to_string());
         w.pieces_down.set_text(&p.pieces_down.to_string());
-        w.kerf.set_text(&p.kerf.to_string());
+        w.kerf
+            .set_text(&units::format_length(p.kerf as f32, system));
         w.seed.set_text(&p.seed.to_string());
         w.tab_size.set_text(&p.tab_size_percent.to_string());
         w.jitter.set_text(&p.jitter_percent.to_string());
-        w.corner_radius.set_text(&p.corner_radius.to_string());
+        w.corner_radius
+            .set_text(&units::format_length(p.corner_radius as f32, system));
         w.passes.set_text(&p.laser_passes.to_string());
         w.power.set_text(&p.laser_power.to_string());
         w.feed_rate.set_text(&p.feed_rate.to_string());
-        w.offset_x.set_text(&p.offset_x.to_string());
-        w.offset_y.set_text(&p.offset_y.to_string());
+        w.offset_x
+            .set_text(&units::format_length(p.offset_x as f32, system));
+        w.offset_y
+            .set_text(&units::format_length(p.offset_y as f32, system));
     }
 }
 
@@ -954,7 +1055,11 @@ pub struct BitmapEngravingTool {
 }
 
 impl BitmapEngravingTool {
-    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+    pub fn new<F: Fn(String) + 'static>(
+        stack: &Stack,
+        settings: Rc<SettingsController>,
+        on_generate: Rc<F>,
+    ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header
@@ -1044,7 +1149,8 @@ impl BitmapEngravingTool {
             .placeholder_text("No image selected")
             .valign(Align::Center)
             .build();
-        let width_mm = Entry::builder().text("100").valign(Align::Center).build();
+        let (width_mm_row, width_mm, width_mm_unit) =
+            create_dimension_row("Width:", 100.0, &settings);
         let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
         let travel_rate = Entry::builder().text("3000").valign(Align::Center).build();
         let min_power = Entry::builder().text("0").valign(Align::Center).build();
@@ -1052,8 +1158,10 @@ impl BitmapEngravingTool {
         let pixels_per_mm = Entry::builder().text("10").valign(Align::Center).build();
         let line_spacing = Entry::builder().text("1.0").valign(Align::Center).build();
         let power_scale = Entry::builder().text("1000").valign(Align::Center).build();
-        let offset_x = Entry::builder().text("10").valign(Align::Center).build();
-        let offset_y = Entry::builder().text("10").valign(Align::Center).build();
+        let (offset_x_row, offset_x, offset_x_unit) =
+            create_dimension_row("Offset X:", 10.0, &settings);
+        let (offset_y_row, offset_y, offset_y_unit) =
+            create_dimension_row("Offset Y:", 10.0, &settings);
 
         let scan_direction = ComboBoxText::new();
         scan_direction.append(Some("0"), "Horizontal");
@@ -1114,9 +1222,9 @@ impl BitmapEngravingTool {
         scroll_content.append(&image_group);
 
         let output_group = PreferencesGroup::builder()
-            .title("Output Settings (mm)")
+            .title("Output Settings")
             .build();
-        output_group.add(&Self::create_row("Width:", &width_mm));
+        output_group.add(&width_mm_row);
         output_group.add(&Self::create_row("Feed Rate:", &feed_rate));
         output_group.add(&Self::create_row("Travel Rate:", &travel_rate));
         scroll_content.append(&output_group);
@@ -1158,10 +1266,10 @@ impl BitmapEngravingTool {
         scroll_content.append(&halftone_group);
 
         let offset_group = PreferencesGroup::builder()
-            .title("Work Offsets (mm)")
+            .title("Work Offsets")
             .build();
-        offset_group.add(&Self::create_row("Offset X:", &offset_x));
-        offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        offset_group.add(&offset_x_row);
+        offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
             .title("Home Device Before Start")
@@ -1222,6 +1330,48 @@ impl BitmapEngravingTool {
             preview_spinner: preview_spinner.clone(),
             home_before,
         });
+
+        // Unit update listener
+        {
+            let settings_clone = settings.clone();
+            let w = widgets.clone();
+            let width_mm_unit = width_mm_unit.clone();
+            let offset_x_unit = offset_x_unit.clone();
+            let offset_y_unit = offset_y_unit.clone();
+
+            let last_system = Rc::new(Cell::new(
+                settings.persistence.borrow().config().ui.measurement_system,
+            ));
+
+            settings.on_setting_changed(move |key, _| {
+                if key == "measurement_system" {
+                    let new_system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let old_system = last_system.get();
+
+                    if new_system != old_system {
+                        let unit_label = units::get_unit_label(new_system);
+
+                        let update_entry = |entry: &Entry, label: &Label| {
+                            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                                entry.set_text(&units::format_length(val_mm, new_system));
+                            }
+                            label.set_text(unit_label);
+                        };
+
+                        update_entry(&w.width_mm, &width_mm_unit);
+                        update_entry(&w.offset_x, &offset_x_unit);
+                        update_entry(&w.offset_y, &offset_y_unit);
+
+                        last_system.set(new_system);
+                    }
+                }
+            });
+        }
 
         // Load Image Button
         let w_load_image = widgets.clone();
@@ -1714,7 +1864,11 @@ pub struct VectorEngravingTool {
 }
 
 impl VectorEngravingTool {
-    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+    pub fn new<F: Fn(String) + 'static>(
+        stack: &Stack,
+        settings: Rc<SettingsController>,
+        on_generate: Rc<F>,
+    ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header
@@ -1836,21 +1990,27 @@ impl VectorEngravingTool {
             .valign(Align::Center)
             .build();
         let num_passes = Entry::builder().text("1").valign(Align::Center).build();
-        let z_increment = Entry::builder().text("0.5").valign(Align::Center).build();
+        let (z_increment_row, z_increment, z_increment_unit) =
+            create_dimension_row("Z Increment:", 0.5, &settings);
         let invert_power = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
-        let desired_width = Entry::builder().text("100").valign(Align::Center).build();
-        let offset_x = Entry::builder().text("10").valign(Align::Center).build();
-        let offset_y = Entry::builder().text("10").valign(Align::Center).build();
+        let (desired_width_row, desired_width, desired_width_unit) =
+            create_dimension_row("Desired Width:", 100.0, &settings);
+        let (offset_x_row, offset_x, offset_x_unit) =
+            create_dimension_row("Offset X:", 10.0, &settings);
+        let (offset_y_row, offset_y, offset_y_unit) =
+            create_dimension_row("Offset Y:", 10.0, &settings);
         let enable_hatch = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
         let hatch_angle = Entry::builder().text("45").valign(Align::Center).build();
-        let hatch_spacing = Entry::builder().text("1.0").valign(Align::Center).build();
-        let hatch_tolerance = Entry::builder().text("0.1").valign(Align::Center).build();
+        let (hatch_spacing_row, hatch_spacing, hatch_spacing_unit) =
+            create_dimension_row("Hatch Spacing:", 1.0, &settings);
+        let (hatch_tolerance_row, hatch_tolerance, hatch_tolerance_unit) =
+            create_dimension_row("Hatch Tolerance:", 0.1, &settings);
         let cross_hatch = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -1877,9 +2037,9 @@ impl VectorEngravingTool {
         scroll_content.append(&file_group);
 
         let output_group = PreferencesGroup::builder()
-            .title("Output Settings (mm)")
+            .title("Output Settings")
             .build();
-        output_group.add(&Self::create_row("Desired Width:", &desired_width));
+        output_group.add(&desired_width_row);
         output_group.add(&Self::create_row("Feed Rate:", &feed_rate));
         output_group.add(&Self::create_row("Travel Rate:", &travel_rate));
         scroll_content.append(&output_group);
@@ -1900,7 +2060,7 @@ impl VectorEngravingTool {
         multi_row.add_suffix(&multi_pass);
         multipass_group.add(&multi_row);
         multipass_group.add(&Self::create_row("Number of Passes:", &num_passes));
-        multipass_group.add(&Self::create_row("Z Increment:", &z_increment));
+        multipass_group.add(&z_increment_row);
         scroll_content.append(&multipass_group);
 
         let hatch_group = PreferencesGroup::builder().title("Hatching").build();
@@ -1908,8 +2068,8 @@ impl VectorEngravingTool {
         hatch_row.add_suffix(&enable_hatch);
         hatch_group.add(&hatch_row);
         hatch_group.add(&Self::create_row("Hatch Angle (°):", &hatch_angle));
-        hatch_group.add(&Self::create_row("Hatch Spacing:", &hatch_spacing));
-        hatch_group.add(&Self::create_row("Hatch Tolerance:", &hatch_tolerance));
+        hatch_group.add(&hatch_spacing_row);
+        hatch_group.add(&hatch_tolerance_row);
         let cross_row = ActionRow::builder().title("Cross Hatch:").build();
         cross_row.add_suffix(&cross_hatch);
         hatch_group.add(&cross_row);
@@ -1923,10 +2083,10 @@ impl VectorEngravingTool {
         scroll_content.append(&dwell_group);
 
         let offset_group = PreferencesGroup::builder()
-            .title("Work Offsets (mm)")
+            .title("Work Offsets")
             .build();
-        offset_group.add(&Self::create_row("Offset X:", &offset_x));
-        offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        offset_group.add(&offset_x_row);
+        offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
             .title("Home Device Before Start")
@@ -1989,6 +2149,54 @@ impl VectorEngravingTool {
             home_before,
         });
 
+        // Unit update listener
+        {
+            let settings_clone = settings.clone();
+            let w = widgets.clone();
+            let z_increment_unit = z_increment_unit.clone();
+            let desired_width_unit = desired_width_unit.clone();
+            let offset_x_unit = offset_x_unit.clone();
+            let offset_y_unit = offset_y_unit.clone();
+            let hatch_spacing_unit = hatch_spacing_unit.clone();
+            let hatch_tolerance_unit = hatch_tolerance_unit.clone();
+
+            let last_system = Rc::new(Cell::new(
+                settings.persistence.borrow().config().ui.measurement_system,
+            ));
+
+            settings.on_setting_changed(move |key, _| {
+                if key == "measurement_system" {
+                    let new_system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let old_system = last_system.get();
+
+                    if new_system != old_system {
+                        let unit_label = units::get_unit_label(new_system);
+
+                        let update_entry = |entry: &Entry, label: &Label| {
+                            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                                entry.set_text(&units::format_length(val_mm, new_system));
+                            }
+                            label.set_text(unit_label);
+                        };
+
+                        update_entry(&w.z_increment, &z_increment_unit);
+                        update_entry(&w.desired_width, &desired_width_unit);
+                        update_entry(&w.offset_x, &offset_x_unit);
+                        update_entry(&w.offset_y, &offset_y_unit);
+                        update_entry(&w.hatch_spacing, &hatch_spacing_unit);
+                        update_entry(&w.hatch_tolerance, &hatch_tolerance_unit);
+
+                        last_system.set(new_system);
+                    }
+                }
+            });
+        }
+
         // Load File Button
         let w_load_file = widgets.clone();
         load_file_btn.connect_clicked(move |_| {
@@ -2028,8 +2236,9 @@ impl VectorEngravingTool {
         // Connect Generate
         let w_gen = widgets.clone();
         let on_gen = on_generate.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&w_gen);
+            let params = Self::collect_params(&w_gen, &settings_gen);
             let vector_path = w_gen.vector_path.text().to_string();
             let home_before = w_gen.home_before.is_active();
 
@@ -2149,6 +2358,7 @@ impl VectorEngravingTool {
 
         // Save params
         let w_save = widgets.clone();
+        let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
             let dialog = FileChooserDialog::new(
                 Some("Save Parameters"),
@@ -2163,11 +2373,12 @@ impl VectorEngravingTool {
             dialog.set_current_name("vector_params.json");
 
             let w_clone = w_save.clone();
+            let settings_clone = settings_save.clone();
             dialog.connect_response(move |d, response| {
                 if response == ResponseType::Accept {
                     if let Some(file) = d.file() {
                         if let Some(path) = file.path() {
-                            let params = Self::collect_params_for_save(&w_clone);
+                            let params = Self::collect_params_for_save(&w_clone, &settings_clone);
                             if let Ok(json) = serde_json::to_string_pretty(&params) {
                                 let _ = fs::write(path, json);
                             }
@@ -2182,6 +2393,7 @@ impl VectorEngravingTool {
 
         // Load params
         let w_load = widgets.clone();
+        let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
             let dialog = FileChooserDialog::new(
                 Some("Load Parameters"),
@@ -2195,6 +2407,7 @@ impl VectorEngravingTool {
             dialog.set_default_size(900, 700);
 
             let w_clone = w_load.clone();
+            let settings_clone = settings_load.clone();
             dialog.connect_response(move |d, response| {
                 if response == ResponseType::Accept {
                     if let Some(file) = d.file() {
@@ -2203,7 +2416,7 @@ impl VectorEngravingTool {
                                 if let Ok(params) =
                                     serde_json::from_str::<serde_json::Value>(&content)
                                 {
-                                    Self::apply_params(&w_clone, &params);
+                                    Self::apply_params(&w_clone, &params, &settings_clone);
                                 }
                             }
                         }
@@ -2236,7 +2449,11 @@ impl VectorEngravingTool {
         row
     }
 
-    fn collect_params(w: &VectorEngravingWidgets) -> VectorEngravingParameters {
+    fn collect_params(
+        w: &VectorEngravingWidgets,
+        settings: &Rc<SettingsController>,
+    ) -> VectorEngravingParameters {
+        let system = settings.persistence.borrow().config().ui.measurement_system;
         VectorEngravingParameters {
             feed_rate: w.feed_rate.text().parse().unwrap_or(600.0),
             travel_rate: w.travel_rate.text().parse().unwrap_or(3000.0),
@@ -2245,18 +2462,124 @@ impl VectorEngravingTool {
             power_scale: w.power_scale.text().parse().unwrap_or(1000.0),
             multi_pass: w.multi_pass.is_active(),
             num_passes: w.num_passes.text().parse().unwrap_or(1),
-            z_increment: w.z_increment.text().parse().unwrap_or(0.5),
+            z_increment: units::parse_length(&w.z_increment.text(), system).unwrap_or(0.5),
             invert_power: w.invert_power.is_active(),
-            desired_width: w.desired_width.text().parse().unwrap_or(100.0),
-            offset_x: w.offset_x.text().parse().unwrap_or(10.0),
-            offset_y: w.offset_y.text().parse().unwrap_or(10.0),
+            desired_width: units::parse_length(&w.desired_width.text(), system).unwrap_or(100.0),
+            offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
+            offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
             enable_hatch: w.enable_hatch.is_active(),
             hatch_angle: w.hatch_angle.text().parse().unwrap_or(45.0),
-            hatch_spacing: w.hatch_spacing.text().parse().unwrap_or(1.0),
-            hatch_tolerance: w.hatch_tolerance.text().parse().unwrap_or(0.1),
+            hatch_spacing: units::parse_length(&w.hatch_spacing.text(), system).unwrap_or(1.0),
+            hatch_tolerance: units::parse_length(&w.hatch_tolerance.text(), system).unwrap_or(0.1),
             enable_dwell: w.enable_dwell.is_active(),
             dwell_time: w.dwell_time.text().parse().unwrap_or(0.1),
             cross_hatch: w.cross_hatch.is_active(),
+        }
+    }
+
+    fn collect_params_for_save(
+        w: &VectorEngravingWidgets,
+        settings: &Rc<SettingsController>,
+    ) -> serde_json::Value {
+        let system = settings.persistence.borrow().config().ui.measurement_system;
+        serde_json::json!({
+            "feed_rate": w.feed_rate.text().to_string(),
+            "travel_rate": w.travel_rate.text().to_string(),
+            "cut_power": w.cut_power.text().to_string(),
+            "engrave_power": w.engrave_power.text().to_string(),
+            "power_scale": w.power_scale.text().to_string(),
+            "multi_pass": w.multi_pass.is_active(),
+            "num_passes": w.num_passes.text().to_string(),
+            "z_increment": units::parse_length(&w.z_increment.text(), system).unwrap_or(0.5),
+            "invert_power": w.invert_power.is_active(),
+            "desired_width": units::parse_length(&w.desired_width.text(), system).unwrap_or(100.0),
+            "offset_x": units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
+            "offset_y": units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
+            "enable_hatch": w.enable_hatch.is_active(),
+            "hatch_angle": w.hatch_angle.text().to_string(),
+            "hatch_spacing": units::parse_length(&w.hatch_spacing.text(), system).unwrap_or(1.0),
+            "hatch_tolerance": units::parse_length(&w.hatch_tolerance.text(), system).unwrap_or(0.1),
+            "enable_dwell": w.enable_dwell.is_active(),
+            "dwell_time": w.dwell_time.text().to_string(),
+            "cross_hatch": w.cross_hatch.is_active(),
+            "vector_path": w.vector_path.text().to_string(),
+        })
+    }
+
+    fn apply_params(
+        w: &VectorEngravingWidgets,
+        params: &serde_json::Value,
+        settings: &Rc<SettingsController>,
+    ) {
+        let system = settings.persistence.borrow().config().ui.measurement_system;
+        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+            w.feed_rate.set_text(v);
+        }
+        if let Some(v) = params.get("travel_rate").and_then(|v| v.as_str()) {
+            w.travel_rate.set_text(v);
+        }
+        if let Some(v) = params.get("cut_power").and_then(|v| v.as_str()) {
+            w.cut_power.set_text(v);
+        }
+        if let Some(v) = params.get("engrave_power").and_then(|v| v.as_str()) {
+            w.engrave_power.set_text(v);
+        }
+        if let Some(v) = params.get("power_scale").and_then(|v| v.as_str()) {
+            w.power_scale.set_text(v);
+        }
+        if let Some(v) = params.get("multi_pass").and_then(|v| v.as_bool()) {
+            w.multi_pass.set_active(v);
+        }
+        if let Some(v) = params.get("num_passes").and_then(|v| v.as_str()) {
+            w.num_passes.set_text(v);
+        }
+        if let Some(v) = params.get("z_increment").and_then(|v| v.as_f64()) {
+            w.z_increment
+                .set_text(&units::format_length(v as f32, system));
+        }
+        if let Some(v) = params.get("invert_power").and_then(|v| v.as_bool()) {
+            w.invert_power.set_active(v);
+        }
+        if let Some(v) = params.get("desired_width").and_then(|v| v.as_f64()) {
+            w.desired_width
+                .set_text(&units::format_length(v as f32, system));
+        }
+        if let Some(v) = params.get("offset_x").and_then(|v| v.as_f64()) {
+            w.offset_x
+                .set_text(&units::format_length(v as f32, system));
+        }
+        if let Some(v) = params.get("offset_y").and_then(|v| v.as_f64()) {
+            w.offset_y
+                .set_text(&units::format_length(v as f32, system));
+        }
+        if let Some(v) = params.get("enable_hatch").and_then(|v| v.as_bool()) {
+            w.enable_hatch.set_active(v);
+        }
+        if let Some(v) = params.get("hatch_angle").and_then(|v| v.as_str()) {
+            w.hatch_angle.set_text(v);
+        }
+        if let Some(v) = params.get("hatch_spacing").and_then(|v| v.as_f64()) {
+            w.hatch_spacing
+                .set_text(&units::format_length(v as f32, system));
+        }
+        if let Some(v) = params.get("hatch_tolerance").and_then(|v| v.as_f64()) {
+            w.hatch_tolerance
+                .set_text(&units::format_length(v as f32, system));
+        }
+        if let Some(v) = params.get("enable_dwell").and_then(|v| v.as_bool()) {
+            w.enable_dwell.set_active(v);
+        }
+        if let Some(v) = params.get("dwell_time").and_then(|v| v.as_str()) {
+            w.dwell_time.set_text(v);
+        }
+        if let Some(v) = params.get("cross_hatch").and_then(|v| v.as_bool()) {
+            w.cross_hatch.set_active(v);
+        }
+        if let Some(v) = params.get("vector_path").and_then(|v| v.as_str()) {
+            w.vector_path.set_text(v);
+            if !v.is_empty() {
+                Self::load_vector_preview(w, std::path::Path::new(v));
+            }
         }
     }
 
@@ -2458,95 +2781,6 @@ impl VectorEngravingTool {
         }
     }
 
-    fn collect_params_for_save(w: &VectorEngravingWidgets) -> serde_json::Value {
-        serde_json::json!({
-            "vector_path": w.vector_path.text().to_string(),
-            "feed_rate": w.feed_rate.text().to_string(),
-            "travel_rate": w.travel_rate.text().to_string(),
-            "cut_power": w.cut_power.text().to_string(),
-            "engrave_power": w.engrave_power.text().to_string(),
-            "power_scale": w.power_scale.text().to_string(),
-            "multi_pass": w.multi_pass.is_active(),
-            "num_passes": w.num_passes.text().to_string(),
-            "z_increment": w.z_increment.text().to_string(),
-            "invert_power": w.invert_power.is_active(),
-            "desired_width": w.desired_width.text().to_string(),
-            "offset_x": w.offset_x.text().to_string(),
-            "offset_y": w.offset_y.text().to_string(),
-            "enable_hatch": w.enable_hatch.is_active(),
-            "hatch_angle": w.hatch_angle.text().to_string(),
-            "hatch_spacing": w.hatch_spacing.text().to_string(),
-            "hatch_tolerance": w.hatch_tolerance.text().to_string(),
-            "cross_hatch": w.cross_hatch.is_active(),
-            "enable_dwell": w.enable_dwell.is_active(),
-            "dwell_time": w.dwell_time.text().to_string(),
-        })
-    }
-
-    fn apply_params(w: &VectorEngravingWidgets, params: &serde_json::Value) {
-        if let Some(v) = params.get("vector_path").and_then(|v| v.as_str()) {
-            w.vector_path.set_text(v);
-            let path = std::path::Path::new(v);
-            Self::load_vector_preview(w, path);
-        }
-        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-            w.feed_rate.set_text(v);
-        }
-        if let Some(v) = params.get("travel_rate").and_then(|v| v.as_str()) {
-            w.travel_rate.set_text(v);
-        }
-        if let Some(v) = params.get("cut_power").and_then(|v| v.as_str()) {
-            w.cut_power.set_text(v);
-        }
-        if let Some(v) = params.get("engrave_power").and_then(|v| v.as_str()) {
-            w.engrave_power.set_text(v);
-        }
-        if let Some(v) = params.get("power_scale").and_then(|v| v.as_str()) {
-            w.power_scale.set_text(v);
-        }
-        if let Some(v) = params.get("multi_pass").and_then(|v| v.as_bool()) {
-            w.multi_pass.set_active(v);
-        }
-        if let Some(v) = params.get("num_passes").and_then(|v| v.as_str()) {
-            w.num_passes.set_text(v);
-        }
-        if let Some(v) = params.get("z_increment").and_then(|v| v.as_str()) {
-            w.z_increment.set_text(v);
-        }
-        if let Some(v) = params.get("invert_power").and_then(|v| v.as_bool()) {
-            w.invert_power.set_active(v);
-        }
-        if let Some(v) = params.get("desired_width").and_then(|v| v.as_str()) {
-            w.desired_width.set_text(v);
-        }
-        if let Some(v) = params.get("offset_x").and_then(|v| v.as_str()) {
-            w.offset_x.set_text(v);
-        }
-        if let Some(v) = params.get("offset_y").and_then(|v| v.as_str()) {
-            w.offset_y.set_text(v);
-        }
-        if let Some(v) = params.get("enable_hatch").and_then(|v| v.as_bool()) {
-            w.enable_hatch.set_active(v);
-        }
-        if let Some(v) = params.get("hatch_angle").and_then(|v| v.as_str()) {
-            w.hatch_angle.set_text(v);
-        }
-        if let Some(v) = params.get("hatch_spacing").and_then(|v| v.as_str()) {
-            w.hatch_spacing.set_text(v);
-        }
-        if let Some(v) = params.get("hatch_tolerance").and_then(|v| v.as_str()) {
-            w.hatch_tolerance.set_text(v);
-        }
-        if let Some(v) = params.get("cross_hatch").and_then(|v| v.as_bool()) {
-            w.cross_hatch.set_active(v);
-        }
-        if let Some(v) = params.get("enable_dwell").and_then(|v| v.as_bool()) {
-            w.enable_dwell.set_active(v);
-        }
-        if let Some(v) = params.get("dwell_time").and_then(|v| v.as_str()) {
-            w.dwell_time.set_text(v);
-        }
-    }
 }
 
 struct TabbedBoxWidgets {
@@ -2580,7 +2814,11 @@ pub struct TabbedBoxMaker {
 }
 
 impl TabbedBoxMaker {
-    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+    pub fn new<F: Fn(String) + 'static>(
+        stack: &Stack,
+        settings: Rc<SettingsController>,
+        on_generate: Rc<F>,
+    ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header with Back Button
@@ -2646,20 +2884,22 @@ impl TabbedBoxMaker {
             .build();
 
         // Widgets
-        let width = Entry::builder().text("100").valign(Align::Center).build();
-        let depth = Entry::builder().text("100").valign(Align::Center).build();
-        let height = Entry::builder().text("100").valign(Align::Center).build();
+        let (width_row, width, width_unit) = create_dimension_row("X (Width):", 100.0, &settings);
+        let (depth_row, depth, depth_unit) = create_dimension_row("Y (Depth):", 100.0, &settings);
+        let (height_row, height, height_unit) = create_dimension_row("H (Height):", 100.0, &settings);
         let outside = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
-        let thickness = Entry::builder().text("3").valign(Align::Center).build();
-        let burn = Entry::builder().text("0.1").valign(Align::Center).build();
+        let (thickness_row, thickness, thickness_unit) =
+            create_dimension_row("Thickness:", 3.0, &settings);
+        let (burn_row, burn, burn_unit) = create_dimension_row("Burn / Tool Dia:", 0.1, &settings);
         let finger_width = Entry::builder().text("2").valign(Align::Center).build();
         let space_width = Entry::builder().text("2").valign(Align::Center).build();
         let surrounding_spaces = Entry::builder().text("2").valign(Align::Center).build();
-        let play = Entry::builder().text("0").valign(Align::Center).build();
-        let extra_length = Entry::builder().text("0").valign(Align::Center).build();
+        let (play_row, play, play_unit) = create_dimension_row("Play (fit tolerance):", 0.0, &settings);
+        let (extra_length_row, extra_length, extra_length_unit) =
+            create_dimension_row("Extra Length:", 0.0, &settings);
 
         // New Widgets
         let box_type = ComboBoxText::new();
@@ -2692,8 +2932,10 @@ impl TabbedBoxMaker {
         let power = Entry::builder().text("1000").valign(Align::Center).build();
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
 
-        let offset_x = Entry::builder().text("10").valign(Align::Center).build();
-        let offset_y = Entry::builder().text("10").valign(Align::Center).build();
+        let (offset_x_row, offset_x, offset_x_unit) =
+            create_dimension_row("Offset X:", 10.0, &settings);
+        let (offset_y_row, offset_y, offset_y_unit) =
+            create_dimension_row("Offset Y:", 10.0, &settings);
         let home_before = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -2701,11 +2943,11 @@ impl TabbedBoxMaker {
 
         // Box Dimensions
         let dim_group = PreferencesGroup::builder()
-            .title("Box Dimensions (mm)")
+            .title("Box Dimensions")
             .build();
-        dim_group.add(&Self::create_row("X (Width):", &width));
-        dim_group.add(&Self::create_row("Y (Depth):", &depth));
-        dim_group.add(&Self::create_row("H (Height):", &height));
+        dim_group.add(&width_row);
+        dim_group.add(&depth_row);
+        dim_group.add(&height_row);
 
         let outside_row = ActionRow::builder().title("Outside Dims:").build();
         outside_row.add_suffix(&outside);
@@ -2732,8 +2974,8 @@ impl TabbedBoxMaker {
         let mat_group = PreferencesGroup::builder()
             .title("Material Settings")
             .build();
-        mat_group.add(&Self::create_row("Thickness (mm):", &thickness));
-        mat_group.add(&Self::create_row("Burn / Tool Dia (mm):", &burn));
+        mat_group.add(&thickness_row);
+        mat_group.add(&burn_row);
         scroll_content.append(&mat_group);
 
         // Finger Joint Settings
@@ -2746,8 +2988,8 @@ impl TabbedBoxMaker {
             "Surrounding Spaces:",
             &surrounding_spaces,
         ));
-        finger_group.add(&Self::create_row("Play (fit tolerance):", &play));
-        finger_group.add(&Self::create_row("Extra Length:", &extra_length));
+        finger_group.add(&play_row);
+        finger_group.add(&extra_length_row);
         scroll_content.append(&finger_group);
 
         // Laser Settings
@@ -2759,10 +3001,10 @@ impl TabbedBoxMaker {
 
         // Work Origin Offsets
         let offset_group = PreferencesGroup::builder()
-            .title("Work Origin Offsets (mm)")
+            .title("Work Origin Offsets")
             .build();
-        offset_group.add(&Self::create_row("Offset X:", &offset_x));
-        offset_group.add(&Self::create_row("Offset Y:", &offset_y));
+        offset_group.add(&offset_x_row);
+        offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
             .title("Home Device Before Start")
@@ -2826,11 +3068,66 @@ impl TabbedBoxMaker {
             home_before,
         });
 
+        // Unit update listener
+        {
+            let settings_clone = settings.clone();
+            let w = widgets.clone();
+            let width_unit = width_unit.clone();
+            let depth_unit = depth_unit.clone();
+            let height_unit = height_unit.clone();
+            let thickness_unit = thickness_unit.clone();
+            let burn_unit = burn_unit.clone();
+            let play_unit = play_unit.clone();
+            let extra_length_unit = extra_length_unit.clone();
+            let offset_x_unit = offset_x_unit.clone();
+            let offset_y_unit = offset_y_unit.clone();
+
+            let last_system = Rc::new(Cell::new(
+                settings.persistence.borrow().config().ui.measurement_system,
+            ));
+
+            settings.on_setting_changed(move |key, _| {
+                if key == "measurement_system" {
+                    let new_system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let old_system = last_system.get();
+
+                    if new_system != old_system {
+                        let unit_label = units::get_unit_label(new_system);
+
+                        let update_entry = |entry: &Entry, label: &Label| {
+                            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                                entry.set_text(&units::format_length(val_mm, new_system));
+                            }
+                            label.set_text(unit_label);
+                        };
+
+                        update_entry(&w.width, &width_unit);
+                        update_entry(&w.depth, &depth_unit);
+                        update_entry(&w.height, &height_unit);
+                        update_entry(&w.thickness, &thickness_unit);
+                        update_entry(&w.burn, &burn_unit);
+                        update_entry(&w.play, &play_unit);
+                        update_entry(&w.extra_length, &extra_length_unit);
+                        update_entry(&w.offset_x, &offset_x_unit);
+                        update_entry(&w.offset_y, &offset_y_unit);
+
+                        last_system.set(new_system);
+                    }
+                }
+            });
+        }
+
         // Connect Signals
         let widgets_gen = widgets.clone();
         let on_generate = on_generate.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&widgets_gen);
+            let params = Self::collect_params(&widgets_gen, &settings_gen);
             let home_before = widgets_gen.home_before.is_active();
 
             // Create progress dialog
@@ -2930,14 +3227,16 @@ impl TabbedBoxMaker {
         });
 
         let widgets_save = widgets.clone();
+        let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&widgets_save);
+            let params = Self::collect_params(&widgets_save, &settings_save);
             Self::save_params(&params);
         });
 
         let widgets_load = widgets.clone();
+        let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
-            Self::load_params(&widgets_load);
+            Self::load_params(&widgets_load, &settings_load);
         });
 
         let stack_clone_cancel = stack.clone();
@@ -2959,21 +3258,29 @@ impl TabbedBoxMaker {
         row
     }
 
-    fn collect_params(w: &TabbedBoxWidgets) -> BoxParameters {
+    fn collect_params(
+        w: &TabbedBoxWidgets,
+        settings: &Rc<SettingsController>,
+    ) -> BoxParameters {
         let mut params = BoxParameters::default();
+        let system = settings.persistence.borrow().config().ui.measurement_system;
 
-        params.x = w.width.text().parse().unwrap_or(100.0);
-        params.y = w.depth.text().parse().unwrap_or(100.0);
-        params.h = w.height.text().parse().unwrap_or(100.0);
+        params.x = units::parse_length(&w.width.text(), system).unwrap_or(100.0);
+        params.y = units::parse_length(&w.depth.text(), system).unwrap_or(100.0);
+        params.h = units::parse_length(&w.height.text(), system).unwrap_or(100.0);
         params.outside = w.outside.is_active();
-        params.thickness = w.thickness.text().parse().unwrap_or(3.0);
-        params.burn = w.burn.text().parse().unwrap_or(0.1);
+        params.thickness =
+            units::parse_length(&w.thickness.text(), system).unwrap_or(3.0);
+        params.burn = units::parse_length(&w.burn.text(), system).unwrap_or(0.1);
 
         params.finger_joint.finger = w.finger_width.text().parse().unwrap_or(2.0);
         params.finger_joint.space = w.space_width.text().parse().unwrap_or(2.0);
-        params.finger_joint.surrounding_spaces = w.surrounding_spaces.text().parse().unwrap_or(2.0);
-        params.finger_joint.play = w.play.text().parse().unwrap_or(0.0);
-        params.finger_joint.extra_length = w.extra_length.text().parse().unwrap_or(0.0);
+        params.finger_joint.surrounding_spaces =
+            w.surrounding_spaces.text().parse().unwrap_or(2.0);
+        params.finger_joint.play =
+            units::parse_length(&w.play.text(), system).unwrap_or(0.0);
+        params.finger_joint.extra_length =
+            units::parse_length(&w.extra_length.text(), system).unwrap_or(0.0);
 
         // New params
         if let Some(id) = w.box_type.active_id() {
@@ -2990,8 +3297,8 @@ impl TabbedBoxMaker {
         params.laser_power = w.power.text().parse().unwrap_or(1000);
         params.feed_rate = w.feed_rate.text().parse().unwrap_or(500.0);
 
-        params.offset_x = w.offset_x.text().parse().unwrap_or(10.0);
-        params.offset_y = w.offset_y.text().parse().unwrap_or(10.0);
+        params.offset_x = units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0);
+        params.offset_y = units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0);
 
         params
     }
@@ -3027,7 +3334,7 @@ impl TabbedBoxMaker {
         dialog.show();
     }
 
-    fn load_params(w: &Rc<TabbedBoxWidgets>) {
+    fn load_params(w: &Rc<TabbedBoxWidgets>, settings: &Rc<SettingsController>) {
         let dialog = FileChooserDialog::new(
             Some("Load Box Parameters"),
             None::<&gtk4::Window>,
@@ -3040,13 +3347,14 @@ impl TabbedBoxMaker {
         dialog.set_default_size(900, 700);
 
         let w_clone = w.clone();
+        let settings_clone = settings.clone();
         dialog.connect_response(move |d, response| {
             if response == ResponseType::Accept {
                 if let Some(file) = d.file() {
                     if let Some(path) = file.path() {
                         if let Ok(content) = fs::read_to_string(path) {
                             if let Ok(params) = serde_json::from_str::<BoxParameters>(&content) {
-                                Self::apply_params(&w_clone, &params);
+                                Self::apply_params(&w_clone, &params, &settings_clone);
                             }
                         }
                     }
@@ -3058,21 +3366,35 @@ impl TabbedBoxMaker {
         dialog.show();
     }
 
-    fn apply_params(w: &TabbedBoxWidgets, p: &BoxParameters) {
-        w.width.set_text(&p.x.to_string());
-        w.depth.set_text(&p.y.to_string());
-        w.height.set_text(&p.h.to_string());
+    fn apply_params(
+        w: &TabbedBoxWidgets,
+        p: &BoxParameters,
+        settings: &Rc<SettingsController>,
+    ) {
+        let system = settings.persistence.borrow().config().ui.measurement_system;
+        w.width
+            .set_text(&units::format_length(p.x as f32, system));
+        w.depth
+            .set_text(&units::format_length(p.y as f32, system));
+        w.height
+            .set_text(&units::format_length(p.h as f32, system));
         w.outside.set_active(p.outside);
-        w.thickness.set_text(&p.thickness.to_string());
-        w.burn.set_text(&p.burn.to_string());
+        w.thickness
+            .set_text(&units::format_length(p.thickness as f32, system));
+        w.burn
+            .set_text(&units::format_length(p.burn as f32, system));
 
         w.finger_width.set_text(&p.finger_joint.finger.to_string());
         w.space_width.set_text(&p.finger_joint.space.to_string());
         w.surrounding_spaces
             .set_text(&p.finger_joint.surrounding_spaces.to_string());
-        w.play.set_text(&p.finger_joint.play.to_string());
+        w.play
+            .set_text(&units::format_length(p.finger_joint.play as f32, system));
         w.extra_length
-            .set_text(&p.finger_joint.extra_length.to_string());
+            .set_text(&units::format_length(
+                p.finger_joint.extra_length as f32,
+                system,
+            ));
 
         // New params
         w.box_type
@@ -3087,8 +3409,10 @@ impl TabbedBoxMaker {
         w.power.set_text(&p.laser_power.to_string());
         w.feed_rate.set_text(&p.feed_rate.to_string());
 
-        w.offset_x.set_text(&p.offset_x.to_string());
-        w.offset_y.set_text(&p.offset_y.to_string());
+        w.offset_x
+            .set_text(&units::format_length(p.offset_x as f32, system));
+        w.offset_y
+            .set_text(&units::format_length(p.offset_y as f32, system));
     }
 }
 
@@ -3098,7 +3422,7 @@ pub struct SpeedsFeedsTool {
 }
 
 impl SpeedsFeedsTool {
-    pub fn new(stack: &Stack) -> Self {
+    pub fn new(stack: &Stack, _settings: Rc<SettingsController>) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header
@@ -3292,7 +3616,11 @@ pub struct SpoilboardSurfacingTool {
 }
 
 impl SpoilboardSurfacingTool {
-    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+    pub fn new<F: Fn(String) + 'static>(
+        stack: &Stack,
+        settings: Rc<SettingsController>,
+        on_generate: Rc<F>,
+    ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header
@@ -3357,14 +3685,16 @@ impl SpoilboardSurfacingTool {
             .build();
 
         // Create widgets
-        let width = Entry::builder().text("400").valign(Align::Center).build();
-        let height = Entry::builder().text("300").valign(Align::Center).build();
-        let tool_diameter = Entry::builder().text("25").valign(Align::Center).build();
+        let (width_row, width, width_unit) = create_dimension_row("Width:", 400.0, &settings);
+        let (height_row, height, height_unit) = create_dimension_row("Height:", 300.0, &settings);
+        let (tool_diameter_row, tool_diameter, tool_diameter_unit) =
+            create_dimension_row("Tool Diameter:", 25.0, &settings);
         let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
         let spindle_speed = Entry::builder().text("18000").valign(Align::Center).build();
-        let cut_depth = Entry::builder().text("0.5").valign(Align::Center).build();
+        let (cut_depth_row, cut_depth, cut_depth_unit) =
+            create_dimension_row("Cut Depth:", 0.5, &settings);
         let stepover_percent = Entry::builder().text("40").valign(Align::Center).build();
-        let safe_z = Entry::builder().text("5.0").valign(Align::Center).build();
+        let (safe_z_row, safe_z, safe_z_unit) = create_dimension_row("Safe Z Height:", 5.0, &settings);
         let home_before = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -3372,15 +3702,15 @@ impl SpoilboardSurfacingTool {
 
         // Groups
         let dim_group = PreferencesGroup::builder()
-            .title("Spoilboard Dimensions (mm)")
+            .title("Spoilboard Dimensions")
             .build();
-        dim_group.add(&Self::create_row("Width:", &width));
-        dim_group.add(&Self::create_row("Height:", &height));
+        dim_group.add(&width_row);
+        dim_group.add(&height_row);
         scroll_content.append(&dim_group);
 
         let tool_group = PreferencesGroup::builder().title("Tool Settings").build();
-        tool_group.add(&Self::create_row("Tool Diameter (mm):", &tool_diameter));
-        tool_group.add(&Self::create_row("Cut Depth (mm):", &cut_depth));
+        tool_group.add(&tool_diameter_row);
+        tool_group.add(&cut_depth_row);
         tool_group.add(&Self::create_row("Stepover (%):", &stepover_percent));
         scroll_content.append(&tool_group);
 
@@ -3389,7 +3719,7 @@ impl SpoilboardSurfacingTool {
             .build();
         machine_group.add(&Self::create_row("Feed Rate (mm/min):", &feed_rate));
         machine_group.add(&Self::create_row("Spindle Speed (RPM):", &spindle_speed));
-        machine_group.add(&Self::create_row("Safe Z Height (mm):", &safe_z));
+        machine_group.add(&safe_z_row);
 
         let home_row = ActionRow::builder()
             .title("Home Device Before Start")
@@ -3438,19 +3768,75 @@ impl SpoilboardSurfacingTool {
             home_before,
         });
 
+        // Unit update listener
+        {
+            let settings_clone = settings.clone();
+            let w = widgets.clone();
+            let width_unit = width_unit.clone();
+            let height_unit = height_unit.clone();
+            let tool_diameter_unit = tool_diameter_unit.clone();
+            let cut_depth_unit = cut_depth_unit.clone();
+            let safe_z_unit = safe_z_unit.clone();
+
+            let last_system = Rc::new(Cell::new(
+                settings.persistence.borrow().config().ui.measurement_system,
+            ));
+
+            settings.on_setting_changed(move |key, _| {
+                if key == "measurement_system" {
+                    let new_system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let old_system = last_system.get();
+
+                    if new_system != old_system {
+                        let unit_label = units::get_unit_label(new_system);
+
+                        let update_entry = |entry: &Entry, label: &Label| {
+                            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                                entry.set_text(&units::format_length(val_mm, new_system));
+                            }
+                            label.set_text(unit_label);
+                        };
+
+                        update_entry(&w.width, &width_unit);
+                        update_entry(&w.height, &height_unit);
+                        update_entry(&w.tool_diameter, &tool_diameter_unit);
+                        update_entry(&w.cut_depth, &cut_depth_unit);
+                        update_entry(&w.safe_z, &safe_z_unit);
+
+                        last_system.set(new_system);
+                    }
+                }
+            });
+        }
+
         // Generate button
         let w_gen = widgets.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
             let home_before = w_gen.home_before.is_active();
+            let system = settings_gen
+                .persistence
+                .borrow()
+                .config()
+                .ui
+                .measurement_system;
+
             let params = SpoilboardSurfacingParameters {
-                width: w_gen.width.text().parse().unwrap_or(400.0),
-                height: w_gen.height.text().parse().unwrap_or(300.0),
-                tool_diameter: w_gen.tool_diameter.text().parse().unwrap_or(25.0),
+                width: units::parse_length(&w_gen.width.text(), system).unwrap_or(400.0) as f64,
+                height: units::parse_length(&w_gen.height.text(), system).unwrap_or(300.0) as f64,
+                tool_diameter: units::parse_length(&w_gen.tool_diameter.text(), system)
+                    .unwrap_or(25.0) as f64,
                 feed_rate: w_gen.feed_rate.text().parse().unwrap_or(1000.0),
                 spindle_speed: w_gen.spindle_speed.text().parse().unwrap_or(18000.0),
-                cut_depth: w_gen.cut_depth.text().parse().unwrap_or(0.5),
+                cut_depth: units::parse_length(&w_gen.cut_depth.text(), system).unwrap_or(0.5)
+                    as f64,
                 stepover_percent: w_gen.stepover_percent.text().parse().unwrap_or(40.0),
-                safe_z: w_gen.safe_z.text().parse().unwrap_or(5.0),
+                safe_z: units::parse_length(&w_gen.safe_z.text(), system).unwrap_or(5.0) as f64,
             };
 
             let generator = SpoilboardSurfacingGenerator::new(params);
@@ -3473,13 +3859,15 @@ impl SpoilboardSurfacingTool {
 
         // Save/Load/Cancel
         let w_save = widgets.clone();
+        let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
-            Self::save_params(&w_save);
+            Self::save_params(&w_save, &settings_save);
         });
 
         let w_load = widgets.clone();
+        let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
-            Self::load_params(&w_load);
+            Self::load_params(&w_load, &settings_load);
         });
 
         let stack_clone_cancel = stack.clone();
@@ -3502,7 +3890,7 @@ impl SpoilboardSurfacingTool {
         row
     }
 
-    fn save_params(w: &SpoilboardSurfacingWidgets) {
+    fn save_params(w: &SpoilboardSurfacingWidgets, settings: &Rc<SettingsController>) {
         let dialog = FileChooserDialog::new(
             Some("Save Parameters"),
             None::<&gtk4::Window>,
@@ -3515,15 +3903,16 @@ impl SpoilboardSurfacingTool {
         dialog.set_default_size(900, 700);
         dialog.set_current_name("surfacing_params.json");
 
+        let system = settings.persistence.borrow().config().ui.measurement_system;
         let w_clone = Rc::new((
-            w.width.text().to_string(),
-            w.height.text().to_string(),
-            w.tool_diameter.text().to_string(),
+            units::parse_length(&w.width.text(), system).unwrap_or(400.0),
+            units::parse_length(&w.height.text(), system).unwrap_or(300.0),
+            units::parse_length(&w.tool_diameter.text(), system).unwrap_or(25.0),
             w.feed_rate.text().to_string(),
             w.spindle_speed.text().to_string(),
-            w.cut_depth.text().to_string(),
+            units::parse_length(&w.cut_depth.text(), system).unwrap_or(1.0),
             w.stepover_percent.text().to_string(),
-            w.safe_z.text().to_string(),
+            units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0),
         ));
 
         dialog.connect_response(move |d, response| {
@@ -3550,7 +3939,7 @@ impl SpoilboardSurfacingTool {
         dialog.show();
     }
 
-    fn load_params(w: &SpoilboardSurfacingWidgets) {
+    fn load_params(w: &SpoilboardSurfacingWidgets, settings: &Rc<SettingsController>) {
         let dialog = FileChooserDialog::new(
             Some("Load Parameters"),
             None::<&gtk4::Window>,
@@ -3572,6 +3961,7 @@ impl SpoilboardSurfacingTool {
             w.stepover_percent.clone(),
             w.safe_z.clone(),
         ));
+        let settings_clone = settings.clone();
 
         dialog.connect_response(move |d, response| {
             if response == ResponseType::Accept {
@@ -3580,16 +3970,22 @@ impl SpoilboardSurfacingTool {
                         if let Ok(content) = fs::read_to_string(path) {
                             if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content)
                             {
-                                if let Some(v) = params.get("width").and_then(|v| v.as_str()) {
-                                    w_clone.0.set_text(v);
+                                let system = settings_clone
+                                    .persistence
+                                    .borrow()
+                                    .config()
+                                    .ui
+                                    .measurement_system;
+                                if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                                    w_clone.0.set_text(&units::format_length(v as f32, system));
                                 }
-                                if let Some(v) = params.get("height").and_then(|v| v.as_str()) {
-                                    w_clone.1.set_text(v);
+                                if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                                    w_clone.1.set_text(&units::format_length(v as f32, system));
                                 }
                                 if let Some(v) =
-                                    params.get("tool_diameter").and_then(|v| v.as_str())
+                                    params.get("tool_diameter").and_then(|v| v.as_f64())
                                 {
-                                    w_clone.2.set_text(v);
+                                    w_clone.2.set_text(&units::format_length(v as f32, system));
                                 }
                                 if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
                                     w_clone.3.set_text(v);
@@ -3599,16 +3995,16 @@ impl SpoilboardSurfacingTool {
                                 {
                                     w_clone.4.set_text(v);
                                 }
-                                if let Some(v) = params.get("cut_depth").and_then(|v| v.as_str()) {
-                                    w_clone.5.set_text(v);
+                                if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
+                                    w_clone.5.set_text(&units::format_length(v as f32, system));
                                 }
                                 if let Some(v) =
                                     params.get("stepover_percent").and_then(|v| v.as_str())
                                 {
                                     w_clone.6.set_text(v);
                                 }
-                                if let Some(v) = params.get("safe_z").and_then(|v| v.as_str()) {
-                                    w_clone.7.set_text(v);
+                                if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
+                                    w_clone.7.set_text(&units::format_length(v as f32, system));
                                 }
                             }
                         }
@@ -3638,7 +4034,11 @@ pub struct SpoilboardGridTool {
 }
 
 impl SpoilboardGridTool {
-    pub fn new<F: Fn(String) + 'static>(stack: &Stack, on_generate: Rc<F>) -> Self {
+    pub fn new<F: Fn(String) + 'static>(
+        stack: &Stack,
+        settings: Rc<SettingsController>,
+        on_generate: Rc<F>,
+    ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
         // Header
@@ -3703,9 +4103,10 @@ impl SpoilboardGridTool {
             .build();
 
         // Create widgets
-        let width = Entry::builder().text("400").valign(Align::Center).build();
-        let height = Entry::builder().text("300").valign(Align::Center).build();
-        let grid_spacing = Entry::builder().text("10").valign(Align::Center).build();
+        let (width_row, width, width_unit) = create_dimension_row("Width:", 400.0, &settings);
+        let (height_row, height, height_unit) = create_dimension_row("Height:", 300.0, &settings);
+        let (grid_spacing_row, grid_spacing, grid_spacing_unit) =
+            create_dimension_row("Grid Spacing:", 10.0, &settings);
         let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
         let laser_power = Entry::builder().text("1000").valign(Align::Center).build();
 
@@ -3722,11 +4123,11 @@ impl SpoilboardGridTool {
 
         // Groups
         let dim_group = PreferencesGroup::builder()
-            .title("Spoilboard Dimensions (mm)")
+            .title("Spoilboard Dimensions")
             .build();
-        dim_group.add(&Self::create_row("Width:", &width));
-        dim_group.add(&Self::create_row("Height:", &height));
-        dim_group.add(&Self::create_row("Grid Spacing:", &grid_spacing));
+        dim_group.add(&width_row);
+        dim_group.add(&height_row);
+        dim_group.add(&grid_spacing_row);
         scroll_content.append(&dim_group);
 
         let laser_group = PreferencesGroup::builder().title("Laser Settings").build();
@@ -3779,8 +4180,51 @@ impl SpoilboardGridTool {
             home_before,
         });
 
+        // Unit update listener
+        {
+            let settings_clone = settings.clone();
+            let w = widgets.clone();
+            let width_unit = width_unit.clone();
+            let height_unit = height_unit.clone();
+            let grid_spacing_unit = grid_spacing_unit.clone();
+
+            let last_system = Rc::new(Cell::new(
+                settings.persistence.borrow().config().ui.measurement_system,
+            ));
+
+            settings.on_setting_changed(move |key, _| {
+                if key == "measurement_system" {
+                    let new_system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let old_system = last_system.get();
+
+                    if new_system != old_system {
+                        let unit_label = units::get_unit_label(new_system);
+
+                        let update_entry = |entry: &Entry, label: &Label| {
+                            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                                entry.set_text(&units::format_length(val_mm, new_system));
+                            }
+                            label.set_text(unit_label);
+                        };
+
+                        update_entry(&w.width, &width_unit);
+                        update_entry(&w.height, &height_unit);
+                        update_entry(&w.grid_spacing, &grid_spacing_unit);
+
+                        last_system.set(new_system);
+                    }
+                }
+            });
+        }
+
         // Generate button
         let w_gen = widgets.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
             let home_before = w_gen.home_before.is_active();
             let laser_mode_str = w_gen
@@ -3789,10 +4233,18 @@ impl SpoilboardGridTool {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "M4".to_string());
 
+            let system = settings_gen
+                .persistence
+                .borrow()
+                .config()
+                .ui
+                .measurement_system;
+
             let params = SpoilboardGridParameters {
-                width: w_gen.width.text().parse().unwrap_or(400.0),
-                height: w_gen.height.text().parse().unwrap_or(300.0),
-                grid_spacing: w_gen.grid_spacing.text().parse().unwrap_or(10.0),
+                width: units::parse_length(&w_gen.width.text(), system).unwrap_or(400.0) as f64,
+                height: units::parse_length(&w_gen.height.text(), system).unwrap_or(300.0) as f64,
+                grid_spacing: units::parse_length(&w_gen.grid_spacing.text(), system)
+                    .unwrap_or(10.0) as f64,
                 feed_rate: w_gen.feed_rate.text().parse().unwrap_or(1000.0),
                 laser_power: w_gen.laser_power.text().parse().unwrap_or(1000.0),
                 laser_mode: laser_mode_str,
@@ -3818,13 +4270,15 @@ impl SpoilboardGridTool {
 
         // Save/Load/Cancel
         let w_save = widgets.clone();
+        let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
-            Self::save_params(&w_save);
+            Self::save_params(&w_save, &settings_save);
         });
 
         let w_load = widgets.clone();
+        let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
-            Self::load_params(&w_load);
+            Self::load_params(&w_load, &settings_load);
         });
 
         let stack_clone_cancel = stack.clone();
@@ -3847,7 +4301,7 @@ impl SpoilboardGridTool {
         row
     }
 
-    fn save_params(w: &SpoilboardGridWidgets) {
+    fn save_params(w: &SpoilboardGridWidgets, settings: &Rc<SettingsController>) {
         let dialog = FileChooserDialog::new(
             Some("Save Parameters"),
             None::<&gtk4::Window>,
@@ -3860,10 +4314,11 @@ impl SpoilboardGridTool {
         dialog.set_default_size(900, 700);
         dialog.set_current_name("grid_params.json");
 
+        let system = settings.persistence.borrow().config().ui.measurement_system;
         let w_clone = Rc::new((
-            w.width.text().to_string(),
-            w.height.text().to_string(),
-            w.grid_spacing.text().to_string(),
+            units::parse_length(&w.width.text(), system).unwrap_or(400.0),
+            units::parse_length(&w.height.text(), system).unwrap_or(300.0),
+            units::parse_length(&w.grid_spacing.text(), system).unwrap_or(10.0),
             w.feed_rate.text().to_string(),
             w.laser_power.text().to_string(),
             w.laser_mode
@@ -3894,7 +4349,7 @@ impl SpoilboardGridTool {
         dialog.show();
     }
 
-    fn load_params(w: &SpoilboardGridWidgets) {
+    fn load_params(w: &SpoilboardGridWidgets, settings: &Rc<SettingsController>) {
         let dialog = FileChooserDialog::new(
             Some("Load Parameters"),
             None::<&gtk4::Window>,
@@ -3914,6 +4369,7 @@ impl SpoilboardGridTool {
             w.laser_power.clone(),
             w.laser_mode.clone(),
         ));
+        let settings_clone = settings.clone();
 
         dialog.connect_response(move |d, response| {
             if response == ResponseType::Accept {
@@ -3922,15 +4378,21 @@ impl SpoilboardGridTool {
                         if let Ok(content) = fs::read_to_string(path) {
                             if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content)
                             {
-                                if let Some(v) = params.get("width").and_then(|v| v.as_str()) {
-                                    w_clone.0.set_text(v);
+                                let system = settings_clone
+                                    .persistence
+                                    .borrow()
+                                    .config()
+                                    .ui
+                                    .measurement_system;
+                                if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                                    w_clone.0.set_text(&units::format_length(v as f32, system));
                                 }
-                                if let Some(v) = params.get("height").and_then(|v| v.as_str()) {
-                                    w_clone.1.set_text(v);
+                                if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                                    w_clone.1.set_text(&units::format_length(v as f32, system));
                                 }
-                                if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_str())
+                                if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_f64())
                                 {
-                                    w_clone.2.set_text(v);
+                                    w_clone.2.set_text(&units::format_length(v as f32, system));
                                 }
                                 if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
                                     w_clone.3.set_text(v);

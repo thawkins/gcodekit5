@@ -18,3 +18,4 @@ When a GRBL line includes `error:n`, the console will also show the decoded mean
 - [Machine Control](help:machine_control)
 - [Device Config](help:device_config)
 - [Index](help:index)
+

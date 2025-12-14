@@ -186,6 +186,20 @@ separator.inspector-section-separator {
     margin: 10px;
 }
 
+/* Help browser: remove background and add padding */
+scrolledwindow.help-scroller,
+scrolledwindow.help-scroller viewport,
+scrolledwindow.help-scroller > viewport {
+    padding: 10px;
+    background-color: @theme_base_color;
+}
+
+/* Label padding ensures text is inset even when the label/background spans full width. */
+label.help-content {
+    padding: 10px;
+    background-color: @theme_base_color;
+}
+
 
 .mc-section {
     background-color: var(--card-bg-color);

@@ -56,3 +56,10 @@
 ## Versioning
 - **Workspace**: Bump `[workspace.package].version` in root `Cargo.toml`.
 - **Lockfile**: Run `cargo check` to update `Cargo.lock`.
+
+### Unit Handling in CAM Tools
+- **Dimension Inputs**: Use `create_dimension_row` helper to create input rows with dynamic unit labels.
+- **Parsing**: Use `units::parse_length(text, system)` to parse user input into standard units (mm).
+- **Formatting**: Use `units::format_length(value, system)` to display values in the user's preferred unit.
+- **Updates**: Register a listener on `settings.persistence` to update UI labels and values when the measurement system changes.
+- **Storage**: Store parameters in standard units (mm) or raw values if appropriate, but ensure consistent interpretation.

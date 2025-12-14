@@ -260,7 +260,8 @@ pub fn main() {
         // 5. CAM Tools
         let editor_clone = editor.clone();
         let stack_clone_for_cam = stack.clone();
-        let cam_tools_view = CamToolsView::new(move |gcode| {
+        let settings_controller_cam = settings_controller.clone();
+        let cam_tools_view = CamToolsView::new(settings_controller_cam, move |gcode| {
             editor_clone.set_text(&gcode);
             stack_clone_for_cam.set_visible_child_name("editor");
             editor_clone.grab_focus();

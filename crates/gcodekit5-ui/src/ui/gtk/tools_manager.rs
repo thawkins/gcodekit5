@@ -7,6 +7,7 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ui::gtk::help_browser;
 use crate::ui::tools_manager_backend::{string_to_tool_material, ToolsManagerBackend};
 use gcodekit5_core::data::tools::{ShankType, Tool, ToolCoating, ToolId, ToolMaterial, ToolType};
 use gcodekit5_settings::manager::SettingsManager;
@@ -94,6 +95,12 @@ impl ToolsManagerView {
         title.add_css_class("title-4");
         title.set_halign(Align::Start);
         header_box.append(&title);
+
+        let spacer = Box::new(Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        header_box.append(&spacer);
+        header_box.append(&help_browser::make_help_button("tools_manager"));
+
         sidebar.append(&header_box);
 
         // Search
@@ -838,6 +845,14 @@ impl ToolsManagerView {
 
                 // Switching selection: confirm discard if dirty.
                 if view.is_dirty() {
+                    // If we are re-selecting the currently loaded tool (e.g. programmatically reverting),
+                    // don't prompt.
+                    if let Some(current) = view.selected_tool.borrow().as_ref() {
+                        if current.id.0 == tool_id {
+                            return;
+                        }
+                    }
+
                     let prev = view.last_selected_tool_id.borrow().clone();
                     let window_opt = view.widget.root().and_downcast::<gtk4::Window>();
                     if let Some(window) = window_opt {
@@ -1496,22 +1511,40 @@ impl ToolsManagerView {
     }
 
     fn tool_contents_equal(a: &Tool, b: &Tool) -> bool {
+        // Helper for float comparison with tolerance matching UI precision (3 decimals)
+        let eq_f32 = |x: f32, y: f32| (x - y).abs() < 0.0001;
+        
+        // Helper for Option<f32>
+        let eq_opt_f32 = |x: Option<f32>, y: Option<f32>| match (x, y) {
+            (Some(vx), Some(vy)) => eq_f32(vx, vy),
+            (None, None) => true,
+            _ => false,
+        };
+
+        // Helper for shaft diameter (None implies == diameter)
+        let eq_shaft = |t: &Tool| t.shaft_diameter.unwrap_or(t.diameter);
+        
+        // Helper for strings (treat None and Some("") as equal)
+        let eq_str = |x: &Option<String>, y: &Option<String>| {
+            x.as_deref().unwrap_or("").trim() == y.as_deref().unwrap_or("").trim()
+        };
+
         a.id.0 == b.id.0
             && a.name == b.name
             && a.description == b.description
             && a.tool_type == b.tool_type
-            && (a.diameter - b.diameter).abs() < f32::EPSILON
-            && (a.length - b.length).abs() < f32::EPSILON
-            && (a.flute_length - b.flute_length).abs() < f32::EPSILON
+            && eq_f32(a.diameter, b.diameter)
+            && eq_f32(a.length, b.length)
+            && eq_f32(a.flute_length, b.flute_length)
             && a.flutes == b.flutes
-            && a.corner_radius == b.corner_radius
-            && a.tip_angle == b.tip_angle
-            && a.shaft_diameter == b.shaft_diameter
+            && eq_opt_f32(a.corner_radius, b.corner_radius)
+            && eq_opt_f32(a.tip_angle, b.tip_angle)
+            && eq_f32(eq_shaft(a), eq_shaft(b))
             && a.material == b.material
             && a.coating == b.coating
             && a.shank == b.shank
-            && a.manufacturer == b.manufacturer
-            && a.part_number == b.part_number
+            && eq_str(&a.manufacturer, &b.manufacturer)
+            && eq_str(&a.part_number, &b.part_number)
             && a.notes == b.notes
     }
 

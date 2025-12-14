@@ -8,6 +8,7 @@ use gtk4::{
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use crate::ui::gtk::help_browser;
 use crate::ui::materials_manager_backend;
 use crate::ui::materials_manager_backend::MaterialsManagerBackend;
 use gcodekit5_core::data::materials::{Material, MaterialCategory, MaterialId};
@@ -96,6 +97,12 @@ impl MaterialsManagerView {
         title.add_css_class("title-4");
         title.set_halign(Align::Start);
         header_box.append(&title);
+
+        let spacer = Box::new(Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        header_box.append(&spacer);
+        header_box.append(&help_browser::make_help_button("materials_manager"));
+
         sidebar.append(&header_box);
 
         // Search

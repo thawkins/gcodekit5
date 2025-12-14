@@ -42,6 +42,10 @@ All tests **MUST** be located in the `tests/` inside each crate, if the test is 
 - DateTime vaules should be represented internaly in UTC and translated to locale based represetations in the UI layer. 
 - Dimensional units should be represented internaly in mms, and be of type f32, and mm values should be represted to 2 decimal place accuracy. 
 - All text strings where feasable should be internaly represented in UTF8 encoding, with translation to and from UI encoding in the UI layer if required. 
+- All dimension and feed values in the UI must support switching between Metric (mm) and Imperial (inch) units.
+- The UI should listen for measurement system changes and update displayed values accordingly.
+- Internal calculations and storage should always be in millimeters (mm) for dimensions and mm/min for feed rates, unless specifically required otherwise by a protocol.
+- Use the `gcodekit5_core::units` module for conversion and formatting.
 
 ## Esthetics ## 
 - The aversage user will be using a FHD screen set to 125% scaling. ensure that all esthetics reviews, designs and recomendations account for this. 

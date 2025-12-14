@@ -50,6 +50,7 @@ impl From<&Setting> for ConfigSettingRow {
 use crate::device_status;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::device_info::DeviceInfoView;
+use crate::ui::gtk::help_browser;
 
 pub struct ConfigSettingsView {
     pub container: Box,
@@ -126,6 +127,11 @@ impl ConfigSettingsView {
         restore_btn.set_tooltip_text(Some("Restore Settings to Device"));
         restore_btn.set_sensitive(false);
         toolbar.append(&restore_btn);
+
+        let spacer = Box::new(Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        toolbar.append(&spacer);
+        toolbar.append(&help_browser::make_help_button("device_config"));
 
         container.append(&toolbar);
 

@@ -8,6 +8,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::error;
 
+use crate::ui::gtk::help_browser;
+
 use crate::device_status;
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
@@ -114,6 +116,12 @@ impl DeviceManagerWindow {
         title.add_css_class("title-4");
         title.set_halign(Align::Start);
         header_box.append(&title);
+
+        let spacer = Box::new(Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        header_box.append(&spacer);
+        header_box.append(&help_browser::make_help_button("device_manager"));
+
         sidebar.append(&header_box);
 
         // Search

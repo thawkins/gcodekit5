@@ -11,3 +11,5 @@ The G-Code Editor is used to view and edit G-code before streaming.
 - [Machine Control](help:machine_control)
 - [Visualizer](help:visualizer)
 - [Index](help:index)
+
+
