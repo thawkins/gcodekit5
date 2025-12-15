@@ -9,9 +9,11 @@ use gcodekit5_designer::commands::{DesignerCommand, PasteShapes, RemoveShape};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::font_manager;
 use gcodekit5_designer::serialization::DesignFile;
-use gcodekit5_designer::shapes::{
-    Circle, Ellipse, Line, OperationType, PathShape, Point, Rectangle, Shape, TextShape,
+use gcodekit5_designer::model::{
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignRectangle as Rectangle, DesignText as TextShape, DesignerShape, Point, Shape,
 };
+use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
 use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_settings::controller::SettingsController;
@@ -118,6 +120,7 @@ pub struct DesignerCanvas {
     // Resize handle state
     active_resize_handle: Rc<RefCell<Option<(ResizeHandle, u64)>>>, // (handle, shape_id)
     resize_original_bounds: Rc<RefCell<Option<(f64, f64, f64, f64)>>>, // (x, y, width, height)
+    resize_original_shapes: Rc<RefCell<Option<Vec<(u64, Shape)>>>>,
     // Scroll adjustments
     hadjustment: Rc<RefCell<Option<gtk4::Adjustment>>>,
     vadjustment: Rc<RefCell<Option<gtk4::Adjustment>>>,
@@ -229,6 +232,7 @@ impl DesignerCanvas {
             did_drag: did_drag.clone(),
             active_resize_handle: Rc::new(RefCell::new(None)),
             resize_original_bounds: Rc::new(RefCell::new(None)),
+            resize_original_shapes: Rc::new(RefCell::new(None)),
             hadjustment: Rc::new(RefCell::new(None)),
             vadjustment: Rc::new(RefCell::new(None)),
             shift_pressed: Rc::new(RefCell::new(false)),
@@ -569,7 +573,7 @@ impl DesignerCanvas {
             let mut has_shapes = false;
             for obj in state.canvas.shapes() {
                 has_shapes = true;
-                let (sx, sy, ex, ey) = obj.shape.bounding_box();
+                let (sx, sy, ex, ey) = obj.shape.bounds();
                 min_x = min_x.min(sx);
                 min_y = min_y.min(sy);
                 max_x = max_x.max(ex);
@@ -695,7 +699,55 @@ impl DesignerCanvas {
             }
         }
 
-        let state = self.state.borrow();
+        // Convert to canvas coordinates for hit testing
+        let height = self.widget.height() as f64;
+        let state_borrow = self.state.borrow();
+        let zoom = state_borrow.canvas.zoom();
+        let pan_x = state_borrow.canvas.pan_x();
+        let pan_y = state_borrow.canvas.pan_y();
+        drop(state_borrow);
+
+        let y_flipped = height - y;
+        let canvas_x = (x - pan_x) / zoom;
+        let canvas_y = (y_flipped - pan_y) / zoom;
+        let (canvas_x, canvas_y) = self.snap_canvas_point(canvas_x, canvas_y);
+        let point = Point::new(canvas_x, canvas_y);
+
+        let mut state = self.state.borrow_mut();
+
+        // Check for hit
+        let mut clicked_shape_id = None;
+        let tolerance = 3.0;
+        for obj in state.canvas.shapes() {
+            if obj.shape.contains_point(point, tolerance) {
+                clicked_shape_id = Some(obj.id);
+            }
+        }
+
+        if let Some(id) = clicked_shape_id {
+            let is_selected = state.canvas.selection_manager.selected_id() == Some(id)
+                || state.canvas.shapes().any(|s| s.id == id && s.selected);
+
+            if !is_selected {
+                // Select it
+                state.canvas.deselect_all();
+                state.canvas.select_shape(id, false);
+
+                // Update UI
+                drop(state); // Drop before calling update methods that might borrow
+                if let Some(ref props) = *self.properties.borrow() {
+                    props.update_from_selection();
+                }
+                if let Some(ref layers) = *self.layers.borrow() {
+                    layers.refresh(&self.state);
+                }
+                self.widget.queue_draw();
+
+                // Re-borrow for next steps
+                state = self.state.borrow_mut();
+            }
+        }
+
         let has_selection = state.canvas.selection_manager.selected_id().is_some();
         let selected_count = state.canvas.shapes().filter(|s| s.selected).count();
         let can_paste = !state.clipboard.is_empty();
@@ -1083,9 +1135,17 @@ impl DesignerCanvas {
         drop(state);
 
         let y_flipped = height - y;
-        let canvas_x = (x - pan_x) / zoom;
-        let canvas_y = (y_flipped - pan_y) / zoom;
-        let (canvas_x, canvas_y) = self.snap_canvas_point(canvas_x, canvas_y);
+        let raw_canvas_x = (x - pan_x) / zoom;
+        let raw_canvas_y = (y_flipped - pan_y) / zoom;
+        let (snapped_x, snapped_y) = self.snap_canvas_point(raw_canvas_x, raw_canvas_y);
+
+        // Use raw coordinates for selection to ensure we can click handles/shapes even if they are off-grid.
+        // Use snapped coordinates for drawing tools.
+        let (canvas_x, canvas_y) = if tool == DesignerTool::Select {
+            (raw_canvas_x, raw_canvas_y)
+        } else {
+            (snapped_x, snapped_y)
+        };
 
         match tool {
             DesignerTool::Select => {
@@ -1093,11 +1153,57 @@ impl DesignerCanvas {
                 let mut state = self.state.borrow_mut();
                 let point = Point::new(canvas_x, canvas_y);
 
+                // If the click is on a resize handle for the current selection, do not
+                // change selection here. Handles extend outside shapes, and a normal
+                // empty-space click would deselect and prevent resizing.
+                let selected_count = state.canvas.shapes().filter(|s| s.selected).count();
+                if selected_count > 0 {
+                    let bounds_opt = if selected_count > 1 {
+                        let mut min_x = f64::INFINITY;
+                        let mut min_y = f64::INFINITY;
+                        let mut max_x = f64::NEG_INFINITY;
+                        let mut max_y = f64::NEG_INFINITY;
+                        let mut any = false;
+
+                        for obj in state.canvas.shapes().filter(|s| s.selected) {
+                            let (x1, y1, x2, y2) = Self::selection_bounds(&obj.shape);
+                            min_x = min_x.min(x1);
+                            min_y = min_y.min(y1);
+                            max_x = max_x.max(x2);
+                            max_y = max_y.max(y2);
+                            any = true;
+                        }
+
+                        if any {
+                            Some((min_x, min_y, max_x, max_y))
+                        } else {
+                            None
+                        }
+                    } else if let Some(selected_id) = state.canvas.selection_manager.selected_id() {
+                        state
+                            .canvas
+                            .shapes()
+                            .find(|s| s.id == selected_id)
+                            .map(|obj| Self::selection_bounds(&obj.shape))
+                    } else {
+                        None
+                    };
+
+                    if let Some(bounds) = bounds_opt {
+                        if self
+                            .get_resize_handle_at(canvas_x, canvas_y, &bounds, zoom)
+                            .is_some()
+                        {
+                            return;
+                        }
+                    }
+                }
+
                 // Check if we clicked on an existing shape
                 let mut clicked_shape_id = None;
                 let tolerance = 3.0;
                 for obj in state.canvas.shapes() {
-                    if obj.shape.contains_point(&point, tolerance) {
+                    if obj.shape.contains_point(point, tolerance) {
                         clicked_shape_id = Some(obj.id);
                     }
                 }
@@ -1198,9 +1304,17 @@ impl DesignerCanvas {
         drop(state);
 
         let y_flipped = height - y;
-        let canvas_x = (x - pan_x) / zoom;
-        let canvas_y = (y_flipped - pan_y) / zoom;
-        let (canvas_x, canvas_y) = self.snap_canvas_point(canvas_x, canvas_y);
+        let raw_canvas_x = (x - pan_x) / zoom;
+        let raw_canvas_y = (y_flipped - pan_y) / zoom;
+        let (snapped_x, snapped_y) = self.snap_canvas_point(raw_canvas_x, raw_canvas_y);
+
+        // Use raw coordinates for selection to ensure we can click handles/shapes even if they are off-grid.
+        // Use snapped coordinates for drawing tools.
+        let (canvas_x, canvas_y) = if tool == DesignerTool::Select {
+            (raw_canvas_x, raw_canvas_y)
+        } else {
+            (snapped_x, snapped_y)
+        };
 
         if tool == DesignerTool::Select {
             let mut state = self.state.borrow_mut();
@@ -1210,7 +1324,7 @@ impl DesignerCanvas {
             let mut clicked_shape_id = None;
             let tolerance = 3.0;
             for obj in state.canvas.shapes() {
-                if obj.shape.contains_point(&point, tolerance) {
+                if obj.shape.contains_point(point, tolerance) {
                     clicked_shape_id = Some(obj.id);
                 }
             }
@@ -1267,35 +1381,85 @@ impl DesignerCanvas {
         drop(state);
 
         let y_flipped = height - y;
-        let canvas_x = (x - pan_x) / zoom;
-        let canvas_y = (y_flipped - pan_y) / zoom;
-        let (canvas_x, canvas_y) = self.snap_canvas_point(canvas_x, canvas_y);
+        let raw_canvas_x = (x - pan_x) / zoom;
+        let raw_canvas_y = (y_flipped - pan_y) / zoom;
+        let (snapped_x, snapped_y) = self.snap_canvas_point(raw_canvas_x, raw_canvas_y);
+
+        // Use raw coordinates for selection to ensure we can click handles/shapes even if they are off-grid.
+        // Use snapped coordinates for drawing tools.
+        let (canvas_x, canvas_y) = if tool == DesignerTool::Select {
+            (raw_canvas_x, raw_canvas_y)
+        } else {
+            (snapped_x, snapped_y)
+        };
 
         match tool {
             DesignerTool::Select => {
                 // Check if we're clicking on a resize handle first
-                let (selected_id_opt, bounds_opt) = {
+                let (selected_id_opt, bounds_opt, is_group_resize) = {
                     let state = self.state.borrow();
-                    if let Some(selected_id) = state.canvas.selection_manager.selected_id() {
-                        if let Some(obj) = state.canvas.shapes().find(|s| s.id == selected_id) {
-                            let bounds = obj.shape.bounding_box();
-                            (Some(selected_id), Some(bounds))
+
+                    let selected_count = state.canvas.shapes().filter(|s| s.selected).count();
+                    if selected_count > 1 {
+                        let mut min_x = f64::INFINITY;
+                        let mut min_y = f64::INFINITY;
+                        let mut max_x = f64::NEG_INFINITY;
+                        let mut max_y = f64::NEG_INFINITY;
+                        let mut any = false;
+
+                        for obj in state.canvas.shapes().filter(|s| s.selected) {
+                            let (x1, y1, x2, y2) = Self::selection_bounds(&obj.shape);
+                            min_x = min_x.min(x1);
+                            min_y = min_y.min(y1);
+                            max_x = max_x.max(x2);
+                            max_y = max_y.max(y2);
+                            any = true;
+                        }
+
+                        if any {
+                            (Some(0u64), Some((min_x, min_y, max_x, max_y)), true)
                         } else {
-                            (None, None)
+                            (None, None, false)
+                        }
+                    } else if let Some(selected_id) = state.canvas.selection_manager.selected_id() {
+                        if let Some(obj) = state.canvas.shapes().find(|s| s.id == selected_id) {
+                            let bounds = Self::selection_bounds(&obj.shape);
+                            (Some(selected_id), Some(bounds), false)
+                        } else {
+                            (None, None, false)
                         }
                     } else {
-                        (None, None)
+                        (None, None, false)
                     }
                 };
 
                 if let (Some(selected_id), Some(bounds)) = (selected_id_opt, bounds_opt) {
-                    if let Some(handle) = self.get_resize_handle_at(canvas_x, canvas_y, &bounds) {
+                    if let Some(handle) =
+                        self.get_resize_handle_at(canvas_x, canvas_y, &bounds, zoom)
+                    {
                         // Start resizing
                         *self.active_resize_handle.borrow_mut() = Some((handle, selected_id));
                         let (min_x, min_y, max_x, max_y) = bounds;
                         *self.resize_original_bounds.borrow_mut() =
                             Some((min_x, min_y, max_x - min_x, max_y - min_y));
+
+                        // Snapshot original shapes so resizing doesn't compound on each drag update.
+                        // This matters for group resize and for path/text scaling.
+                        let originals: Vec<(u64, Shape)> = {
+                            let state = self.state.borrow();
+                            state
+                                .canvas
+                                .shapes()
+                                .filter(|s| s.selected)
+                                .map(|s| (s.id, s.shape.clone()))
+                                .collect()
+                        };
+                        *self.resize_original_shapes.borrow_mut() = Some(originals);
+
                         *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
+                        if is_group_resize {
+                            // For group resize, we keep moving behavior the same but scale on drag updates.
+                        }
                         return;
                     }
                 }
@@ -1522,6 +1686,7 @@ impl DesignerCanvas {
                     // Clear resize state
                     *self.active_resize_handle.borrow_mut() = None;
                     *self.resize_original_bounds.borrow_mut() = None;
+                    *self.resize_original_shapes.borrow_mut() = None;
 
                     // If we didn't have a selection and we dragged, perform marquee selection
                     let mut state = self.state.borrow_mut();
@@ -1538,7 +1703,7 @@ impl DesignerCanvas {
                             .shapes()
                             .filter(|obj| {
                                 let (shape_min_x, shape_min_y, shape_max_x, shape_max_y) =
-                                    obj.shape.bounding_box();
+                                    obj.shape.bounds();
                                 // Check if bounding boxes intersect
                                 !(shape_max_x < min_x
                                     || shape_min_x > max_x
@@ -2234,7 +2399,7 @@ impl DesignerCanvas {
                     }
                     Shape::Line(line) => gen.generate_line_contour(line, shape.step_down as f64),
                     Shape::Ellipse(ellipse) => {
-                        let (x1, y1, x2, y2) = ellipse.bounding_box();
+                        let (x1, y1, x2, y2) = ellipse.bounds();
                         let cx = (x1 + x2) / 2.0;
                         let cy = (y1 + y2) / 2.0;
                         let radius = ((x2 - x1).abs().max((y2 - y1).abs())) / 2.0;
@@ -2505,6 +2670,8 @@ impl DesignerCanvas {
             cr.restore().unwrap();
         }
 
+        let selected_count = state.canvas.shape_store.iter().filter(|o| o.selected).count();
+
         // Draw Shapes
         for obj in state.canvas.shape_store.iter() {
             cr.save().unwrap();
@@ -2537,9 +2704,15 @@ impl DesignerCanvas {
 
             match &obj.shape {
                 Shape::Rectangle(rect) => {
+                    cr.save().unwrap();
+                    cr.translate(rect.center.x, rect.center.y);
+                    if rect.rotation.abs() > 1e-9 {
+                        cr.rotate(rect.rotation);
+                    }
+
                     if rect.corner_radius > 0.001 {
-                        let x = rect.x;
-                        let y = rect.y;
+                        let x = -rect.width / 2.0;
+                        let y = -rect.height / 2.0;
                         let w = rect.width;
                         let h = rect.height;
                         let r = rect.corner_radius.min(w / 2.0).min(h / 2.0);
@@ -2554,9 +2727,13 @@ impl DesignerCanvas {
                         cr.close_path();
                         cr.stroke().unwrap();
                     } else {
-                        cr.rectangle(rect.x, rect.y, rect.width, rect.height);
+                        let x = -rect.width / 2.0;
+                        let y = -rect.height / 2.0;
+                        cr.rectangle(x, y, rect.width, rect.height);
                         cr.stroke().unwrap();
                     }
+
+                    cr.restore().unwrap();
                 }
                 Shape::Circle(circle) => {
                     cr.arc(
@@ -2576,15 +2753,29 @@ impl DesignerCanvas {
                 Shape::Ellipse(ellipse) => {
                     cr.save().unwrap();
                     cr.translate(ellipse.center.x, ellipse.center.y);
-                    // TODO: Rotation
+                    if ellipse.rotation.abs() > 1e-9 {
+                        cr.rotate(ellipse.rotation);
+                    }
                     cr.scale(ellipse.rx, ellipse.ry);
                     cr.arc(0.0, 0.0, 1.0, 0.0, 2.0 * std::f64::consts::PI);
-                    cr.restore().unwrap();
                     cr.stroke().unwrap();
+                    cr.restore().unwrap();
                 }
                 Shape::Path(path_shape) => {
+                    let (x1, y1, x2, y2) = path_shape.bounds();
+                    let cx = (x1 + x2) / 2.0;
+                    let cy = (y1 + y2) / 2.0;
+
+                    cr.save().unwrap();
+                    if path_shape.rotation.abs() > 1e-9 {
+                        cr.translate(cx, cy);
+                        cr.rotate(path_shape.rotation);
+                        cr.translate(-cx, -cy);
+                    }
+
+                    cr.new_path();
                     // Iterate lyon path
-                    for event in path_shape.path.iter() {
+                    for event in path_shape.render().iter() {
                         match event {
                             lyon::path::Event::Begin { at } => {
                                 cr.move_to(at.x as f64, at.y as f64);
@@ -2593,25 +2784,15 @@ impl DesignerCanvas {
                                 cr.line_to(to.x as f64, to.y as f64);
                             }
                             lyon::path::Event::Quadratic { from: _, ctrl, to } => {
-                                // Cairo doesn't have quadratic, convert to cubic
-                                // CP1 = from + 2/3 * (ctrl - from)
-                                // CP2 = to + 2/3 * (ctrl - to)
-                                // But we don't have 'from' easily available in all events?
-                                // Lyon Event::Quadratic gives 'from'.
-                                // Wait, cairo has curve_to (cubic).
-                                // Q to C conversion:
-                                // q0 = from, q1 = ctrl, q2 = to
-                                // c0 = q0
-                                // c1 = q0 + (2/3)(q1 - q0)
-                                // c2 = q2 + (2/3)(q1 - q2)
-                                // c3 = q2
-                                // cr.curve_to(c1.x, c1.y, c2.x, c2.y, c3.x, c3.y)
-                                // Actually we can just use current point as from.
+                                // Cairo doesn't have quadratic, convert to cubic.
+                                // We use current point as 'from'.
                                 let (x0, y0) = cr.current_point().unwrap();
                                 let x1 = x0 + (2.0 / 3.0) * (ctrl.x as f64 - x0);
                                 let y1 = y0 + (2.0 / 3.0) * (ctrl.y as f64 - y0);
-                                let x2 = to.x as f64 + (2.0 / 3.0) * (ctrl.x as f64 - to.x as f64);
-                                let y2 = to.y as f64 + (2.0 / 3.0) * (ctrl.y as f64 - to.y as f64);
+                                let x2 = to.x as f64 + (2.0 / 3.0)
+                                    * (ctrl.x as f64 - to.x as f64);
+                                let y2 = to.y as f64 + (2.0 / 3.0)
+                                    * (ctrl.y as f64 - to.y as f64);
                                 cr.curve_to(x1, y1, x2, y2, to.x as f64, to.y as f64);
                             }
                             lyon::path::Event::Cubic {
@@ -2641,6 +2822,7 @@ impl DesignerCanvas {
                         }
                     }
                     cr.stroke().unwrap();
+                    cr.restore().unwrap();
                 }
                 Shape::Text(text) => {
                     // Basic text placeholder
@@ -2665,13 +2847,35 @@ impl DesignerCanvas {
                 }
             }
 
-            // Draw resize handles for selected shapes
-            if obj.selected {
-                let bounds = obj.shape.bounding_box();
+            // Draw resize handles:
+            // - Single selection: draw handles on that shape.
+            // - Multi selection: draw handles on the combined group bounds (drawn once after loop).
+            if selected_count <= 1 && obj.selected {
+                let bounds = Self::selection_bounds(&obj.shape);
                 Self::draw_resize_handles(cr, &bounds, zoom, &accent_color);
             }
 
             cr.restore().unwrap();
+        }
+
+        if selected_count > 1 {
+            let mut min_x = f64::INFINITY;
+            let mut min_y = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+
+            for obj in state.canvas.shape_store.iter().filter(|o| o.selected) {
+                let (x1, y1, x2, y2) = Self::selection_bounds(&obj.shape);
+                min_x = min_x.min(x1);
+                min_y = min_y.min(y1);
+                max_x = max_x.max(x2);
+                max_y = max_y.max(y2);
+            }
+
+            if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+                let bounds = (min_x, min_y, max_x, max_y);
+                Self::draw_resize_handles(cr, &bounds, zoom, &accent_color);
+            }
         }
 
         // Draw preview marquee if creating a shape
@@ -2804,6 +3008,98 @@ impl DesignerCanvas {
         cr.restore().unwrap();
     }
 
+    fn selection_bounds(shape: &Shape) -> (f64, f64, f64, f64) {
+        fn rotate_xy(x: f64, y: f64, cx: f64, cy: f64, angle: f64) -> (f64, f64) {
+            let s = angle.sin();
+            let c = angle.cos();
+            let dx = x - cx;
+            let dy = y - cy;
+            (cx + dx * c - dy * s, cy + dx * s + dy * c)
+        }
+
+        match shape {
+            Shape::Rectangle(rect) => {
+                if rect.rotation.abs() <= 1e-9 {
+                    return rect.bounds();
+                }
+
+                let cx = rect.center.x;
+                let cy = rect.center.y;
+                let hw = rect.width / 2.0;
+                let hh = rect.height / 2.0;
+                let corners = [
+                    (cx - hw, cy - hh),
+                    (cx + hw, cy - hh),
+                    (cx + hw, cy + hh),
+                    (cx - hw, cy + hh),
+                ];
+
+                let mut min_x = f64::INFINITY;
+                let mut min_y = f64::INFINITY;
+                let mut max_x = f64::NEG_INFINITY;
+                let mut max_y = f64::NEG_INFINITY;
+
+                for (x, y) in corners {
+                    let (rx, ry) = rotate_xy(x, y, cx, cy, rect.rotation);
+                    min_x = min_x.min(rx);
+                    min_y = min_y.min(ry);
+                    max_x = max_x.max(rx);
+                    max_y = max_y.max(ry);
+                }
+
+                (min_x, min_y, max_x, max_y)
+            }
+            Shape::Circle(circle) => circle.bounds(),
+            Shape::Line(line) => line.bounds(),
+            Shape::Ellipse(ellipse) => {
+                if ellipse.rotation.abs() <= 1e-9 {
+                    return ellipse.bounds();
+                }
+
+                // Axis-aligned bounding box of a rotated ellipse.
+                let theta = ellipse.rotation;
+                let cos_t = theta.cos();
+                let sin_t = theta.sin();
+                let half_w = ((ellipse.rx * cos_t).powi(2) + (ellipse.ry * sin_t).powi(2)).sqrt();
+                let half_h = ((ellipse.rx * sin_t).powi(2) + (ellipse.ry * cos_t).powi(2)).sqrt();
+
+                (
+                    ellipse.center.x - half_w,
+                    ellipse.center.y - half_h,
+                    ellipse.center.x + half_w,
+                    ellipse.center.y + half_h,
+                )
+            }
+            Shape::Path(path_shape) => {
+                if path_shape.rotation.abs() <= 1e-9 {
+                    return path_shape.bounds();
+                }
+
+                // Match the draw behavior: rotate about the path's AABB center.
+                let (x1, y1, x2, y2) = path_shape.bounds();
+                let cx = (x1 + x2) / 2.0;
+                let cy = (y1 + y2) / 2.0;
+                let corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)];
+
+                let mut min_x = f64::INFINITY;
+                let mut min_y = f64::INFINITY;
+                let mut max_x = f64::NEG_INFINITY;
+                let mut max_y = f64::NEG_INFINITY;
+
+                for (x, y) in corners {
+                    let (rx, ry) = rotate_xy(x, y, cx, cy, path_shape.rotation);
+                    min_x = min_x.min(rx);
+                    min_y = min_y.min(ry);
+                    max_x = max_x.max(rx);
+                    max_y = max_y.max(ry);
+                }
+
+                (min_x, min_y, max_x, max_y)
+            }
+            Shape::Text(text) => text.bounds(),
+        }
+    }
+
     fn draw_origin_crosshair(cr: &gtk4::cairo::Context, zoom: f64) {
         cr.save().unwrap();
 
@@ -2831,9 +3127,12 @@ impl DesignerCanvas {
         x: f64,
         y: f64,
         bounds: &(f64, f64, f64, f64),
+        zoom: f64,
     ) -> Option<ResizeHandle> {
-        const HANDLE_SIZE: f64 = 8.0;
-        const HANDLE_TOLERANCE: f64 = HANDLE_SIZE / 2.0;
+        // Handles are drawn as ~8 screen pixels; in canvas units that's 8/zoom.
+        let zoom = zoom.max(1e-6);
+        let handle_size = 8.0 / zoom;
+        let handle_tolerance = handle_size / 2.0;
 
         let (min_x, min_y, max_x, max_y) = *bounds;
 
@@ -2847,7 +3146,7 @@ impl DesignerCanvas {
         for (cx, cy, handle) in corners {
             let dx = x - cx;
             let dy = y - cy;
-            if dx.abs() <= HANDLE_TOLERANCE && dy.abs() <= HANDLE_TOLERANCE {
+            if dx.abs() <= handle_tolerance && dy.abs() <= handle_tolerance {
                 return Some(handle);
             }
         }
@@ -2972,16 +3271,105 @@ impl DesignerCanvas {
             return;
         }
 
+        // Prevent flips (negative dimensions) which would invert shapes.
+        if new_width <= 0.0 || new_height <= 0.0 {
+            return;
+        }
+
+        let sx = if orig_width.abs() > 1e-6 {
+            new_width / orig_width
+        } else {
+            1.0
+        };
+        let sy = if orig_height.abs() > 1e-6 {
+            new_height / orig_height
+        } else {
+            1.0
+        };
+
+        let (anchor_x, anchor_y) = match handle {
+            ResizeHandle::TopLeft => (orig_x + orig_width, orig_y),
+            ResizeHandle::TopRight => (orig_x, orig_y),
+            ResizeHandle::BottomLeft => (orig_x + orig_width, orig_y + orig_height),
+            ResizeHandle::BottomRight => (orig_x, orig_y + orig_height),
+        };
+
         // Update the shape
         let mut state = self.state.borrow_mut();
+
+        // Restore original shapes first so drag updates don't compound transforms.
+        // (Without this, we repeatedly multiply already-scaled dimensions and the selection
+        // shrinks/grows exponentially.)
+        if let Some(originals) = self.resize_original_shapes.borrow().as_ref() {
+            for (id, original_shape) in originals {
+                if let Some(obj) = state.canvas.shape_store.get_mut(*id) {
+                    if obj.selected {
+                        obj.shape = original_shape.clone();
+                    }
+                }
+            }
+        }
+
+        let selected_count = state.canvas.shapes().filter(|s| s.selected).count();
+        if selected_count > 1 {
+            let anchor = Point::new(anchor_x, anchor_y);
+            for obj in state.canvas.shape_store.iter_mut() {
+                if !obj.selected {
+                    continue;
+                }
+                match &mut obj.shape {
+                    Shape::Rectangle(rect) => {
+                        rect.center.x = anchor.x + (rect.center.x - anchor.x) * sx;
+                        rect.center.y = anchor.y + (rect.center.y - anchor.y) * sy;
+                        rect.width *= sx.abs();
+                        rect.height *= sy.abs();
+
+                        if rect.is_slot {
+                            rect.corner_radius = rect.width.min(rect.height) / 2.0;
+                        } else {
+                            rect.corner_radius *= sx.abs().min(sy.abs());
+                        }
+                    }
+                    Shape::Circle(circle) => {
+                        circle.center.x = anchor.x + (circle.center.x - anchor.x) * sx;
+                        circle.center.y = anchor.y + (circle.center.y - anchor.y) * sy;
+                        let s = sx.abs().min(sy.abs());
+                        circle.radius *= s;
+                    }
+                    Shape::Ellipse(ellipse) => {
+                        ellipse.center.x = anchor.x + (ellipse.center.x - anchor.x) * sx;
+                        ellipse.center.y = anchor.y + (ellipse.center.y - anchor.y) * sy;
+                        ellipse.rx *= sx.abs();
+                        ellipse.ry *= sy.abs();
+                    }
+                    Shape::Line(line) => {
+                        line.start.x = anchor.x + (line.start.x - anchor.x) * sx;
+                        line.start.y = anchor.y + (line.start.y - anchor.y) * sy;
+                        line.end.x = anchor.x + (line.end.x - anchor.x) * sx;
+                        line.end.y = anchor.y + (line.end.y - anchor.y) * sy;
+                    }
+                    Shape::Path(path_shape) => {
+                        path_shape.scale(sx, sy, anchor);
+                    }
+                    Shape::Text(text) => {
+                        text.scale(sx, sy, anchor);
+                    }
+                }
+            }
+            return;
+        }
 
         if let Some(obj) = state.canvas.shape_store.get_mut(shape_id) {
             match &mut obj.shape {
                 Shape::Rectangle(rect) => {
-                    rect.x = new_x;
-                    rect.y = new_y;
+                    rect.center.x = new_x + new_width / 2.0;
+                    rect.center.y = new_y + new_height / 2.0;
                     rect.width = new_width;
                     rect.height = new_height;
+
+                    if rect.is_slot {
+                        rect.corner_radius = rect.width.min(rect.height) / 2.0;
+                    }
                 }
                 Shape::Circle(circle) => {
                     // For circles, resize by adjusting radius
@@ -3019,7 +3407,14 @@ impl DesignerCanvas {
                         }
                     }
                 }
-                _ => {}
+                Shape::Path(path_shape) => {
+                    let anchor = Point::new(anchor_x, anchor_y);
+                    path_shape.scale(sx, sy, anchor);
+                }
+                Shape::Text(text) => {
+                    let anchor = Point::new(anchor_x, anchor_y);
+                    text.scale(sx, sy, anchor);
+                }
             }
         }
     }
@@ -3830,10 +4225,47 @@ impl DesignerView {
             }
         });
 
+        // Connect Boolean Operations
+        let canvas_union = canvas.clone();
+        let layers_union = layers.clone();
+        let properties_union = properties.clone();
+        toolbox.connect_union_clicked(move || {
+            let mut state = canvas_union.state.borrow_mut();
+            state.perform_boolean_union();
+            drop(state);
+            layers_union.refresh(&canvas_union.state);
+            properties_union.update_from_selection();
+            canvas_union.widget.queue_draw();
+        });
+
+        let canvas_diff = canvas.clone();
+        let layers_diff = layers.clone();
+        let properties_diff = properties.clone();
+        toolbox.connect_difference_clicked(move || {
+            let mut state = canvas_diff.state.borrow_mut();
+            state.perform_boolean_difference();
+            drop(state);
+            layers_diff.refresh(&canvas_diff.state);
+            properties_diff.update_from_selection();
+            canvas_diff.widget.queue_draw();
+        });
+
+        let canvas_inter = canvas.clone();
+        let layers_inter = layers.clone();
+        let properties_inter = properties.clone();
+        toolbox.connect_intersection_clicked(move || {
+            let mut state = canvas_inter.state.borrow_mut();
+            state.perform_boolean_intersection();
+            drop(state);
+            layers_inter.refresh(&canvas_inter.state);
+            properties_inter.update_from_selection();
+            canvas_inter.widget.queue_draw();
+        });
+
         let view = Rc::new(Self {
             widget: container,
             canvas: canvas.clone(),
-            toolbox,
+            toolbox: toolbox.clone(),
             _properties: properties.clone(),
             layers: layers.clone(),
             status_label,
@@ -3861,12 +4293,20 @@ impl DesignerView {
             empty_import_dxf_btn.connect_clicked(move |_| v.import_dxf_file());
         }
 
-        // Update properties panel when selection changes
+        // Update properties panel and toolbox when selection changes
         let props_update = properties.clone();
-        let _canvas_props = canvas.clone();
+        let canvas_props = canvas.clone();
+        let toolbox_update = toolbox.clone();
         gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             // Check if we need to update properties (when canvas is redrawn or selection changes)
             props_update.update_from_selection();
+
+            // Update boolean ops sensitivity
+            let state = canvas_props.state.borrow();
+            let can_bool = state.can_perform_boolean_op();
+            drop(state);
+            toolbox_update.update_boolean_ops_sensitivity(can_bool);
+
             gtk4::glib::ControlFlow::Continue
         });
 
@@ -4114,6 +4554,7 @@ impl DesignerView {
                                 state.canvas.clear();
 
                                 let mut max_id = 0;
+                                let mut restored_shapes: usize = 0;
                                 for shape_data in design.shapes {
                                     let id = shape_data.id as u64;
                                     if id > max_id {
@@ -4124,19 +4565,32 @@ impl DesignerView {
                                         DesignFile::to_drawing_object(&shape_data, id as i32)
                                     {
                                         state.canvas.restore_shape(obj);
+                                        restored_shapes += 1;
                                     }
                                 }
 
                                 state.canvas.set_next_id(max_id + 1);
 
-                                // Update viewport
-                                state.canvas.set_zoom(design.viewport.zoom);
-                                state
-                                    .canvas
-                                    .set_pan(design.viewport.pan_x, design.viewport.pan_y);
+                                // Update viewport (fallback to fit if invalid)
+                                let zoom = design.viewport.zoom;
+                                let pan_x = design.viewport.pan_x;
+                                let pan_y = design.viewport.pan_y;
+                                let viewport_ok = zoom.is_finite()
+                                    && zoom > 0.0001
+                                    && pan_x.is_finite()
+                                    && pan_y.is_finite();
+                                if viewport_ok {
+                                    state.canvas.set_zoom(zoom);
+                                    state.canvas.set_pan(pan_x, pan_y);
+                                }
 
                                 *current_file.borrow_mut() = Some(path.clone());
                                 drop(state);
+
+                                // If the saved viewport is missing/degenerate, frame the loaded geometry.
+                                if restored_shapes > 0 && !viewport_ok {
+                                    canvas.zoom_fit();
+                                }
 
                                 layers.refresh(&canvas.state);
                                 canvas.widget.queue_draw();
@@ -4271,6 +4725,9 @@ impl DesignerView {
                                 }
 
                                 drop(state);
+
+                                // Make imported geometry visible immediately
+                                canvas.zoom_fit();
 
                                 layers.refresh(&canvas.state);
                                 canvas.widget.queue_draw();
@@ -4552,7 +5009,7 @@ impl DesignerView {
                         }
 
                         for obj in &shapes {
-                            let (x1, y1, x2, y2) = obj.shape.bounding_box();
+                            let (x1, y1, x2, y2) = obj.shape.bounds();
                             min_x = min_x.min(x1);
                             min_y = min_y.min(y1);
                             max_x = max_x.max(x2);
@@ -4578,9 +5035,11 @@ impl DesignerView {
                             let style = "fill:none;stroke:black;stroke-width:0.5";
                             match &obj.shape {
                                 Shape::Rectangle(r) => {
+                                    let x = r.center.x - r.width / 2.0;
+                                    let y = r.center.y - r.height / 2.0;
                                     svg.push_str(&format!(r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" style="{}" transform="rotate({:.2} {:.2} {:.2})" />"#,
-                                        r.x, r.y, r.width, r.height, r.corner_radius, style,
-                                        r.rotation, r.x + r.width/2.0, r.y + r.height/2.0
+                                        x, y, r.width, r.height, r.corner_radius, style,
+                                        r.rotation, r.center.x, r.center.y
                                     ));
                                 }
                                 Shape::Circle(c) => {
@@ -4602,7 +5061,8 @@ impl DesignerView {
                                 }
                                 Shape::Path(p) => {
                                     let mut d = String::new();
-                                    for event in p.path.iter() {
+                                    let path = p.render();
+                                    for event in path.iter() {
                                         match event {
                                             lyon::path::Event::Begin { at } => d.push_str(&format!("M {:.2} {:.2} ", at.x, at.y)),
                                             lyon::path::Event::Line { from: _, to } => d.push_str(&format!("L {:.2} {:.2} ", to.x, to.y)),
@@ -4611,7 +5071,7 @@ impl DesignerView {
                                             lyon::path::Event::End { last: _, first: _, close } => if close { d.push_str("Z "); },
                                         }
                                     }
-                                    let rect = lyon::algorithms::aabb::bounding_box(&p.path);
+                                    let rect = lyon::algorithms::aabb::bounding_box(&path);
                                     let cx = (rect.min.x + rect.max.x) / 2.0;
                                     let cy = (rect.min.y + rect.max.y) / 2.0;
 

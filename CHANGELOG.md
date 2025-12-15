@@ -7,6 +7,9 @@
 - **Documentation**: Updated `AGENTS.md` with guidelines for handling dimension and feed values.
 
 ### Fixed
+- **Designer**: Fixed issue where resizing shapes using Top-Left or Bottom-Right handles would deselect the shape on release if the handle was off-grid.
+  - Updated handle detection and selection logic to use raw (unsnapped) coordinates for hit-testing.
+  - Ensures reliable interaction with handles regardless of grid settings or shape position.
 - **CAM Tools**: Fixed type mismatch errors in `VectorEngravingTool` and `TabbedBoxMaker` by removing incorrect `as f64` casts.
 - **CAM Tools**: Fixed duplicate method definitions in `VectorEngravingTool`.
 

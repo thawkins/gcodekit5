@@ -1,4 +1,22 @@
-Version: 0.35.0-alpha.0
+Version: 0.36.1-alpha.0
+
+## [0.36.1-alpha.0] - 2025-12-14
+
+### Added
+- **CAM Tools**: Implemented unit switching support (Metric/Imperial) for all CAM tools.
+- **CAM Tools**: Added `create_dimension_row` helper and unit update listeners.
+
+### Fixed
+- **Designer**: Fixed issue where resizing shapes using Top-Left or Bottom-Right handles would deselect the shape on release if the handle was off-grid.
+- **CAM Tools**: Fixed type mismatch errors in `VectorEngravingTool` and `TabbedBoxMaker`.
+- **CAM Tools**: Fixed duplicate method definitions in `VectorEngravingTool`.
+
+## [0.36.0-alpha.0] - 2025-12-14
+
+### Fixed
+- **Help Browser**: Fixed issue where help content was selected by default.
+- **Help Browser**: Changed help button icon to `info-outline-symbolic`.
+- **Device Console**: Added help button linking to Machine Control help topic.
 
 ## [0.35.0-alpha.0] - 2025-12-12
 
