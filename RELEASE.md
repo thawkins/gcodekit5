@@ -1,9 +1,13 @@
-Version: 0.40.0-alpha.0
+Version: 0.40.0-alpha.1
 
-## [0.40.0-alpha.0] - 2025-12-16
+## [0.40.0-alpha.1] - 2025-12-16
 
 ### Changed
-- **Version**: Bumped version to 0.40.0-alpha.0.
+- **Version**: Bumped version to 0.40.0-alpha.1.
+
+### Fixed
+- **Build**: Fixed remote build failures by adding missing `model.rs` and `ops.rs` files to the repository.
+- **Build**: Fixed unused import and variable warnings in `gcodekit5-designer` and `gcodekit5-ui` crates.
 
 ### Added
 - **CI/CD**: Added GitHub Actions stages to build `.deb` and `.rpm` packages for Linux releases.
