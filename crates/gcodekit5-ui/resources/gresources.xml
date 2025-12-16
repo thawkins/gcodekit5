@@ -12,6 +12,7 @@
   </gresource>
   <gresource prefix="/com/gcodekit5/images">
     <file compressed="true" alias="gcodekit5.png">images/gcodekit5.png</file>
+    <file compressed="true" alias="eStop2.png">images/eStop2.png</file>
   </gresource>
   <gresource prefix="/com/gcodekit5/help">
     <file compressed="true" alias="index.md">markdown/index.md</file>

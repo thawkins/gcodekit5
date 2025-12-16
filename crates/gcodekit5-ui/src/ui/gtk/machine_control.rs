@@ -269,7 +269,7 @@ impl MachineControlView {
         conn_box.append(&port_combo);
 
         let conn_btn_box = Box::new(Orientation::Horizontal, 6);
-        let connect_btn = make_icon_label_button("network-connect-symbolic", &t!("Connect"));
+        let connect_btn = make_icon_label_button("network-wired-symbolic", &t!("Connect"));
         connect_btn.add_css_class("suggested-action");
         connect_btn.set_hexpand(true);
 
@@ -636,7 +636,7 @@ impl MachineControlView {
         let estop_content = Box::new(Orientation::Vertical, 2);
         estop_content.set_halign(Align::Center);
         estop_content.set_valign(Align::Center);
-        let estop_picture = Image::from_file("assets/Pictures/eStop2.png");
+        let estop_picture = Image::from_resource("/com/gcodekit5/images/eStop2.png");
         estop_picture.set_pixel_size(64);
         let estop_text = Label::new(Some(&t!("E-STOP")));
         estop_text.add_css_class("title-4");
@@ -1498,7 +1498,7 @@ impl MachineControlView {
                 let mut comm = view_clone.communicator.lock().unwrap();
                 match comm.disconnect() {
                     Ok(_) => {
-                        set_button_icon_label(&view_clone.connect_btn, "network-connect-symbolic", &t!("Connect"));
+                        set_button_icon_label(&view_clone.connect_btn, "network-wired-symbolic", &t!("Connect"));
                         view_clone.connect_btn.remove_css_class("destructive-action");
                         view_clone.connect_btn.add_css_class("suggested-action");
                         view_clone.port_combo.set_sensitive(true);
@@ -1580,7 +1580,7 @@ impl MachineControlView {
 
                     match result {
                         Ok(_) => {
-                            set_button_icon_label(&view_clone.connect_btn, "network-disconnect-symbolic", &t!("Disconnect"));
+                            set_button_icon_label(&view_clone.connect_btn, "network-offline-symbolic", &t!("Disconnect"));
                             view_clone.connect_btn.remove_css_class("suggested-action");
                             view_clone.connect_btn.add_css_class("destructive-action");
                             view_clone.connect_btn.set_sensitive(true);
