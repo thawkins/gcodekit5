@@ -1,6 +1,7 @@
 ## [0.36.1-alpha.0] - 2025-12-14
 
 ### Added
+- **CI/CD**: Added GitHub Actions stages to build `.deb` and `.rpm` packages for Linux releases.
 - **CAM Tools**: Implemented unit switching support (Metric/Imperial) for all CAM tools (Jigsaw, Bitmap Engraver, Vector Engraver, Tabbed Box Maker, Spoilboard Surfacing, Spoilboard Grid).
 - **CAM Tools**: Added `create_dimension_row` helper to standardize dimension inputs with dynamic unit labels.
 - **CAM Tools**: Added unit update listeners to dynamically update UI labels and values when the system measurement setting changes.

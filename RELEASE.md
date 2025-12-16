@@ -3,6 +3,7 @@ Version: 0.36.1-alpha.0
 ## [0.36.1-alpha.0] - 2025-12-14
 
 ### Added
+- **CI/CD**: Added GitHub Actions stages to build `.deb` and `.rpm` packages for Linux releases.
 - **CAM Tools**: Implemented unit switching support (Metric/Imperial) for all CAM tools.
 - **CAM Tools**: Added `create_dimension_row` helper and unit update listeners.
 

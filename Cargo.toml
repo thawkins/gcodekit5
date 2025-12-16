@@ -83,3 +83,22 @@ chrono = "0.4"
 # Testing utilities
 [dev-dependencies]
 tempfile = "3.8"
+
+[package.metadata.deb]
+maintainer = "GCodeKit Contributors"
+copyright = "2025, GCodeKit Contributors"
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/gcodekit5", "usr/bin/", "755"],
+    ["assets/Pictures/gcodekit5_128.png", "usr/share/icons/hicolor/128x128/apps/gcodekit5.png", "644"],
+    ["flatpak/com.github.thawkins.gcodekit5.desktop", "usr/share/applications/gcodekit5.desktop", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/gcodekit5", dest = "/usr/bin/gcodekit5", mode = "755" },
+    { source = "assets/Pictures/gcodekit5_128.png", dest = "/usr/share/icons/hicolor/128x128/apps/gcodekit5.png", mode = "644" },
+    { source = "flatpak/com.github.thawkins.gcodekit5.desktop", dest = "/usr/share/applications/gcodekit5.desktop", mode = "644" },
+]
