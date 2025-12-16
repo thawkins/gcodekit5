@@ -53,6 +53,7 @@ jobs:
           libbz2-dev \
           libfuse2 \
           gettext \
+          librsvg2-dev \
           flatpak \
           flatpak-builder
         flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -89,7 +90,7 @@ jobs:
         cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} AppDir/usr/bin/
         
         wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-        wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk.sh
+        wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
         chmod +x linuxdeploy-x86_64.AppImage
         chmod +x linuxdeploy-plugin-gtk.sh
         
