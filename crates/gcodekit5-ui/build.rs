@@ -15,6 +15,7 @@ fn main() {
     let locale_dir = Path::new(&out_dir).join("locale");
 
     println!("cargo:rerun-if-changed=../../po");
+    println!("cargo:rerun-if-changed=resources");
 
     if po_dir.exists() {
         for entry in fs::read_dir(po_dir).expect("Failed to read po dir") {
