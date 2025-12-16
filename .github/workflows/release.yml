@@ -94,12 +94,15 @@ jobs:
         chmod +x linuxdeploy-x86_64.AppImage
         chmod +x linuxdeploy-plugin-gtk.sh
         
+        # Prepare icon with correct name matching desktop file
+        cp assets/Pictures/gcodekit5_128.png com.github.thawkins.gcodekit5.png
+        
         export VERSION="${{ github.ref_name }}"
         ./linuxdeploy-x86_64.AppImage \
           --appdir AppDir \
           --plugin gtk \
           --output appimage \
-          --icon-file assets/Pictures/gcodekit5_128.png \
+          --icon-file com.github.thawkins.gcodekit5.png \
           --desktop-file flatpak/com.github.thawkins.gcodekit5.desktop \
           --executable AppDir/usr/bin/${{ matrix.platform.bin }}
 
