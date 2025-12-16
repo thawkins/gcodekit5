@@ -1,3 +1,9 @@
+## [0.40.0-alpha.2] - 2025-12-16
+
+### Changed
+- **CI/CD**: Added AppImage generation to the release workflow.
+- **Version**: Bumped version to 0.40.0-alpha.2.
+
 ## [0.40.0-alpha.1] - 2025-12-16
 
 ### Changed

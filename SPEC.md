@@ -1,10 +1,16 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.35.0-alpha.0
-**Last Updated**: 2025-12-12
+**Version**: 0.40.0-alpha.2
+**Last Updated**: 2025-12-16
 **Status**: Alpha Release
 
-### Latest Release (v0.35.0-alpha.0) - Designer Text + UX
+### Latest Release (v0.40.0-alpha.2) - AppImage Support
+- ✅ **CI/CD**
+  - Added AppImage generation to the release workflow.
+- ✅ **Version**
+  - Bumped version to 0.40.0-alpha.2.
+
+### Previous Release (v0.35.0-alpha.0) - Designer Text + UX
 - ✅ **Designer**
   - Text tool implemented with font selection (family/bold/italic) and point-size UI mapped to mm in the design file.
   - Improved layer management UX (selection behavior, group/ungroup actions, draggable separator) and inspector polish.
