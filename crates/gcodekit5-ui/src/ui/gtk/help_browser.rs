@@ -415,7 +415,7 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
 
 /// Create a small icon-only help button that opens the help browser.
 pub fn make_help_button(topic: &'static str) -> Button {
-    let btn = Button::from_icon_name("help-browser-symbolic");
+    let btn = Button::from_icon_name("dialog-question-symbolic");
     btn.set_tooltip_text(Some("Help"));
 
     btn.connect_clicked(move |_| {

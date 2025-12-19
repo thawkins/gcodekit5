@@ -319,6 +319,7 @@ impl StockSimulator3D {
         on_progress(1.0)
     }
 
+    #[allow(dead_code)]
     fn remove_linear(&mut self, start: Vec3, end: Vec3) {
         let dist = start.distance(end);
         let steps = (dist / (self.grid.resolution * 0.5)).ceil() as usize;
@@ -346,6 +347,7 @@ impl StockSimulator3D {
         true
     }
 
+    #[allow(dead_code)]
     fn remove_arc(&mut self, start: Vec3, end: Vec3, center: Vec3, clockwise: bool) {
         let radius = (start - center).length();
         let start_angle = (start.y - center.y).atan2(start.x - center.x);

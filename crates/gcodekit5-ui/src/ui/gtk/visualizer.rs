@@ -191,6 +191,7 @@ pub struct GcodeVisualizer {
     _status_label: Label,
     device_manager: Option<Arc<DeviceManager>>,
     settings_controller: Rc<SettingsController>,
+    #[allow(dead_code)]
     status_bar: Option<StatusBar>,
     current_pos: Rc<RefCell<(f32, f32, f32)>>,
 }

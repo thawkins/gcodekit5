@@ -22,6 +22,7 @@ use crate::device_status;
 use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
+use crate::ui::gtk::help_browser;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
 use std::rc::Rc;
@@ -94,6 +95,22 @@ pub struct MachineControlView {
     pub unlock_btn: Button,
     pub reset_g53_btn: Button,
     pub wcs_btns: Vec<ToggleButton>,
+    
+    // Feed Rate & Spindle Override Controls
+    pub feed_value: Label,
+    pub feed_dec10: Button,
+    pub feed_dec1: Button,
+    pub feed_reset: Button,
+    pub feed_inc1: Button,
+    pub feed_inc10: Button,
+    pub spindle_value: Label,
+    pub spindle_dec10: Button,
+    pub spindle_dec1: Button,
+    pub spindle_reset: Button,
+    pub spindle_stop: Button,
+    pub spindle_inc1: Button,
+    pub spindle_inc10: Button,
+    
     pub x_dro: Label,
     pub y_dro: Label,
     pub z_dro: Label,
@@ -253,13 +270,6 @@ impl MachineControlView {
         status_strip.append(&conn_status_state);
         sidebar.append(&status_strip);
 
-        // Setup / Job grouping
-        let setup_title = Label::new(Some(&t!("Setup")));
-        setup_title.add_css_class("mc-group-title");
-        setup_title.set_halign(Align::Start);
-        setup_title.set_margin_top(4);
-        sidebar.append(&setup_title);
-
         // Connection Section
         let conn_box = Box::new(Orientation::Vertical, 4);
 
@@ -363,12 +373,6 @@ impl MachineControlView {
         wcs_box.append(&wcs_grid);
         sidebar.append(&make_section(&t!("Work Coordinates"), &wcs_box));
 
-        let job_title = Label::new(Some(&t!("Job")));
-        job_title.add_css_class("mc-group-title");
-        job_title.set_halign(Align::Start);
-        job_title.set_margin_top(6);
-        sidebar.append(&job_title);
-
         // Transmission / Job controls
         let trans_box = Box::new(Orientation::Vertical, 4);
 
@@ -442,10 +446,100 @@ impl MachineControlView {
         main_area.set_margin_end(12);
         main_area.set_valign(Align::Center);
 
-        // DRO Section
+        // Feed Rate & Spindle Speed Override Section
+        let override_section = Box::new(Orientation::Vertical, 8);
+        override_section.set_halign(Align::Center);
+        override_section.set_margin_bottom(12);
+        
+        let override_title = Label::new(Some(&t!("Current Feed & Spindle")));
+        override_title.add_css_class("dim-label");
+        override_section.append(&override_title);
+        
+        let override_box = Box::new(Orientation::Vertical, 6);
+        override_box.set_halign(Align::Center);
+        
+        // Feed Rate Row (compact)
+        let feed_row = Box::new(Orientation::Horizontal, 8);
+        
+        let feed_label = Label::new(Some(&t!("Feed:")));
+        feed_label.add_css_class("dim-label");
+        feed_label.set_width_request(50);
+        
+        let feed_value = Label::new(Some("0.0 mm/min (100%)"));
+        feed_value.add_css_class("mc-override-value");
+        feed_value.set_width_chars(20);
+        
+        let feed_controls = Box::new(Orientation::Horizontal, 2);
+        let feed_dec10 = Button::with_label("-10");
+        feed_dec10.set_tooltip_text(Some(&t!("Decrease feed rate by 10%")));
+        let feed_dec1 = Button::with_label("-1");
+        feed_dec1.set_tooltip_text(Some(&t!("Decrease feed rate by 1%")));
+        let feed_reset = Button::with_label("⟲");
+        feed_reset.set_tooltip_text(Some(&t!("Reset feed rate to 100%")));
+        let feed_inc1 = Button::with_label("+1");
+        feed_inc1.set_tooltip_text(Some(&t!("Increase feed rate by 1%")));
+        let feed_inc10 = Button::with_label("+10");
+        feed_inc10.set_tooltip_text(Some(&t!("Increase feed rate by 10%")));
+        
+        feed_controls.append(&feed_dec10);
+        feed_controls.append(&feed_dec1);
+        feed_controls.append(&feed_reset);
+        feed_controls.append(&feed_inc1);
+        feed_controls.append(&feed_inc10);
+        
+        feed_row.append(&feed_label);
+        feed_row.append(&feed_value);
+        feed_row.append(&feed_controls);
+        
+        // Spindle Speed Row (compact)
+        let spindle_row = Box::new(Orientation::Horizontal, 8);
+        
+        let spindle_label = Label::new(Some(&t!("Spindle:")));
+        spindle_label.add_css_class("dim-label");
+        spindle_label.set_width_request(50);
+        
+        let spindle_value = Label::new(Some("0 RPM (100%)"));
+        spindle_value.add_css_class("mc-override-value");
+        spindle_value.set_width_chars(20);
+        
+        let spindle_controls = Box::new(Orientation::Horizontal, 2);
+        let spindle_dec10 = Button::with_label("-10");
+        spindle_dec10.set_tooltip_text(Some(&t!("Decrease spindle speed by 10%")));
+        let spindle_dec1 = Button::with_label("-1");
+        spindle_dec1.set_tooltip_text(Some(&t!("Decrease spindle speed by 1%")));
+        let spindle_reset = Button::with_label("⟲");
+        spindle_reset.set_tooltip_text(Some(&t!("Reset spindle speed to 100%")));
+        let spindle_stop = Button::with_label("■");
+        spindle_stop.set_tooltip_text(Some(&t!("Stop spindle")));
+        spindle_stop.add_css_class("destructive-action");
+        let spindle_inc1 = Button::with_label("+1");
+        spindle_inc1.set_tooltip_text(Some(&t!("Increase spindle speed by 1%")));
+        let spindle_inc10 = Button::with_label("+10");
+        spindle_inc10.set_tooltip_text(Some(&t!("Increase spindle speed by 10%")));
+        
+        spindle_controls.append(&spindle_dec10);
+        spindle_controls.append(&spindle_dec1);
+        spindle_controls.append(&spindle_reset);
+        spindle_controls.append(&spindle_stop);
+        spindle_controls.append(&spindle_inc1);
+        spindle_controls.append(&spindle_inc10);
+        
+        spindle_row.append(&spindle_label);
+        spindle_row.append(&spindle_value);
+        spindle_row.append(&spindle_controls);
+        
+        override_box.append(&feed_row);
+        override_box.append(&spindle_row);
+        override_section.append(&override_box);
+        main_area.append(&override_section);
+
+        // DRO Section with buttons on the right
+        let dro_container = Box::new(Orientation::Horizontal, 12);
+        dro_container.set_hexpand(true);
+        dro_container.set_halign(Align::Center);
+
+        // Left side: DRO displays
         let dro_box = Box::new(Orientation::Vertical, 4);
-        dro_box.set_hexpand(true);
-        dro_box.set_halign(Align::Center);
 
         let work_title = Label::new(Some(&t!("Work Coordinates (WPos)")));
         work_title.add_css_class("dim-label");
@@ -489,9 +583,9 @@ impl MachineControlView {
         dro_box.append(&y_box);
         dro_box.append(&z_box);
 
-        let zero_actions = Box::new(Orientation::Horizontal, 8);
-        zero_actions.set_halign(Align::Center);
-        zero_actions.set_margin_top(6);
+        // Right side: Zero All and Go to Work Zero buttons
+        let zero_actions = Box::new(Orientation::Vertical, 8);
+        zero_actions.set_valign(Align::Center);
 
         let zero_all_btn = make_icon_label_button("edit-clear-symbolic", &t!("Zero All Axes"));
         zero_all_btn.set_tooltip_text(Some(&t!("Set active work position to 0 for X/Y/Z")));
@@ -502,10 +596,11 @@ impl MachineControlView {
         goto_zero_btn.set_tooltip_text(Some(&t!("Rapid move to work origin (G0 X0 Y0)")));
         zero_actions.append(&goto_zero_btn);
 
-        dro_box.append(&zero_actions);
+        dro_container.append(&dro_box);
+        dro_container.append(&zero_actions);
 
-        // Machine Coordinates
-        let world_box = Box::new(Orientation::Vertical, 4);
+        // Machine Coordinates (compact)
+        let world_box = Box::new(Orientation::Vertical, 2);
         world_box.set_margin_top(8);
         let world_title = Label::new(Some(&t!("Machine Coordinates (MPos)")));
         world_title.add_css_class("dim-label");
@@ -520,32 +615,34 @@ impl MachineControlView {
         world_vals.append(&world_y);
         world_vals.append(&world_z);
         world_box.append(&world_vals);
-        dro_box.append(&world_box);
 
-        main_area.append(&dro_box);
+        main_area.append(&dro_container);
+        main_area.append(&world_box);
 
-        // Jog Controls
-        let jog_area = Box::new(Orientation::Vertical, 12);
+        // Jog Controls (step and feed on same line)
+        let jog_area = Box::new(Orientation::Vertical, 8);
         jog_area.set_halign(Align::Center);
-        jog_area.set_margin_top(16);
+        jog_area.set_margin_top(12);
 
         let jog_step_mm = Arc::new(Mutex::new(1.0_f32));
         let jog_feed_mm_per_min = Arc::new(Mutex::new(2000.0_f32));
 
-        let step_box = Box::new(Orientation::Horizontal, 10);
-        step_box.set_halign(Align::Center);
+        // Combined step and feed controls on one line
+        let jog_controls_box = Box::new(Orientation::Horizontal, 16);
+        jog_controls_box.set_halign(Align::Center);
 
+        // Step controls
+        let step_box = Box::new(Orientation::Horizontal, 8);
         let step_label = Label::new(None);
         step_label.add_css_class("dim-label");
         step_box.append(&step_label);
 
         let step_combo = ComboBoxText::new();
-        step_combo.set_width_request(180);
+        step_combo.set_width_request(140);
         step_box.append(&step_combo);
 
-        let feed_box = Box::new(Orientation::Horizontal, 10);
-        feed_box.set_halign(Align::Center);
-
+        // Feed controls
+        let feed_box = Box::new(Orientation::Horizontal, 8);
         let feed_label = Label::new(Some(&t!("Jog Feed:")));
         feed_label.add_css_class("dim-label");
         feed_box.append(&feed_label);
@@ -558,8 +655,9 @@ impl MachineControlView {
         jog_feed_units.add_css_class("dim-label");
         feed_box.append(&jog_feed_units);
 
-        jog_area.append(&step_box);
-        jog_area.append(&feed_box);
+        jog_controls_box.append(&step_box);
+        jog_controls_box.append(&feed_box);
+        jog_area.append(&jog_controls_box);
 
         let kb_hint = Label::new(Some(&t!("Keyboard jog: 8/2/4/6 (XY), 9/3 (Z)")));
         kb_hint.add_css_class("dim-label");
@@ -696,9 +794,12 @@ impl MachineControlView {
         console_copy_err_btn.set_tooltip_text(Some(&t!("Copy last error")));
         console_copy_err_btn.update_property(&[AccessibleProperty::Label(&t!("Copy last error"))]);
 
+        let help_btn = help_browser::make_help_button("machine_control");
+
         console_header.append(&console_title);
         console_header.append(&console_clear_btn);
         console_header.append(&console_copy_err_btn);
+        console_header.append(&help_btn);
         console_container.append(&console_header);
 
         // Embed Device Console if present
@@ -986,6 +1087,21 @@ impl MachineControlView {
             unlock_btn,
             reset_g53_btn,
             wcs_btns,
+            
+            feed_value,
+            feed_dec10,
+            feed_dec1,
+            feed_reset,
+            feed_inc1,
+            feed_inc10,
+            spindle_value,
+            spindle_dec10,
+            spindle_dec1,
+            spindle_reset,
+            spindle_stop,
+            spindle_inc1,
+            spindle_inc10,
+            
             x_dro,
             y_dro,
             z_dro,
@@ -1082,8 +1198,12 @@ impl MachineControlView {
             delta: f32,
             communicator: &Arc<Mutex<SerialCommunicator>>,
             feed_mm_per_min: f32,
+            console: &Option<Rc<DeviceConsoleView>>,
         ) {
             let jog_cmd = format!("$J=G91 {axis}{delta} F{feed_mm_per_min}\n");
+            if let Some(c) = console {
+                c.append_log(&format!("> {}\n", jog_cmd.trim()));
+            }
             if let Ok(mut comm) = communicator.lock() {
                 let _ = comm.send(jog_cmd.as_bytes());
             }
@@ -1093,60 +1213,66 @@ impl MachineControlView {
             let communicator = view.communicator.clone();
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
             view.jog_x_pos.connect_clicked(move |_| {
                 let step = *jog_step_mm.lock().unwrap();
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
-                send_jog('X', step, &communicator, feed);
+                send_jog('X', step, &communicator, feed, &console);
             });
         }
         {
             let communicator = view.communicator.clone();
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
             view.jog_x_neg.connect_clicked(move |_| {
                 let step = *jog_step_mm.lock().unwrap();
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
-                send_jog('X', -step, &communicator, feed);
+                send_jog('X', -step, &communicator, feed, &console);
             });
         }
         {
             let communicator = view.communicator.clone();
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
             view.jog_y_pos.connect_clicked(move |_| {
                 let step = *jog_step_mm.lock().unwrap();
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
-                send_jog('Y', step, &communicator, feed);
+                send_jog('Y', step, &communicator, feed, &console);
             });
         }
         {
             let communicator = view.communicator.clone();
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
             view.jog_y_neg.connect_clicked(move |_| {
                 let step = *jog_step_mm.lock().unwrap();
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
-                send_jog('Y', -step, &communicator, feed);
+                send_jog('Y', -step, &communicator, feed, &console);
             });
         }
         {
             let communicator = view.communicator.clone();
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
             view.jog_z_pos.connect_clicked(move |_| {
                 let step = *jog_step_mm.lock().unwrap();
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
-                send_jog('Z', step, &communicator, feed);
+                send_jog('Z', step, &communicator, feed, &console);
             });
         }
         {
             let communicator = view.communicator.clone();
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
             view.jog_z_neg.connect_clicked(move |_| {
                 let step = *jog_step_mm.lock().unwrap();
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
-                send_jog('Z', -step, &communicator, feed);
+                send_jog('Z', -step, &communicator, feed, &console);
             });
         }
 
@@ -1160,6 +1286,7 @@ impl MachineControlView {
                 .device_console
                 .as_ref()
                 .map(|c| c.command_entry.clone());
+            let console = view.device_console.clone();
 
             controller.connect_key_pressed(move |_, key, _, _| {
                 if let Some(entry) = console_entry.as_ref() {
@@ -1176,12 +1303,12 @@ impl MachineControlView {
                 let feed = *jog_feed_mm_per_min.lock().unwrap();
 
                 match ch {
-                    '8' => send_jog('Y', step, &communicator, feed),
-                    '2' => send_jog('Y', -step, &communicator, feed),
-                    '4' => send_jog('X', -step, &communicator, feed),
-                    '6' => send_jog('X', step, &communicator, feed),
-                    '9' => send_jog('Z', step, &communicator, feed),
-                    '3' => send_jog('Z', -step, &communicator, feed),
+                    '8' => send_jog('Y', step, &communicator, feed, &console),
+                    '2' => send_jog('Y', -step, &communicator, feed, &console),
+                    '4' => send_jog('X', -step, &communicator, feed, &console),
+                    '6' => send_jog('X', step, &communicator, feed, &console),
+                    '9' => send_jog('Z', step, &communicator, feed, &console),
+                    '3' => send_jog('Z', -step, &communicator, feed, &console),
                     _ => return glib::Propagation::Proceed,
                 }
 
@@ -1264,6 +1391,7 @@ impl MachineControlView {
             let waiting_for_ack = view.waiting_for_ack.clone();
             let total_lines = view.total_lines.clone();
             let console = view.device_console.clone();
+            let widget_for_dialog = view.widget.clone();
 
             view.send_btn.connect_clicked(move |_| {
                 if *is_streaming.lock().unwrap() {
@@ -1283,6 +1411,15 @@ impl MachineControlView {
                         .text(&t!("No G-Code to Send"))
                         .secondary_text(&t!("Please load or type G-Code into the editor first."))
                         .build();
+                    
+                    // Set transient parent if possible
+                    if let Some(root) = widget_for_dialog.root() {
+                        if let Ok(win) = root.downcast::<gtk4::Window>() {
+                            dialog.set_transient_for(Some(&win));
+                            dialog.set_modal(true);
+                        }
+                    }
+                    
                     dialog.connect_response(|d, _| d.close());
                     dialog.show();
                     return;
@@ -1417,6 +1554,7 @@ impl MachineControlView {
         {
             let communicator = view.communicator.clone();
             let wcs_btns = view.wcs_btns.clone();
+            let widget_for_dialog = view.widget.clone();
             view.zero_all_btn.connect_clicked(move |_| {
                 let dialog = gtk4::MessageDialog::builder()
                     .message_type(gtk4::MessageType::Question)
@@ -1426,6 +1564,14 @@ impl MachineControlView {
                         &t!("This sets the active work coordinate system so the current X/Y/Z becomes 0."),
                     )
                     .build();
+
+                // Set transient parent if possible
+                if let Some(root) = widget_for_dialog.root() {
+                    if let Ok(win) = root.downcast::<gtk4::Window>() {
+                        dialog.set_transient_for(Some(&win));
+                        dialog.set_modal(true);
+                    }
+                }
 
                 let communicator = communicator.clone();
                 let wcs_btns = wcs_btns.clone();
@@ -1486,6 +1632,47 @@ impl MachineControlView {
                 if let Some(c) = device_console.as_ref() {
                     c.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
                 }
+            });
+        }
+
+        // Console Command Send
+        if let Some(console) = view.device_console.as_ref() {
+            let communicator = view.communicator.clone();
+            let console_clone = console.clone();
+            let entry_clone = console.command_entry.clone();
+            
+            // Helper function to send command from console
+            let send_console_command = move || {
+                let cmd = entry_clone.text().to_string().trim().to_string();
+                if cmd.is_empty() {
+                    return;
+                }
+                
+                // Add to history
+                console_clone.add_to_history(cmd.clone());
+                console_clone.reset_history_navigation();
+                
+                // Log to console
+                console_clone.append_log(&format!("> {}\n", cmd));
+                
+                // Send command
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send_command(&cmd);
+                }
+                
+                // Clear entry
+                entry_clone.set_text("");
+            };
+            
+            // Connect send button
+            let send_fn = send_console_command.clone();
+            console.send_btn.connect_clicked(move |_| {
+                send_fn();
+            });
+            
+            // Connect Enter key on entry
+            console.command_entry.connect_activate(move |_| {
+                send_console_command();
             });
         }
 
@@ -1686,6 +1873,8 @@ impl MachineControlView {
                             let world_x_poll = view_clone.world_x.clone();
                             let world_y_poll = view_clone.world_y.clone();
                             let world_z_poll = view_clone.world_z.clone();
+                            let feed_value_poll = view_clone.feed_value.clone();
+                            let spindle_value_poll = view_clone.spindle_value.clone();
                             let unlock_btn_poll = view_clone.unlock_btn.clone();
                             let communicator_poll = view_clone.communicator.clone();
                             let status_bar_poll = view_clone.status_bar.clone();
@@ -1703,6 +1892,10 @@ impl MachineControlView {
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
                             let mut firmware_detected = false;
+                            
+                            // Cache the last known Work Coordinate Offset (WCO)
+                            // This allows us to derive WPos from MPos even when WCO isn't in every status report
+                            let mut last_wco: Option<gcodekit5_communication::firmware::grbl::status_parser::WorkCoordinateOffset> = None;
 
                             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                                 query_counter += 1;
@@ -1954,18 +2147,16 @@ impl MachineControlView {
                                                                 units,
                                                             );
                                                         }
-
-                                                        // Update Visualizer with position
-                                                        if let Some(vis) = visualizer_poll.as_ref() {
-                                                            vis.set_current_position(mpos.x as f32, mpos.y as f32, mpos.z as f32);
-                                                        }
                                                     }
 
-                                                    // Update work position (WPos). This may be derived from MPos/WCO when GRBL isn't reporting WPos.
+                                                    // Update work position (WPos)
+                                                    // WPos is either reported directly by GRBL or derived from MPos-WCO
+                                                    // parse_full() automatically derives it when possible
                                                     if let Some(wpos) = full_status.wpos {
                                                         let units = *current_units_poll.lock().unwrap();
                                                         let unit_label = gcodekit5_core::units::get_unit_label(units);
 
+                                                        // Update DRO (Digital ReadOut) with work coordinates
                                                         x_dro_poll.set_text(&format!(
                                                             "{} {}",
                                                             format_length(wpos.x as f32, units),
@@ -1983,11 +2174,53 @@ impl MachineControlView {
                                                         ));
 
                                                         device_status::update_work_position(wpos);
+                                                        
+                                                        // Update Visualizer with WORK position (not machine position!)
+                                                        // Users work in work coordinates, so visualizer should show WPos
+                                                        if let Some(vis) = visualizer_poll.as_ref() {
+                                                            vis.set_current_position(wpos.x as f32, wpos.y as f32, wpos.z as f32);
+                                                        }
                                                     }
 
-                                                    // Update work coordinate offset
+                                                    // Update work coordinate offset - cache it for WPos calculation
                                                     if let Some(wco) = full_status.wco {
+                                                        last_wco = Some(wco);
                                                         device_status::update_work_coordinate_offset(wco);
+                                                    }
+                                                    
+                                                    // If we didn't get WPos from GRBL, but we have MPos and cached WCO, derive it now
+                                                    if full_status.wpos.is_none() && full_status.mpos.is_some() && last_wco.is_some() {
+                                                        if let (Some(mpos), Some(wco)) = (full_status.mpos, last_wco) {
+                                                            use gcodekit5_communication::firmware::grbl::status_parser::StatusParser;
+                                                            let wpos = StatusParser::wpos_from_mpos_wco(mpos, wco);
+                                                            
+                                                            let units = *current_units_poll.lock().unwrap();
+                                                            let unit_label = gcodekit5_core::units::get_unit_label(units);
+
+                                                            // Update DRO with derived work coordinates
+                                                            x_dro_poll.set_text(&format!(
+                                                                "{} {}",
+                                                                format_length(wpos.x as f32, units),
+                                                                unit_label
+                                                            ));
+                                                            y_dro_poll.set_text(&format!(
+                                                                "{} {}",
+                                                                format_length(wpos.y as f32, units),
+                                                                unit_label
+                                                            ));
+                                                            z_dro_poll.set_text(&format!(
+                                                                "{} {}",
+                                                                format_length(wpos.z as f32, units),
+                                                                unit_label
+                                                            ));
+
+                                                            device_status::update_work_position(wpos);
+                                                            
+                                                            // Update Visualizer with derived work position
+                                                            if let Some(vis) = visualizer_poll.as_ref() {
+                                                                vis.set_current_position(wpos.x as f32, wpos.y as f32, wpos.z as f32);
+                                                            }
+                                                        }
                                                     }
 
                                                     // Update buffer state
@@ -2001,27 +2234,55 @@ impl MachineControlView {
                                                         device_status::update_buffer_state(buffer);
                                                     }
 
-                                                    // Update feed/spindle state
-                                                    if let (Some(feed_rate), Some(spindle_speed)) =
-                                                        (full_status.feed_rate, full_status.spindle_speed)
-                                                    {
-                                                        let feed_spindle = FeedSpindleState {
-                                                            feed_rate,
-                                                            spindle_speed,
-                                                        };
+                                                    // Update overrides
+                                                    let (feed_ov, spindle_ov) = if let Some(ov) = full_status.overrides {
+                                                        (ov.feed, ov.spindle)
+                                                    } else {
+                                                        (100, 100)
+                                                    };
+
+                                                    // Update feed/spindle state  
+                                                    // Note: Feed rate and spindle speed are only reported if $10 bit 3 is set (FS field)
+                                                    // Default $10 is often 1 or 3, which doesn't include FS. Users may need $10=15 for full status.
+                                                    
+                                                    // Handle feed rate even if spindle is None
+                                                    if let Some(feed_rate) = full_status.feed_rate {
                                                         let units = *current_feed_units_poll.lock().unwrap();
-                                                        let feed = format_feed_rate(feed_spindle.feed_rate as f32, units);
+                                                        let feed = format_feed_rate(feed_rate as f32, units);
                                                         state_feed_label_poll.set_text(&format!(
                                                             "{} {} {}",
                                                             t!("Feed:"),
                                                             feed,
                                                             units
                                                         ));
+                                                        feed_value_poll.set_text(&format!("{} ({}%)", feed, feed_ov));
+                                                    }
+                                                    
+                                                    // Handle spindle speed even if feed is None
+                                                    if let Some(spindle_speed) = full_status.spindle_speed {
                                                         state_spindle_label_poll.set_text(&format!(
                                                             "{} {} RPM",
                                                             t!("Spindle:"),
-                                                            feed_spindle.spindle_speed
+                                                            spindle_speed
                                                         ));
+                                                        spindle_value_poll.set_text(&format!("{} RPM ({}%)", spindle_speed, spindle_ov));
+                                                    }
+                                                    
+                                                    // Update status bar and device_status if we have both
+                                                    if let (Some(feed_rate), Some(spindle_speed)) =
+                                                        (full_status.feed_rate, full_status.spindle_speed)
+                                                    {
+                                                        let units = *current_feed_units_poll.lock().unwrap();
+                                                        let feed_spindle = FeedSpindleState {
+                                                            feed_rate,
+                                                            spindle_speed,
+                                                        };
+                                                        
+                                                        // Update status bar with feed/spindle
+                                                        if let Some(sb) = status_bar_poll.as_ref() {
+                                                            sb.set_feed_spindle(feed_rate, spindle_speed, units);
+                                                        }
+                                                        
                                                         device_status::update_feed_spindle_state(feed_spindle);
                                                     }
                                                 }
@@ -2054,7 +2315,140 @@ impl MachineControlView {
             }
         });
 
+        // Setup override handlers
+        Self::setup_override_handlers(&view);
+
         view
+    }
+
+    // Feed Rate Override Controls Setup
+    fn setup_override_handlers(view: &Self) {
+        // Feed Rate Override Controls
+        // GRBL Realtime Commands for Feed Override:
+        // 0x90 = Reset to 100%
+        // 0x91 = +10%
+        // 0x92 = -10%
+        // 0x93 = +1%
+        // 0x94 = -1%
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.feed_inc10.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Feed +10%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x91]); // Feed +10%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.feed_inc1.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Feed +1%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x93]); // Feed +1%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.feed_dec1.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Feed -1%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x94]); // Feed -1%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.feed_dec10.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Feed -10%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x92]); // Feed -10%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.feed_reset.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Feed Reset (100%)\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x90]); // Feed override reset to 100%
+                }
+            });
+        }
+
+        // Spindle Override Controls
+        // GRBL Realtime Commands for Spindle Override:
+        // 0x99 = +10%
+        // 0x9A = -10%
+        // 0x9B = +1%
+        // 0x9C = -1%
+        // 0x9D = Spindle stop
+        // 0x9E = Spindle reset to 100%
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.spindle_inc10.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Spindle +10%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x99]); // Spindle +10%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.spindle_inc1.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Spindle +1%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x9B]); // Spindle +1%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.spindle_dec1.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Spindle -1%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x9C]); // Spindle -1%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.spindle_dec10.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Spindle -10%\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x9A]); // Spindle -10%
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.spindle_stop.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Spindle Stop\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x9D]); // Spindle stop
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.spindle_reset.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() { c.append_log("> Spindle Reset (100%)\n"); }
+                if let Ok(mut comm) = communicator.lock() {
+                    let _ = comm.send(&[0x9E]); // Spindle override reset to 100%
+                }
+            });
+        }
     }
 
     pub fn refresh_ports(&self) {

@@ -1,5 +1,9 @@
 # GTK4 & Rust Insights
 
+## GTK Dialogs
+- **Transient Parent**: Always set a transient parent for dialogs to ensure proper window management and avoid "GtkDialog mapped without a transient parent" warnings. Use `dialog.set_transient_for(Some(&parent_window))`.
+- **Sizing**: Ensure dialogs have sufficient minimum size to avoid "Trying to measure GtkDialog..." warnings if content requires more space than allocated.
+
 ## Viewport & Canvas Sizing
 - **Issue**: When using a `DrawingArea` with a backend `Viewport` or `Canvas` struct that manages zoom/pan, the backend needs to be explicitly updated with the widget's dimensions.
 - **Solution**: Use `widget.set_draw_func` to update the backend size on every draw (which happens on resize), or use `connect_resize` / `connect_map`.

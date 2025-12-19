@@ -716,7 +716,7 @@ impl PropertiesPanel {
         });
 
         let state = self.state.clone();
-        let settings = self.settings.clone();
+        let _settings = self.settings.clone();
         let redraw7 = self.redraw_callback.clone();
         let updating7 = self.updating.clone();
 

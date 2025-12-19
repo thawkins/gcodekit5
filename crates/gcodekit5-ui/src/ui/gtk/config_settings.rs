@@ -55,6 +55,7 @@ use crate::ui::gtk::help_browser;
 pub struct ConfigSettingsView {
     pub container: Box,
     pub device_info_view: Rc<DeviceInfoView>,
+    #[allow(dead_code)]
     settings_controller: Rc<SettingsController>,
     settings_manager: Rc<RefCell<SettingsManager>>,
     last_synced_settings_count: Cell<usize>,
@@ -265,6 +266,17 @@ impl ConfigSettingsView {
             device_console: Rc::new(RefCell::new(None)),
         });
 
+        // Set up callback from device_info_view to refresh settings display
+        {
+            let view_clone = view.clone();
+            device_info_view.set_on_setting_changed(move || {
+                view_clone.refresh_display();
+            });
+        }
+        
+        // Pass settings_manager to device_info_view so it can update settings
+        device_info_view.set_settings_manager(settings_manager.clone());
+
         // Connect signals
         let view_clone = view.clone();
         search_entry.connect_search_changed(move |_| {
@@ -362,7 +374,10 @@ impl ConfigSettingsView {
     }
 
     pub fn set_communicator(&self, communicator: Arc<Mutex<SerialCommunicator>>) {
-        *self.communicator.borrow_mut() = Some(communicator);
+        *self.communicator.borrow_mut() = Some(communicator.clone());
+        
+        // Also pass the communicator to the device info view so it can send $32 commands
+        self.device_info_view.set_communicator(communicator);
     }
 
     pub fn set_device_console(&self, console: Rc<DeviceConsoleView>) {

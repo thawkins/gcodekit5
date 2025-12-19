@@ -16,7 +16,7 @@ use tracing::warn;
 
 use crate::ui::gtk::help_browser;
 use gcodekit5_settings::SettingsController;
-use gcodekit5_core::units::{self, MeasurementSystem};
+use gcodekit5_core::units::{self};
 
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
@@ -445,6 +445,7 @@ impl CamToolsView {
         root
     }
 
+    #[allow(dead_code)]
     fn create_tool_card(
         title: &str,
         desc: &str,

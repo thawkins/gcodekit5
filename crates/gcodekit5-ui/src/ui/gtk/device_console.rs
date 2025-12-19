@@ -1,18 +1,17 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, Entry, Label, Orientation, Paned, ScrolledWindow, TextView, WrapMode,
+    Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow, TextView, WrapMode, gdk,
 };
-use std::{borrow::Cow, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, rc::Rc};
 
-use crate::ui::gtk::help_browser;
+use crate::ui::gtk::command_history::CommandHistory;
 
 pub struct DeviceConsoleView {
     pub widget: Paned,
     pub console_text: TextView,
     pub command_entry: Entry,
     pub send_btn: Button,
-    pub clear_btn: Button,
-    pub copy_btn: Button,
+    history: Rc<RefCell<CommandHistory>>,
 }
 
 impl DeviceConsoleView {
@@ -20,15 +19,6 @@ impl DeviceConsoleView {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
-
-        // We'll move 'Clear' and 'Copy' buttons into the main console area (above the output)
-        let clear_btn = Button::from_icon_name("user-trash-symbolic");
-        clear_btn.set_label("Clear");
-        clear_btn.set_tooltip_text(Some("Clear Console Output"));
-
-        let copy_btn = Button::from_icon_name("edit-copy-symbolic");
-        copy_btn.set_label("Copy");
-        copy_btn.set_tooltip_text(Some("Copy to Clipboard"));
 
         // ═════════════════════════════════════════════
         // MAIN AREA
@@ -40,15 +30,6 @@ impl DeviceConsoleView {
         main_area.set_margin_bottom(10);
         main_area.set_margin_start(10);
         main_area.set_margin_end(10);
-
-        // Toolbar above Console Output
-        let console_toolbar = Box::new(Orientation::Horizontal, 5);
-        console_toolbar.set_halign(Align::End);
-        console_toolbar.append(&clear_btn);
-        console_toolbar.append(&copy_btn);
-
-        let help_btn = help_browser::make_help_button("machine_control");
-        console_toolbar.append(&help_btn);
 
         // Console Output
         let scroll = ScrolledWindow::new();
@@ -68,7 +49,6 @@ impl DeviceConsoleView {
         // console_text.set_right_margin(10);
 
         scroll.set_child(Some(&console_text));
-        main_area.append(&console_toolbar);
         main_area.append(&scroll);
 
         // Command Input
@@ -104,29 +84,44 @@ impl DeviceConsoleView {
             gtk4::glib::ControlFlow::Continue
         });
 
+        // Load command history
+        let history = Rc::new(RefCell::new(CommandHistory::load()));
+
         let view = Rc::new(Self {
             widget,
             console_text,
-            command_entry,
+            command_entry: command_entry.clone(),
             send_btn,
-            clear_btn,
-            copy_btn,
+            history: history.clone(),
         });
 
-        // Connect signals
-        let view_clone = view.clone();
-        view.clear_btn.connect_clicked(move |_| {
-            view_clone.console_text.buffer().set_text("");
+        // Setup key event controller for command history navigation
+        let key_controller = EventControllerKey::new();
+        let history_clone = history.clone();
+        let entry_clone = command_entry.clone();
+        
+        key_controller.connect_key_pressed(move |_, keyval, _, _| {
+            match keyval {
+                gdk::Key::Up => {
+                    let current_text = entry_clone.text().to_string();
+                    if let Some(prev_cmd) = history_clone.borrow_mut().previous(&current_text) {
+                        entry_clone.set_text(&prev_cmd);
+                        entry_clone.set_position(-1); // Move cursor to end
+                    }
+                    glib::Propagation::Stop
+                }
+                gdk::Key::Down => {
+                    if let Some(next_cmd) = history_clone.borrow_mut().next() {
+                        entry_clone.set_text(&next_cmd);
+                        entry_clone.set_position(-1); // Move cursor to end
+                    }
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
         });
-
-        let view_clone = view.clone();
-        view.copy_btn.connect_clicked(move |_| {
-            let buffer = view_clone.console_text.buffer();
-            let (start, end) = buffer.bounds();
-            let text = buffer.text(&start, &end, false);
-            let clipboard = view_clone.widget.display().clipboard();
-            clipboard.set_text(&text);
-        });
+        
+        command_entry.add_controller(key_controller);
 
         view
     }
@@ -143,6 +138,11 @@ impl DeviceConsoleView {
         // Append to bottom and auto-scroll
         let mut iter = buffer.end_iter();
         buffer.insert(&mut iter, msg.as_ref());
+        
+        // Auto-scroll to bottom after inserting
+        let mark = buffer.create_mark(None, &buffer.end_iter(), false);
+        self.console_text.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);
+        buffer.delete_mark(&mark);
     }
 
     pub fn get_log_text(&self) -> String {
@@ -161,5 +161,15 @@ impl DeviceConsoleView {
         // Auto-scroll to bottom
         let mark = buffer.create_mark(None, &buffer.end_iter(), false);
         self.console_text.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);
+        buffer.delete_mark(&mark);
+    }
+
+    pub fn add_to_history(&self, command: String) {
+        self.history.borrow_mut().add(command);
+        self.history.borrow().save();
+    }
+
+    pub fn reset_history_navigation(&self) {
+        self.history.borrow_mut().reset_navigation();
     }
 }

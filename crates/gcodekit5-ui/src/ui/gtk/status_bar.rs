@@ -1,4 +1,4 @@
-use gcodekit5_core::units::{format_length, get_unit_label, MeasurementSystem};
+use gcodekit5_core::units::{format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem};
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
 
@@ -16,6 +16,8 @@ pub struct StatusBar {
     state_label: Label,
     position_separator: Label,
     position_label: Label,
+    feed_spindle_separator: Label,
+    feed_spindle_label: Label,
     elapsed_label: Label,
     remaining_label: Label,
     progress_bar: ProgressBar,
@@ -87,6 +89,18 @@ impl StatusBar {
         position_label.set_visible(false);
         left_box.append(&position_label);
 
+        // Separator (for feed/spindle)
+        let feed_spindle_separator = Label::new(Some("|"));
+        feed_spindle_separator.set_visible(false);
+        left_box.append(&feed_spindle_separator);
+
+        // Feed & Spindle
+        let feed_spindle_label = Label::new(None);
+        feed_spindle_label.add_css_class("status-text");
+        feed_spindle_label.add_css_class("monospace");
+        feed_spindle_label.set_visible(false);
+        left_box.append(&feed_spindle_label);
+
         widget.append(&left_box);
 
         // Right side container
@@ -145,6 +159,8 @@ impl StatusBar {
             state_label,
             position_separator,
             position_label,
+            feed_spindle_separator,
+            feed_spindle_label,
             elapsed_label,
             remaining_label,
             progress_bar,
@@ -163,6 +179,8 @@ impl StatusBar {
             self.state_label.set_visible(true);
             self.position_separator.set_visible(true);
             self.position_label.set_visible(true);
+            self.feed_spindle_separator.set_visible(true);
+            self.feed_spindle_label.set_visible(true);
         } else {
             self.status_indicator.remove_css_class("connected");
             self.status_indicator.add_css_class("disconnected");
@@ -174,6 +192,9 @@ impl StatusBar {
             self.position_separator.set_visible(false);
             self.position_label.set_visible(false);
             self.position_label.set_text("");
+            self.feed_spindle_separator.set_visible(false);
+            self.feed_spindle_label.set_visible(false);
+            self.feed_spindle_label.set_text("");
         }
     }
 
@@ -220,6 +241,14 @@ impl StatusBar {
             format_length(b, system),
             format_length(c, system),
             unit_label
+        ));
+    }
+
+    pub fn set_feed_spindle(&self, feed_rate: f64, spindle_speed: u32, feed_units: FeedRateUnits) {
+        self.feed_spindle_label.set_text(&format!(
+            "F: {}  S: {} RPM",
+            format_feed_rate(feed_rate as f32, feed_units),
+            spindle_speed
         ));
     }
 

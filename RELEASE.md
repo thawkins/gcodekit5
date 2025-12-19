@@ -1,6 +1,25 @@
-Version: 0.40.0-alpha.1
+Version: 0.40.0-alpha.5
 
-## [0.40.0-alpha.1] - 2025-12-16
+## [0.40.0-alpha.5] - 2025-12-19
+
+### Changed
+- **Version**: Bumped version to 0.40.0-alpha.5.
+
+### Added
+- **Device Manager**: Added device type selection (CNC, Laser, Other) to Device Config tab, automatically configuring `$32` (Laser Mode) and device capabilities.
+- **Machine Control**: Added feedrate and spindle speed indicators to the central panel and status bar.
+- **Machine Control**: Added feedrate and spindle speed override controls with console logging.
+- **Machine Control**: Added command history navigation (Up/Down arrows) to the device console input.
+- **Machine Control**: Added logging of manual commands, jogs, and overrides to the device console.
+
+### Fixed
+- **Device Manager**: Fixed `$32` (Laser Mode) display not updating when device type changes.
+- **Machine Control**: Fixed feedrate and spindle speed override button logic and values.
+- **DRO**: Fixed slow WPos updates and spindle position indicator lag in Visualizer.
+- **UI**: Fixed GTK dialog warnings regarding transient parents and sizing.
+- **UI**: Cleaned up Device Console UI, removing redundant buttons and improving layout.
+- **Build**: Fixed various compilation warnings in `gcodekit5-visualizer`, `gcodekit5-designer`, and `gcodekit5-ui`.
+
 
 ### Changed
 - **Version**: Bumped version to 0.40.0-alpha.1.

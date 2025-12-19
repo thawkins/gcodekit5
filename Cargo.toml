@@ -13,7 +13,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.40.0-alpha.4"
+version = "0.40.0-alpha.5"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 authors = ["GCodeKit Contributors"]

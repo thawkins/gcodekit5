@@ -187,6 +187,38 @@ impl BufferRxState {
     }
 }
 
+/// Override state (Feed, Rapid, Spindle)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OverrideState {
+    /// Feed override percentage
+    pub feed: u16,
+    /// Rapid override percentage
+    pub rapid: u16,
+    /// Spindle override percentage
+    pub spindle: u16,
+}
+
+impl OverrideState {
+    /// Parse override state from string (format: "feed,rapid,spindle")
+    pub fn parse(ov_str: &str) -> Option<Self> {
+        let parts: Vec<&str> = ov_str.split(',').collect();
+
+        if parts.len() < 3 {
+            return None;
+        }
+
+        let feed = parts[0].trim().parse::<u16>().ok()?;
+        let rapid = parts[1].trim().parse::<u16>().ok()?;
+        let spindle = parts[2].trim().parse::<u16>().ok()?;
+
+        Some(Self {
+            feed,
+            rapid,
+            spindle,
+        })
+    }
+}
+
 /// Comprehensive status parsing
 pub struct StatusParser;
 
@@ -223,16 +255,49 @@ impl StatusParser {
         Self::extract_field(status_line, "Buf:").and_then(BufferRxState::parse)
     }
 
+    /// Parse overrides from status report
+    pub fn parse_overrides(status_line: &str) -> Option<OverrideState> {
+        Self::extract_field(status_line, "Ov:").and_then(OverrideState::parse)
+    }
+
     /// Parse feed rate from status report
+    /// Handles both separate "F:" field and combined "FS:feed,spindle" field
     pub fn parse_feed_rate(status_line: &str) -> Option<f64> {
-        Self::extract_field(status_line, "F:")
-            .and_then(|rate_str| rate_str.trim().parse::<f64>().ok())
+        // First try the separate F: field
+        if let Some(rate_str) = Self::extract_field(status_line, "F:") {
+            return rate_str.trim().parse::<f64>().ok();
+        }
+        
+        // If not found, try extracting from FS: field (format: "FS:feed,spindle")
+        if let Some(fs_str) = Self::extract_field(status_line, "FS:") {
+            let parts: Vec<&str> = fs_str.split(',').collect();
+            if let Some(feed_str) = parts.first() {
+                return feed_str.trim().parse::<f64>().ok();
+            }
+        }
+        
+        None
     }
 
     /// Parse spindle speed from status report
+    /// Handles both separate "S:" field and combined "FS:feed,spindle" field
     pub fn parse_spindle_speed(status_line: &str) -> Option<u32> {
-        Self::extract_field(status_line, "S:")
-            .and_then(|speed_str| speed_str.trim().parse::<u32>().ok())
+        // First try the separate S: field
+        if let Some(speed_str) = Self::extract_field(status_line, "S:") {
+            return speed_str.trim().parse::<u32>().ok();
+        }
+        
+        // If not found, try extracting from FS: field (format: "FS:feed,spindle")
+        if let Some(fs_str) = Self::extract_field(status_line, "FS:") {
+            let parts: Vec<&str> = fs_str.split(',').collect();
+            if parts.len() >= 2 {
+                if let Some(spindle_str) = parts.get(1) {
+                    return spindle_str.trim().parse::<u32>().ok();
+                }
+            }
+        }
+        
+        None
     }
 
     /// Parse feed and spindle state together
@@ -277,7 +342,9 @@ impl StatusParser {
         }
     }
 
-    fn wpos_from_mpos_wco(mpos: MachinePosition, wco: WorkCoordinateOffset) -> WorkPosition {
+    /// Derive WorkPosition from MachinePosition and WorkCoordinateOffset
+    /// WPos = MPos - WCO
+    pub fn wpos_from_mpos_wco(mpos: MachinePosition, wco: WorkCoordinateOffset) -> WorkPosition {
         WorkPosition {
             x: mpos.x - wco.x,
             y: mpos.y - wco.y,
@@ -310,6 +377,7 @@ impl StatusParser {
             wpos: Self::parse_wpos(status_line),
             wco: Self::parse_wco(status_line),
             buffer: Self::parse_buffer(status_line),
+            overrides: Self::parse_overrides(status_line),
             feed_rate: Self::parse_feed_rate(status_line),
             spindle_speed: Self::parse_spindle_speed(status_line),
         };
@@ -344,6 +412,8 @@ pub struct FullStatus {
     pub wco: Option<WorkCoordinateOffset>,
     /// Buffer state
     pub buffer: Option<BufferRxState>,
+    /// Override state
+    pub overrides: Option<OverrideState>,
     /// Feed rate
     pub feed_rate: Option<f64>,
     /// Spindle speed

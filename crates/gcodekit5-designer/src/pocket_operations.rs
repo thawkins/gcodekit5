@@ -218,10 +218,10 @@ impl PocketGenerator {
         } else {
             // Convert to polygon and use generic generator
             let vertices = vec![
-                Point::new((rect.center.x - rect.width/2.0), (rect.center.y - rect.height/2.0)),
-                Point::new((rect.center.x - rect.width/2.0) + rect.width, (rect.center.y - rect.height/2.0)),
+                Point::new(rect.center.x - rect.width/2.0, rect.center.y - rect.height/2.0),
+                Point::new((rect.center.x - rect.width/2.0) + rect.width, rect.center.y - rect.height/2.0),
                 Point::new((rect.center.x - rect.width/2.0) + rect.width, (rect.center.y - rect.height/2.0) + rect.height),
-                Point::new((rect.center.x - rect.width/2.0), (rect.center.y - rect.height/2.0) + rect.height),
+                Point::new(rect.center.x - rect.width/2.0, (rect.center.y - rect.height/2.0) + rect.height),
             ];
             self.generate_polygon_pocket(&vertices, step_down)
         }

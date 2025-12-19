@@ -69,6 +69,7 @@ pub struct DeviceManagerWindow {
     save_btn: Button,
     cancel_btn: Button,
     delete_btn: Button,
+    sync_btn: Button,
     set_active_btn: Button,
     new_btn: Button,
 
@@ -163,12 +164,16 @@ impl DeviceManagerWindow {
         let delete_btn = Button::with_label("🗑️ Delete");
         delete_btn.add_css_class("destructive-action");
         delete_btn.set_sensitive(false);
+        let sync_btn = Button::with_label("🔄 Sync from Device");
+        sync_btn.set_tooltip_text(Some("Update device information from connected device"));
+        sync_btn.set_sensitive(false);
         let set_active_btn = Button::with_label("✓ Set Active");
         set_active_btn.set_sensitive(false);
 
         action_bar.append(&save_btn);
         action_bar.append(&cancel_btn);
         action_bar.append(&delete_btn);
+        action_bar.append(&sync_btn);
 
         let spacer = Label::new(None);
         spacer.set_hexpand(true);
@@ -311,6 +316,7 @@ impl DeviceManagerWindow {
             save_btn,
             cancel_btn,
             delete_btn,
+            sync_btn,
             set_active_btn,
             new_btn,
             edit_stack,
@@ -858,6 +864,12 @@ impl DeviceManagerWindow {
             view.delete_device();
         });
 
+        // Sync from Device button
+        let view = self.clone();
+        self.sync_btn.connect_clicked(move |_| {
+            view.sync_from_device();
+        });
+
         // Set Active button
         let view = self.clone();
         self.set_active_btn.connect_clicked(move |_| {
@@ -1028,6 +1040,10 @@ impl DeviceManagerWindow {
             self.cancel_btn.set_sensitive(true);
             self.delete_btn.set_sensitive(true);
             self.set_active_btn.set_sensitive(!profile.is_active);
+            
+            // Enable sync button only if a device is connected
+            let status = device_status::get_status();
+            self.sync_btn.set_sensitive(status.is_connected);
         }
     }
 
@@ -1179,6 +1195,7 @@ impl DeviceManagerWindow {
             model.has_spindle = self.edit_has_spindle.is_active();
             model.has_laser = self.edit_has_laser.is_active();
             model.has_coolant = self.edit_has_coolant.is_active();
+            
             let max_feed_mm_per_min = match parse_feed_rate(&self.edit_max_feed_rate.text(), feed_units) {
                 Ok(v) => v,
                 Err(e) => {
@@ -1302,6 +1319,95 @@ impl DeviceManagerWindow {
         self.save_btn.set_sensitive(false);
         self.cancel_btn.set_sensitive(false);
         self.delete_btn.set_sensitive(false);
+        self.sync_btn.set_sensitive(false);
         self.set_active_btn.set_sensitive(false);
+    }
+
+    fn sync_from_device(&self) {
+        let status = device_status::get_status();
+        
+        if !status.is_connected {
+            self.show_error_dialog("Not Connected", "Please connect to a device first.");
+            return;
+        }
+
+        let model_opt = self.selected_device.borrow().clone();
+        let Some(mut model) = model_opt else {
+            return;
+        };
+
+        // Update dimensions from $130, $131, $132 (X/Y/Z max travel)
+        if let Some(x_max) = status.grbl_settings.get(&130) {
+            if let Ok(val) = x_max.parse::<f64>() {
+                model.x_max = format!("{:.2}", val);
+            }
+        }
+        if let Some(y_max) = status.grbl_settings.get(&131) {
+            if let Ok(val) = y_max.parse::<f64>() {
+                model.y_max = format!("{:.2}", val);
+            }
+        }
+        if let Some(z_max) = status.grbl_settings.get(&132) {
+            if let Ok(val) = z_max.parse::<f64>() {
+                model.z_max = format!("{:.2}", val);
+            }
+        }
+
+        // Update max spindle speed from $30 (Max spindle speed, RPM)
+        if let Some(max_rpm) = status.grbl_settings.get(&30) {
+            if let Ok(val) = max_rpm.parse::<u32>() {
+                model.max_spindle_speed_rpm = val.to_string();
+                model.max_s_value = format!("{:.0}", val as f32);
+                if val > 0 {
+                    model.has_spindle = true;
+                }
+            }
+        }
+
+        // Check for laser mode from $32 (Laser mode enable)
+        if let Some(laser_mode) = status.grbl_settings.get(&32) {
+            if let Ok(val) = laser_mode.parse::<u32>() {
+                model.has_laser = val == 1;
+            }
+        }
+
+        // Update firmware version if available
+        if let Some(fw_version) = &status.firmware_version {
+            model.description = format!("{} (Firmware: {})", 
+                model.description.split('(').next().unwrap_or(&model.description).trim(),
+                fw_version
+            );
+        }
+
+        // Reload the updated model into the form
+        *self.selected_device.borrow_mut() = Some(model.clone());
+        self.edit_name.set_text(&model.name);
+        self.edit_description.set_text(&model.description);
+        
+        self.refresh_units_display();
+        
+        self.edit_has_spindle.set_active(model.has_spindle);
+        self.edit_has_laser.set_active(model.has_laser);
+        self.edit_max_spindle_speed_rpm.set_text(&model.max_spindle_speed_rpm);
+        self.edit_max_s_value.set_text(&model.max_s_value);
+        
+        self.update_capabilities_field_sensitivity();
+
+        // Show success message
+        let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() else {
+            return;
+        };
+
+        let dialog = MessageDialog::builder()
+            .transient_for(&window)
+            .modal(true)
+            .message_type(MessageType::Info)
+            .buttons(gtk4::ButtonsType::Ok)
+            .text("Device Information Updated")
+            .secondary_text("Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.")
+            .build();
+
+        dialog.connect_response(|d, _| d.close());
+        dialog.show();
     }
 }

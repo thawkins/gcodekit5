@@ -545,8 +545,8 @@ impl ToolpathGenerator {
         if r > 0.001 || rect.rotation.abs() > 1e-6 {
             // Convert rounded or rotated rectangle to polygon for pocketing
             let mut vertices = Vec::new();
-            let x = (rect.center.x - rect.width/2.0);
-            let y = (rect.center.y - rect.height/2.0);
+            let x = rect.center.x - rect.width/2.0;
+            let y = rect.center.y - rect.height/2.0;
             let w = rect.width;
             let h = rect.height;
 

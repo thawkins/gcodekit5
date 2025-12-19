@@ -341,8 +341,8 @@ fn render_shape_trait(
     match shape {
         crate::model::Shape::Rectangle(rect) => {
             // Use unrotated dimensions di(rect.center.y - rect.height/2.0) from the rect struct
-            let min_x = (rect.center.x - rect.width/2.0);
-            let min_y = (rect.center.y - rect.height/2.0);
+            let min_x = rect.center.x - rect.width/2.0;
+            let min_y = rect.center.y - rect.height/2.0;
             let max_x = (rect.center.x - rect.width/2.0) + rect.width;
             let max_y = (rect.center.y - rect.height/2.0) + rect.height;
 

@@ -1,4 +1,5 @@
 pub mod cam_tools;
+pub mod command_history;
 pub mod help_browser;
 pub mod designer;
 pub mod designer_layers;

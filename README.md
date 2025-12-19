@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender and CNC machine controller written in Rus
 
 [![Build Status](https://github.com/thawkins/gcodekit5/workflows/Build%20and%20Release/badge.svg)](https://github.com/thawkins/gcodekit5/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.34.0--alpha.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.40.0--alpha.5-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -475,9 +475,14 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 0.35.0-alpha.0
+**Current Version**: 0.40.0-alpha.5
 **Status**: Active Development
 **Stability**: Alpha (breaking changes may occur)
+
+### Recent Updates (v0.40.0-alpha.5)
+- **Device Manager**: Added device type selection (CNC, Laser, Other) with auto-configuration.
+- **Machine Control**: Added feedrate/spindle overrides, indicators, and console command history.
+- **DRO**: Fixed slow WPos updates and visualizer lag.
 
 ### Recent Updates (v0.2.5-alpha.3)
 - **Designer**: Added Pan tool, Alignment tools, Array tools, Shape Conversion, Import/Export, and Toolpath Simulation.

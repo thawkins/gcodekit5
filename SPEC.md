@@ -4,7 +4,23 @@
 **Last Updated**: 2025-12-16
 **Status**: Alpha Release
 
-### Latest Release (v0.40.0-alpha.2) - AppImage Support
+### Latest Release (v0.40.0-alpha.5) - Device Manager & Machine Control
+- ✅ **Device Manager**
+  - Added device type selection (CNC, Laser, Other) to Device Config tab.
+  - Automatically configures `$32` (Laser Mode) and device capabilities based on type.
+  - Fixed `$32` display update issue.
+- ✅ **Machine Control**
+  - Added feedrate and spindle speed indicators to the central panel and status bar.
+  - Added feedrate and spindle speed override controls with console logging.
+  - Added command history navigation (Up/Down arrows) to the device console input.
+  - Added logging of manual commands, jogs, and overrides to the device console.
+  - Cleaned up Device Console UI.
+- ✅ **DRO**
+  - Fixed slow WPos updates and spindle position indicator lag in Visualizer.
+- ✅ **Version**
+  - Bumped version to 0.40.0-alpha.5.
+
+### Previous Release (v0.40.0-alpha.2) - AppImage Support
 - ✅ **CI/CD**
   - Added AppImage generation to the release workflow.
 - ✅ **Version**

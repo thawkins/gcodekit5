@@ -1050,7 +1050,7 @@ impl Canvas {
         update_position: bool,
         update_size: bool,
     ) -> Vec<(u64, DrawingObject)> {
-        use crate::shapes::*;
+        
 
         let mut updates = Vec::new();
 
@@ -1135,7 +1135,7 @@ impl Canvas {
         update_position: bool,
         update_size: bool,
     ) -> bool {
-        use crate::shapes::*;
+        
 
         // 1. Calculate union bounding box
         let mut min_x = f64::INFINITY;
