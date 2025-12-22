@@ -1,5 +1,4 @@
-use gcodekit5_designer::model::DesignerShape;
-use gcodekit5_designer::{shapes::TextShape, ToolpathGenerator};
+use gcodekit5_designer::{TextShape, ToolpathGenerator};
 
 #[test]
 fn test_text_toolpath_advances_characters() {

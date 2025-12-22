@@ -2,8 +2,8 @@ use crate::t;
 use gcodekit5_core::units;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::font_manager;
-use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::model::{DesignerShape, Point, Shape};
+use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
@@ -68,12 +68,17 @@ pub struct PropertiesPanel {
     font_bold_check: CheckButton,
     font_italic_check: CheckButton,
     font_size_entry: Entry,
+    // Polygon widgets
+    polygon_frame: Frame,
+    sides_entry: Entry,
     // CAM widgets
     op_type_combo: DropDown,
     depth_entry: Entry,
     step_down_entry: Entry,
     step_in_entry: Entry,
+    ramp_angle_entry: Entry,
     strategy_combo: DropDown,
+    raster_fill_entry: Entry,
     // Unit Labels
     x_unit_label: Label,
     y_unit_label: Label,
@@ -313,6 +318,28 @@ impl PropertiesPanel {
         text_frame.set_child(Some(&text_grid));
         content.append(&text_frame);
 
+        // Polygon Section
+        let polygon_frame = Self::create_section(&t!("Polygon"));
+        let polygon_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let sides_label = Label::new(Some(&t!("Sides:")));
+        sides_label.set_halign(gtk4::Align::Start);
+        let sides_entry = Entry::new();
+        sides_entry.set_hexpand(true);
+
+        polygon_grid.attach(&sides_label, 0, 0, 1, 1);
+        polygon_grid.attach(&sides_entry, 1, 0, 1, 1);
+
+        polygon_frame.set_child(Some(&polygon_grid));
+        content.append(&polygon_frame);
+
         // CAM Properties Section
         let cam_frame = Self::create_section(&t!("CAM Properties"));
         let cam_grid = gtk4::Grid::builder()
@@ -363,6 +390,16 @@ impl PropertiesPanel {
         step_in_unit_label.set_halign(gtk4::Align::End);
         step_in_unit_label.set_xalign(1.0);
 
+        // Ramp Angle
+        let ramp_angle_label = Label::new(Some(&t!("Ramp Angle:")));
+        ramp_angle_label.set_halign(gtk4::Align::Start);
+        let ramp_angle_entry = Entry::new();
+        ramp_angle_entry.set_hexpand(true);
+        let ramp_angle_unit_label = Label::new(Some("deg"));
+        ramp_angle_unit_label.set_width_chars(4);
+        ramp_angle_unit_label.set_halign(gtk4::Align::End);
+        ramp_angle_unit_label.set_xalign(1.0);
+
         // Pocket Strategy
         let strategy_label = Label::new(Some(&t!("Strategy:")));
         strategy_label.set_halign(gtk4::Align::Start);
@@ -372,6 +409,15 @@ impl PropertiesPanel {
         strategy_model.append(&t!("Adaptive"));
         let strategy_combo = DropDown::new(Some(strategy_model), None::<Expression>);
         strategy_combo.set_hexpand(true);
+
+        // Raster Fill (inverse inset)
+        let raster_fill_label = Label::new(Some(&t!("Raster Fill (%):")));
+        raster_fill_label.set_halign(gtk4::Align::Start);
+        let raster_fill_entry = Entry::new();
+        raster_fill_entry.set_hexpand(true);
+        let raster_fill_hint = Label::new(Some("0 = no raster, 100 = full length"));
+        raster_fill_hint.add_css_class("dim-label");
+        raster_fill_hint.set_halign(gtk4::Align::Start);
 
         cam_grid.attach(&op_label, 0, 0, 1, 1);
         cam_grid.attach(&op_type_combo, 1, 0, 1, 1);
@@ -384,8 +430,14 @@ impl PropertiesPanel {
         cam_grid.attach(&step_in_label, 0, 3, 1, 1);
         cam_grid.attach(&step_in_entry, 1, 3, 1, 1);
         cam_grid.attach(&step_in_unit_label, 2, 3, 1, 1);
-        cam_grid.attach(&strategy_label, 0, 4, 1, 1);
-        cam_grid.attach(&strategy_combo, 1, 4, 1, 1);
+        cam_grid.attach(&ramp_angle_label, 0, 4, 1, 1);
+        cam_grid.attach(&ramp_angle_entry, 1, 4, 1, 1);
+        cam_grid.attach(&ramp_angle_unit_label, 2, 4, 1, 1);
+        cam_grid.attach(&strategy_label, 0, 5, 1, 1);
+        cam_grid.attach(&strategy_combo, 1, 5, 1, 1);
+        cam_grid.attach(&raster_fill_label, 0, 6, 1, 1);
+        cam_grid.attach(&raster_fill_entry, 1, 6, 1, 1);
+        cam_grid.attach(&raster_fill_hint, 0, 7, 3, 1);
 
         cam_frame.set_child(Some(&cam_grid));
         content.append(&cam_frame);
@@ -409,6 +461,7 @@ impl PropertiesPanel {
             rot_frame: rot_frame.clone(),
             corner_frame: corner_frame.clone(),
             text_frame: text_frame.clone(),
+            polygon_frame: polygon_frame.clone(),
             cam_frame: cam_frame.clone(),
             empty_label: empty_label.clone(),
             pos_x_entry: pos_x_entry.clone(),
@@ -423,11 +476,14 @@ impl PropertiesPanel {
             font_bold_check: font_bold_check.clone(),
             font_italic_check: font_italic_check.clone(),
             font_size_entry: font_size_entry.clone(),
+            sides_entry: sides_entry.clone(),
             op_type_combo: op_type_combo.clone(),
             depth_entry: depth_entry.clone(),
             step_down_entry: step_down_entry.clone(),
             step_in_entry: step_in_entry.clone(),
+            ramp_angle_entry: ramp_angle_entry.clone(),
             strategy_combo: strategy_combo.clone(),
+            raster_fill_entry: raster_fill_entry.clone(),
             header: header.clone(),
             x_unit_label,
             y_unit_label,
@@ -618,7 +674,7 @@ impl PropertiesPanel {
         let redraw5 = self.redraw_callback.clone();
         let updating5 = self.updating.clone();
 
-        // Rotation changed
+        // Rotation changed (degrees)
         self.rotation_entry.connect_changed(move |entry| {
             if *updating5.borrow() {
                 return;
@@ -626,20 +682,7 @@ impl PropertiesPanel {
             if let Ok(val) = entry.text().parse::<f64>() {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                    let angle = val;
-
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        // Set rotation directly on shape variants that support it
-                        match &mut obj.shape {
-                            Shape::Rectangle(rect) => rect.rotation = angle.to_radians(),
-                            Shape::Circle(circle) => circle.rotation = angle.to_radians(),
-                            Shape::Ellipse(ellipse) => ellipse.rotation = angle.to_radians(),
-                            Shape::Path(path) => path.rotation = angle.to_radians(),
-                            _ => {}
-                        }
-                    }
-                }
+                designer_state.set_selected_rotation(val);
                 drop(designer_state);
                 if let Some(ref cb) = *redraw5.borrow() {
                     cb();
@@ -854,6 +897,38 @@ impl PropertiesPanel {
         });
 
         let state = self.state.clone();
+        let redraw_sides = self.redraw_callback.clone();
+        let updating_sides = self.updating.clone();
+
+        // Sides changed
+        self.sides_entry.connect_changed(move |entry| {
+            if *updating_sides.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<u32>() {
+                if val >= 3 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+                        if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
+                            if let Shape::Polygon(polygon) = &mut obj.shape {
+                                polygon.sides = val;
+                            }
+                        }
+                    }
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_sides.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
         let updating8 = self.updating.clone();
 
         // Operation Type changed
@@ -932,6 +1007,41 @@ impl PropertiesPanel {
         });
 
         let state = self.state.clone();
+        let updating_raster = self.updating.clone();
+
+        // Raster fill changed (percentage 0-100)
+        self.raster_fill_entry.connect_changed(move |entry| {
+            if *updating_raster.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                let clamped = val.clamp(0.0, 100.0);
+                entry.remove_css_class("entry-invalid");
+                let mut designer_state = state.borrow_mut();
+                designer_state.set_selected_raster_fill_ratio(clamped / 100.0);
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let updating_ramp = self.updating.clone();
+
+        // Ramp Angle changed
+        self.ramp_angle_entry.connect_changed(move |entry| {
+            if *updating_ramp.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                entry.remove_css_class("entry-invalid");
+                let mut designer_state = state.borrow_mut();
+                designer_state.set_selected_ramp_angle(val);
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
         let updating12 = self.updating.clone();
 
         // Strategy changed
@@ -988,8 +1098,16 @@ impl PropertiesPanel {
                 let current_cy = (y1 + y2) / 2.0;
 
                 // Calculate scale factors
-                let sx = if current_w.abs() > 1e-6 { width / current_w } else { 1.0 };
-                let sy = if current_h.abs() > 1e-6 { height / current_h } else { 1.0 };
+                let sx = if current_w.abs() > 1e-6 {
+                    width / current_w
+                } else {
+                    1.0
+                };
+                let sy = if current_h.abs() > 1e-6 {
+                    height / current_h
+                } else {
+                    1.0
+                };
 
                 // Scale around current center
                 path.scale(sx, sy, Point::new(current_cx, current_cy));
@@ -1002,6 +1120,17 @@ impl PropertiesPanel {
                 text.y = y;
                 // Width/Height are derived from font size and content, so we don't update them here
                 // unless we want to implement scaling via width/height
+            }
+            Shape::Triangle(triangle) => {
+                triangle.center.x = x;
+                triangle.center.y = y;
+                triangle.width = width;
+                triangle.height = height;
+            }
+            Shape::Polygon(polygon) => {
+                polygon.center.x = x;
+                polygon.center.y = y;
+                polygon.radius = width.min(height) / 2.0;
             }
         }
     }
@@ -1048,7 +1177,9 @@ impl PropertiesPanel {
                     obj.pocket_depth,
                     obj.step_down,
                     obj.step_in,
+                    obj.ramp_angle,
                     obj.pocket_strategy,
+                    obj.raster_fill_ratio,
                 ))
             } else {
                 // Multiple selection - only show CAM properties (use first shape's values)
@@ -1060,12 +1191,24 @@ impl PropertiesPanel {
                     obj.pocket_depth,
                     obj.step_down,
                     obj.step_in,
+                    obj.ramp_angle,
                     obj.pocket_strategy,
+                    obj.raster_fill_ratio,
                 ))
             }
         };
 
-        if let Some((ids, shape_opt, op_type, depth, step_down, step_in, strategy)) = selection_data
+        if let Some((
+            ids,
+            shape_opt,
+            op_type,
+            depth,
+            step_down,
+            step_in,
+            ramp_angle,
+            strategy,
+            raster_fill,
+        )) = selection_data
         {
             // Set flag to prevent feedback loop during updates
             *self.updating.borrow_mut() = true;
@@ -1097,6 +1240,7 @@ impl PropertiesPanel {
                 self.rot_frame.set_visible(false);
                 self.corner_frame.set_visible(false);
                 self.text_frame.set_visible(false);
+                self.polygon_frame.set_visible(false);
                 self.cam_frame.set_visible(true);
             }
 
@@ -1109,9 +1253,11 @@ impl PropertiesPanel {
                 &self.rotation_entry,
                 &self.corner_radius_entry,
                 &self.font_size_entry,
+                &self.sides_entry,
                 &self.depth_entry,
                 &self.step_down_entry,
                 &self.step_in_entry,
+                &self.ramp_angle_entry,
             ] {
                 e.remove_css_class("entry-invalid");
             }
@@ -1130,6 +1276,7 @@ impl PropertiesPanel {
                     Shape::Rectangle(rect) => {
                         self.corner_frame.set_visible(true);
                         self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(rect.center.x as f32, system));
@@ -1158,6 +1305,7 @@ impl PropertiesPanel {
                     Shape::Circle(circle) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(circle.center.x as f32, system));
@@ -1181,6 +1329,7 @@ impl PropertiesPanel {
                     Shape::Ellipse(ellipse) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(ellipse.center.x as f32, system));
@@ -1204,6 +1353,7 @@ impl PropertiesPanel {
                     Shape::Line(line) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(line.start.x as f32, system));
@@ -1217,7 +1367,8 @@ impl PropertiesPanel {
                             (line.end.y - line.start.y) as f32,
                             system,
                         ));
-                        self.rotation_entry.set_text("0.0");
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", line.rotation));
 
                         self.corner_radius_entry.set_sensitive(false);
                         self.is_slot_check.set_sensitive(false);
@@ -1230,6 +1381,7 @@ impl PropertiesPanel {
                     Shape::Path(path) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
 
                         let (x1, y1, x2, y2) = path.bounds();
                         let w = x2 - x1;
@@ -1259,6 +1411,7 @@ impl PropertiesPanel {
                     Shape::Text(text) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(true);
+                        self.polygon_frame.set_visible(false);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(text.x as f32, system));
@@ -1313,6 +1466,55 @@ impl PropertiesPanel {
                         self.font_bold_check.set_active(text.bold);
                         self.font_italic_check.set_active(text.italic);
                     }
+                    Shape::Triangle(triangle) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+
+                        self.pos_x_entry
+                            .set_text(&units::format_length(triangle.center.x as f32, system));
+                        self.pos_y_entry
+                            .set_text(&units::format_length(triangle.center.y as f32, system));
+                        self.width_entry
+                            .set_text(&units::format_length(triangle.width as f32, system));
+                        self.height_entry
+                            .set_text(&units::format_length(triangle.height as f32, system));
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", triangle.rotation.to_degrees()));
+
+                        self.corner_radius_entry.set_sensitive(false);
+                        self.is_slot_check.set_sensitive(false);
+
+                        self.text_entry.set_text("");
+                        self.text_entry.set_sensitive(false);
+                        self.font_size_entry.set_text(&format_font_points(0.0));
+                        self.font_size_entry.set_sensitive(false);
+                    }
+                    Shape::Polygon(polygon) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(true);
+
+                        self.pos_x_entry
+                            .set_text(&units::format_length(polygon.center.x as f32, system));
+                        self.pos_y_entry
+                            .set_text(&units::format_length(polygon.center.y as f32, system));
+                        self.width_entry
+                            .set_text(&units::format_length((polygon.radius * 2.0) as f32, system));
+                        self.height_entry
+                            .set_text(&units::format_length((polygon.radius * 2.0) as f32, system));
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", polygon.rotation.to_degrees()));
+                        self.sides_entry.set_text(&polygon.sides.to_string());
+
+                        self.corner_radius_entry.set_sensitive(false);
+                        self.is_slot_check.set_sensitive(false);
+
+                        self.text_entry.set_text("");
+                        self.text_entry.set_sensitive(false);
+                        self.font_size_entry.set_text(&format_font_points(0.0));
+                        self.font_size_entry.set_sensitive(false);
+                    }
                 }
             } else {
                 // Multiple selection - disable geometry properties
@@ -1348,18 +1550,24 @@ impl PropertiesPanel {
                 .set_text(&units::format_length(step_down as f32, system));
             self.step_in_entry
                 .set_text(&units::format_length(step_in as f32, system));
+            self.ramp_angle_entry
+                .set_text(&format!("{:.1}", ramp_angle));
             self.strategy_combo.set_selected(match strategy {
                 PocketStrategy::Raster { .. } => 0,
                 PocketStrategy::ContourParallel => 1,
                 PocketStrategy::Adaptive => 2,
             });
+            self.raster_fill_entry
+                .set_text(&format!("{:.0}", raster_fill * 100.0));
 
             // Enable CAM controls
             self.op_type_combo.set_sensitive(true);
             self.depth_entry.set_sensitive(true);
             self.step_down_entry.set_sensitive(true);
             self.step_in_entry.set_sensitive(true);
+            self.ramp_angle_entry.set_sensitive(true);
             self.strategy_combo.set_sensitive(true);
+            self.raster_fill_entry.set_sensitive(true);
 
             // Clear flag
             *self.updating.borrow_mut() = false;
@@ -1373,6 +1581,7 @@ impl PropertiesPanel {
             self.rot_frame.set_visible(false);
             self.corner_frame.set_visible(false);
             self.text_frame.set_visible(false);
+            self.polygon_frame.set_visible(false);
             self.cam_frame.set_visible(false);
 
             self.pos_x_entry.set_sensitive(false);
@@ -1391,7 +1600,11 @@ impl PropertiesPanel {
             self.depth_entry.set_sensitive(false);
             self.step_down_entry.set_sensitive(false);
             self.step_in_entry.set_sensitive(false);
+            self.ramp_angle_entry.set_sensitive(false);
             self.strategy_combo.set_sensitive(false);
+            self.raster_fill_entry.set_sensitive(false);
+
+            self.raster_fill_entry.set_text("");
         }
     }
 
@@ -1408,6 +1621,9 @@ impl PropertiesPanel {
             &self.depth_entry,
             &self.step_down_entry,
             &self.step_in_entry,
+            &self.ramp_angle_entry,
+            &self.raster_fill_entry,
+            &self.sides_entry,
         ];
 
         for entry in entries {

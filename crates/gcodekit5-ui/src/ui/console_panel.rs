@@ -386,4 +386,3 @@ impl Default for ConsolePanel {
         Self::new()
     }
 }
-

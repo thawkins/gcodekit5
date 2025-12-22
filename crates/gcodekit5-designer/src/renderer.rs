@@ -7,8 +7,8 @@
 //! - Viewport-based coordinate transformation
 //! - Shape rendering with selection indicators
 
-use crate::{font_manager, Canvas};
 use crate::model::DesignerShape;
+use crate::{font_manager, Canvas};
 use image::{Rgb, RgbImage};
 use rusttype::{point as rt_point, Scale};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
@@ -98,8 +98,8 @@ pub fn render_canvas(
         match &shape_obj.shape {
             crate::model::Shape::Rectangle(rect) => {
                 let rect_path = Rect::from_xywh(
-                    (rect.center.x - rect.width/2.0) as f32,
-                    (rect.center.y - rect.height/2.0) as f32,
+                    (rect.center.x - rect.width / 2.0) as f32,
+                    (rect.center.y - rect.height / 2.0) as f32,
                     rect.width as f32,
                     rect.height as f32,
                 );
@@ -187,6 +187,44 @@ pub fn render_canvas(
                     let mut stroke = Stroke::default();
                     stroke.width = 1.0 / zoom;
                     pixmap.stroke_path(&path, &paint, &stroke, transform, None);
+                }
+            }
+            crate::model::Shape::Triangle(triangle) => {
+                let path = triangle.render();
+                let mut pb = PathBuilder::new();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                pb.close();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
+                }
+            }
+            crate::model::Shape::Polygon(polygon) => {
+                let path = polygon.render();
+                let mut pb = PathBuilder::new();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                pb.close();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
                 }
             }
             crate::model::Shape::Text(text_shape) => {

@@ -3,10 +3,14 @@
 //! Implements save/load functionality for .gck4 (GCodeKit4) design files
 //! using JSON format with complete design state preservation.
 
+use crate::model::{
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
+    DesignTriangle as Triangle,
+};
+use crate::shapes::OperationType;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use crate::shapes::OperationType;
-use crate::model::{DesignCircle as Circle, DesignLine as Line, DesignEllipse as Ellipse, DesignPath as PathShape, DesignText as TextShape, DesignRectangle as Rectangle};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -97,7 +101,17 @@ pub struct ShapeData {
     #[serde(default)]
     pub rotation: f64,
     #[serde(default)]
+    pub ramp_angle: f32,
+    #[serde(default)]
     pub pocket_strategy: PocketStrategy,
+    #[serde(default = "default_raster_fill_ratio")]
+    pub raster_fill_ratio: f64,
+    #[serde(default)]
+    pub sides: u32,
+}
+
+fn default_raster_fill_ratio() -> f64 {
+    0.5
 }
 
 /// Toolpath generation parameters
@@ -215,6 +229,8 @@ impl DesignFile {
             ShapeType::Ellipse => "ellipse",
             ShapeType::Path => "path",
             ShapeType::Text => "text",
+            ShapeType::Triangle => "triangle",
+            ShapeType::Polygon => "polygon",
         };
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
@@ -240,6 +256,12 @@ impl DesignFile {
             (r.corner_radius, r.is_slot)
         } else {
             (0.0, false)
+        };
+
+        let sides = if let Shape::Polygon(p) = &obj.shape {
+            p.sides
+        } else {
+            0
         };
 
         ShapeData {
@@ -271,7 +293,10 @@ impl DesignFile {
             corner_radius,
             is_slot,
             rotation: obj.shape.rotation(),
+            ramp_angle: obj.ramp_angle,
             pocket_strategy: obj.pocket_strategy,
+            raster_fill_ratio: obj.raster_fill_ratio,
+            sides,
         }
     }
 
@@ -298,7 +323,16 @@ impl DesignFile {
                 let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
                 Shape::Ellipse(Ellipse::new(center, data.width / 2.0, data.height / 2.0))
             }
-            "polygon" | "polyline" => {
+            "triangle" => {
+                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                Shape::Triangle(Triangle::new(center, data.width, data.height))
+            }
+            "polygon" => {
+                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let radius = data.width.min(data.height) / 2.0;
+                Shape::Polygon(Polygon::new(center, radius, data.sides))
+            }
+            "polyline" => {
                 let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
                 let radius = data.width.min(data.height) / 2.0;
                 let sides = 6;
@@ -344,6 +378,8 @@ impl DesignFile {
             Shape::Ellipse(s) => s.rotation = data.rotation,
             Shape::Path(s) => s.rotation = data.rotation,
             Shape::Text(s) => s.rotation = data.rotation,
+            Shape::Triangle(s) => s.rotation = data.rotation,
+            Shape::Polygon(s) => s.rotation = data.rotation,
         }
 
         let operation_type = match data.operation_type.as_str() {
@@ -358,6 +394,8 @@ impl DesignFile {
             crate::model::ShapeType::Ellipse => "Ellipse",
             crate::model::ShapeType::Path => "Path",
             crate::model::ShapeType::Text => "Text",
+            crate::model::ShapeType::Triangle => "Triangle",
+            crate::model::ShapeType::Polygon => "Polygon",
         };
 
         Ok(DrawingObject {
@@ -376,7 +414,9 @@ impl DesignFile {
             start_depth: data.start_depth,
             step_down: data.step_down,
             step_in: data.step_in,
+            ramp_angle: data.ramp_angle,
             pocket_strategy: data.pocket_strategy,
+            raster_fill_ratio: data.raster_fill_ratio,
         })
     }
 }

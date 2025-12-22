@@ -1,5 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for gcodekit5-designer
 #![allow(dead_code)]
 
 mod designer_adaptive_integration;

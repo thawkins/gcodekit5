@@ -1,10 +1,13 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Test for handle drag position tracking bug fix
-//! Verifies that dragging different handles uses current handle position,
-//! not the position of the first handle used.
+// Test for handle drag position tracking bug fix
+// Verifies that dragging different handles uses current handle position,
+// not the position of the first handle used.
 
+use gcodekit5_designer::model::{DesignerShape, Shape};
 use gcodekit5_designer::{Canvas, Point};
-use gcodekit5_designer::model::DesignerShape;
+
+fn shape_bounds(shape: &Shape) -> (f64, f64, f64, f64) {
+    shape.bounds()
+}
 
 #[test]
 fn test_single_handle_resize() {
@@ -21,7 +24,7 @@ fn test_single_handle_resize() {
     if let Some(selected_id) = canvas.selected_id() {
         for obj in canvas.shapes() {
             if obj.id == selected_id {
-                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let (x1, y1, x2, y2) = shape_bounds(&obj.shape);
                 assert!((x1 - 110.0).abs() < 0.1, "x1 should be 110, got {}", x1);
                 assert!((y1 - 110.0).abs() < 0.1, "y1 should be 110, got {}", y1);
                 assert!((x2 - 200.0).abs() < 0.1, "x2 should be 200, got {}", x2);
@@ -46,7 +49,7 @@ fn test_sequential_handle_drags() {
     if let Some(selected_id) = canvas.selected_id() {
         for obj in canvas.shapes() {
             if obj.id == selected_id {
-                let (x1, y1, _x2, _y2) = obj.shape.bounds();
+                let (x1, y1, _x2, _y2) = shape_bounds(&obj.shape);
                 assert!((x1 - 110.0).abs() < 0.1);
                 assert!((y1 - 110.0).abs() < 0.1);
             }
@@ -62,7 +65,7 @@ fn test_sequential_handle_drags() {
     if let Some(selected_id) = canvas.selected_id() {
         for obj in canvas.shapes() {
             if obj.id == selected_id {
-                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let (x1, y1, x2, y2) = shape_bounds(&obj.shape);
                 assert!(
                     (x1 - 110.0).abs() < 0.1,
                     "After 2nd drag: x1 should be 110, got {}",
@@ -104,7 +107,7 @@ fn test_top_right_handle_drag() {
     if let Some(selected_id) = canvas.selected_id() {
         for obj in canvas.shapes() {
             if obj.id == selected_id {
-                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let (x1, y1, x2, y2) = shape_bounds(&obj.shape);
                 assert!((x1 - 100.0).abs() < 0.1, "x1 should be 100, got {}", x1);
                 assert!((y1 - 90.0).abs() < 0.1, "y1 should be 90, got {}", y1);
                 assert!((x2 - 210.0).abs() < 0.1, "x2 should be 210, got {}", x2);
@@ -130,7 +133,7 @@ fn test_bottom_left_handle_drag() {
     if let Some(selected_id) = canvas.selected_id() {
         for obj in canvas.shapes() {
             if obj.id == selected_id {
-                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let (x1, y1, x2, y2) = shape_bounds(&obj.shape);
                 assert!((x1 - 90.0).abs() < 0.1, "x1 should be 90, got {}", x1);
                 assert!((y1 - 100.0).abs() < 0.1, "y1 should be 100, got {}", y1);
                 assert!((x2 - 200.0).abs() < 0.1, "x2 should be 200, got {}", x2);
@@ -159,7 +162,7 @@ fn test_alternating_corner_drags_no_jump() {
     if let Some(selected_id) = canvas.selected_id() {
         for obj in canvas.shapes() {
             if obj.id == selected_id {
-                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let (x1, y1, x2, y2) = shape_bounds(&obj.shape);
                 assert!(
                     (x1 - 105.0).abs() < 0.1,
                     "No jump: x1 should be 105, got {}",

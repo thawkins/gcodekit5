@@ -304,12 +304,9 @@ impl CommunicatorListener for ConsoleListener {
 
             // Check for startup message (single line, immediate detection)
             if (trimmed.contains("Grbl") || trimmed.contains("grbl")) && trimmed.contains("help") {
-                
                 use gcodekit5_communication::FirmwareDetector;
                 match FirmwareDetector::parse_grbl_startup(trimmed) {
                     Ok(detection) => {
-                        
-
                         // Store in shared state if available
                         if let Some(ref fw_state) = self.detected_firmware {
                             *fw_state.lock().unwrap() = Some(detection.clone());
@@ -345,12 +342,10 @@ impl CommunicatorListener for ConsoleListener {
             // Format: [VER:...]\n[OPT:...]\nok
             if trimmed.contains("[VER:") && trimmed.contains("[OPT:") && trimmed.contains("ok") {
                 // Complete $I response in one chunk
-                
+
                 use gcodekit5_communication::FirmwareDetector;
                 match FirmwareDetector::parse_grbl_version_info(trimmed) {
                     Ok(detection) => {
-                        
-
                         // Store in shared state if available
                         if let Some(ref fw_state) = self.detected_firmware {
                             *fw_state.lock().unwrap() = Some(detection.clone());
@@ -393,7 +388,13 @@ impl CommunicatorListener for ConsoleListener {
 
             // Suppress raw "ok" messages as they are now handled by the machine callback
             // which pairs them with the sent command.
-            if trimmed == "ok" || trimmed == "ok\nok" || trimmed == "ok\nok\nok" || trimmed == "ok\n\nok" || trimmed == "ok\n\nok\n\nok" || trimmed == "ok\n\nok\n\nok\n\nok" {
+            if trimmed == "ok"
+                || trimmed == "ok\nok"
+                || trimmed == "ok\nok\nok"
+                || trimmed == "ok\n\nok"
+                || trimmed == "ok\n\nok\n\nok"
+                || trimmed == "ok\n\nok\n\nok\n\nok"
+            {
                 return;
             }
 
@@ -417,7 +418,7 @@ impl CommunicatorListener for ConsoleListener {
             if let Some(idx) = clean_line.find('(') {
                 clean_line.truncate(idx);
             }
-            
+
             for token in clean_line.split_whitespace() {
                 if token.len() > 1 {
                     let first_char = token.chars().next().unwrap();
@@ -438,7 +439,7 @@ impl CommunicatorListener for ConsoleListener {
                 // Status query - don't log to console
                 return;
             }
-            
+
             // Suppress streamed G-code commands here as they are logged by the machine callback
             // when the response is received (Command => Result format).
             // We only want to log manual commands or commands not tracked by the send state.
@@ -449,34 +450,34 @@ impl CommunicatorListener for ConsoleListener {
             // The issue is that `on_data_sent` logs immediately, while `machine.rs` logs on ack.
             // If we want to avoid duplicates for streamed commands, we should suppress here if it's part of a stream.
             // But `ConsoleListener` doesn't know about `GcodeSendState`.
-            
+
             // For now, let's just suppress all sent data logging here, and rely on:
             // 1. `machine.rs` logging `Command => Result` for everything sent via `send_command` or the stream.
             // 2. `main.rs` logging `>>> Command` for manual commands sent via the console input.
-            
+
             // Actually, `machine.rs` only logs if it finds the command in `sent_lines`.
             // Manual commands sent via `send_command` in `main.rs` are NOT added to `sent_lines` currently?
             // Let's check `main.rs`.
-            
+
             // In `main.rs`:
             // main_window.on_send_command(move |command: slint::SharedString| {
             //     ...
             //     console_manager_clone.add_message(DeviceMessageType::Command, format!(">>> {}", cmd));
             //     ...
             // });
-            
+
             // So manual console commands are logged with `>>>`.
-            
+
             // Jog commands in `machine.rs` are now added to `sent_lines`.
-            
+
             // Streamed commands in `machine.rs` are added to `sent_lines`.
-            
+
             // So `on_data_sent` here is likely redundant and causing double logging or noise.
             // Let's disable it or make it very selective.
-            
+
             // If we disable it, we lose logging for anything sent that ISN'T tracked elsewhere.
             // But most things are tracked.
-            
+
             // Let's just return for now to reduce noise as requested.
             return;
 

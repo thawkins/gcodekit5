@@ -1,5 +1,5 @@
-use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::canvas::Canvas;
+use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::model::Point;
 
 #[test]

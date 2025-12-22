@@ -4,15 +4,21 @@
 use crate::commands::*;
 use crate::{
     canvas::DrawingObject,
-    model::{DesignPath as PathShape, Shape, DesignText as TextShape, DesignerShape},
+    model::{DesignPath as PathShape, DesignText as TextShape, DesignerShape, Shape},
+    ops::{perform_boolean, BooleanOp},
     shapes::OperationType,
     stock_removal::{SimulationResult, StockMaterial},
-    ops::{perform_boolean, BooleanOp},
     Canvas, Circle, DrawingMode, Ellipse, Line, Point, Rectangle, ToolpathGenerator,
     ToolpathToGcode,
 };
 use gcodekit5_core::Units;
 use tracing::error;
+
+#[derive(Copy, Clone)]
+enum MirrorAxis {
+    X,
+    Y,
+}
 
 /// Tool settings for the designer
 #[derive(Clone, Debug)]
@@ -85,7 +91,9 @@ impl DesignerState {
             clipboard: Vec::new(),
             default_properties_shape: crate::canvas::DrawingObject::new(
                 0,
-                crate::model::Shape::Rectangle(crate::model::DesignRectangle::new(0.0, 0.0, 0.0, 0.0)),
+                crate::model::Shape::Rectangle(crate::model::DesignRectangle::new(
+                    0.0, 0.0, 0.0, 0.0,
+                )),
             ),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -521,6 +529,59 @@ impl DesignerState {
         self.push_command(cmd);
     }
 
+    /// Mirrors selected shapes across the global X axis (horizontal flip).
+    /// Single selections mirror about their own center; multiple selections mirror about
+    /// the collective bounding box center.
+    pub fn mirror_selected_x(&mut self) {
+        self.mirror_selected(MirrorAxis::X);
+    }
+
+    /// Mirrors selected shapes across the global Y axis (vertical flip).
+    /// Single selections mirror about their own center; multiple selections mirror about
+    /// the collective bounding box center.
+    pub fn mirror_selected_y(&mut self) {
+        self.mirror_selected(MirrorAxis::Y);
+    }
+
+    fn mirror_selected(&mut self, axis: MirrorAxis) {
+        let mut selected = Vec::new();
+        for obj in self.canvas.shapes().filter(|s| s.selected) {
+            selected.push(obj.clone());
+        }
+
+        if selected.is_empty() {
+            return;
+        }
+
+        let (center_x, center_y) = match self.canvas.selection_bounds() {
+            Some((min_x, min_y, max_x, max_y)) => ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0),
+            None => return,
+        };
+
+        let (sx, sy, name) = match axis {
+            MirrorAxis::X => (1.0, -1.0, "Mirror X"),
+            MirrorAxis::Y => (-1.0, 1.0, "Mirror Y"),
+        };
+
+        let mut commands = Vec::new();
+        for obj in selected {
+            let mut new_obj = obj.clone();
+            new_obj.shape.scale(sx, sy, Point::new(center_x, center_y));
+
+            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                id: obj.id,
+                old_state: obj,
+                new_state: new_obj,
+            }));
+        }
+
+        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+            commands,
+            name: name.to_string(),
+        });
+        self.push_command(cmd);
+    }
+
     /// Clears all shapes from the canvas.
     pub fn clear_canvas(&mut self) {
         if self.canvas.shape_count() > 0 {
@@ -568,13 +629,17 @@ impl DesignerState {
         }
 
         let mut result_shape = selected[0].shape.clone();
-        
+
         for i in 1..selected.len() {
-            result_shape = perform_boolean(&result_shape, &selected[i].shape, match op {
-                BooleanOp::Union => BooleanOp::Union,
-                BooleanOp::Difference => BooleanOp::Difference,
-                BooleanOp::Intersection => BooleanOp::Intersection,
-            });
+            result_shape = perform_boolean(
+                &result_shape,
+                &selected[i].shape,
+                match op {
+                    BooleanOp::Union => BooleanOp::Union,
+                    BooleanOp::Difference => BooleanOp::Difference,
+                    BooleanOp::Intersection => BooleanOp::Intersection,
+                },
+            );
         }
 
         let new_id = self.canvas.generate_id();
@@ -627,6 +692,10 @@ impl DesignerState {
             self.toolpath_generator.set_cut_depth(shape.pocket_depth);
 
             self.toolpath_generator.set_step_in(shape.step_in as f64);
+            self.toolpath_generator
+                .set_ramp_angle(shape.ramp_angle as f64);
+            self.toolpath_generator
+                .set_raster_fill_ratio(shape.raster_fill_ratio);
 
             let (toolpaths, pocket_fallback_to_profile) = match &shape.shape {
                 crate::model::Shape::Rectangle(rect) => {
@@ -723,6 +792,44 @@ impl DesignerState {
                         (
                             self.toolpath_generator
                                 .generate_text_toolpath(text, shape.step_down as f64),
+                            false,
+                        )
+                    }
+                }
+                crate::model::Shape::Triangle(triangle) => {
+                    if shape.operation_type == OperationType::Pocket {
+                        (
+                            self.toolpath_generator.generate_triangle_pocket(
+                                triangle,
+                                shape.pocket_depth,
+                                shape.step_down as f64,
+                                shape.step_in as f64,
+                            ),
+                            false,
+                        )
+                    } else {
+                        (
+                            self.toolpath_generator
+                                .generate_triangle_contour(triangle, shape.step_down as f64),
+                            false,
+                        )
+                    }
+                }
+                crate::model::Shape::Polygon(polygon) => {
+                    if shape.operation_type == OperationType::Pocket {
+                        (
+                            self.toolpath_generator.generate_polygon_pocket(
+                                polygon,
+                                shape.pocket_depth,
+                                shape.step_down as f64,
+                                shape.step_in as f64,
+                            ),
+                            false,
+                        )
+                    } else {
+                        (
+                            self.toolpath_generator
+                                .generate_polygon_contour(polygon, shape.step_down as f64),
                             false,
                         )
                     }
@@ -825,6 +932,18 @@ impl DesignerState {
                         text.text, text.font_size
                     ));
                     gcode.push_str(&format!("; Position: ({:.3}, {:.3})\n", text.x, text.y));
+                }
+                crate::model::Shape::Triangle(triangle) => {
+                    gcode.push_str(&format!(
+                        "; Triangle: Center ({:.3}, {:.3}), Width: {:.3}mm, Height: {:.3}mm\n",
+                        triangle.center.x, triangle.center.y, triangle.width, triangle.height
+                    ));
+                }
+                crate::model::Shape::Polygon(polygon) => {
+                    gcode.push_str(&format!(
+                        "; Polygon: Center ({:.3}, {:.3}), Radius: {:.3}mm, Sides: {}\n",
+                        polygon.center.x, polygon.center.y, polygon.radius, polygon.sides
+                    ));
                 }
             }
 
@@ -1054,6 +1173,26 @@ impl DesignerState {
                 let id = self.canvas.generate_id();
                 let text = TextShape::new("Text".to_string(), x, y, 20.0);
                 let obj = DrawingObject::new(id, Shape::Text(text));
+                let cmd = DesignerCommand::AddShape(AddShape {
+                    id,
+                    object: Some(obj),
+                });
+                self.push_command(cmd);
+            }
+            DrawingMode::Triangle => {
+                let id = self.canvas.generate_id();
+                let triangle = crate::model::DesignTriangle::new(Point::new(x, y), 50.0, 50.0);
+                let obj = DrawingObject::new(id, Shape::Triangle(triangle));
+                let cmd = DesignerCommand::AddShape(AddShape {
+                    id,
+                    object: Some(obj),
+                });
+                self.push_command(cmd);
+            }
+            DrawingMode::Polygon => {
+                let id = self.canvas.generate_id();
+                let polygon = crate::model::DesignPolygon::new(Point::new(x, y), 30.0, 6);
+                let obj = DrawingObject::new(id, Shape::Polygon(polygon));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -1471,6 +1610,30 @@ impl DesignerState {
         }
     }
 
+    pub fn set_selected_ramp_angle(&mut self, ramp_angle: f64) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes().filter(|s| s.selected) {
+            if (obj.ramp_angle as f64 - ramp_angle).abs() > f64::EPSILON {
+                let mut new_obj = obj.clone();
+                new_obj.ramp_angle = ramp_angle as f32;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Ramp Angle".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
     pub fn set_selected_start_depth(&mut self, start_depth: f64) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes().filter(|s| s.selected) {
@@ -1611,6 +1774,11 @@ impl DesignerState {
                     let new_center_x = center_x + distance * new_angle.cos();
                     let new_center_y = center_y + distance * new_angle.sin();
 
+                    // Rotate line geometry about its own center before translation
+                    if let crate::model::Shape::Line(line) = &mut new_obj.shape {
+                        line.rotate_about(angle_delta, shape_center_x, shape_center_y);
+                    }
+
                     // Translate shape to new position
                     let trans_x = new_center_x - shape_center_x;
                     let trans_y = new_center_y - shape_center_y;
@@ -1620,10 +1788,12 @@ impl DesignerState {
                     match &mut new_obj.shape {
                         crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Circle(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Line(s) => s.rotation += angle_delta,
+                        crate::model::Shape::Line(s) => s.rotation = s.current_angle_degrees(),
                         crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
                         crate::model::Shape::Path(s) => s.rotation += angle_delta,
                         crate::model::Shape::Text(s) => s.rotation += angle_delta,
+                        crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
+                        crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -1649,10 +1819,20 @@ impl DesignerState {
                     match &mut new_obj.shape {
                         crate::model::Shape::Rectangle(s) => s.rotation = rotation,
                         crate::model::Shape::Circle(s) => s.rotation = rotation,
-                        crate::model::Shape::Line(s) => s.rotation = rotation,
+                        crate::model::Shape::Line(s) => {
+                            let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
+                            let cx = (sx1 + sx2) / 2.0;
+                            let cy = (sy1 + sy2) / 2.0;
+                            let current = s.current_angle_degrees();
+                            let delta = rotation - current;
+                            s.rotate_about(delta, cx, cy);
+                            s.rotation = rotation;
+                        }
                         crate::model::Shape::Ellipse(s) => s.rotation = rotation,
                         crate::model::Shape::Path(s) => s.rotation = rotation,
                         crate::model::Shape::Text(s) => s.rotation = rotation,
+                        crate::model::Shape::Triangle(s) => s.rotation = rotation,
+                        crate::model::Shape::Polygon(s) => s.rotation = rotation,
                     }
 
                     if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
@@ -1805,6 +1985,31 @@ impl DesignerState {
             let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
                 name: "Change Pocket Strategy".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
+    pub fn set_selected_raster_fill_ratio(&mut self, ratio: f64) {
+        let clamped = ratio.clamp(0.0, 1.0);
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes().filter(|s| s.selected) {
+            if (obj.raster_fill_ratio - clamped).abs() > f64::EPSILON {
+                let mut new_obj = obj.clone();
+                new_obj.raster_fill_ratio = clamped;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Raster Fill".to_string(),
             });
             self.push_command(cmd);
         }
@@ -1992,7 +2197,6 @@ impl DesignerState {
                     // For circular arrays, rotate the shape to match the position angle
                     if is_circular {
                         if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-                            // Calculate angle of this copy
                             let angle_step = params.angle_step();
                             let angle_delta = if params.clockwise {
                                 -(i as f64) * angle_step
@@ -2007,6 +2211,8 @@ impl DesignerState {
                                 crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Path(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Text(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                             }
                         }
                     }
@@ -2044,6 +2250,8 @@ impl DesignerState {
                                 crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Path(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Text(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                             }
                         }
                     }

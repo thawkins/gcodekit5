@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, ButtonsType, CheckButton, ComboBoxText, Entry, Frame, Grid, Image, Label,
     ListBox, ListBoxRow, MessageDialog, MessageType, Orientation, Paned, PolicyType, ResponseType,
-    ScrolledWindow, SearchEntry, SpinButton, SelectionMode, Stack, StackSwitcher, TextView,
+    ScrolledWindow, SearchEntry, SelectionMode, SpinButton, Stack, StackSwitcher, TextView,
     WrapMode,
 };
 use std::cell::{Cell, RefCell};

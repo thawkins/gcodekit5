@@ -1,13 +1,14 @@
 //! Canvas for drawing and manipulating shapes.
 
 use super::pocket_operations::PocketStrategy;
-use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
-    DesignRectangle as Rectangle, DesignText as TextShape, DesignerShape, Point, Shape, ShapeType,
-};
 use super::shapes::OperationType;
 use super::spatial_index::Bounds;
 use super::viewport::Viewport;
+use crate::model::{
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
+    DesignTriangle as Triangle, DesignerShape, Point, Shape, ShapeType,
+};
 use crate::selection_manager::SelectionManager;
 use crate::shape_store::ShapeStore;
 use crate::spatial_manager::SpatialManager;
@@ -55,6 +56,8 @@ pub enum DrawingMode {
     Ellipse,
     Polyline,
     Text,
+    Triangle,
+    Polygon,
     Pan,
 }
 
@@ -72,7 +75,9 @@ pub struct DrawingObject {
     pub start_depth: f64,
     pub step_down: f32,
     pub step_in: f32,
+    pub ramp_angle: f32,
     pub pocket_strategy: PocketStrategy,
+    pub raster_fill_ratio: f64,
 }
 
 impl DrawingObject {
@@ -85,6 +90,8 @@ impl DrawingObject {
             ShapeType::Ellipse => "Ellipse",
             ShapeType::Path => "Path",
             ShapeType::Text => "Text",
+            ShapeType::Triangle => "Triangle",
+            ShapeType::Polygon => "Polygon",
         }
         .to_string();
 
@@ -100,7 +107,9 @@ impl DrawingObject {
             start_depth: 0.0,
             step_down: 0.0,
             step_in: 0.0,
+            ramp_angle: 0.0,
             pocket_strategy: PocketStrategy::ContourParallel,
+            raster_fill_ratio: 0.5,
         }
     }
 }
@@ -119,7 +128,9 @@ impl Clone for DrawingObject {
             start_depth: self.start_depth,
             step_down: self.step_down,
             step_in: self.step_in,
+            ramp_angle: self.ramp_angle,
             pocket_strategy: self.pocket_strategy,
+            raster_fill_ratio: self.raster_fill_ratio,
         }
     }
 }
@@ -203,6 +214,31 @@ impl Canvas {
         self.shape_store.get(id)
     }
 
+    /// Returns the axis-aligned bounding box of all selected shapes.
+    /// Returns `None` when no shapes are selected.
+    pub fn selection_bounds(&self) -> Option<(f64, f64, f64, f64)> {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        let mut has_selected = false;
+
+        for obj in self.shape_store.iter().filter(|o| o.selected) {
+            let (x1, y1, x2, y2) = obj.shape.bounds();
+            min_x = min_x.min(x1);
+            min_y = min_y.min(y1);
+            max_x = max_x.max(x2);
+            max_y = max_y.max(y2);
+            has_selected = true;
+        }
+
+        if has_selected {
+            Some((min_x, min_y, max_x, max_y))
+        } else {
+            None
+        }
+    }
+
     /// Adds a rectangle to the canvas.
     pub fn add_rectangle(&mut self, x: f64, y: f64, width: f64, height: f64) -> u64 {
         let id = self.shape_store.generate_id();
@@ -281,6 +317,30 @@ impl Canvas {
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.shape_store
             .insert(id, DrawingObject::new(id, Shape::Text(shape)));
+        self.spatial_manager
+            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        id
+    }
+
+    /// Adds a triangle to the canvas.
+    pub fn add_triangle(&mut self, center: Point, width: f64, height: f64) -> u64 {
+        let id = self.shape_store.generate_id();
+        let triangle = Triangle::new(center, width, height);
+        let (min_x, min_y, max_x, max_y) = triangle.bounds();
+        self.shape_store
+            .insert(id, DrawingObject::new(id, Shape::Triangle(triangle)));
+        self.spatial_manager
+            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        id
+    }
+
+    /// Adds a polygon to the canvas.
+    pub fn add_polygon(&mut self, center: Point, radius: f64, sides: u32) -> u64 {
+        let id = self.shape_store.generate_id();
+        let polygon = Polygon::new(center, radius, sides);
+        let (min_x, min_y, max_x, max_y) = polygon.bounds();
+        self.shape_store
+            .insert(id, DrawingObject::new(id, Shape::Polygon(polygon)));
         self.spatial_manager
             .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
@@ -732,7 +792,9 @@ impl Canvas {
                 start_depth: obj.start_depth,
                 step_down: obj.step_down,
                 step_in: obj.step_in,
+                ramp_angle: obj.ramp_angle,
                 pocket_strategy: obj.pocket_strategy,
+                raster_fill_ratio: obj.raster_fill_ratio,
             };
 
             self.shape_store.insert(id, new_obj);
@@ -920,12 +982,23 @@ impl Canvas {
                     text.text.clone(),
                     snapped_x1,
                     snapped_y1,
-                    text.font_size, // Keep font size? Or scale it?
-                                    // Original code kept font size but moved position?
-                                    // Original code used `ShapeType::Text` match arm which was missing in `snap_selected_to_mm`?
-                                    // Wait, `snap_selected_to_mm` in `canvas.rs` had `ShapeType::Text`?
-                                    // Let's check.
+                    text.font_size,
                 )),
+                Shape::Triangle(_triangle) => {
+                    let center = Point::new(
+                        snapped_x1 + snapped_width / 2.0,
+                        snapped_y1 + snapped_height / 2.0,
+                    );
+                    Shape::Triangle(Triangle::new(center, snapped_width, snapped_height))
+                }
+                Shape::Polygon(polygon) => {
+                    let center = Point::new(
+                        snapped_x1 + snapped_width / 2.0,
+                        snapped_y1 + snapped_height / 2.0,
+                    );
+                    let radius = snapped_width.min(snapped_height) / 2.0;
+                    Shape::Polygon(Polygon::new(center, radius, polygon.sides))
+                }
             };
 
             let mut new_obj = obj.clone();
@@ -1023,6 +1096,25 @@ impl Canvas {
                             shape.clone()
                         }
                     }
+                    ShapeType::Triangle => {
+                        let center = Point::new(
+                            snapped_x1 + snapped_width / 2.0,
+                            snapped_y1 + snapped_height / 2.0,
+                        );
+                        Shape::Triangle(Triangle::new(center, snapped_width, snapped_height))
+                    }
+                    ShapeType::Polygon => {
+                        if let Some(poly) = shape.as_any().downcast_ref::<Polygon>() {
+                            let radius = snapped_width.min(snapped_height) / 2.0;
+                            let center = Point::new(
+                                snapped_x1 + snapped_width / 2.0,
+                                snapped_y1 + snapped_height / 2.0,
+                            );
+                            Shape::Polygon(Polygon::new(center, radius, poly.sides))
+                        } else {
+                            shape.clone()
+                        }
+                    }
                 };
                 obj.shape = new_shape;
 
@@ -1050,8 +1142,6 @@ impl Canvas {
         update_position: bool,
         update_size: bool,
     ) -> Vec<(u64, DrawingObject)> {
-        
-
         let mut updates = Vec::new();
 
         // 1. Calculate union bounding box of all selected items
@@ -1135,8 +1225,6 @@ impl Canvas {
         update_position: bool,
         update_size: bool,
     ) -> bool {
-        
-
         // 1. Calculate union bounding box
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;

@@ -1,6 +1,5 @@
-use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::import::SvgImporter;
-use gcodekit5_designer::shapes::Rectangle;
+use gcodekit5_designer::Rectangle;
 
 #[test]
 fn test_svg_import_mirroring() {
@@ -32,12 +31,12 @@ fn test_svg_import_mirroring() {
 
     for shape in design.shapes {
         if let Some(rect) = shape.as_any().downcast_ref::<Rectangle>() {
-            // Check for Rect 1 moved to 30-40 (y=30)
-            if (rect.y - 30.0).abs() < 0.001 && (rect.height - 10.0).abs() < 0.001 {
+            // Mirror is around y=25; centers should be at 35 and 15 after mirroring
+            let center_y = rect.center.y;
+            if (center_y - 35.0).abs() < 0.001 && (rect.height - 10.0).abs() < 0.001 {
                 found_rect1_moved = true;
             }
-            // Check for Rect 2 moved to 10-20 (y=10)
-            if (rect.y - 10.0).abs() < 0.001 && (rect.height - 10.0).abs() < 0.001 {
+            if (center_y - 15.0).abs() < 0.001 && (rect.height - 10.0).abs() < 0.001 {
                 found_rect2_moved = true;
             }
         }

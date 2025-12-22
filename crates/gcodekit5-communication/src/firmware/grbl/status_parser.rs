@@ -267,7 +267,7 @@ impl StatusParser {
         if let Some(rate_str) = Self::extract_field(status_line, "F:") {
             return rate_str.trim().parse::<f64>().ok();
         }
-        
+
         // If not found, try extracting from FS: field (format: "FS:feed,spindle")
         if let Some(fs_str) = Self::extract_field(status_line, "FS:") {
             let parts: Vec<&str> = fs_str.split(',').collect();
@@ -275,7 +275,7 @@ impl StatusParser {
                 return feed_str.trim().parse::<f64>().ok();
             }
         }
-        
+
         None
     }
 
@@ -286,7 +286,7 @@ impl StatusParser {
         if let Some(speed_str) = Self::extract_field(status_line, "S:") {
             return speed_str.trim().parse::<u32>().ok();
         }
-        
+
         // If not found, try extracting from FS: field (format: "FS:feed,spindle")
         if let Some(fs_str) = Self::extract_field(status_line, "FS:") {
             let parts: Vec<&str> = fs_str.split(',').collect();
@@ -296,7 +296,7 @@ impl StatusParser {
                 }
             }
         }
-        
+
         None
     }
 

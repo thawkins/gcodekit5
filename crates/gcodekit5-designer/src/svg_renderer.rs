@@ -5,8 +5,8 @@
 //! - Shape rendering with selection indicators
 //! - Viewport-based coordinate transformation
 
-use crate::{font_manager, Canvas};
 use crate::model::DesignerShape;
+use crate::{font_manager, Canvas};
 use rusttype::{point as rt_point, OutlineBuilder, Scale};
 
 /// Render crosshair at origin (0,0) as SVG path
@@ -327,10 +327,7 @@ fn rotate_point(x: f64, y: f64, cx: f64, cy: f64, angle_deg: f64) -> (f64, f64) 
 }
 
 /// Render a single shape as SVG path (trait object version)
-fn render_shape_trait(
-    shape: &crate::model::Shape,
-    viewport: &crate::viewport::Viewport,
-) -> String {
+fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::Viewport) -> String {
     // Get shape type and bounding box
     // Use local_bounding_box to find the pivot point (center of unrotated shape)
     let (x1, y1, x2, y2) = shape.bounds();
@@ -341,10 +338,10 @@ fn render_shape_trait(
     match shape {
         crate::model::Shape::Rectangle(rect) => {
             // Use unrotated dimensions di(rect.center.y - rect.height/2.0) from the rect struct
-            let min_x = rect.center.x - rect.width/2.0;
-            let min_y = rect.center.y - rect.height/2.0;
-            let max_x = (rect.center.x - rect.width/2.0) + rect.width;
-            let max_y = (rect.center.y - rect.height/2.0) + rect.height;
+            let min_x = rect.center.x - rect.width / 2.0;
+            let min_y = rect.center.y - rect.height / 2.0;
+            let max_x = (rect.center.x - rect.width / 2.0) + rect.width;
+            let max_y = (rect.center.y - rect.height / 2.0) + rect.height;
 
             let (sx1_raw, sy1_raw) = viewport.world_to_pixel(min_x, min_y);
             let (sx2_raw, sy2_raw) = viewport.world_to_pixel(max_x, max_y);
@@ -509,6 +506,60 @@ fn render_shape_trait(
             }
 
             builder.path
+        }
+        crate::model::Shape::Triangle(triangle) => {
+            let path = triangle.render();
+            let mut path_str = String::new();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => {
+                        let (rx, ry) =
+                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("M {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::Line { to, .. } => {
+                        let (rx, ry) =
+                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("L {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::End { close, .. } => {
+                        if close {
+                            path_str.push_str("Z ");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            path_str
+        }
+        crate::model::Shape::Polygon(polygon) => {
+            let path = polygon.render();
+            let mut path_str = String::new();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => {
+                        let (rx, ry) =
+                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("M {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::Line { to, .. } => {
+                        let (rx, ry) =
+                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("L {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::End { close, .. } => {
+                        if close {
+                            path_str.push_str("Z ");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            path_str
         }
         crate::model::Shape::Path(path_shape) => {
             let mut path_str = String::new();

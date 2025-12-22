@@ -1846,3 +1846,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved coordinate system handling in designer
 - Better focus management across panels
   
+
+## [Unreleased]
+### Added
+- Right Angle Triangle tool in Designer.
+- N-sided Polygon tool in Designer.
+- G-code generation support for Triangle and Polygon shapes (profile and pocket).

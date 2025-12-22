@@ -1,4 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::import::{DxfImporter, FileFormat, SvgImporter};
 
 #[test]

@@ -1,8 +1,6 @@
-use gcodekit5_designer::model::DesignerShape;
-//! # Designer Template Management Tests
-//!
-//! Tests for the design template system including persistence,
-//! search, filtering, and library management.
+// Designer Template Management Tests
+// Tests for the design template system including persistence,
+// search, filtering, and library management.
 
 use gcodekit5_designer::templates::{
     DesignTemplate, DesignTemplateLibrary, TemplateCategory, TemplateManager, TemplatePersistence,

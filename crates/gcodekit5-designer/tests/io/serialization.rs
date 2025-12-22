@@ -1,4 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::serialization::{DesignFile, ShapeData};
 
@@ -42,7 +41,10 @@ fn test_save_and_load() {
         corner_radius: 0.0,
         is_slot: false,
         rotation: 0.0,
+        ramp_angle: 0.0,
         pocket_strategy: PocketStrategy::ContourParallel,
+        raster_fill_ratio: 0.5,
+        sides: 0,
     });
 
     design.save_to_file(&file_path).unwrap();

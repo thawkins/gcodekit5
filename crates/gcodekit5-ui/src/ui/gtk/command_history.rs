@@ -42,7 +42,7 @@ impl CommandHistory {
         }
 
         self.commands.push_back(command);
-        
+
         // Trim to max size
         while self.commands.len() > MAX_HISTORY {
             self.commands.pop_front();
@@ -102,14 +102,14 @@ impl CommandHistory {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("gcodekit5");
-        
+
         fs::create_dir_all(&config_dir).ok();
         config_dir.join("command_history.json")
     }
 
     pub fn load() -> Self {
         let path = Self::get_config_path();
-        
+
         if let Ok(contents) = fs::read_to_string(&path) {
             if let Ok(history) = serde_json::from_str::<Self>(&contents) {
                 return history;
@@ -121,7 +121,7 @@ impl CommandHistory {
 
     pub fn save(&self) {
         let path = Self::get_config_path();
-        
+
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let _ = fs::write(&path, json);
         }
@@ -137,7 +137,7 @@ mod tests {
         let mut history = CommandHistory::new();
         history.add("G0 X10".to_string());
         history.add("G0 Y20".to_string());
-        
+
         assert_eq!(history.commands.len(), 2);
     }
 
@@ -146,7 +146,7 @@ mod tests {
         let mut history = CommandHistory::new();
         history.add("G0 X10".to_string());
         history.add("G0 X10".to_string());
-        
+
         assert_eq!(history.commands.len(), 1);
     }
 
@@ -156,10 +156,10 @@ mod tests {
         history.add("cmd1".to_string());
         history.add("cmd2".to_string());
         history.add("cmd3".to_string());
-        
+
         let prev = history.previous("current");
         assert_eq!(prev, Some("cmd3".to_string()));
-        
+
         let prev = history.previous("current");
         assert_eq!(prev, Some("cmd2".to_string()));
     }
@@ -169,13 +169,13 @@ mod tests {
         let mut history = CommandHistory::new();
         history.add("cmd1".to_string());
         history.add("cmd2".to_string());
-        
+
         history.previous("current");
         history.previous("current");
-        
+
         let next = history.next();
         assert_eq!(next, Some("cmd2".to_string()));
-        
+
         let next = history.next();
         assert_eq!(next, Some("current".to_string()));
     }
@@ -183,11 +183,11 @@ mod tests {
     #[test]
     fn test_max_history() {
         let mut history = CommandHistory::new();
-        
+
         for i in 0..300 {
             history.add(format!("cmd{}", i));
         }
-        
+
         assert_eq!(history.commands.len(), MAX_HISTORY);
         assert_eq!(history.commands[0], "cmd50");
     }

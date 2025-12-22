@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "testshape-rotation",
+    "created": "2025-12-22T05:18:29.570650686Z",
+    "modified": "2025-12-22T05:18:29.570650686Z",
+    "author": "",
+    "description": ""
+  },
+  "viewport": {
+    "zoom": 2.766,
+    "pan_x": 46.10000000000002,
+    "pan_y": 95.06000000000006
+  },
+  "shapes": [
+    {
+      "id": 4,
+      "shape_type": "path",
+      "name": "Path",
+      "x": 17.318978315219766,
+      "y": 20.83718968944744,
+      "width": 104.1665370464325,
+      "height": 103.14126801490784,
+      "points": [],
+      "selected": false,
+      "use_custom_values": false,
+      "operation_type": "pocket",
+      "pocket_depth": 10.0,
+      "start_depth": 0.0,
+      "step_down": 0.05,
+      "step_in": 2.0,
+      "text_content": "",
+      "font_size": 0.0,
+      "font_family": "",
+      "font_bold": false,
+      "font_italic": false,
+      "path_data": "M 17.31898 44.668705 L 17.776894 40.019405 L 19.133045 35.54878 L 21.335312 31.428623 L 27.910412 24.853523 L 32.030567 22.651257 L 36.501194 21.295105 L 41.150494 20.83719 L 45.79979 21.295105 L 50.27042 22.651257 L 54.39057 24.853523 L 58.00192 27.817278 L 72.05626 41.871616 L 75.02001 45.482964 L 77.22228 49.603115 L 78.43502 53.600994 L 121.48551 53.600994 L 121.48551 123.978455 L 49.382298 123.978455 L 49.382298 81.740746 L 46.084904 80.74049 L 41.964752 78.53822 L 38.353405 75.57447 L 24.299067 61.52013 L 21.335312 57.908783 L 19.133045 53.78863 L 17.776894 49.318 L 17.31898 44.668705 Z ",
+      "group_id": null,
+      "corner_radius": 0.0,
+      "is_slot": false,
+      "rotation": 0.7853981633974483,
+      "ramp_angle": 0.2,
+      "pocket_strategy": "Adaptive"
+    }
+  ],
+  "default_properties": null,
+  "toolpath_params": {
+    "feed_rate": 1000.0,
+    "spindle_speed": 3000.0,
+    "tool_diameter": 3.175,
+    "cut_depth": -5.0,
+    "stock_width": 200.0,
+    "stock_height": 200.0,
+    "stock_thickness": 10.0
+  }
+}

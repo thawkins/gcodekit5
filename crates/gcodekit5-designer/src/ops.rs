@@ -1,4 +1,4 @@
-use crate::model::{Shape, DesignerShape, DesignPath};
+use crate::model::{DesignPath, DesignerShape, Shape};
 use csgrs::traits::CSG;
 
 pub enum BooleanOp {

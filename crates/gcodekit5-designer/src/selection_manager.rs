@@ -1,7 +1,7 @@
 use crate::model::DesignerShape;
 use crate::shape_store::ShapeStore;
-use crate::Point;
 use crate::spatial_index::{Bounds, SpatialIndex};
+use crate::Point;
 use std::collections::{HashMap, HashSet};
 
 /// Manages shape selection state and selection operations.

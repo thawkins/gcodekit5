@@ -1,4 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::{FileFormat, SvgImporter};
 
 use std::path::PathBuf;
@@ -138,8 +137,8 @@ fn test_svg_import_nested_groups() {
     assert_eq!(design.shapes.len(), 2);
 }
 
-  #[test]
-  fn test_svg_import_tigershead_asset_has_shapes() {
+#[test]
+fn test_svg_import_tigershead_asset_has_shapes() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let svg_path = manifest_dir.join("../../assets/svg/tigershead.svg");
     let svg_content = std::fs::read_to_string(svg_path).expect("read tigershead.svg");
@@ -150,7 +149,7 @@ fn test_svg_import_nested_groups() {
     assert!(result.is_ok());
     let design = result.unwrap();
     assert!(
-      !design.shapes.is_empty(),
-      "expected at least one imported shape"
+        !design.shapes.is_empty(),
+        "expected at least one imported shape"
     );
-  }
+}

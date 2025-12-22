@@ -14,6 +14,9 @@
 - **GTK/Cairo**: Uses Screen coordinates (Y-down).
 - **Transformation**: Always handle Y-flip in the `Viewport` logic.
 
+## Notes / Learnings
+- Cairo text drawing with a Y-flip needs the rotation angle negated before flipping Y to match model/G-code orientation.
+
 ## SourceView5 Search Implementation
 - **SearchContext**: The `SearchContext` is central to search operations. It runs asynchronously.
 - **Counting Matches**: To implement "n of m" (current match index of total matches), you must iterate through occurrences. `context.forward()` and `context.backward()` are useful but require careful handling of iterators.
@@ -169,3 +172,48 @@ When working with external crates that expose opaque types (private fields) but 
   - Pause (!) and Resume (~) are logged.
 
 ## Best Practices
+
+## Toolpath Generation
+- **Ramping Logic**: When implementing ramping (helical entry or ramp along profile), ensure that the Z depth decreases by a non-zero amount in each pass. If the ramp angle is small or segments are short/rapid-only, the Z drop might be negligible, leading to an infinite loop if the loop condition is `current_z > target_z`. Always add a safety break (max loops or max segments) or fallback to standard step-down if progress is stalled.
+- **Pocket Ramping**: For pockets, ramping is typically applied to the entry (helical entry) rather than the entire clearing path. Use `ToolpathSegment` with `start_z` and `z_depth` to define 3D moves (helical arcs or linear ramps).
+- **Rotated Shapes**: Toolpath generation for contours now explicitly handles rotated rectangles and circles by generating geometry in unrotated space and applying the rotation transform to the resulting toolpath segments. This ensures correct offsets and geometry for rotated shapes.
+
+## Toolpath Generation for Rotated Shapes
+- When generating toolpaths for rotated shapes (especially rectangles/slots), ensure that the rotation is applied around the correct center point.
+- For `DesignRectangle`, the vertices are generated relative to the center, so rotation should be applied around `rect.center`.
+- `cavalier_contours` handles offsetting of arbitrary polygons, so as long as the input polygon is correctly rotated and positioned, the output toolpath will be correct.
+- Ensure that `rotate_point` logic matches the rendering logic (usually CCW rotation).
+- Be careful with `Transform` order in `lyon` (usually `T * R` means Rotate then Translate if applied to vectors, or Translate then Rotate if applied to coordinate system? `then_rotate` appends rotation, so `T * R`).
+
+## Ramping and Helical Entry
+- Ramping logic should be applied to the generated toolpath segments.
+- Ensure that ramping doesn't cause infinite loops if the path is too short or step down is too small.
+- Helical entry for pockets requires generating a spiral path.
+
+### Toolpath Generation for Rotated Shapes (Fix)
+- **Issue**: Toolpaths for rotated rectangles were being generated axis-aligned.
+- **Cause**: The `generate_rectangle_pocket` function was correctly rotating vertices, but potentially the `generate_rectangular_pocket` (axis-aligned optimization) was being called incorrectly or the rotation was not being propagated.
+- **Fix**: Verified that `generate_rectangle_pocket` in `toolpath.rs` correctly handles rotation by converting to a polygon and rotating vertices. Added debug logging to trace execution. Ensure that `rect.rotation` is correctly set in the model.
+- **Note**: If `rect.rotation` is 0 but the shape is rotated in the UI, check if the `DesignerShape` wrapper has the rotation but the inner `DesignRectangle` does not. The `DesignerState` updates the inner shape's rotation, so this should be correct.
+
+## Toolpath Generation
+- **Rotation Handling**: The `rotate_point` function in `model.rs` expects rotation in DEGREES, but `lyon` and internal shape rotation are stored in RADIANS. Always convert radians to degrees before calling `rotate_point` (e.g. `rotation.to_degrees()`). Failure to do so results in negligible rotation (e.g. 45 degrees -> 0.785 radians -> 0.785 degrees).
+
+
+## Recent Changes (Designer Tools)
+- Added `DesignTriangle` and `DesignPolygon` shapes.
+- Implemented `DesignerShape` trait for new shapes.
+- Updated `Canvas`, `Renderer`, `SvgRenderer`, and `ToolpathGenerator` to support new shapes.
+- Added UI tools for Triangle and Polygon in `DesignerToolbox`.
+- Updated `PropertiesPanel` to show properties for new shapes.
+- **Icons**: Use standard GTK icons (e.g., `media-playback-start-symbolic` for triangle, `emblem-shared-symbolic` for polygon) when custom SVG resources are not available.
+- **Shape Creation**: Ensure shapes are created within the bounding box defined by the drag start and end points. For regular polygons, calculate the radius such that the shape fits within the box (e.g., `radius = min(width, height) / 2.0`).
+- **Polygon Tool**: Added n-sided polygon tool with configurable side count.
+  - **Fix**: Ensure "Sides" property is visible in inspector when a polygon is selected.
+  - **Fix**: Ensure polygon creation respects the marquee bounds correctly (radius vs diameter).
+  - **Fix**: Polygon rotation offset - Fixed by applying rotation BEFORE translation. When rendering, use `transform.then_rotate(...).then_translate(...)` to rotate around the origin first, then translate to the center position.
+
+## Pocket G-code Generation
+- **Rapid Moves Issue**: When generating raster pockets for polygons, the tool was performing a rapid move to (0,0) between scanlines. This was due to a hardcoded `Point::new(0.0, 0.0)` in the `generate_raster_pocket` function that should have been the last point of the toolpath.
+- **Fix**: Changed line 843 in `pocket_operations.rs` from using a hardcoded origin to using the last point from the toolpath (`toolpath.segments.last().map(|s| s.end).unwrap_or(Point::new(0.0, 0.0))`). This ensures continuous tool movement without unnecessary rapid returns to origin between passes.
+

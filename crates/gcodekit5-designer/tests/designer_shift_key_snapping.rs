@@ -1,6 +1,5 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for shift key snapping behavior in designer
-//! Tests that shift key events are properly detected and trigger snapping to whole mm
+// Integration tests for shift key snapping behavior in designer
+// Tests that shift key events are properly detected and trigger snapping to whole mm
 
 use gcodekit5_designer::{Canvas, Point};
 

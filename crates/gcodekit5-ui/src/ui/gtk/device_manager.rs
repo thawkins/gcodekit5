@@ -90,7 +90,10 @@ impl DeviceManagerWindow {
         let (initial_units, initial_feed_units) =
             if let Ok(path) = SettingsManager::config_file_path() {
                 if let Ok(mgr) = SettingsManager::load_from_file(&path) {
-                    (mgr.config().ui.measurement_system, mgr.config().ui.feed_rate_units)
+                    (
+                        mgr.config().ui.measurement_system,
+                        mgr.config().ui.feed_rate_units,
+                    )
                 } else {
                     (MeasurementSystem::Metric, FeedRateUnits::default())
                 }
@@ -374,22 +377,35 @@ impl DeviceManagerWindow {
         self.edit_z_min_unit.set_text(unit_label);
         self.edit_z_max_unit.set_text(unit_label);
 
-        self.edit_max_feed_rate_unit.set_text(&feed_units.to_string());
+        self.edit_max_feed_rate_unit
+            .set_text(&feed_units.to_string());
 
         let model_opt = self.selected_device.borrow().clone();
         if let Some(profile) = model_opt {
-            self.edit_x_min
-                .set_text(&format_length(profile.x_min.parse::<f32>().unwrap_or(0.0), units));
-            self.edit_x_max
-                .set_text(&format_length(profile.x_max.parse::<f32>().unwrap_or(200.0), units));
-            self.edit_y_min
-                .set_text(&format_length(profile.y_min.parse::<f32>().unwrap_or(0.0), units));
-            self.edit_y_max
-                .set_text(&format_length(profile.y_max.parse::<f32>().unwrap_or(200.0), units));
-            self.edit_z_min
-                .set_text(&format_length(profile.z_min.parse::<f32>().unwrap_or(0.0), units));
-            self.edit_z_max
-                .set_text(&format_length(profile.z_max.parse::<f32>().unwrap_or(100.0), units));
+            self.edit_x_min.set_text(&format_length(
+                profile.x_min.parse::<f32>().unwrap_or(0.0),
+                units,
+            ));
+            self.edit_x_max.set_text(&format_length(
+                profile.x_max.parse::<f32>().unwrap_or(200.0),
+                units,
+            ));
+            self.edit_y_min.set_text(&format_length(
+                profile.y_min.parse::<f32>().unwrap_or(0.0),
+                units,
+            ));
+            self.edit_y_max.set_text(&format_length(
+                profile.y_max.parse::<f32>().unwrap_or(200.0),
+                units,
+            ));
+            self.edit_z_min.set_text(&format_length(
+                profile.z_min.parse::<f32>().unwrap_or(0.0),
+                units,
+            ));
+            self.edit_z_max.set_text(&format_length(
+                profile.z_max.parse::<f32>().unwrap_or(100.0),
+                units,
+            ));
 
             self.edit_max_feed_rate.set_text(&format_feed_rate(
                 profile.max_feed_rate.parse::<f32>().unwrap_or(1000.0),
@@ -1016,7 +1032,8 @@ impl DeviceManagerWindow {
             self.edit_connection_type
                 .set_active_id(Some(profile.connection_type.as_str()));
             self.edit_port.set_text(&profile.port);
-            self.edit_baud_rate.set_active_id(Some(profile.baud_rate.as_str()));
+            self.edit_baud_rate
+                .set_active_id(Some(profile.baud_rate.as_str()));
             self.edit_tcp_port.set_text(profile.tcp_port.trim());
             self.edit_timeout.set_text(profile.timeout_ms.trim());
             self.edit_auto_reconnect.set_active(profile.auto_reconnect);
@@ -1027,7 +1044,8 @@ impl DeviceManagerWindow {
             self.edit_has_laser.set_active(profile.has_laser);
             self.edit_has_coolant.set_active(profile.has_coolant);
             self.edit_max_s_value.set_text(profile.max_s_value.trim());
-            self.edit_spindle_watts.set_text(profile.cnc_spindle_watts.trim());
+            self.edit_spindle_watts
+                .set_text(profile.cnc_spindle_watts.trim());
             self.edit_max_spindle_speed_rpm
                 .set_text(profile.max_spindle_speed_rpm.trim());
             self.edit_laser_watts.set_text(profile.laser_watts.trim());
@@ -1040,7 +1058,7 @@ impl DeviceManagerWindow {
             self.cancel_btn.set_sensitive(true);
             self.delete_btn.set_sensitive(true);
             self.set_active_btn.set_sensitive(!profile.is_active);
-            
+
             // Enable sync button only if a device is connected
             let status = device_status::get_status();
             self.sync_btn.set_sensitive(status.is_connected);
@@ -1052,7 +1070,11 @@ impl DeviceManagerWindow {
             .edit_connection_type
             .active_id()
             .map(|s| s.to_string())
-            .or_else(|| self.edit_connection_type.active_text().map(|s| s.to_string()))
+            .or_else(|| {
+                self.edit_connection_type
+                    .active_text()
+                    .map(|s| s.to_string())
+            })
             .unwrap_or_else(|| "Serial".to_string());
 
         match conn.as_str() {
@@ -1195,14 +1217,15 @@ impl DeviceManagerWindow {
             model.has_spindle = self.edit_has_spindle.is_active();
             model.has_laser = self.edit_has_laser.is_active();
             model.has_coolant = self.edit_has_coolant.is_active();
-            
-            let max_feed_mm_per_min = match parse_feed_rate(&self.edit_max_feed_rate.text(), feed_units) {
-                Ok(v) => v,
-                Err(e) => {
-                    self.show_error_dialog("Invalid Max Feed Rate", &e);
-                    return;
-                }
-            };
+
+            let max_feed_mm_per_min =
+                match parse_feed_rate(&self.edit_max_feed_rate.text(), feed_units) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        self.show_error_dialog("Invalid Max Feed Rate", &e);
+                        return;
+                    }
+                };
             let max_s_value: f32 = match self.edit_max_s_value.text().trim().parse() {
                 Ok(v) => v,
                 Err(_) => {
@@ -1222,16 +1245,17 @@ impl DeviceManagerWindow {
                     }
                 };
 
-                let max_spindle_speed_rpm: u32 = match self.edit_max_spindle_speed_rpm.text().trim().parse() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        self.show_error_dialog(
-                            "Invalid Max Spindle Speed",
-                            "Max spindle speed must be an integer (RPM)",
-                        );
-                        return;
-                    }
-                };
+                let max_spindle_speed_rpm: u32 =
+                    match self.edit_max_spindle_speed_rpm.text().trim().parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            self.show_error_dialog(
+                                "Invalid Max Spindle Speed",
+                                "Max spindle speed must be an integer (RPM)",
+                            );
+                            return;
+                        }
+                    };
 
                 (spindle_watts, max_spindle_speed_rpm)
             } else {
@@ -1285,10 +1309,7 @@ impl DeviceManagerWindow {
             .message_type(MessageType::Question)
             .buttons(gtk4::ButtonsType::YesNo)
             .text("Delete device?")
-            .secondary_text(format!(
-                "Delete “{}”? This cannot be undone.",
-                model.name
-            ))
+            .secondary_text(format!("Delete “{}”? This cannot be undone.", model.name))
             .build();
 
         let view = self.clone();
@@ -1325,7 +1346,7 @@ impl DeviceManagerWindow {
 
     fn sync_from_device(&self) {
         let status = device_status::get_status();
-        
+
         if !status.is_connected {
             self.show_error_dialog("Not Connected", "Please connect to a device first.");
             return;
@@ -1373,8 +1394,14 @@ impl DeviceManagerWindow {
 
         // Update firmware version if available
         if let Some(fw_version) = &status.firmware_version {
-            model.description = format!("{} (Firmware: {})", 
-                model.description.split('(').next().unwrap_or(&model.description).trim(),
+            model.description = format!(
+                "{} (Firmware: {})",
+                model
+                    .description
+                    .split('(')
+                    .next()
+                    .unwrap_or(&model.description)
+                    .trim(),
                 fw_version
             );
         }
@@ -1383,14 +1410,15 @@ impl DeviceManagerWindow {
         *self.selected_device.borrow_mut() = Some(model.clone());
         self.edit_name.set_text(&model.name);
         self.edit_description.set_text(&model.description);
-        
+
         self.refresh_units_display();
-        
+
         self.edit_has_spindle.set_active(model.has_spindle);
         self.edit_has_laser.set_active(model.has_laser);
-        self.edit_max_spindle_speed_rpm.set_text(&model.max_spindle_speed_rpm);
+        self.edit_max_spindle_speed_rpm
+            .set_text(&model.max_spindle_speed_rpm);
         self.edit_max_s_value.set_text(&model.max_s_value);
-        
+
         self.update_capabilities_field_sensitivity();
 
         // Show success message

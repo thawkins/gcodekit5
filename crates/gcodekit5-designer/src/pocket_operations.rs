@@ -3,10 +3,133 @@
 //! Implements pocket milling operations with island detection and offset path generation.
 //! Supports outline pocket and island preservation.
 
-use crate::model::{DesignCircle as Circle, Point, DesignRectangle as Rectangle};
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
+use crate::model::{DesignCircle as Circle, DesignRectangle as Rectangle, Point};
 use cavalier_contours::polyline::{PlineSource, PlineSourceMut, PlineVertex, Polyline};
 use std::f64::consts::PI;
+
+fn add_center_cleanup(
+    toolpath: &mut Toolpath,
+    center: Point,
+    tool_diameter: f64,
+    depth: f64,
+    feed_rate: f64,
+    spindle_speed: u32,
+) {
+    let radius = (tool_diameter * 0.5).max(0.25);
+    // Cross pattern that passes through the exact center to clear any core.
+    let cleanup_points = [
+        Point::new(center.x + radius, center.y),
+        center,
+        Point::new(center.x - radius, center.y),
+        center,
+        Point::new(center.x, center.y + radius),
+        Point::new(center.x, center.y - radius),
+        Point::new(center.x + radius, center.y),
+    ];
+
+    toolpath.add_segment(ToolpathSegment::new(
+        ToolpathSegmentType::RapidMove,
+        Point::new(0.0, 0.0),
+        cleanup_points[0],
+        feed_rate,
+        spindle_speed,
+    ));
+
+    for window in cleanup_points.windows(2) {
+        let mut seg = ToolpathSegment::new(
+            ToolpathSegmentType::LinearMove,
+            window[0],
+            window[1],
+            feed_rate,
+            spindle_speed,
+        );
+        seg.start_z = Some(depth);
+        seg.z_depth = Some(depth);
+        toolpath.add_segment(seg);
+    }
+
+    // Add a small circular sweep to fully wipe the center.
+    let start_pt = Point::new(center.x + radius, center.y);
+
+    // Ensure we start the loop at the right point
+    let mut lead_in = ToolpathSegment::new(
+        ToolpathSegmentType::LinearMove,
+        cleanup_points.last().copied().unwrap_or(start_pt),
+        start_pt,
+        feed_rate,
+        spindle_speed,
+    );
+    lead_in.start_z = Some(depth);
+    lead_in.z_depth = Some(depth);
+    toolpath.add_segment(lead_in);
+
+    let mut current = start_pt;
+    for target in [
+        Point::new(center.x, center.y + radius),
+        Point::new(center.x - radius, center.y),
+        Point::new(center.x, center.y - radius),
+        start_pt,
+    ] {
+        let mut seg = ToolpathSegment::new_arc(
+            ToolpathSegmentType::ArcCCW,
+            current,
+            target,
+            center,
+            feed_rate,
+            spindle_speed,
+        );
+        seg.start_z = Some(depth);
+        seg.z_depth = Some(depth);
+        toolpath.add_segment(seg);
+        current = target;
+    }
+}
+
+fn polygon_centroid(points: &[Point]) -> Option<Point> {
+    if points.len() < 3 {
+        return None;
+    }
+
+    let mut area = 0.0;
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+
+    for i in 0..points.len() - 1 {
+        let p1 = points[i];
+        let p2 = points[i + 1];
+        let cross = p1.x * p2.y - p2.x * p1.y;
+        area += cross;
+        cx += (p1.x + p2.x) * cross;
+        cy += (p1.y + p2.y) * cross;
+    }
+
+    if area.abs() < 1e-6 {
+        return None;
+    }
+
+    area *= 0.5;
+    cx /= 6.0 * area;
+    cy /= 6.0 * area;
+    Some(Point::new(cx, cy))
+}
+
+fn point_in_polygon(poly: &[Point], test: Point) -> bool {
+    // Standard ray casting test.
+    let mut inside = false;
+    let mut j = poly.len().saturating_sub(1);
+    for i in 0..poly.len() {
+        let pi = poly[i];
+        let pj = poly[j];
+        if ((pi.y > test.y) != (pj.y > test.y))
+            && (test.x < (pj.x - pi.x) * (test.y - pi.y) / (pj.y - pi.y + f64::EPSILON) + pi.x)
+        {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
 
 /// Strategy for pocket milling.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -37,6 +160,8 @@ pub struct PocketOperation {
     pub spindle_speed: u32,
     pub climb_milling: bool,
     pub strategy: PocketStrategy,
+    pub ramp_angle: f64,
+    pub raster_fill_ratio: f64,
 }
 
 impl PocketOperation {
@@ -52,6 +177,8 @@ impl PocketOperation {
             spindle_speed: 10000,
             climb_milling: false,
             strategy: PocketStrategy::ContourParallel,
+            ramp_angle: 0.0,
+            raster_fill_ratio: 0.5,
         }
     }
 
@@ -75,6 +202,16 @@ impl PocketOperation {
     /// Sets the pocket strategy.
     pub fn set_strategy(&mut self, strategy: PocketStrategy) {
         self.strategy = strategy;
+    }
+
+    /// Sets the ramp angle in degrees.
+    pub fn set_ramp_angle(&mut self, angle: f64) {
+        self.ramp_angle = angle;
+    }
+
+    /// Sets raster fill percentage where 100 keeps full strokes and 0 removes them.
+    pub fn set_raster_fill_percent(&mut self, percent: f64) {
+        self.raster_fill_ratio = (percent / 100.0).clamp(0.0, 1.0);
     }
 
     /// Calculates the offset distance for the given pass number.
@@ -117,6 +254,149 @@ impl PocketGenerator {
         }
     }
 
+    fn generate_raster_cleanup(
+        &self,
+        vertices: &[Point],
+        depth: f64,
+        angle: f64,
+    ) -> Option<Toolpath> {
+        if vertices.is_empty() {
+            return None;
+        }
+
+        let tool_radius = self.operation.tool_diameter / 2.0;
+        let step = (self.operation.stepover).max(0.1);
+        let inset = step * 0.25; // 25% inset of stroke width on each side to stay off walls
+
+        // Rotate vertices to align with X axis for scanlines.
+        let cos_a = (-angle).to_radians().cos();
+        let sin_a = (-angle).to_radians().sin();
+
+        let rotate = |p: Point| -> Point {
+            Point::new(p.x * cos_a - p.y * sin_a, p.x * sin_a + p.y * cos_a)
+        };
+
+        let inv_rotate = |p: Point| -> Point {
+            let cos_inv = angle.to_radians().cos();
+            let sin_inv = angle.to_radians().sin();
+            Point::new(p.x * cos_inv - p.y * sin_inv, p.x * sin_inv + p.y * cos_inv)
+        };
+
+        let rotated: Vec<Point> = vertices.iter().map(|&p| rotate(p)).collect();
+        if rotated.len() < 3 {
+            return None;
+        }
+
+        let mut min_x = rotated[0].x;
+        let mut min_y = rotated[0].y;
+        let mut max_x = rotated[0].x;
+        let mut max_y = rotated[0].y;
+        for v in &rotated {
+            min_x = min_x.min(v.x);
+            min_y = min_y.min(v.y);
+            max_x = max_x.max(v.x);
+            max_y = max_y.max(v.y);
+        }
+
+        let mut toolpath = Toolpath::new(self.operation.tool_diameter, depth);
+        let mut current_y = min_y + tool_radius + inset;
+        let limit_y = max_y - tool_radius - inset;
+        if current_y > limit_y {
+            return None;
+        }
+        let mut forward = true;
+
+        while current_y <= limit_y {
+            let mut intersections = Vec::new();
+            for i in 0..rotated.len() {
+                let p1 = rotated[i];
+                let p2 = rotated[(i + 1) % rotated.len()];
+                if (p1.y <= current_y && p2.y > current_y)
+                    || (p2.y <= current_y && p1.y > current_y)
+                {
+                    let denom = (p2.y - p1.y).abs();
+                    if denom > 1e-9 {
+                        let x = p1.x + (current_y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+                        intersections.push(x);
+                    }
+                }
+            }
+            intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+            let mut segments = Vec::new();
+            for i in (0..intersections.len()).step_by(2) {
+                if i + 1 < intersections.len() {
+                    let x_start = intersections[i] + tool_radius;
+                    let x_end = intersections[i + 1] - tool_radius;
+                    if x_start < x_end {
+                        let span = x_end - x_start;
+                        let trim = span * (1.0 - self.operation.raster_fill_ratio) / 2.0;
+                        let adj_start = x_start + trim;
+                        let adj_end = x_end - trim;
+                        if adj_start < adj_end {
+                            segments.push((adj_start, adj_end));
+                        }
+                    }
+                }
+            }
+
+            if !forward {
+                segments.reverse();
+            }
+
+            for (start_x, end_x) in segments {
+                let start_rot = Point::new(start_x, current_y);
+                let end_rot = Point::new(end_x, current_y);
+                let start_pt = inv_rotate(start_rot);
+                let end_pt = inv_rotate(end_rot);
+
+                // Skip if outside original polygon (safety check for concave cases)
+                if !point_in_polygon(vertices, start_pt) && !point_in_polygon(vertices, end_pt) {
+                    continue;
+                }
+
+                let needs_rapid = toolpath
+                    .segments
+                    .last()
+                    .map(|s| s.end.distance_to(&start_pt) > self.operation.tool_diameter * 1.5)
+                    .unwrap_or(true);
+
+                if needs_rapid {
+                    let mut rapid = ToolpathSegment::new(
+                        ToolpathSegmentType::RapidMove,
+                        toolpath.segments.last().map(|s| s.end).unwrap_or(start_pt),
+                        start_pt,
+                        self.operation.feed_rate,
+                        self.operation.spindle_speed,
+                    );
+                    rapid.start_z = Some(depth);
+                    rapid.z_depth = Some(depth);
+                    toolpath.add_segment(rapid);
+                }
+
+                let mut cut = ToolpathSegment::new(
+                    ToolpathSegmentType::LinearMove,
+                    start_pt,
+                    end_pt,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
+                cut.start_z = Some(depth);
+                cut.z_depth = Some(depth);
+                toolpath.add_segment(cut);
+            }
+
+            current_y += step;
+            forward = !forward;
+        }
+
+        if toolpath.segments.is_empty() {
+            None
+        } else {
+            Some(toolpath)
+        }
+    }
+
     /// Adds an island to the pocket.
     pub fn add_island(&mut self, island: Island) {
         self.islands.push(island);
@@ -139,6 +419,106 @@ impl PocketGenerator {
             .any(|island| island.contains_point(point))
     }
 
+    fn add_helical_ramp(&self, toolpath: &mut Toolpath, center: Point, start_z: f64, end_z: f64) {
+        let radius = self.operation.tool_diameter / 4.0;
+        let ramp_angle_rad = self.operation.ramp_angle.to_radians();
+        let z_drop_per_rev = 2.0 * PI * radius * ramp_angle_rad.tan();
+
+        if z_drop_per_rev < 0.001 {
+            // Angle too shallow or radius too small, just plunge
+            // Rapid to center
+            toolpath.add_segment(ToolpathSegment::new(
+                ToolpathSegmentType::RapidMove,
+                Point::new(0.0, 0.0),
+                center,
+                self.operation.feed_rate,
+                self.operation.spindle_speed,
+            ));
+            // Plunge
+            let mut plunge = ToolpathSegment::new(
+                ToolpathSegmentType::LinearMove,
+                center,
+                center,
+                self.operation.feed_rate / 2.0,
+                self.operation.spindle_speed,
+            );
+            plunge.start_z = Some(start_z);
+            plunge.z_depth = Some(end_z);
+            toolpath.add_segment(plunge);
+            return;
+        }
+
+        let total_drop = start_z - end_z; // Positive
+        let revs = (total_drop / z_drop_per_rev).ceil() as u32;
+        let actual_drop_per_rev = total_drop / revs as f64;
+
+        // Start point of helix
+        let start_pt = Point::new(center.x + radius, center.y);
+
+        // Rapid to start of helix at start_z
+        let mut rapid = ToolpathSegment::new(
+            ToolpathSegmentType::RapidMove,
+            Point::new(0.0, 0.0),
+            start_pt,
+            self.operation.feed_rate,
+            self.operation.spindle_speed,
+        );
+        rapid.z_depth = Some(start_z);
+        toolpath.add_segment(rapid);
+
+        let mut current_z = start_z;
+        let mut current_pt = start_pt;
+
+        for _ in 0..revs {
+            let next_z = current_z - actual_drop_per_rev;
+
+            // Full circle arc (broken into 2 halves or handled by G-code gen?)
+            // G-code gen handles full circle if start != end? No.
+            // If start == end, it might be full circle.
+            // But here we are spiraling, so Z changes.
+            // Let's do 4 quadrants to be safe and consistent.
+
+            let p1 = Point::new(center.x, center.y + radius);
+            let p2 = Point::new(center.x - radius, center.y);
+            let p3 = Point::new(center.x, center.y - radius);
+            let p4 = Point::new(center.x + radius, center.y);
+
+            let drop_per_quad = actual_drop_per_rev / 4.0;
+
+            let points = [p1, p2, p3, p4];
+            for i in 0..4 {
+                let target = points[i];
+                let target_z = current_z - drop_per_quad * (i as f64 + 1.0);
+
+                let mut arc = ToolpathSegment::new_arc(
+                    ToolpathSegmentType::ArcCCW,
+                    current_pt,
+                    target,
+                    center,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
+                arc.start_z = Some(current_z - drop_per_quad * i as f64);
+                arc.z_depth = Some(target_z);
+                toolpath.add_segment(arc);
+                current_pt = target;
+            }
+            current_z = next_z;
+        }
+
+        // Move to center at bottom
+        let mut to_center = ToolpathSegment::new(
+            ToolpathSegmentType::LinearMove,
+            current_pt,
+            center,
+            self.operation.feed_rate,
+            self.operation.spindle_speed,
+        );
+        to_center.start_z = Some(end_z);
+        to_center.z_depth = Some(end_z);
+        toolpath.add_segment(to_center);
+    }
+
     /// Generates a pocket toolpath for a rectangular outline.
     pub fn generate_rectangular_pocket(&self, rect: &Rectangle, step_down: f64) -> Vec<Toolpath> {
         if let PocketStrategy::ContourParallel = self.operation.strategy {
@@ -155,6 +535,7 @@ impl PocketGenerator {
                 total_depth
             };
             let z_passes = (total_depth / z_step).ceil() as u32;
+            let mut prev_z = self.operation.start_depth;
 
             for z_pass in 1..=z_passes {
                 let current_z =
@@ -165,8 +546,8 @@ impl PocketGenerator {
                 let mut current_offset = half_tool;
 
                 while current_offset < max_offset {
-                    let inset_x = (rect.center.x - rect.width/2.0) + current_offset;
-                    let inset_y = (rect.center.y - rect.height/2.0) + current_offset;
+                    let inset_x = (rect.center.x - rect.width / 2.0) + current_offset;
+                    let inset_y = (rect.center.y - rect.height / 2.0) + current_offset;
                     let inset_width = (rect.width - 2.0 * current_offset).max(0.0);
                     let inset_height = (rect.height - 2.0 * current_offset).max(0.0);
 
@@ -184,13 +565,17 @@ impl PocketGenerator {
 
                     // Add rapid move to start of this loop to avoid cutting across
                     if let Some(first_point) = points.first() {
-                        toolpath.add_segment(ToolpathSegment::new(
-                            ToolpathSegmentType::RapidMove,
-                            Point::new(0.0, 0.0), // Start point ignored for Rapid in current logic? No, it uses end.
-                            *first_point,
-                            self.operation.feed_rate,
-                            self.operation.spindle_speed,
-                        ));
+                        if self.operation.ramp_angle > 0.0 {
+                            self.add_helical_ramp(&mut toolpath, *first_point, prev_z, current_z);
+                        } else {
+                            toolpath.add_segment(ToolpathSegment::new(
+                                ToolpathSegmentType::RapidMove,
+                                Point::new(0.0, 0.0), // Start point ignored for Rapid in current logic? No, it uses end.
+                                *first_point,
+                                self.operation.feed_rate,
+                                self.operation.spindle_speed,
+                            ));
+                        }
                     }
 
                     for window in points.windows(2) {
@@ -212,16 +597,29 @@ impl PocketGenerator {
                     current_offset += self.operation.stepover;
                 }
                 toolpaths.push(toolpath);
+                prev_z = current_z;
             }
 
             toolpaths
         } else {
             // Convert to polygon and use generic generator
             let vertices = vec![
-                Point::new(rect.center.x - rect.width/2.0, rect.center.y - rect.height/2.0),
-                Point::new((rect.center.x - rect.width/2.0) + rect.width, rect.center.y - rect.height/2.0),
-                Point::new((rect.center.x - rect.width/2.0) + rect.width, (rect.center.y - rect.height/2.0) + rect.height),
-                Point::new(rect.center.x - rect.width/2.0, (rect.center.y - rect.height/2.0) + rect.height),
+                Point::new(
+                    rect.center.x - rect.width / 2.0,
+                    rect.center.y - rect.height / 2.0,
+                ),
+                Point::new(
+                    (rect.center.x - rect.width / 2.0) + rect.width,
+                    rect.center.y - rect.height / 2.0,
+                ),
+                Point::new(
+                    (rect.center.x - rect.width / 2.0) + rect.width,
+                    (rect.center.y - rect.height / 2.0) + rect.height,
+                ),
+                Point::new(
+                    rect.center.x - rect.width / 2.0,
+                    (rect.center.y - rect.height / 2.0) + rect.height,
+                ),
             ];
             self.generate_polygon_pocket(&vertices, step_down)
         }
@@ -243,12 +641,14 @@ impl PocketGenerator {
                 total_depth
             };
             let z_passes = (total_depth / z_step).ceil() as u32;
+            let mut prev_z = self.operation.start_depth;
 
             for z_pass in 1..=z_passes {
                 let current_z =
                     self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
                 let mut toolpath = Toolpath::new(self.operation.tool_diameter, current_z);
 
+                let segments = 36;
                 let mut current_offset = half_tool;
 
                 while current_offset < max_offset {
@@ -257,20 +657,23 @@ impl PocketGenerator {
                         break;
                     }
 
-                    let segments = 36;
-
                     // Add rapid move to start of circle
                     let start_angle: f64 = 0.0;
                     let start_x = circle.center.x + inset_radius * start_angle.cos();
                     let start_y = circle.center.y + inset_radius * start_angle.sin();
+                    let start_pt = Point::new(start_x, start_y);
 
-                    toolpath.add_segment(ToolpathSegment::new(
-                        ToolpathSegmentType::RapidMove,
-                        Point::new(0.0, 0.0),
-                        Point::new(start_x, start_y),
-                        self.operation.feed_rate,
-                        self.operation.spindle_speed,
-                    ));
+                    if self.operation.ramp_angle > 0.0 {
+                        self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
+                    } else {
+                        toolpath.add_segment(ToolpathSegment::new(
+                            ToolpathSegmentType::RapidMove,
+                            Point::new(0.0, 0.0),
+                            start_pt,
+                            self.operation.feed_rate,
+                            self.operation.spindle_speed,
+                        ));
+                    }
 
                     for i in 0..segments {
                         let angle1 = (i as f64 / segments as f64) * 2.0 * PI;
@@ -298,7 +701,17 @@ impl PocketGenerator {
 
                     current_offset += self.operation.stepover;
                 }
+                // Final center cleanup to eliminate residual core
+                add_center_cleanup(
+                    &mut toolpath,
+                    circle.center,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
                 toolpaths.push(toolpath);
+                prev_z = current_z;
             }
 
             toolpaths
@@ -398,6 +811,7 @@ impl PocketGenerator {
         };
         let z_passes = (total_depth / z_step).ceil() as u32;
         let tool_radius = self.operation.tool_diameter / 2.0;
+        let mut prev_z = self.operation.start_depth;
 
         for z_pass in 1..=z_passes {
             let current_z = self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
@@ -405,6 +819,7 @@ impl PocketGenerator {
 
             let mut current_offset = tool_radius;
             let has_paths = true;
+            let mut last_loop_centroid: Option<Point> = None;
 
             while has_paths {
                 // Offset inwards
@@ -427,14 +842,20 @@ impl PocketGenerator {
                     // Close the loop
                     points.push(points[0]);
 
-                    // Add rapid to start
-                    toolpath.add_segment(ToolpathSegment::new(
-                        ToolpathSegmentType::RapidMove,
-                        Point::new(0.0, 0.0),
-                        points[0],
-                        self.operation.feed_rate,
-                        self.operation.spindle_speed,
-                    ));
+                    last_loop_centroid = polygon_centroid(&points);
+
+                    if self.operation.ramp_angle > 0.0 {
+                        self.add_helical_ramp(&mut toolpath, points[0], prev_z, current_z);
+                    } else {
+                        // Add rapid to start
+                        toolpath.add_segment(ToolpathSegment::new(
+                            ToolpathSegmentType::RapidMove,
+                            Point::new(0.0, 0.0),
+                            points[0],
+                            self.operation.feed_rate,
+                            self.operation.spindle_speed,
+                        ));
+                    }
 
                     // Add segments
                     for window in points.windows(2) {
@@ -450,7 +871,25 @@ impl PocketGenerator {
 
                 current_offset += self.operation.stepover;
             }
+
+            // Final cleanup to remove residual core at the center
+            if let Some(center_pt) = last_loop_centroid {
+                add_center_cleanup(
+                    &mut toolpath,
+                    center_pt,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
+            }
+
+            // Sweep a raster cleanup over the whole polygon to catch any voids
+            if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
+                toolpaths.push(raster);
+            }
             toolpaths.push(toolpath);
+            prev_z = current_z;
         }
         toolpaths
     }
@@ -476,6 +915,7 @@ impl PocketGenerator {
         // Generate all offset levels first (Outside-In)
         let mut levels = Vec::new();
         let mut current_offset = tool_radius;
+        let mut innermost_centroid: Option<Point> = None;
 
         loop {
             let offsets = polyline.parallel_offset(-current_offset);
@@ -489,6 +929,24 @@ impl PocketGenerator {
         // Reverse levels to go Inside-Out
         levels.reverse();
 
+        if let Some(first_level) = levels.first() {
+            if let Some(first_path) = first_level.first() {
+                if !first_path.vertex_data.is_empty() {
+                    let mut pts: Vec<Point> = first_path
+                        .vertex_data
+                        .iter()
+                        .map(|v| Point::new(v.x, v.y))
+                        .collect();
+                    if let Some(first) = pts.first().copied() {
+                        pts.push(first);
+                    }
+                    innermost_centroid = polygon_centroid(&pts);
+                }
+            }
+        }
+
+        let mut prev_z = self.operation.start_depth;
+
         for z_pass in 1..=z_passes {
             let current_z = self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
             let mut toolpath = Toolpath::new(self.operation.tool_diameter, current_z);
@@ -500,21 +958,18 @@ impl PocketGenerator {
                         let start_pt =
                             Point::new(first_path.vertex_data[0].x, first_path.vertex_data[0].y);
 
-                        // Generate helix
-                        // let helix_radius = self.operation.tool_diameter * 0.25;
-                        // let helix_center = start_pt;
-                        // Ideally helix should be inside the pocket.
-                        // But start_pt is on the path.
-                        // For now, just ramp down to start_pt
-
-                        // Rapid to start XY, Safe Z
-                        toolpath.add_segment(ToolpathSegment::new(
-                            ToolpathSegmentType::RapidMove,
-                            Point::new(0.0, 0.0),
-                            start_pt,
-                            self.operation.feed_rate,
-                            self.operation.spindle_speed,
-                        ));
+                        if self.operation.ramp_angle > 0.0 {
+                            self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
+                        } else {
+                            // Rapid to start XY, Safe Z
+                            toolpath.add_segment(ToolpathSegment::new(
+                                ToolpathSegmentType::RapidMove,
+                                Point::new(0.0, 0.0),
+                                start_pt,
+                                self.operation.feed_rate,
+                                self.operation.spindle_speed,
+                            ));
+                        }
                     }
                 }
             }
@@ -564,7 +1019,34 @@ impl PocketGenerator {
                     }
                 }
             }
+            if let Some(center_pt) = innermost_centroid {
+                add_center_cleanup(
+                    &mut toolpath,
+                    center_pt,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
+            }
+
+            if let Some(center_pt) = innermost_centroid {
+                add_center_cleanup(
+                    &mut toolpath,
+                    center_pt,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
+            }
+
+            if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
+                toolpaths.push(raster);
+            }
+
             toolpaths.push(toolpath);
+            prev_z = current_z;
         }
         toolpaths
     }
@@ -629,6 +1111,7 @@ impl PocketGenerator {
         let z_passes = (total_depth / z_step).ceil() as u32;
 
         let tool_radius = self.operation.tool_diameter / 2.0;
+        let mut prev_z = self.operation.start_depth;
 
         for z_pass in 1..=z_passes {
             let current_z = self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
@@ -708,13 +1191,22 @@ impl PocketGenerator {
                                 self.operation.spindle_speed,
                             ));
                         } else {
-                            toolpath.add_segment(ToolpathSegment::new(
-                                ToolpathSegmentType::RapidMove,
-                                Point::new(0.0, 0.0),
-                                start_pt,
-                                self.operation.feed_rate,
-                                self.operation.spindle_speed,
-                            ));
+                            let last_point = toolpath
+                                .segments
+                                .last()
+                                .map(|s| s.end)
+                                .unwrap_or(Point::new(0.0, 0.0));
+                            if self.operation.ramp_angle > 0.0 {
+                                self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
+                            } else {
+                                toolpath.add_segment(ToolpathSegment::new(
+                                    ToolpathSegmentType::RapidMove,
+                                    last_point,
+                                    start_pt,
+                                    self.operation.feed_rate,
+                                    self.operation.spindle_speed,
+                                ));
+                            }
                         }
 
                         toolpath.add_segment(ToolpathSegment::new(
@@ -732,6 +1224,7 @@ impl PocketGenerator {
             }
 
             toolpaths.push(toolpath);
+            prev_z = current_z;
         }
 
         toolpaths
@@ -747,8 +1240,8 @@ impl PocketGenerator {
                 break;
             }
 
-            let inset_x = (rect.center.x - rect.width/2.0) + offset;
-            let inset_y = (rect.center.y - rect.height/2.0) + offset;
+            let inset_x = (rect.center.x - rect.width / 2.0) + offset;
+            let inset_y = (rect.center.y - rect.height / 2.0) + offset;
             let inset_width = (rect.width - 2.0 * offset).max(0.0);
             let inset_height = (rect.height - 2.0 * offset).max(0.0);
 

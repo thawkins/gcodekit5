@@ -3,8 +3,8 @@
 //! Generates drilling toolpaths for various hole patterns: linear, circular, and grid.
 //! Supports custom hole definitions and automatic pattern generation.
 
-use crate::Point;
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
+use crate::Point;
 use std::f64::consts::PI;
 
 /// Represents a drill operation configuration.

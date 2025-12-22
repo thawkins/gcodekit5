@@ -1,5 +1,4 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for V-carving toolpath generation (Phase 4.3)
+// Integration tests for V-carving toolpath generation (Phase 4.3)
 
 use gcodekit5_designer::vcarve::{VBitTool, VCarveParams};
 use gcodekit5_designer::{Point, VCarveGenerator};

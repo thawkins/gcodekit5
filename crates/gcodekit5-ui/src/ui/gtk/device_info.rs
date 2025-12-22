@@ -29,18 +29,18 @@ pub struct DeviceInfoView {
     capabilities_list: ListBox,
     capabilities_expander: Expander,
     connected: Rc<RefCell<bool>>,
-    
+
     // Device type radio buttons
     pub device_type_cnc: CheckButton,
     pub device_type_laser: CheckButton,
     pub device_type_other: CheckButton,
-    
+
     // Communicator for sending commands
     communicator: Rc<RefCell<Option<Arc<Mutex<SerialCommunicator>>>>>,
-    
+
     // Settings manager to update when settings change
     settings_manager: Rc<RefCell<Option<Rc<RefCell<SettingsManager>>>>>,
-    
+
     // Callback to notify when settings change (for refreshing settings display)
     on_setting_changed: Rc<RefCell<Option<std::boxed::Box<dyn Fn()>>>>,
 }
@@ -62,7 +62,7 @@ impl DeviceInfoView {
         type_title.set_halign(Align::Start);
         type_title.set_margin_bottom(4);
         container.append(&type_title);
-        
+
         let device_type_cnc = CheckButton::with_label("CNC");
         device_type_cnc.set_tooltip_text(Some("Spindle-based machining"));
         let device_type_laser = CheckButton::with_label("Laser");
@@ -72,11 +72,11 @@ impl DeviceInfoView {
         device_type_other.set_tooltip_text(Some("Other device type"));
         device_type_other.set_group(Some(&device_type_cnc));
         device_type_other.set_active(true); // Default to Other
-        
+
         container.append(&device_type_cnc);
         container.append(&device_type_laser);
         container.append(&device_type_other);
-        
+
         // Separator after device type
         container.append(&Separator::new(Orientation::Horizontal));
 
@@ -162,7 +162,7 @@ impl DeviceInfoView {
                 view_clone.copy_config();
             });
         }
-        
+
         // Connect device type radio buttons
         {
             let view_clone = view.clone();
@@ -172,7 +172,7 @@ impl DeviceInfoView {
                 }
             });
         }
-        
+
         {
             let view_clone = view.clone();
             device_type_laser.connect_toggled(move |btn| {
@@ -181,7 +181,7 @@ impl DeviceInfoView {
                 }
             });
         }
-        
+
         {
             let view_clone = view.clone();
             device_type_other.connect_toggled(move |btn| {
@@ -341,17 +341,17 @@ impl DeviceInfoView {
 
         self.set_capabilities(capabilities);
     }
-    
+
     /// Set the communicator for sending commands to the device
     pub fn set_communicator(&self, communicator: Arc<Mutex<SerialCommunicator>>) {
         *self.communicator.borrow_mut() = Some(communicator);
     }
-    
+
     /// Set the settings manager for updating settings
     pub fn set_settings_manager(&self, manager: Rc<RefCell<SettingsManager>>) {
         *self.settings_manager.borrow_mut() = Some(manager);
     }
-    
+
     /// Set a callback to be called when a setting is changed
     pub fn set_on_setting_changed<F>(&self, callback: F)
     where
@@ -359,13 +359,13 @@ impl DeviceInfoView {
     {
         *self.on_setting_changed.borrow_mut() = Some(std::boxed::Box::new(callback));
     }
-    
+
     /// Called when device type radio button changes
     fn on_device_type_changed(&self, device_type: &str) {
         if !*self.connected.borrow() {
             return;
         }
-        
+
         // Determine $32 value based on device type
         let laser_mode_value = match device_type {
             "CNC" => "0",      // Disable laser mode for CNC
@@ -373,11 +373,11 @@ impl DeviceInfoView {
             "Other" => return, // Don't change $32 for Other
             _ => return,
         };
-        
+
         // Send $32 command if we have a communicator
         if let Some(ref comm) = *self.communicator.borrow() {
             let command = format!("$32={}", laser_mode_value);
-            
+
             if let Ok(mut comm_lock) = comm.try_lock() {
                 // Send command using Communicator trait method
                 use gcodekit5_communication::Communicator;
@@ -385,7 +385,7 @@ impl DeviceInfoView {
                     // Update the cached setting value immediately in device_status
                     use crate::device_status;
                     device_status::update_grbl_setting(32, laser_mode_value.to_string());
-                    
+
                     // Also update the settings_manager so the settings list displays correctly
                     if let Some(ref manager_rc) = *self.settings_manager.borrow() {
                         let mut manager = manager_rc.borrow_mut();
@@ -400,17 +400,20 @@ impl DeviceInfoView {
                         };
                         manager.set_setting(setting);
                     }
-                    
+
                     // Notify that a setting has changed (triggers settings list refresh)
                     if let Some(ref callback) = *self.on_setting_changed.borrow() {
                         callback();
                     }
-                    
+
                     // Refresh the capabilities display to show updated $32
                     let view_clone = Rc::new(self.clone());
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
-                        view_clone.load_grbl_capabilities_from_status();
-                    });
+                    glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(100),
+                        move || {
+                            view_clone.load_grbl_capabilities_from_status();
+                        },
+                    );
                 }
             }
         }

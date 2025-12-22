@@ -15,8 +15,8 @@ use std::rc::Rc;
 use tracing::warn;
 
 use crate::ui::gtk::help_browser;
-use gcodekit5_settings::SettingsController;
 use gcodekit5_core::units::{self};
+use gcodekit5_settings::SettingsController;
 
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
@@ -124,7 +124,8 @@ impl CamToolsView {
         stack.add_named(feeds_tool.widget(), Some("feeds"));
 
         // Spoilboard Surfacing
-        let surfacing_tool = SpoilboardSurfacingTool::new(&stack, settings.clone(), on_generate.clone());
+        let surfacing_tool =
+            SpoilboardSurfacingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(surfacing_tool.widget(), Some("surfacing"));
 
         // Spoilboard Grid
@@ -425,14 +426,22 @@ impl CamToolsView {
             let search = search.clone();
             let category = category.clone();
             search.connect_search_changed(move |s| {
-                apply_filters(&list, &s.text(), &category.active_id().unwrap_or_else(|| "all".into()));
+                apply_filters(
+                    &list,
+                    &s.text(),
+                    &category.active_id().unwrap_or_else(|| "all".into()),
+                );
             });
         }
         {
             let list = list.clone();
             let search = search.clone();
             category.connect_changed(move |c| {
-                apply_filters(&list, &search.text(), &c.active_id().unwrap_or_else(|| "all".into()));
+                apply_filters(
+                    &list,
+                    &search.text(),
+                    &c.active_id().unwrap_or_else(|| "all".into()),
+                );
             });
         }
 
@@ -666,9 +675,7 @@ impl JigsawTool {
         laser_group.add(&Self::create_row("Feed Rate:", &feed_rate));
         scroll_content.append(&laser_group);
 
-        let offset_group = PreferencesGroup::builder()
-            .title("Work Offsets")
-            .build();
+        let offset_group = PreferencesGroup::builder().title("Work Offsets").build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
@@ -937,8 +944,7 @@ impl JigsawTool {
             seed: w.seed.text().parse::<u32>().unwrap_or(42), // Handles empty or invalid
             tab_size_percent: w.tab_size.text().parse().unwrap_or(20.0),
             jitter_percent: w.jitter.text().parse().unwrap_or(4.0),
-            corner_radius: units::parse_length(&w.corner_radius.text(), system).unwrap_or(2.0)
-               ,
+            corner_radius: units::parse_length(&w.corner_radius.text(), system).unwrap_or(2.0),
             laser_passes: w.passes.text().parse().unwrap_or(3),
             laser_power: w.power.text().parse().unwrap_or(1000),
             feed_rate: w.feed_rate.text().parse().unwrap_or(500.0),
@@ -1010,11 +1016,7 @@ impl JigsawTool {
         dialog.show();
     }
 
-    fn apply_params(
-        w: &JigsawWidgets,
-        p: &PuzzleParameters,
-        settings: &Rc<SettingsController>,
-    ) {
+    fn apply_params(w: &JigsawWidgets, p: &PuzzleParameters, settings: &Rc<SettingsController>) {
         let system = settings.persistence.borrow().config().ui.measurement_system;
         w.width
             .set_text(&units::format_length(p.width as f32, system));
@@ -1237,9 +1239,7 @@ impl BitmapEngravingTool {
         image_group.add(&image_row);
         scroll_content.append(&image_group);
 
-        let output_group = PreferencesGroup::builder()
-            .title("Output Settings")
-            .build();
+        let output_group = PreferencesGroup::builder().title("Output Settings").build();
         output_group.add(&width_mm_row);
         output_group.add(&Self::create_row("Feed Rate:", &feed_rate));
         output_group.add(&Self::create_row("Travel Rate:", &travel_rate));
@@ -1281,9 +1281,7 @@ impl BitmapEngravingTool {
         halftone_group.add(&Self::create_row("Threshold:", &halftone_threshold));
         scroll_content.append(&halftone_group);
 
-        let offset_group = PreferencesGroup::builder()
-            .title("Work Offsets")
-            .build();
+        let offset_group = PreferencesGroup::builder().title("Work Offsets").build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
@@ -2052,9 +2050,7 @@ impl VectorEngravingTool {
         file_group.add(&file_row);
         scroll_content.append(&file_group);
 
-        let output_group = PreferencesGroup::builder()
-            .title("Output Settings")
-            .build();
+        let output_group = PreferencesGroup::builder().title("Output Settings").build();
         output_group.add(&desired_width_row);
         output_group.add(&Self::create_row("Feed Rate:", &feed_rate));
         output_group.add(&Self::create_row("Travel Rate:", &travel_rate));
@@ -2098,9 +2094,7 @@ impl VectorEngravingTool {
         dwell_group.add(&Self::create_row("Dwell Time (s):", &dwell_time));
         scroll_content.append(&dwell_group);
 
-        let offset_group = PreferencesGroup::builder()
-            .title("Work Offsets")
-            .build();
+        let offset_group = PreferencesGroup::builder().title("Work Offsets").build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
@@ -2561,12 +2555,10 @@ impl VectorEngravingTool {
                 .set_text(&units::format_length(v as f32, system));
         }
         if let Some(v) = params.get("offset_x").and_then(|v| v.as_f64()) {
-            w.offset_x
-                .set_text(&units::format_length(v as f32, system));
+            w.offset_x.set_text(&units::format_length(v as f32, system));
         }
         if let Some(v) = params.get("offset_y").and_then(|v| v.as_f64()) {
-            w.offset_y
-                .set_text(&units::format_length(v as f32, system));
+            w.offset_y.set_text(&units::format_length(v as f32, system));
         }
         if let Some(v) = params.get("enable_hatch").and_then(|v| v.as_bool()) {
             w.enable_hatch.set_active(v);
@@ -2796,7 +2788,6 @@ impl VectorEngravingTool {
             }
         }
     }
-
 }
 
 struct TabbedBoxWidgets {
@@ -2902,7 +2893,8 @@ impl TabbedBoxMaker {
         // Widgets
         let (width_row, width, width_unit) = create_dimension_row("X (Width):", 100.0, &settings);
         let (depth_row, depth, depth_unit) = create_dimension_row("Y (Depth):", 100.0, &settings);
-        let (height_row, height, height_unit) = create_dimension_row("H (Height):", 100.0, &settings);
+        let (height_row, height, height_unit) =
+            create_dimension_row("H (Height):", 100.0, &settings);
         let outside = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -2913,7 +2905,8 @@ impl TabbedBoxMaker {
         let finger_width = Entry::builder().text("2").valign(Align::Center).build();
         let space_width = Entry::builder().text("2").valign(Align::Center).build();
         let surrounding_spaces = Entry::builder().text("2").valign(Align::Center).build();
-        let (play_row, play, play_unit) = create_dimension_row("Play (fit tolerance):", 0.0, &settings);
+        let (play_row, play, play_unit) =
+            create_dimension_row("Play (fit tolerance):", 0.0, &settings);
         let (extra_length_row, extra_length, extra_length_unit) =
             create_dimension_row("Extra Length:", 0.0, &settings);
 
@@ -2958,9 +2951,7 @@ impl TabbedBoxMaker {
             .build();
 
         // Box Dimensions
-        let dim_group = PreferencesGroup::builder()
-            .title("Box Dimensions")
-            .build();
+        let dim_group = PreferencesGroup::builder().title("Box Dimensions").build();
         dim_group.add(&width_row);
         dim_group.add(&depth_row);
         dim_group.add(&height_row);
@@ -3274,10 +3265,7 @@ impl TabbedBoxMaker {
         row
     }
 
-    fn collect_params(
-        w: &TabbedBoxWidgets,
-        settings: &Rc<SettingsController>,
-    ) -> BoxParameters {
+    fn collect_params(w: &TabbedBoxWidgets, settings: &Rc<SettingsController>) -> BoxParameters {
         let mut params = BoxParameters::default();
         let system = settings.persistence.borrow().config().ui.measurement_system;
 
@@ -3285,16 +3273,13 @@ impl TabbedBoxMaker {
         params.y = units::parse_length(&w.depth.text(), system).unwrap_or(100.0);
         params.h = units::parse_length(&w.height.text(), system).unwrap_or(100.0);
         params.outside = w.outside.is_active();
-        params.thickness =
-            units::parse_length(&w.thickness.text(), system).unwrap_or(3.0);
+        params.thickness = units::parse_length(&w.thickness.text(), system).unwrap_or(3.0);
         params.burn = units::parse_length(&w.burn.text(), system).unwrap_or(0.1);
 
         params.finger_joint.finger = w.finger_width.text().parse().unwrap_or(2.0);
         params.finger_joint.space = w.space_width.text().parse().unwrap_or(2.0);
-        params.finger_joint.surrounding_spaces =
-            w.surrounding_spaces.text().parse().unwrap_or(2.0);
-        params.finger_joint.play =
-            units::parse_length(&w.play.text(), system).unwrap_or(0.0);
+        params.finger_joint.surrounding_spaces = w.surrounding_spaces.text().parse().unwrap_or(2.0);
+        params.finger_joint.play = units::parse_length(&w.play.text(), system).unwrap_or(0.0);
         params.finger_joint.extra_length =
             units::parse_length(&w.extra_length.text(), system).unwrap_or(0.0);
 
@@ -3382,18 +3367,11 @@ impl TabbedBoxMaker {
         dialog.show();
     }
 
-    fn apply_params(
-        w: &TabbedBoxWidgets,
-        p: &BoxParameters,
-        settings: &Rc<SettingsController>,
-    ) {
+    fn apply_params(w: &TabbedBoxWidgets, p: &BoxParameters, settings: &Rc<SettingsController>) {
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        w.width
-            .set_text(&units::format_length(p.x as f32, system));
-        w.depth
-            .set_text(&units::format_length(p.y as f32, system));
-        w.height
-            .set_text(&units::format_length(p.h as f32, system));
+        w.width.set_text(&units::format_length(p.x as f32, system));
+        w.depth.set_text(&units::format_length(p.y as f32, system));
+        w.height.set_text(&units::format_length(p.h as f32, system));
         w.outside.set_active(p.outside);
         w.thickness
             .set_text(&units::format_length(p.thickness as f32, system));
@@ -3406,11 +3384,10 @@ impl TabbedBoxMaker {
             .set_text(&p.finger_joint.surrounding_spaces.to_string());
         w.play
             .set_text(&units::format_length(p.finger_joint.play as f32, system));
-        w.extra_length
-            .set_text(&units::format_length(
-                p.finger_joint.extra_length as f32,
-                system,
-            ));
+        w.extra_length.set_text(&units::format_length(
+            p.finger_joint.extra_length as f32,
+            system,
+        ));
 
         // New params
         w.box_type
@@ -3710,7 +3687,8 @@ impl SpoilboardSurfacingTool {
         let (cut_depth_row, cut_depth, cut_depth_unit) =
             create_dimension_row("Cut Depth:", 0.5, &settings);
         let stepover_percent = Entry::builder().text("40").valign(Align::Center).build();
-        let (safe_z_row, safe_z, safe_z_unit) = create_dimension_row("Safe Z Height:", 5.0, &settings);
+        let (safe_z_row, safe_z, safe_z_unit) =
+            create_dimension_row("Safe Z Height:", 5.0, &settings);
         let home_before = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -4518,7 +4496,7 @@ impl GerberTool {
         let file_label = Label::new(Some("No directory selected"));
         file_label.set_ellipsize(gtk4::pango::EllipsizeMode::Middle);
         file_label.set_width_chars(20);
-        
+
         let file_box = Box::new(Orientation::Horizontal, 6);
         file_box.append(&file_label);
         file_box.append(&file_btn);
@@ -4536,27 +4514,44 @@ impl GerberTool {
             if let Ok(entries) = fs::read_dir(path) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if !path.is_file() { continue; }
-                    
+                    if !path.is_file() {
+                        continue;
+                    }
+
                     let name = path.file_name().unwrap().to_string_lossy().to_lowercase();
-                    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-                    
+                    let ext = path
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+
                     // Simple heuristic matching
                     if ext == "gtl" || name.contains("f.cu") || name.contains("top.gbr") {
                         map.insert(GerberLayerType::TopCopper, path.clone());
                     } else if ext == "gbl" || name.contains("b.cu") || name.contains("bot.gbr") {
                         map.insert(GerberLayerType::BottomCopper, path.clone());
-                    } else if ext == "gts" || name.contains("f.mask") || name.contains("smask_top") {
+                    } else if ext == "gts" || name.contains("f.mask") || name.contains("smask_top")
+                    {
                         map.insert(GerberLayerType::TopSolderMask, path.clone());
-                    } else if ext == "gbs" || name.contains("b.mask") || name.contains("smask_bot") {
+                    } else if ext == "gbs" || name.contains("b.mask") || name.contains("smask_bot")
+                    {
                         map.insert(GerberLayerType::BottomSolderMask, path.clone());
-                    } else if ext == "gto" || name.contains("f.silks") || name.contains("legend_top") {
+                    } else if ext == "gto"
+                        || name.contains("f.silks")
+                        || name.contains("legend_top")
+                    {
                         map.insert(GerberLayerType::TopScreenPrint, path.clone());
-                    } else if ext == "gbo" || name.contains("b.silks") || name.contains("legend_bot") {
+                    } else if ext == "gbo"
+                        || name.contains("b.silks")
+                        || name.contains("legend_bot")
+                    {
                         map.insert(GerberLayerType::BottomScreenPrint, path.clone());
                     } else if ext == "drl" || ext == "txt" || name.contains("drill") {
                         map.insert(GerberLayerType::DrillHoles, path.clone());
-                    } else if ext == "gko" || ext == "gm1" || name.contains("edge.cuts") || name.contains("outline") {
+                    } else if ext == "gko"
+                        || ext == "gm1"
+                        || name.contains("edge.cuts")
+                        || name.contains("outline")
+                    {
                         map.insert(GerberLayerType::BoardOutline, path.clone());
                     }
                 }
@@ -4569,10 +4564,13 @@ impl GerberTool {
                 Some("Open Gerber Directory"),
                 None::<&gtk4::Window>,
                 FileChooserAction::SelectFolder,
-                &[("Cancel", ResponseType::Cancel), ("Select", ResponseType::Accept)],
+                &[
+                    ("Cancel", ResponseType::Cancel),
+                    ("Select", ResponseType::Accept),
+                ],
             );
             dialog.set_default_size(800, 600);
-            
+
             let lf = layer_files_clone.clone();
             let fl = file_label_clone.clone();
 
@@ -4605,7 +4603,7 @@ impl GerberTool {
         layer_type.append(Some("DrillHoles"), "Drill Holes");
         layer_type.append(Some("BoardOutline"), "Board Outline");
         layer_type.set_active_id(Some("TopCopper"));
-        
+
         let layer_row = ActionRow::builder().title("Layer Type").build();
         layer_row.add_suffix(&layer_type);
         params_group.add(&layer_row);
@@ -4614,25 +4612,33 @@ impl GerberTool {
         params_group.add(&w_row);
         let (h_row, board_height, _) = create_dimension_row("Board Height", 100.0, &settings);
         params_group.add(&h_row);
-        
+
         let (ox_row, offset_x, _) = create_dimension_row("Offset X", 0.0, &settings);
         params_group.add(&ox_row);
         let (oy_row, offset_y, _) = create_dimension_row("Offset Y", 0.0, &settings);
         params_group.add(&oy_row);
 
-        let feed_rate = Entry::builder().text("100.0").width_chars(8).valign(Align::Center).build();
+        let feed_rate = Entry::builder()
+            .text("100.0")
+            .width_chars(8)
+            .valign(Align::Center)
+            .build();
         let fr_row = ActionRow::builder().title("Feed Rate").build();
         fr_row.add_suffix(&feed_rate);
         params_group.add(&fr_row);
 
-        let spindle_speed = Entry::builder().text("10000.0").width_chars(8).valign(Align::Center).build();
+        let spindle_speed = Entry::builder()
+            .text("10000.0")
+            .width_chars(8)
+            .valign(Align::Center)
+            .build();
         let ss_row = ActionRow::builder().title("Spindle Speed (RPM)").build();
         ss_row.add_suffix(&spindle_speed);
         params_group.add(&ss_row);
 
         let (cd_row, cut_depth, _) = create_dimension_row("Cut Depth", -0.1, &settings);
         params_group.add(&cd_row);
-        
+
         let (sz_row, safe_z, _) = create_dimension_row("Safe Z", 5.0, &settings);
         params_group.add(&sz_row);
 
@@ -4642,13 +4648,21 @@ impl GerberTool {
         let (iw_row, isolation_width, _) = create_dimension_row("Isolation Width", 0.0, &settings);
         params_group.add(&iw_row);
 
-        let rubout = CheckButton::builder().active(false).valign(Align::Center).build();
+        let rubout = CheckButton::builder()
+            .active(false)
+            .valign(Align::Center)
+            .build();
         let rubout_row = ActionRow::builder().title("Remove Excess Copper").build();
         rubout_row.add_suffix(&rubout);
         params_group.add(&rubout_row);
 
-        let use_board_outline = CheckButton::builder().active(false).valign(Align::Center).build();
-        let ubo_row = ActionRow::builder().title("Use Board Outline for Rubout").build();
+        let use_board_outline = CheckButton::builder()
+            .active(false)
+            .valign(Align::Center)
+            .build();
+        let ubo_row = ActionRow::builder()
+            .title("Use Board Outline for Rubout")
+            .build();
         ubo_row.add_suffix(&use_board_outline);
         params_group.add(&ubo_row);
 
@@ -4657,13 +4671,19 @@ impl GerberTool {
         // Alignment Holes
         let align_group = PreferencesGroup::new();
         align_group.set_title("Alignment Holes");
-        
-        let generate_alignment_holes = CheckButton::builder().active(false).valign(Align::Center).build();
-        let ah_row = ActionRow::builder().title("Generate Alignment Holes").build();
+
+        let generate_alignment_holes = CheckButton::builder()
+            .active(false)
+            .valign(Align::Center)
+            .build();
+        let ah_row = ActionRow::builder()
+            .title("Generate Alignment Holes")
+            .build();
         ah_row.add_suffix(&generate_alignment_holes);
         align_group.add(&ah_row);
 
-        let (ahd_row, alignment_hole_diameter, _) = create_dimension_row("Hole Diameter", 3.175, &settings);
+        let (ahd_row, alignment_hole_diameter, _) =
+            create_dimension_row("Hole Diameter", 3.175, &settings);
         align_group.add(&ahd_row);
 
         let (ahm_row, alignment_hole_margin, _) = create_dimension_row("Margin", 5.0, &settings);
@@ -4760,10 +4780,12 @@ impl GerberTool {
                     "BoardOutline" => GerberLayerType::BoardOutline,
                     _ => GerberLayerType::TopCopper,
                 };
-                
+
                 let files = w_layer.layer_files.borrow();
                 if let Some(path) = files.get(&layer_type) {
-                    w_layer.file_label.set_text(path.file_name().unwrap().to_str().unwrap());
+                    w_layer
+                        .file_label
+                        .set_text(path.file_name().unwrap().to_str().unwrap());
                 } else {
                     w_layer.file_label.set_text("Layer not found in directory");
                 }
@@ -4774,7 +4796,7 @@ impl GerberTool {
         let w_gen = widgets.clone();
         let settings_gen = settings.clone();
         let on_gen = on_generate.clone();
-        
+
         generate_btn.connect_clicked(move |_| {
             let files = w_gen.layer_files.borrow();
             if files.is_empty() {
@@ -4783,11 +4805,14 @@ impl GerberTool {
             }
 
             let params = Self::collect_params(&w_gen, &settings_gen);
-            
+
             let path = match files.get(&params.layer_type) {
                 Some(p) => p,
                 None => {
-                    CamToolsView::show_error_dialog("Error", "Selected layer not found in directory.");
+                    CamToolsView::show_error_dialog(
+                        "Error",
+                        "Selected layer not found in directory.",
+                    );
                     return;
                 }
             };
@@ -4797,23 +4822,29 @@ impl GerberTool {
             let content = match fs::read_to_string(path) {
                 Ok(c) => c,
                 Err(e) => {
-                    CamToolsView::show_error_dialog("Error", &format!("Failed to read file: {}", e));
+                    CamToolsView::show_error_dialog(
+                        "Error",
+                        &format!("Failed to read file: {}", e),
+                    );
                     return;
                 }
             };
-            
+
             warn!("Read {} bytes", content.len());
-            warn!("Generating G-Code for layer: {:?} with params: {:?}", params.layer_type, params);
+            warn!(
+                "Generating G-Code for layer: {:?} with params: {:?}",
+                params.layer_type, params
+            );
 
             match GerberConverter::generate(&params, &content) {
                 Ok(gcode) => {
                     warn!("Generated {} bytes of G-Code", gcode.len());
                     on_gen(gcode)
-                },
+                }
                 Err(e) => {
                     warn!("Generation failed: {}", e);
                     CamToolsView::show_error_dialog("Generation Failed", &e.to_string())
-                },
+                }
             }
         });
 
@@ -4837,7 +4868,9 @@ impl GerberTool {
             stack_clone.set_visible_child_name("dashboard");
         });
 
-        Self { content: content_box }
+        Self {
+            content: content_box,
+        }
     }
 
     pub fn widget(&self) -> &Box {
@@ -4846,7 +4879,7 @@ impl GerberTool {
 
     fn collect_params(w: &GerberWidgets, settings: &Rc<SettingsController>) -> GerberParameters {
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        
+
         let layer_type = match w.layer_type.active_id().as_deref() {
             Some("TopCopper") => GerberLayerType::TopCopper,
             Some("BottomCopper") => GerberLayerType::BottomCopper,
@@ -4864,22 +4897,30 @@ impl GerberTool {
             feed_rate: w.feed_rate.text().parse().unwrap_or(100.0),
             spindle_speed: w.spindle_speed.text().parse().unwrap_or(10000.0),
             board_width: units::parse_length(&w.board_width.text(), system).unwrap_or(100.0) as f32,
-            board_height: units::parse_length(&w.board_height.text(), system).unwrap_or(100.0) as f32,
+            board_height: units::parse_length(&w.board_height.text(), system).unwrap_or(100.0)
+                as f32,
             offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(0.0) as f32,
             offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(0.0) as f32,
             generate_alignment_holes: w.generate_alignment_holes.is_active(),
-            alignment_hole_diameter: units::parse_length(&w.alignment_hole_diameter.text(), system).unwrap_or(3.175) as f32,
-            alignment_hole_margin: units::parse_length(&w.alignment_hole_margin.text(), system).unwrap_or(5.0) as f32,
+            alignment_hole_diameter: units::parse_length(&w.alignment_hole_diameter.text(), system)
+                .unwrap_or(3.175) as f32,
+            alignment_hole_margin: units::parse_length(&w.alignment_hole_margin.text(), system)
+                .unwrap_or(5.0) as f32,
             cut_depth: units::parse_length(&w.cut_depth.text(), system).unwrap_or(-0.1) as f32,
             safe_z: units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0) as f32,
-            tool_diameter: units::parse_length(&w.tool_diameter.text(), system).unwrap_or(0.1) as f32,
-            isolation_width: units::parse_length(&w.isolation_width.text(), system).unwrap_or(0.0) as f32,
+            tool_diameter: units::parse_length(&w.tool_diameter.text(), system).unwrap_or(0.1)
+                as f32,
+            isolation_width: units::parse_length(&w.isolation_width.text(), system).unwrap_or(0.0)
+                as f32,
             rubout: w.rubout.is_active(),
             use_board_outline: w.use_board_outline.is_active(),
             directory: {
                 let files = w.layer_files.borrow();
                 // Just grab the parent dir of the first file found, or None
-                files.values().next().and_then(|p| p.parent().map(|d| d.to_string_lossy().to_string()))
+                files
+                    .values()
+                    .next()
+                    .and_then(|p| p.parent().map(|d| d.to_string_lossy().to_string()))
             },
         }
     }
@@ -4934,7 +4975,9 @@ impl GerberTool {
                     if let Some(path) = file.path() {
                         if let Ok(content) = fs::read_to_string(path) {
                             match serde_json::from_str::<GerberParameters>(&content) {
-                                Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                                Ok(params) => {
+                                    Self::apply_params(&w_clone, &params, &settings_clone)
+                                }
                                 Err(e) => warn!("Failed to load parameters: {}", e),
                             }
                         }
@@ -4949,7 +4992,7 @@ impl GerberTool {
 
     fn apply_params(w: &GerberWidgets, p: &GerberParameters, settings: &Rc<SettingsController>) {
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        
+
         let layer_id = match p.layer_type {
             GerberLayerType::TopCopper => "TopCopper",
             GerberLayerType::BottomCopper => "BottomCopper",
@@ -4964,17 +5007,27 @@ impl GerberTool {
 
         w.feed_rate.set_text(&p.feed_rate.to_string());
         w.spindle_speed.set_text(&p.spindle_speed.to_string());
-        w.board_width.set_text(&units::format_length(p.board_width, system));
-        w.board_height.set_text(&units::format_length(p.board_height, system));
-        w.offset_x.set_text(&units::format_length(p.offset_x, system));
-        w.offset_y.set_text(&units::format_length(p.offset_y, system));
-        w.generate_alignment_holes.set_active(p.generate_alignment_holes);
-        w.alignment_hole_diameter.set_text(&units::format_length(p.alignment_hole_diameter, system));
-        w.alignment_hole_margin.set_text(&units::format_length(p.alignment_hole_margin, system));
-        w.cut_depth.set_text(&units::format_length(p.cut_depth, system));
+        w.board_width
+            .set_text(&units::format_length(p.board_width, system));
+        w.board_height
+            .set_text(&units::format_length(p.board_height, system));
+        w.offset_x
+            .set_text(&units::format_length(p.offset_x, system));
+        w.offset_y
+            .set_text(&units::format_length(p.offset_y, system));
+        w.generate_alignment_holes
+            .set_active(p.generate_alignment_holes);
+        w.alignment_hole_diameter
+            .set_text(&units::format_length(p.alignment_hole_diameter, system));
+        w.alignment_hole_margin
+            .set_text(&units::format_length(p.alignment_hole_margin, system));
+        w.cut_depth
+            .set_text(&units::format_length(p.cut_depth, system));
         w.safe_z.set_text(&units::format_length(p.safe_z, system));
-        w.tool_diameter.set_text(&units::format_length(p.tool_diameter, system));
-        w.isolation_width.set_text(&units::format_length(p.isolation_width, system));
+        w.tool_diameter
+            .set_text(&units::format_length(p.tool_diameter, system));
+        w.isolation_width
+            .set_text(&units::format_length(p.isolation_width, system));
         w.rubout.set_active(p.rubout);
         w.use_board_outline.set_active(p.use_board_outline);
 
@@ -4988,37 +5041,61 @@ impl GerberTool {
                 if let Ok(entries) = fs::read_dir(&path) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if !path.is_file() { continue; }
-                        
+                        if !path.is_file() {
+                            continue;
+                        }
+
                         let name = path.file_name().unwrap().to_string_lossy().to_lowercase();
-                        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-                        
+                        let ext = path
+                            .extension()
+                            .map(|e| e.to_string_lossy().to_lowercase())
+                            .unwrap_or_default();
+
                         if ext == "gtl" || name.contains("f.cu") || name.contains("top.gbr") {
                             map.insert(GerberLayerType::TopCopper, path.clone());
-                        } else if ext == "gbl" || name.contains("b.cu") || name.contains("bot.gbr") {
+                        } else if ext == "gbl" || name.contains("b.cu") || name.contains("bot.gbr")
+                        {
                             map.insert(GerberLayerType::BottomCopper, path.clone());
-                        } else if ext == "gts" || name.contains("f.mask") || name.contains("smask_top") {
+                        } else if ext == "gts"
+                            || name.contains("f.mask")
+                            || name.contains("smask_top")
+                        {
                             map.insert(GerberLayerType::TopSolderMask, path.clone());
-                        } else if ext == "gbs" || name.contains("b.mask") || name.contains("smask_bot") {
+                        } else if ext == "gbs"
+                            || name.contains("b.mask")
+                            || name.contains("smask_bot")
+                        {
                             map.insert(GerberLayerType::BottomSolderMask, path.clone());
-                        } else if ext == "gto" || name.contains("f.silks") || name.contains("legend_top") {
+                        } else if ext == "gto"
+                            || name.contains("f.silks")
+                            || name.contains("legend_top")
+                        {
                             map.insert(GerberLayerType::TopScreenPrint, path.clone());
-                        } else if ext == "gbo" || name.contains("b.silks") || name.contains("legend_bot") {
+                        } else if ext == "gbo"
+                            || name.contains("b.silks")
+                            || name.contains("legend_bot")
+                        {
                             map.insert(GerberLayerType::BottomScreenPrint, path.clone());
                         } else if ext == "drl" || ext == "txt" || name.contains("drill") {
                             map.insert(GerberLayerType::DrillHoles, path.clone());
-                        } else if ext == "gko" || ext == "gm1" || name.contains("edge.cuts") || name.contains("outline") {
+                        } else if ext == "gko"
+                            || ext == "gm1"
+                            || name.contains("edge.cuts")
+                            || name.contains("outline")
+                        {
                             map.insert(GerberLayerType::BoardOutline, path.clone());
                         }
                     }
                 }
                 *w.layer_files.borrow_mut() = map;
-                w.file_label.set_text(path.file_name().unwrap().to_str().unwrap());
-                
+                w.file_label
+                    .set_text(path.file_name().unwrap().to_str().unwrap());
+
                 // Update label for selected layer
                 let files = w.layer_files.borrow();
                 if let Some(path) = files.get(&p.layer_type) {
-                    w.file_label.set_text(path.file_name().unwrap().to_str().unwrap());
+                    w.file_label
+                        .set_text(path.file_name().unwrap().to_str().unwrap());
                 } else {
                     w.file_label.set_text("Layer not found in directory");
                 }

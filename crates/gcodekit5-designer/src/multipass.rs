@@ -3,8 +3,8 @@
 //! Implements depth ramping and stepping for multi-pass cutting operations,
 //! enabling deep cuts while maintaining tool safety and surface finish quality.
 
-use crate::Point;
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
+use crate::Point;
 
 /// Depth cutting strategy for multiple passes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

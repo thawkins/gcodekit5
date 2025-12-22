@@ -143,10 +143,7 @@ fn show_help_image(parent: Option<&gtk4::Window>, href: &str) {
         win.set_modal(true);
     }
 
-    let resource_path = href
-        .strip_prefix("resource://")
-        .unwrap_or(href)
-        .to_string();
+    let resource_path = href.strip_prefix("resource://").unwrap_or(href).to_string();
 
     let pic = gtk4::Picture::for_resource(&resource_path);
     pic.set_can_shrink(true);
@@ -238,15 +235,15 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
         }
         .help-text {
             color: @theme_fg_color;
-        }"
+        }",
     );
-    
+
     gtk4::style_context_add_provider_for_display(
         &gtk4::gdk::Display::default().unwrap(),
         &provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
-    
+
     content_label.add_css_class("help-text");
 
     // GtkViewport does not reliably honor direct-child margins; put margins on the content widget.

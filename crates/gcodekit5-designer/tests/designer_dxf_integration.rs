@@ -1,5 +1,4 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for DXF import and parsing (Phase 4.5)
+// Integration tests for DXF import and parsing (Phase 4.5)
 
 use gcodekit5_designer::dxf_parser::{
     DxfArc, DxfCircle, DxfEntity, DxfEntityType, DxfFile, DxfHeader, DxfLine, DxfParser,

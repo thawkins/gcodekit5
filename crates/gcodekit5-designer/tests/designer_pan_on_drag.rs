@@ -1,5 +1,4 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for pan-on-drag feature in designer
+// Integration tests for pan-on-drag feature in designer
 
 use gcodekit5_designer::{Canvas, Point};
 

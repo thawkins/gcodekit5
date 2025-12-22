@@ -675,8 +675,8 @@ mod tests {
 
     #[test]
     fn test_linear_move_simulation() {
-        use crate::Point;
         use crate::toolpath::{ToolpathSegment, ToolpathSegmentType};
+        use crate::Point;
 
         let stock = StockMaterial::new(100.0, 100.0, 10.0, (0.0, 0.0, 0.0));
         let mut simulator = StockSimulator2D::new(stock, 1.0, 3.0);

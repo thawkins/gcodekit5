@@ -1,5 +1,5 @@
-use crate::model::DesignerShape;
 use crate::canvas::{Canvas, DrawingObject};
+use crate::model::DesignerShape;
 use crate::model::Shape;
 use crate::spatial_index::Bounds;
 

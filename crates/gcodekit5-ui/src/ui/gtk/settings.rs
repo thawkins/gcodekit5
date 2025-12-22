@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
     glib, Align, Box, Button, Dialog, Entry, FileChooserAction, FileChooserNative, Label, Notebook,
-    Orientation, PositionType, PolicyType, ResponseType, ScrolledWindow, StringList, Switch,
+    Orientation, PolicyType, PositionType, ResponseType, ScrolledWindow, StringList, Switch,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow};

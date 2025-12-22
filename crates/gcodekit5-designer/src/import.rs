@@ -13,7 +13,10 @@
 //! - Scale and offset adjustment
 
 use crate::dxf_parser::{DxfEntity, DxfFile, DxfParser};
-use crate::model::{DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape, Point, DesignRectangle as Rectangle, Shape, DesignerShape};
+use crate::model::{
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignRectangle as Rectangle, DesignerShape, Point, Shape,
+};
 use anyhow::{anyhow, Result};
 use lyon::geom::Arc;
 use lyon::math::point;
@@ -75,8 +78,8 @@ impl ImportedShape {
             Self::Rect(r) => {
                 // y' = -y + 2c
                 // New min_y is -(old_max_y) + 2c = -(r.y + r.height) + 2c
-                let new_y = -(r.center.y + r.height/2.0) + 2.0 * center_y + offset_y;
-                let new_x = r.center.x - r.width/2.0 + offset_x;
+                let new_y = -(r.center.y + r.height / 2.0) + 2.0 * center_y + offset_y;
+                let new_x = r.center.x - r.width / 2.0 + offset_x;
                 Shape::Rectangle(Rectangle::new(new_x, new_y, r.width, r.height))
             }
             Self::Circle(c) => {
@@ -112,7 +115,9 @@ impl ImportedShape {
                     offset_x as f32,
                     (2.0 * center_y + offset_y) as f32,
                 );
-                let mut new_p = p.clone(); new_p.transform(&transform); Shape::Path(new_p)
+                let mut new_p = p.clone();
+                new_p.transform(&transform);
+                Shape::Path(new_p)
             }
         }
     }
@@ -369,10 +374,11 @@ impl SvgImporter {
                                 let transform = lyon::math::Transform::new(a, b, c, d_coeff, e, f);
                                 new_path.transform(&transform);
                             }
-                            
-                            let scale_transform = lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
+
+                            let scale_transform =
+                                lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
                             new_path.transform(&scale_transform);
-                            
+
                             imported_shapes.push(ImportedShape::Path(new_path));
                         }
                     }
@@ -613,7 +619,9 @@ impl DxfImporter {
             };
 
             if let Some(path) = path_opt {
-                let mut shape = PathShape::from_lyon_path(&path); shape.transform(&transform); shapes.push(Shape::Path(shape));
+                let mut shape = PathShape::from_lyon_path(&path);
+                shape.transform(&transform);
+                shapes.push(Shape::Path(shape));
             }
         }
 

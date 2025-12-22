@@ -1,4 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
 use gcodekit5_designer::canvas::DrawingMode;
 use gcodekit5_designer::designer_state::DesignerState;
 // Point not used directly in this test file

@@ -1,5 +1,4 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for parametric design system (Phase 4.6)
+// Integration tests for parametric design system (Phase 4.6)
 
 use gcodekit5_designer::parametric::{
     Parameter, ParameterConstraint, ParameterSet, ParameterType, ParametricGenerator,

@@ -273,7 +273,7 @@ impl ConfigSettingsView {
                 view_clone.refresh_display();
             });
         }
-        
+
         // Pass settings_manager to device_info_view so it can update settings
         device_info_view.set_settings_manager(settings_manager.clone());
 
@@ -375,7 +375,7 @@ impl ConfigSettingsView {
 
     pub fn set_communicator(&self, communicator: Arc<Mutex<SerialCommunicator>>) {
         *self.communicator.borrow_mut() = Some(communicator.clone());
-        
+
         // Also pass the communicator to the device info view so it can send $32 commands
         self.device_info_view.set_communicator(communicator);
     }

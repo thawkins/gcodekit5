@@ -1,5 +1,4 @@
-use gcodekit5_designer::model::DesignerShape;
-//! Integration tests for adaptive clearing strategy (Phase 4.4)
+// Integration tests for adaptive clearing strategy (Phase 4.4)
 
 use gcodekit5_designer::{
     AdaptiveAlgorithm, AdaptiveClearing, DynamicStepover, LoadMonitor, MaterialProperties,

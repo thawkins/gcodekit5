@@ -202,8 +202,9 @@ pub fn main() {
 
         // Wire up ConsoleListener for command parsing and logging
         let console_manager = crate::ui::device_console_manager::get_console_manager();
-        let console_listener = crate::ui::device_console_manager::ConsoleListener::new(console_manager);
-        
+        let console_listener =
+            crate::ui::device_console_manager::ConsoleListener::new(console_manager);
+
         if let Ok(mut comm) = machine_control.communicator.lock() {
             comm.add_listener(console_listener);
         }

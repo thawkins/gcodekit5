@@ -1,4 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
 #[path = "features/adaptive.rs"]
 mod adaptive;
 #[path = "features/arrays.rs"]

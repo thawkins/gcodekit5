@@ -1,10 +1,9 @@
-
 #[cfg(test)]
 mod tests {
-    use crate::gerber::{GerberConverter, GerberParameters, GerberLayerType};
+    use crate::gerber::{GerberConverter, GerberLayerType, GerberParameters};
     use crate::hatch_generator;
-    use lyon::path::Path;
     use lyon::math::point;
+    use lyon::path::Path;
 
     #[test]
     fn test_hatch_generation_events() {
@@ -31,12 +30,12 @@ mod tests {
         // D01 X150000 Y150000* (Draw to 15,15)
         // D01 X50000 Y150000* (Draw to 5,15)
         // D01 X50000 Y50000* (Draw to 5,5)
-        
+
         // Actually let's just use a simple flash to create a shape
         // %ADD10C,10*% (Circle 10mm)
         // D10*
         // X100000Y100000D03* (Flash at 10,10)
-        
+
         let gerber_content = r#"
 %MOIN*%
 %FSLAX24Y24*%

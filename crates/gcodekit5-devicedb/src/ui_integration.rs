@@ -171,21 +171,18 @@ impl DeviceUiController {
         profile.has_laser = ui_model.has_laser;
         profile.has_coolant = ui_model.has_coolant;
 
-        profile.max_feed_rate = ui_model
-            .max_feed_rate
-            .trim()
-            .parse()
-            .with_context(|| {
-                format!(
-                    "Max Feed Rate must be a number (got {})",
-                    ui_model.max_feed_rate
-                )
-            })?;
-        profile.max_s_value = ui_model
-            .max_s_value
-            .trim()
-            .parse()
-            .with_context(|| format!("Max S-Value must be a number (got {})", ui_model.max_s_value))?;
+        profile.max_feed_rate = ui_model.max_feed_rate.trim().parse().with_context(|| {
+            format!(
+                "Max Feed Rate must be a number (got {})",
+                ui_model.max_feed_rate
+            )
+        })?;
+        profile.max_s_value = ui_model.max_s_value.trim().parse().with_context(|| {
+            format!(
+                "Max S-Value must be a number (got {})",
+                ui_model.max_s_value
+            )
+        })?;
 
         profile.max_spindle_speed_rpm = ui_model
             .max_spindle_speed_rpm
@@ -198,39 +195,33 @@ impl DeviceUiController {
                 )
             })?;
 
-        profile.cnc_spindle_watts = ui_model
-            .cnc_spindle_watts
-            .trim()
-            .parse()
-            .with_context(|| {
+        profile.cnc_spindle_watts =
+            ui_model.cnc_spindle_watts.trim().parse().with_context(|| {
                 format!(
                     "Spindle watts must be a number (got {})",
                     ui_model.cnc_spindle_watts
                 )
             })?;
-        profile.laser_watts = ui_model
-            .laser_watts
-            .trim()
-            .parse()
-            .with_context(|| format!("Laser watts must be a number (got {})", ui_model.laser_watts))?;
+        profile.laser_watts = ui_model.laser_watts.trim().parse().with_context(|| {
+            format!(
+                "Laser watts must be a number (got {})",
+                ui_model.laser_watts
+            )
+        })?;
 
         profile.connection_type = ui_model.connection_type;
-        profile.baud_rate = ui_model
-            .baud_rate
-            .trim()
-            .parse()
-            .with_context(|| format!("Baud Rate must be an integer (got {})", ui_model.baud_rate))?;
+        profile.baud_rate = ui_model.baud_rate.trim().parse().with_context(|| {
+            format!("Baud Rate must be an integer (got {})", ui_model.baud_rate)
+        })?;
         profile.port = ui_model.port;
-        profile.tcp_port = ui_model
-            .tcp_port
-            .trim()
-            .parse()
-            .with_context(|| format!("TCP Port must be an integer (got {})", ui_model.tcp_port))?;
-        profile.timeout_ms = ui_model
-            .timeout_ms
-            .trim()
-            .parse()
-            .with_context(|| format!("Timeout must be an integer (got {})", ui_model.timeout_ms))?;
+        profile.tcp_port =
+            ui_model.tcp_port.trim().parse().with_context(|| {
+                format!("TCP Port must be an integer (got {})", ui_model.tcp_port)
+            })?;
+        profile.timeout_ms =
+            ui_model.timeout_ms.trim().parse().with_context(|| {
+                format!("Timeout must be an integer (got {})", ui_model.timeout_ms)
+            })?;
         profile.auto_reconnect = ui_model.auto_reconnect;
 
         self.manager.save_profile(profile)

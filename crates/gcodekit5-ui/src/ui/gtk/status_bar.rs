@@ -1,4 +1,6 @@
-use gcodekit5_core::units::{format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem};
+use gcodekit5_core::units::{
+    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
+};
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
 

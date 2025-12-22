@@ -1,4 +1,3 @@
-use gcodekit5_designer::model::DesignerShape;
 #[path = "core/canvas.rs"]
 mod canvas;
 #[path = "core/designer_state.rs"]

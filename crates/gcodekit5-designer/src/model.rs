@@ -1,7 +1,7 @@
+use lyon::math::{point, Transform};
 use lyon::path::iterator::*;
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use lyon::path::Path;
-use lyon::math::{Transform, point};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -9,9 +9,9 @@ pub struct Point {
     pub y: f64,
 }
 
+use csgrs::io::svg::{FromSVG, ToSVG};
 use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
-use csgrs::io::svg::{ToSVG, FromSVG};
 use nalgebra::{Matrix4, Vector3};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,30 +29,31 @@ pub enum PropertyValue {
 
 pub trait DesignerShape {
     fn render(&self) -> Path;
-    fn as_csg(&self) -> Sketch<()>; 
+    fn as_csg(&self) -> Sketch<()>;
     fn bounds(&self) -> (f64, f64, f64, f64);
     fn transform(&mut self, t: &Transform);
     fn properties(&self) -> Vec<Property>;
-    
+
     fn contains_point(&self, p: Point, tolerance: f64) -> bool;
     fn resize(&mut self, handle: usize, dx: f64, dy: f64);
-    
+
     fn translate(&mut self, dx: f64, dy: f64) {
         let t = Transform::translation(dx as f32, dy as f32);
         self.transform(&t);
     }
-    
+
     fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
         let t = Transform::translation(cx as f32, cy as f32)
             .then_rotate(lyon::math::Angle::radians(angle as f32))
             .then_translate(lyon::math::vector(-cx as f32, -cy as f32));
         self.transform(&t);
     }
-    
+
     fn scale(&mut self, sx: f64, sy: f64, center: Point) {
-        let t = Transform::translation(center.x as f32, center.y as f32)
+        // Translate to origin, scale, then translate back to keep the pivot fixed.
+        let t = Transform::translation(-center.x as f32, -center.y as f32)
             .then_scale(sx as f32, sy as f32)
-            .then_translate(lyon::math::vector(-center.x as f32, -center.y as f32));
+            .then_translate(lyon::math::vector(center.x as f32, center.y as f32));
         self.transform(&t);
     }
 }
@@ -68,6 +69,8 @@ pub enum Shape {
     Line(DesignLine),
     Ellipse(DesignEllipse),
     Text(DesignText),
+    Triangle(DesignTriangle),
+    Polygon(DesignPolygon),
 }
 
 impl DesignerShape for Shape {
@@ -79,6 +82,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.render(),
             Shape::Ellipse(s) => s.render(),
             Shape::Text(s) => s.render(),
+            Shape::Triangle(s) => s.render(),
+            Shape::Polygon(s) => s.render(),
         }
     }
 
@@ -90,6 +95,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.as_csg(),
             Shape::Ellipse(s) => s.as_csg(),
             Shape::Text(s) => s.as_csg(),
+            Shape::Triangle(s) => s.as_csg(),
+            Shape::Polygon(s) => s.as_csg(),
         }
     }
 
@@ -101,6 +108,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.bounds(),
             Shape::Ellipse(s) => s.bounds(),
             Shape::Text(s) => s.bounds(),
+            Shape::Triangle(s) => s.bounds(),
+            Shape::Polygon(s) => s.bounds(),
         }
     }
 
@@ -112,6 +121,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.transform(t),
             Shape::Ellipse(s) => s.transform(t),
             Shape::Text(s) => s.transform(t),
+            Shape::Triangle(s) => s.transform(t),
+            Shape::Polygon(s) => s.transform(t),
         }
     }
 
@@ -123,6 +134,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.properties(),
             Shape::Ellipse(s) => s.properties(),
             Shape::Text(s) => s.properties(),
+            Shape::Triangle(s) => s.properties(),
+            Shape::Polygon(s) => s.properties(),
         }
     }
 
@@ -134,6 +147,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.contains_point(p, tolerance),
             Shape::Ellipse(s) => s.contains_point(p, tolerance),
             Shape::Text(s) => s.contains_point(p, tolerance),
+            Shape::Triangle(s) => s.contains_point(p, tolerance),
+            Shape::Polygon(s) => s.contains_point(p, tolerance),
         }
     }
 
@@ -145,6 +160,8 @@ impl DesignerShape for Shape {
             Shape::Line(s) => s.resize(handle, dx, dy),
             Shape::Ellipse(s) => s.resize(handle, dx, dy),
             Shape::Text(s) => s.resize(handle, dx, dy),
+            Shape::Triangle(s) => s.resize(handle, dx, dy),
+            Shape::Polygon(s) => s.resize(handle, dx, dy),
         }
     }
 }
@@ -166,43 +183,57 @@ impl DesignerShape for DesignRectangle {
         let half_h = self.height / 2.0;
         let x = -half_w;
         let y = -half_h;
-        
+
         if self.corner_radius > 0.0 {
             builder.add_rounded_rectangle(
-                &lyon::math::Box2D::new(point(x as f32, y as f32), point((x + self.width) as f32, (y + self.height) as f32)),
+                &lyon::math::Box2D::new(
+                    point(x as f32, y as f32),
+                    point((x + self.width) as f32, (y + self.height) as f32),
+                ),
                 &lyon::path::builder::BorderRadii::new(self.corner_radius as f32),
-                lyon::path::Winding::Positive
+                lyon::path::Winding::Positive,
             );
         } else {
             builder.add_rectangle(
-                &lyon::math::Box2D::new(point(x as f32, y as f32), point((x + self.width) as f32, (y + self.height) as f32)),
-                lyon::path::Winding::Positive
+                &lyon::math::Box2D::new(
+                    point(x as f32, y as f32),
+                    point((x + self.width) as f32, (y + self.height) as f32),
+                ),
+                lyon::path::Winding::Positive,
             );
         }
         let path = builder.build();
-        
-        let mut transform = Transform::translation(self.center.x as f32, self.center.y as f32);
+
+        // Rotate around the shape origin, then translate to its center.
+        let mut transform = Transform::identity();
         if self.rotation.abs() > 1e-6 {
-            transform = transform.then_rotate(lyon::math::Angle::radians(self.rotation as f32));
+            transform = transform
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
         }
-        
+        transform = transform.then_translate(lyon::math::vector(
+            self.center.x as f32,
+            self.center.y as f32,
+        ));
+
         path.transformed(&transform)
     }
 
     fn as_csg(&self) -> Sketch<()> {
         let sketch = if self.corner_radius > 0.0 {
-             Sketch::rounded_rectangle(self.width, self.height, self.corner_radius, 8, None)
+            Sketch::rounded_rectangle(self.width, self.height, self.corner_radius, 8, None)
         } else {
-             Sketch::rectangle(self.width, self.height, None)
+            Sketch::rectangle(self.width, self.height, None)
         };
-        
+
         // Sketch::rectangle creates shape from (0,0) to (w,h).
         // We center it at (0,0) first so rotation works around the center.
-        let center_fix = Matrix4::new_translation(&Vector3::new(-self.width/2.0, -self.height/2.0, 0.0));
-        
+        let center_fix =
+            Matrix4::new_translation(&Vector3::new(-self.width / 2.0, -self.height / 2.0, 0.0));
+
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
-        let translation = Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
-        
+        let translation =
+            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+
         sketch.transform(&(translation * rotation * center_fix))
     }
 
@@ -213,39 +244,64 @@ impl DesignerShape for DesignRectangle {
         // Use render().bounds()?
         let path = self.render();
         let bb = lyon::algorithms::aabb::bounding_box(path.iter());
-        (bb.min.x as f64, bb.min.y as f64, bb.max.x as f64, bb.max.y as f64)
+        (
+            bb.min.x as f64,
+            bb.min.y as f64,
+            bb.max.x as f64,
+            bb.max.y as f64,
+        )
     }
 
     fn transform(&mut self, t: &Transform) {
         // This is tricky. If t contains rotation, we update self.rotation.
         // If t contains shear, we can't represent it.
         // For now, assume t is translation/rotation/uniform scale.
-        
+
         // Transform center
         let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
         self.center = Point::new(p.x as f64, p.y as f64);
-        
-        // Extract rotation from t?
-        // t.m11 = sx * cos(a)
-        // t.m12 = sx * sin(a)
-        // angle = atan2(m12, m11)
-        let angle = t.m12.atan2(t.m11) as f64;
-        self.rotation += angle;
-        
-        // Extract scale?
-        let sx = (t.m11*t.m11 + t.m12*t.m12).sqrt() as f64;
+
+        // Extract rotation and account for reflections (negative determinant flips orientation).
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        let mut new_rotation = self.rotation + angle_deg;
+        if det < 0.0 {
+            new_rotation = -new_rotation;
+        }
+        self.rotation = new_rotation;
+
+        // Extract uniform scale magnitude from the X basis vector.
+        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         self.width *= sx;
         self.height *= sx; // Assume uniform scale
     }
 
     fn properties(&self) -> Vec<Property> {
         vec![
-            Property { name: "Width".to_string(), value: PropertyValue::Number(self.width) },
-            Property { name: "Height".to_string(), value: PropertyValue::Number(self.height) },
-            Property { name: "Corner Radius".to_string(), value: PropertyValue::Number(self.corner_radius) },
-            Property { name: "Center X".to_string(), value: PropertyValue::Number(self.center.x) },
-            Property { name: "Center Y".to_string(), value: PropertyValue::Number(self.center.y) },
-            Property { name: "Rotation".to_string(), value: PropertyValue::Number(self.rotation) },
+            Property {
+                name: "Width".to_string(),
+                value: PropertyValue::Number(self.width),
+            },
+            Property {
+                name: "Height".to_string(),
+                value: PropertyValue::Number(self.height),
+            },
+            Property {
+                name: "Corner Radius".to_string(),
+                value: PropertyValue::Number(self.corner_radius),
+            },
+            Property {
+                name: "Center X".to_string(),
+                value: PropertyValue::Number(self.center.x),
+            },
+            Property {
+                name: "Center Y".to_string(),
+                value: PropertyValue::Number(self.center.y),
+            },
+            Property {
+                name: "Rotation".to_string(),
+                value: PropertyValue::Number(self.rotation),
+            },
         ]
     }
 
@@ -257,10 +313,10 @@ impl DesignerShape for DesignRectangle {
         let angle = -self.rotation;
         let rx = dx * angle.cos() - dy * angle.sin();
         let ry = dx * angle.sin() + dy * angle.cos();
-        
+
         let half_w = self.width / 2.0;
         let half_h = self.height / 2.0;
-        
+
         // Check if inside (including tolerance)
         rx.abs() <= half_w + tolerance && ry.abs() <= half_h + tolerance
     }
@@ -271,14 +327,14 @@ impl DesignerShape for DesignRectangle {
             self.translate(dx, dy);
             return;
         }
-        
+
         // For resizing, we need to handle rotation.
         // But usually resize handles are axis aligned in local space?
         // Or world space?
         // shapes.rs assumed axis aligned for resize logic (except it rotated corners for rendering).
         // If we resize a rotated rect, we usually resize in local axes.
         // Let's assume local axes for now or simplify.
-        
+
         // Simplified: ignore rotation for resize calculation, just update width/height/center
         let half_w = self.width / 2.0;
         let half_h = self.height / 2.0;
@@ -286,15 +342,15 @@ impl DesignerShape for DesignRectangle {
         let y1 = self.center.y - half_h;
         let x2 = self.center.x + half_w;
         let y2 = self.center.y + half_h;
-        
+
         let (new_x1, new_y1, new_x2, new_y2) = match handle {
-            0 => (x1 + dx, y1 + dy, x2, y2),           // Top-left
-            1 => (x1, y1 + dy, x2 + dx, y2),           // Top-right
-            2 => (x1 + dx, y1, x2, y2 + dy),           // Bottom-left
-            3 => (x1, y1, x2 + dx, y2 + dy),           // Bottom-right
+            0 => (x1 + dx, y1 + dy, x2, y2), // Top-left
+            1 => (x1, y1 + dy, x2 + dx, y2), // Top-right
+            2 => (x1 + dx, y1, x2, y2 + dy), // Bottom-left
+            3 => (x1, y1, x2 + dx, y2 + dy), // Bottom-right
             _ => (x1, y1, x2, y2),
         };
-        
+
         self.width = (new_x2 - new_x1).abs();
         self.height = (new_y2 - new_y1).abs();
         self.center.x = (new_x1 + new_x2) / 2.0;
@@ -312,7 +368,11 @@ pub struct DesignCircle {
 impl DesignerShape for DesignCircle {
     fn render(&self) -> Path {
         let mut builder = Path::builder();
-        builder.add_circle(point(self.center.x as f32, self.center.y as f32), self.radius as f32, lyon::path::Winding::Positive);
+        builder.add_circle(
+            point(self.center.x as f32, self.center.y as f32),
+            self.radius as f32,
+            lyon::path::Winding::Positive,
+        );
         let path = builder.build();
         // Rotation doesn't affect circle geometry but might affect texture/fill if we had it.
         // But for consistency, we should apply it if we want to support "rotating a circle" (e.g. for CAM start point?)
@@ -320,10 +380,13 @@ impl DesignerShape for DesignCircle {
         // shapes.rs Circle::to_path_shape applied rotation.
         // So we should apply it.
         if self.rotation.abs() > 1e-6 {
-             let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
+            let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
                 .then_rotate(lyon::math::Angle::radians(self.rotation as f32))
-                .then_translate(lyon::math::vector(-self.center.x as f32, -self.center.y as f32));
-             return path.transformed(&transform);
+                .then_translate(lyon::math::vector(
+                    -self.center.x as f32,
+                    -self.center.y as f32,
+                ));
+            return path.transformed(&transform);
         }
         path
     }
@@ -331,38 +394,61 @@ impl DesignerShape for DesignCircle {
     fn as_csg(&self) -> Sketch<()> {
         let sketch = Sketch::circle(self.radius, 32, None);
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
-        let translation = Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+        let translation =
+            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
         sketch.transform(&(translation * rotation))
     }
 
     fn bounds(&self) -> (f64, f64, f64, f64) {
-        (self.center.x - self.radius, self.center.y - self.radius, self.center.x + self.radius, self.center.y + self.radius)
+        (
+            self.center.x - self.radius,
+            self.center.y - self.radius,
+            self.center.x + self.radius,
+            self.center.y + self.radius,
+        )
     }
 
     fn transform(&mut self, t: &Transform) {
         let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
         self.center = Point::new(p.x as f64, p.y as f64);
-        
-        let angle = t.m12.atan2(t.m11) as f64;
-        self.rotation += angle;
-        
-        let sx = (t.m11*t.m11 + t.m12*t.m12).sqrt() as f64;
+
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        let mut new_rotation = self.rotation + angle_deg;
+        if det < 0.0 {
+            new_rotation = -new_rotation;
+        }
+        self.rotation = new_rotation;
+
+        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         self.radius *= sx;
     }
 
     fn properties(&self) -> Vec<Property> {
         vec![
-            Property { name: "Radius".to_string(), value: PropertyValue::Number(self.radius) },
-            Property { name: "Center X".to_string(), value: PropertyValue::Number(self.center.x) },
-            Property { name: "Center Y".to_string(), value: PropertyValue::Number(self.center.y) },
-            Property { name: "Rotation".to_string(), value: PropertyValue::Number(self.rotation) },
+            Property {
+                name: "Radius".to_string(),
+                value: PropertyValue::Number(self.radius),
+            },
+            Property {
+                name: "Center X".to_string(),
+                value: PropertyValue::Number(self.center.x),
+            },
+            Property {
+                name: "Center Y".to_string(),
+                value: PropertyValue::Number(self.center.y),
+            },
+            Property {
+                name: "Rotation".to_string(),
+                value: PropertyValue::Number(self.rotation),
+            },
         ]
     }
 
     fn contains_point(&self, p: Point, tolerance: f64) -> bool {
         let dx = p.x - self.center.x;
         let dy = p.y - self.center.y;
-        let dist = (dx*dx + dy*dy).sqrt();
+        let dist = (dx * dx + dy * dy).sqrt();
         dist <= self.radius + tolerance
     }
 
@@ -384,14 +470,20 @@ impl DesignerShape for DesignCircle {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignPath {
-    #[serde(serialize_with = "serialize_sketch", deserialize_with = "deserialize_sketch")]
+    #[serde(
+        serialize_with = "serialize_sketch",
+        deserialize_with = "deserialize_sketch"
+    )]
     pub sketch: Sketch<()>,
     pub rotation: f64,
 }
 
 impl DesignPath {
     pub fn from_csg(sketch: Sketch<()>) -> Self {
-        Self { sketch, rotation: 0.0 }
+        Self {
+            sketch,
+            rotation: 0.0,
+        }
     }
 }
 
@@ -414,7 +506,7 @@ where
 impl DesignerShape for DesignPath {
     fn render(&self) -> Path {
         let mut builder = Path::builder();
-        
+
         let mp = self.sketch.to_multipolygon();
         for poly in mp.0 {
             let exterior = poly.exterior();
@@ -429,7 +521,7 @@ impl DesignerShape for DesignPath {
                 }
             }
             builder.close();
-            
+
             for interior in poly.interiors() {
                 let mut first = true;
                 for coord in interior.0.iter() {
@@ -444,7 +536,7 @@ impl DesignerShape for DesignPath {
                 builder.close();
             }
         }
-        
+
         builder.build()
     }
 
@@ -459,28 +551,49 @@ impl DesignerShape for DesignPath {
 
     fn transform(&mut self, t: &Transform) {
         let m = Matrix4::new(
-            t.m11 as f64, t.m21 as f64, 0.0, t.m31 as f64,
-            t.m12 as f64, t.m22 as f64, 0.0, t.m32 as f64,
-            0.0,          0.0,          1.0, 0.0,
-            0.0,          0.0,          0.0, 1.0
+            t.m11 as f64,
+            t.m21 as f64,
+            0.0,
+            t.m31 as f64,
+            t.m12 as f64,
+            t.m22 as f64,
+            0.0,
+            t.m32 as f64,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
         );
-        
+
         self.sketch = self.sketch.transform(&m);
-        
-        let angle = t.m12.atan2(t.m11) as f64;
-        self.rotation += angle;
+
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        self.rotation += angle_deg;
     }
 
     fn properties(&self) -> Vec<Property> {
         vec![
-            Property { name: "Type".to_string(), value: PropertyValue::String("Path".to_string()) },
-            Property { name: "Rotation".to_string(), value: PropertyValue::Number(self.rotation) },
+            Property {
+                name: "Type".to_string(),
+                value: PropertyValue::String("Path".to_string()),
+            },
+            Property {
+                name: "Rotation".to_string(),
+                value: PropertyValue::Number(self.rotation),
+            },
         ]
     }
 
     fn contains_point(&self, p: Point, tolerance: f64) -> bool {
         let (x1, y1, x2, y2) = self.bounds();
-        p.x >= x1 - tolerance && p.x <= x2 + tolerance && p.y >= y1 - tolerance && p.y <= y2 + tolerance
+        p.x >= x1 - tolerance
+            && p.x <= x2 + tolerance
+            && p.y >= y1 - tolerance
+            && p.y <= y2 + tolerance
     }
 
     fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
@@ -491,7 +604,7 @@ impl DesignerShape for DesignPath {
         let (x1, y1, x2, y2) = self.bounds();
         let w = x2 - x1;
         let h = y2 - y1;
-        
+
         let (new_x1, new_y1, new_x2, new_y2) = match handle {
             0 => (x1 + dx, y1 + dy, x2, y2),
             1 => (x1, y1 + dy, x2 + dx, y2),
@@ -499,18 +612,18 @@ impl DesignerShape for DesignPath {
             3 => (x1, y1, x2 + dx, y2 + dy),
             _ => (x1, y1, x2, y2),
         };
-        
+
         let new_w = (new_x2 - new_x1).abs();
         let new_h = (new_y2 - new_y1).abs();
-        
+
         let sx = if w.abs() > 1e-6 { new_w / w } else { 1.0 };
         let sy = if h.abs() > 1e-6 { new_h / h } else { 1.0 };
-        
+
         let cx = (x1 + x2) / 2.0;
         let cy = (y1 + y2) / 2.0;
-        
+
         self.scale(sx, sy, Point::new(cx, cy));
-        
+
         let new_cx = (new_x1 + new_x2) / 2.0;
         let new_cy = (new_y1 + new_y2) / 2.0;
         self.translate(new_cx - cx, new_cy - cy);
@@ -526,9 +639,26 @@ pub struct DesignLine {
 
 impl DesignerShape for DesignLine {
     fn render(&self) -> Path {
+        // Apply stored rotation about midpoint for rendering so lines respect rotation field.
+        let cx = (self.start.x + self.end.x) / 2.0;
+        let cy = (self.start.y + self.end.y) / 2.0;
+
+        let angle_rad = self.rotation.to_radians();
+        let cos_a = angle_rad.cos();
+        let sin_a = angle_rad.sin();
+
+        let rotate_point = |p: &Point| -> Point {
+            let dx = p.x - cx;
+            let dy = p.y - cy;
+            Point::new(dx * cos_a - dy * sin_a + cx, dx * sin_a + dy * cos_a + cy)
+        };
+
+        let a = rotate_point(&self.start);
+        let b = rotate_point(&self.end);
+
         let mut builder = Path::builder();
-        builder.begin(point(self.start.x as f32, self.start.y as f32));
-        builder.line_to(point(self.end.x as f32, self.end.y as f32));
+        builder.begin(point(a.x as f32, a.y as f32));
+        builder.line_to(point(b.x as f32, b.y as f32));
         builder.end(false);
         builder.build()
     }
@@ -540,28 +670,31 @@ impl DesignerShape for DesignLine {
         // Let's try a thin rectangle (width 0.1mm)
         let dx = self.end.x - self.start.x;
         let dy = self.end.y - self.start.y;
-        let len = (dx*dx + dy*dy).sqrt();
+        let len = (dx * dx + dy * dy).sqrt();
         let angle = dy.atan2(dx);
-        
+
         let sketch = Sketch::rectangle(len, 0.1, None);
-        
+
         // Rotate and translate
         let center_x = (self.start.x + self.end.x) / 2.0;
         let center_y = (self.start.y + self.end.y) / 2.0;
-        
-        let center_fix = Matrix4::new_translation(&Vector3::new(-len/2.0, -0.05, 0.0));
+
+        let center_fix = Matrix4::new_translation(&Vector3::new(-len / 2.0, -0.05, 0.0));
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, angle as f64));
-        let translation = Matrix4::new_translation(&Vector3::new(center_x as f64, center_y as f64, 0.0));
-        
+        let translation =
+            Matrix4::new_translation(&Vector3::new(center_x as f64, center_y as f64, 0.0));
+
         sketch.transform(&(translation * rotation * center_fix))
     }
 
     fn bounds(&self) -> (f64, f64, f64, f64) {
+        let path = self.render();
+        let bb = lyon::algorithms::aabb::bounding_box(path.iter());
         (
-            self.start.x.min(self.end.x) as f64,
-            self.start.y.min(self.end.y) as f64,
-            self.start.x.max(self.end.x) as f64,
-            self.start.y.max(self.end.y) as f64,
+            bb.min.x as f64,
+            bb.min.y as f64,
+            bb.max.x as f64,
+            bb.max.y as f64,
         )
     }
 
@@ -570,21 +703,39 @@ impl DesignerShape for DesignLine {
         self.start = Point::new(p1.x as f64, p1.y as f64);
         let p2 = t.transform_point(point(self.end.x as f32, self.end.y as f32));
         self.end = Point::new(p2.x as f64, p2.y as f64);
+        self.rotation = self.current_angle_degrees(); // Update rotation based on new positions
     }
 
     fn properties(&self) -> Vec<Property> {
         vec![
-            Property { name: "Start X".to_string(), value: PropertyValue::Number(self.start.x as f64) },
-            Property { name: "Start Y".to_string(), value: PropertyValue::Number(self.start.y as f64) },
-            Property { name: "End X".to_string(), value: PropertyValue::Number(self.end.x as f64) },
-            Property { name: "End Y".to_string(), value: PropertyValue::Number(self.end.y as f64) },
+            Property {
+                name: "Start X".to_string(),
+                value: PropertyValue::Number(self.start.x as f64),
+            },
+            Property {
+                name: "Start Y".to_string(),
+                value: PropertyValue::Number(self.start.y as f64),
+            },
+            Property {
+                name: "End X".to_string(),
+                value: PropertyValue::Number(self.end.x as f64),
+            },
+            Property {
+                name: "End Y".to_string(),
+                value: PropertyValue::Number(self.end.y as f64),
+            },
         ]
     }
 
     fn contains_point(&self, p: Point, tolerance: f64) -> bool {
         let l2 = (self.end.x - self.start.x).powi(2) + (self.end.y - self.start.y).powi(2);
-        if l2 == 0.0 { return (p.x - self.start.x).powi(2) + (p.y - self.start.y).powi(2) <= tolerance*tolerance; }
-        let t = ((p.x - self.start.x) * (self.end.x - self.start.x) + (p.y - self.start.y) * (self.end.y - self.start.y)) / l2;
+        if l2 == 0.0 {
+            return (p.x - self.start.x).powi(2) + (p.y - self.start.y).powi(2)
+                <= tolerance * tolerance;
+        }
+        let t = ((p.x - self.start.x) * (self.end.x - self.start.x)
+            + (p.y - self.start.y) * (self.end.y - self.start.y))
+            / l2;
         let t = t.max(0.0).min(1.0);
         let proj_x = self.start.x + t * (self.end.x - self.start.x);
         let proj_y = self.start.y + t * (self.end.y - self.start.y);
@@ -594,11 +745,43 @@ impl DesignerShape for DesignLine {
 
     fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
         match handle {
-            0 => { self.start.x += dx; self.start.y += dy; }
-            1 => { self.end.x += dx; self.end.y += dy; }
-            4 => { self.translate(dx, dy); }
+            0 => {
+                self.start.x += dx;
+                self.start.y += dy;
+            }
+            1 => {
+                self.end.x += dx;
+                self.end.y += dy;
+            }
+            4 => {
+                self.translate(dx, dy);
+            }
             _ => {}
         }
+    }
+}
+
+impl DesignLine {
+    pub fn current_angle_degrees(&self) -> f64 {
+        let dx = self.end.x - self.start.x;
+        let dy = self.end.y - self.start.y;
+        dy.atan2(dx).to_degrees()
+    }
+
+    pub fn rotate_about(&mut self, angle_deg: f64, cx: f64, cy: f64) {
+        let angle_rad = angle_deg.to_radians();
+        let cos_a = angle_rad.cos();
+        let sin_a = angle_rad.sin();
+
+        let rotate_point = |p: &Point| -> Point {
+            let dx = p.x - cx;
+            let dy = p.y - cy;
+            Point::new(dx * cos_a - dy * sin_a + cx, dx * sin_a + dy * cos_a + cy)
+        };
+
+        self.start = rotate_point(&self.start);
+        self.end = rotate_point(&self.end);
+        self.rotation = self.current_angle_degrees();
     }
 }
 
@@ -616,8 +799,8 @@ impl DesignerShape for DesignEllipse {
         builder.add_ellipse(
             point(self.center.x as f32, self.center.y as f32),
             lyon::math::vector(self.rx as f32, self.ry as f32),
-            lyon::math::Angle::radians(0.0),
-            lyon::path::Winding::Positive
+            lyon::math::Angle::radians(self.rotation.to_radians() as f32),
+            lyon::path::Winding::Positive,
         );
         builder.build()
     }
@@ -632,9 +815,13 @@ impl DesignerShape for DesignEllipse {
             let y = self.ry * theta.sin();
             points.push([x, y]);
         }
-        
+
         let sketch = Sketch::polygon(&points, None);
-        let translation = Matrix4::new_translation(&Vector3::new(self.center.x as f64, self.center.y as f64, 0.0));
+        let translation = Matrix4::new_translation(&Vector3::new(
+            self.center.x as f64,
+            self.center.y as f64,
+            0.0,
+        ));
         sketch.transform(&translation)
     }
 
@@ -650,20 +837,39 @@ impl DesignerShape for DesignEllipse {
     fn transform(&mut self, t: &Transform) {
         let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
         self.center = Point::new(p.x as f64, p.y as f64);
-        // Note: Non-uniform scaling of ellipse is complex if we only store rx/ry and no rotation
-        // For now, assume uniform scaling or just transform center
-        // If we want full support, we need rotation in DesignEllipse
-        let sx = (t.m11*t.m11 + t.m12*t.m12).sqrt() as f64;
+
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        let mut new_rotation = self.rotation + angle_deg;
+        if det < 0.0 {
+            new_rotation = -new_rotation;
+        }
+        self.rotation = new_rotation;
+
+        // Use the X basis vector length as uniform scale factor.
+        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         self.rx *= sx;
         self.ry *= sx;
     }
 
     fn properties(&self) -> Vec<Property> {
         vec![
-            Property { name: "Center X".to_string(), value: PropertyValue::Number(self.center.x as f64) },
-            Property { name: "Center Y".to_string(), value: PropertyValue::Number(self.center.y as f64) },
-            Property { name: "Radius X".to_string(), value: PropertyValue::Number(self.rx) },
-            Property { name: "Radius Y".to_string(), value: PropertyValue::Number(self.ry) },
+            Property {
+                name: "Center X".to_string(),
+                value: PropertyValue::Number(self.center.x as f64),
+            },
+            Property {
+                name: "Center Y".to_string(),
+                value: PropertyValue::Number(self.center.y as f64),
+            },
+            Property {
+                name: "Radius X".to_string(),
+                value: PropertyValue::Number(self.rx),
+            },
+            Property {
+                name: "Radius Y".to_string(),
+                value: PropertyValue::Number(self.ry),
+            },
         ]
     }
 
@@ -679,7 +885,7 @@ impl DesignerShape for DesignEllipse {
         // We add tolerance to the radii effectively
         let normalized_x = rx / (self.rx + tolerance);
         let normalized_y = ry / (self.ry + tolerance);
-        
+
         (normalized_x * normalized_x + normalized_y * normalized_y) <= 1.0
     }
 
@@ -690,19 +896,23 @@ impl DesignerShape for DesignEllipse {
         }
         let (x1, y1, x2, y2) = self.bounds();
         match handle {
-            0 => { // Top-left
+            0 => {
+                // Top-left
                 self.rx = ((self.center.x - (x1 + dx)).abs()).max(1.0);
                 self.ry = ((self.center.y - (y1 + dy)).abs()).max(1.0);
             }
-            1 => { // Top-right
+            1 => {
+                // Top-right
                 self.rx = ((self.center.x - (x2 + dx)).abs()).max(1.0);
                 self.ry = ((self.center.y - (y1 + dy)).abs()).max(1.0);
             }
-            2 => { // Bottom-left
+            2 => {
+                // Bottom-left
                 self.rx = ((self.center.x - (x1 + dx)).abs()).max(1.0);
                 self.ry = ((self.center.y - (y2 + dy)).abs()).max(1.0);
             }
-            3 => { // Bottom-right
+            3 => {
+                // Bottom-right
                 self.rx = ((self.center.x - (x2 + dx)).abs()).max(1.0);
                 self.ry = ((self.center.y - (y2 + dy)).abs()).max(1.0);
             }
@@ -725,24 +935,24 @@ pub struct DesignText {
 
 impl DesignerShape for DesignText {
     fn render(&self) -> Path {
-        // For rendering, we return a placeholder box for now, 
+        // For rendering, we return a placeholder box for now,
         // or we could implement text rendering to path if we had the logic.
         // shapes.rs uses TextShape::to_path_shape which returns a box.
         let (x1, y1, x2, y2) = self.bounds();
         let mut builder = Path::builder();
         builder.add_rectangle(
             &lyon::math::Box2D::new(point(x1 as f32, y1 as f32), point(x2 as f32, y2 as f32)),
-            lyon::path::Winding::Positive
+            lyon::path::Winding::Positive,
         );
         let path = builder.build();
-        
+
         if self.rotation.abs() > 1e-6 {
-             let cx = (x1 + x2) / 2.0;
-             let cy = (y1 + y2) / 2.0;
-             let transform = Transform::translation(cx as f32, cy as f32)
-                .then_rotate(lyon::math::Angle::radians(self.rotation as f32))
+            let cx = (x1 + x2) / 2.0;
+            let cy = (y1 + y2) / 2.0;
+            let transform = Transform::translation(cx as f32, cy as f32)
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
                 .then_translate(lyon::math::vector(-cx as f32, -cy as f32));
-             return path.transformed(&transform);
+            return path.transformed(&transform);
         }
         path
     }
@@ -753,13 +963,13 @@ impl DesignerShape for DesignText {
         let w = x2 - x1;
         let h = y2 - y1;
         let sketch = Sketch::rectangle(w, h, None);
-        let cx = x1 + w/2.0;
-        let cy = y1 + h/2.0;
-        
-        let center_fix = Matrix4::new_translation(&Vector3::new(-w/2.0, -h/2.0, 0.0));
-        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
+        let cx = x1 + w / 2.0;
+        let cy = y1 + h / 2.0;
+
+        let center_fix = Matrix4::new_translation(&Vector3::new(-w / 2.0, -h / 2.0, 0.0));
+        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation = Matrix4::new_translation(&Vector3::new(cx, cy, 0.0));
-        
+
         sketch.transform(&(translation * rotation * center_fix))
     }
 
@@ -788,7 +998,7 @@ impl DesignerShape for DesignText {
                 max_y = max_y.max(pos.y + bb.max.y);
             }
         }
-        
+
         (min_x as f64, min_y as f64, max_x as f64, max_y as f64)
     }
 
@@ -796,28 +1006,52 @@ impl DesignerShape for DesignText {
         let p = t.transform_point(point(self.x as f32, self.y as f32));
         self.x = p.x as f64;
         self.y = p.y as f64;
-        // Scale font size?
-        // t.m11 is scale x approx
-        let s = (t.m11 + t.m22) / 2.0;
+        // Scale font size, keeping magnitude when mirroring (negative scale).
+        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt();
+        let sy = (t.m21 * t.m21 + t.m22 * t.m22).sqrt();
+        let s = ((sx + sy) / 2.0).max(1e-6);
         self.font_size *= s as f64;
-        
-        let angle = t.m12.atan2(t.m11) as f64;
-        self.rotation += angle;
+
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        let mut new_rotation = self.rotation + angle_deg;
+        if det < 0.0 {
+            new_rotation = -new_rotation;
+        }
+        self.rotation = new_rotation;
     }
 
     fn properties(&self) -> Vec<Property> {
         vec![
-            Property { name: "Text".to_string(), value: PropertyValue::String(self.text.clone()) },
-            Property { name: "X".to_string(), value: PropertyValue::Number(self.x) },
-            Property { name: "Y".to_string(), value: PropertyValue::Number(self.y) },
-            Property { name: "Font Size".to_string(), value: PropertyValue::Number(self.font_size) },
-            Property { name: "Rotation".to_string(), value: PropertyValue::Number(self.rotation) },
+            Property {
+                name: "Text".to_string(),
+                value: PropertyValue::String(self.text.clone()),
+            },
+            Property {
+                name: "X".to_string(),
+                value: PropertyValue::Number(self.x),
+            },
+            Property {
+                name: "Y".to_string(),
+                value: PropertyValue::Number(self.y),
+            },
+            Property {
+                name: "Font Size".to_string(),
+                value: PropertyValue::Number(self.font_size),
+            },
+            Property {
+                name: "Rotation".to_string(),
+                value: PropertyValue::Number(self.rotation),
+            },
         ]
     }
 
     fn contains_point(&self, p: Point, tolerance: f64) -> bool {
         let (x1, y1, x2, y2) = self.bounds();
-        p.x >= x1 - tolerance && p.x <= x2 + tolerance && p.y >= y1 - tolerance && p.y <= y2 + tolerance
+        p.x >= x1 - tolerance
+            && p.x <= x2 + tolerance
+            && p.y >= y1 - tolerance
+            && p.y <= y2 + tolerance
     }
 
     fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
@@ -832,7 +1066,7 @@ impl DesignRectangle {
         Self {
             width,
             height,
-            center: Point::new(x + width/2.0, y + height/2.0),
+            center: Point::new(x + width / 2.0, y + height / 2.0),
             corner_radius: 0.0,
             rotation: 0.0,
             is_slot: false,
@@ -842,7 +1076,10 @@ impl DesignRectangle {
 
 impl DesignPath {
     pub fn from_svg_path(d: &str) -> Option<Self> {
-        let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000"><path d="{}"/></svg>"#, d);
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000"><path d="{}"/></svg>"#,
+            d
+        );
         if let Ok(sketch) = Sketch::from_svg(&svg) {
             return Some(Self {
                 sketch,
@@ -1187,12 +1424,7 @@ impl DesignPath {
                         };
 
                         let (cp2_x, cp2_y, end_x, end_y) = if is_relative {
-                            (
-                                current_x + x2,
-                                current_y + y2,
-                                current_x + x,
-                                current_y + y,
-                            )
+                            (current_x + x2, current_y + y2, current_x + x, current_y + y)
                         } else {
                             (x2, y2, x, y)
                         };
@@ -1404,19 +1636,32 @@ impl DesignPath {
 
 impl DesignCircle {
     pub fn new(center: Point, radius: f64) -> Self {
-        Self { center, radius, rotation: 0.0 }
+        Self {
+            center,
+            radius,
+            rotation: 0.0,
+        }
     }
 }
 
 impl DesignLine {
     pub fn new(start: Point, end: Point) -> Self {
-        Self { start, end, rotation: 0.0 }
+        Self {
+            start,
+            end,
+            rotation: 0.0,
+        }
     }
 }
 
 impl DesignEllipse {
     pub fn new(center: Point, rx: f64, ry: f64) -> Self {
-        Self { center, rx, ry, rotation: 0.0 }
+        Self {
+            center,
+            rx,
+            ry,
+            rotation: 0.0,
+        }
     }
 }
 
@@ -1439,7 +1684,10 @@ impl DesignPath {
     pub fn from_points(points: &[Point], _closed: bool) -> Self {
         let pts: Vec<[f64; 2]> = points.iter().map(|p| [p.x, p.y]).collect();
         let sketch = Sketch::polygon(&pts, None);
-        Self { sketch, rotation: 0.0 }
+        Self {
+            sketch,
+            rotation: 0.0,
+        }
     }
 }
 
@@ -1452,6 +1700,8 @@ impl Shape {
             Shape::Line(_) => ShapeType::Line,
             Shape::Ellipse(_) => ShapeType::Ellipse,
             Shape::Text(_) => ShapeType::Text,
+            Shape::Triangle(_) => ShapeType::Triangle,
+            Shape::Polygon(_) => ShapeType::Polygon,
         }
     }
 
@@ -1463,6 +1713,8 @@ impl Shape {
             Shape::Line(s) => s.rotation,
             Shape::Ellipse(s) => s.rotation,
             Shape::Text(s) => s.rotation,
+            Shape::Triangle(s) => s.rotation,
+            Shape::Polygon(s) => s.rotation,
         }
     }
 
@@ -1474,13 +1726,24 @@ impl Shape {
             Shape::Line(s) => s,
             Shape::Ellipse(s) => s,
             Shape::Text(s) => s,
+            Shape::Triangle(s) => s,
+            Shape::Polygon(s) => s,
         }
     }
 
     pub fn to_path_shape(&self) -> DesignPath {
         DesignPath {
             sketch: self.as_csg(),
-            rotation: 0.0,
+            rotation: match self {
+                Shape::Rectangle(s) => s.rotation,
+                Shape::Circle(s) => s.rotation,
+                Shape::Path(s) => s.rotation,
+                Shape::Line(s) => s.rotation,
+                Shape::Ellipse(s) => s.rotation,
+                Shape::Text(s) => s.rotation,
+                Shape::Triangle(s) => s.rotation,
+                Shape::Polygon(s) => s.rotation,
+            },
         }
     }
 }
@@ -1491,36 +1754,39 @@ impl DesignPath {
         let flattened = path.iter().flattened(tolerance);
         let mut polygons: Vec<Vec<[f64; 2]>> = Vec::new();
         let mut current_poly: Vec<[f64; 2]> = Vec::new();
-        
+
         for event in flattened {
             match event {
                 lyon::path::Event::Begin { at } => {
                     current_poly.clear();
                     current_poly.push([at.x as f64, at.y as f64]);
-                },
+                }
                 lyon::path::Event::Line { to, .. } => {
                     current_poly.push([to.x as f64, to.y as f64]);
-                },
+                }
                 lyon::path::Event::End { .. } => {
                     if !current_poly.is_empty() {
                         polygons.push(current_poly.clone());
                     }
-                },
+                }
                 _ => {}
             }
         }
-        
+
         if polygons.is_empty() && !current_poly.is_empty() {
-             polygons.push(current_poly);
+            polygons.push(current_poly);
         }
-        
+
         let mut sketch = Sketch::new();
         for poly in polygons {
             let s = Sketch::polygon(&poly, None);
             sketch = sketch.union(&s);
         }
-        
-        Self { sketch, rotation: 0.0 }
+
+        Self {
+            sketch,
+            rotation: 0.0,
+        }
     }
 }
 
@@ -1544,7 +1810,7 @@ impl Point {
     pub fn distance_to(&self, other: &Point) -> f64 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
-        (dx*dx + dy*dy).sqrt()
+        (dx * dx + dy * dy).sqrt()
     }
 }
 
@@ -1556,6 +1822,8 @@ pub enum ShapeType {
     Line,
     Ellipse,
     Text,
+    Triangle,
+    Polygon,
 }
 
 impl DesignPath {
@@ -1563,14 +1831,400 @@ impl DesignPath {
         let path = self.render();
         let mut svg = String::new();
         for event in path.iter() {
-             match event {
-                 lyon::path::Event::Begin { at } => svg.push_str(&format!("M {} {} ", at.x, at.y)),
-                 lyon::path::Event::Line { to, .. } => svg.push_str(&format!("L {} {} ", to.x, to.y)),
-                 lyon::path::Event::Quadratic { ctrl, to, .. } => svg.push_str(&format!("Q {} {} {} {} ", ctrl.x, ctrl.y, to.x, to.y)),
-                 lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => svg.push_str(&format!("C {} {} {} {} {} {} ", ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y)),
-                 lyon::path::Event::End { close, .. } => if close { svg.push_str("Z "); },
-             }
+            match event {
+                lyon::path::Event::Begin { at } => svg.push_str(&format!("M {} {} ", at.x, at.y)),
+                lyon::path::Event::Line { to, .. } => {
+                    svg.push_str(&format!("L {} {} ", to.x, to.y))
+                }
+                lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                    svg.push_str(&format!("Q {} {} {} {} ", ctrl.x, ctrl.y, to.x, to.y))
+                }
+                lyon::path::Event::Cubic {
+                    ctrl1, ctrl2, to, ..
+                } => svg.push_str(&format!(
+                    "C {} {} {} {} {} {} ",
+                    ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y
+                )),
+                lyon::path::Event::End { close, .. } => {
+                    if close {
+                        svg.push_str("Z ");
+                    }
+                }
+            }
         }
         svg
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesignTriangle {
+    pub width: f64,
+    pub height: f64,
+    pub center: Point,
+    pub rotation: f64,
+}
+
+impl DesignTriangle {
+    pub fn new(center: Point, width: f64, height: f64) -> Self {
+        Self {
+            width,
+            height,
+            center,
+            rotation: 0.0,
+        }
+    }
+}
+
+impl DesignerShape for DesignTriangle {
+    fn render(&self) -> Path {
+        let mut builder = Path::builder();
+        // Right angle triangle
+        // Points relative to center:
+        // (-w/2, -h/2) -> (w/2, -h/2) -> (-w/2, h/2)
+        let half_w = self.width / 2.0;
+        let half_h = self.height / 2.0;
+
+        let p1 = point(-half_w as f32, -half_h as f32);
+        let p2 = point(half_w as f32, -half_h as f32);
+        let p3 = point(-half_w as f32, half_h as f32);
+
+        builder.begin(p1);
+        builder.line_to(p2);
+        builder.line_to(p3);
+        builder.close();
+
+        let path = builder.build();
+
+        // Apply rotation first (around origin), then translate to center
+        let mut transform = Transform::identity();
+        if self.rotation.abs() > 1e-6 {
+            transform = transform
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
+        }
+        transform = transform.then_translate(lyon::math::vector(
+            self.center.x as f32,
+            self.center.y as f32,
+        ));
+
+        path.transformed(&transform)
+    }
+
+    fn as_csg(&self) -> Sketch<()> {
+        let half_w = self.width / 2.0;
+        let half_h = self.height / 2.0;
+
+        let points = vec![[-half_w, -half_h], [half_w, -half_h], [-half_w, half_h]];
+
+        let sketch = Sketch::polygon(&points, None);
+
+        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
+        let translation =
+            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+
+        sketch.transform(&(translation * rotation))
+    }
+
+    fn bounds(&self) -> (f64, f64, f64, f64) {
+        let path = self.render();
+        let bb = lyon::algorithms::aabb::bounding_box(path.iter());
+        (
+            bb.min.x as f64,
+            bb.min.y as f64,
+            bb.max.x as f64,
+            bb.max.y as f64,
+        )
+    }
+
+    fn transform(&mut self, t: &Transform) {
+        let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
+        self.center = Point::new(p.x as f64, p.y as f64);
+
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        let mut new_rotation = self.rotation + angle_deg;
+        if det < 0.0 {
+            new_rotation = -new_rotation;
+        }
+        self.rotation = new_rotation;
+
+        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
+        self.width *= sx;
+        self.height *= sx;
+    }
+
+    fn properties(&self) -> Vec<Property> {
+        vec![
+            Property {
+                name: "Width".to_string(),
+                value: PropertyValue::Number(self.width),
+            },
+            Property {
+                name: "Height".to_string(),
+                value: PropertyValue::Number(self.height),
+            },
+            Property {
+                name: "Center X".to_string(),
+                value: PropertyValue::Number(self.center.x),
+            },
+            Property {
+                name: "Center Y".to_string(),
+                value: PropertyValue::Number(self.center.y),
+            },
+            Property {
+                name: "Rotation".to_string(),
+                value: PropertyValue::Number(self.rotation),
+            },
+        ]
+    }
+
+    fn contains_point(&self, p: Point, _tolerance: f64) -> bool {
+        // Check if point is inside triangle
+        // Transform point to local space
+        let dx = p.x - self.center.x;
+        let dy = p.y - self.center.y;
+        let angle = -self.rotation;
+        let rx = dx * angle.cos() - dy * angle.sin();
+        let ry = dx * angle.sin() + dy * angle.cos();
+
+        let half_w = self.width / 2.0;
+        let half_h = self.height / 2.0;
+
+        // Local points
+        let p1 = Point::new(-half_w, -half_h);
+        let p2 = Point::new(half_w, -half_h);
+        let p3 = Point::new(-half_w, half_h);
+        let pt = Point::new(rx, ry);
+
+        // Barycentric coordinates or edge checks
+        fn sign(p1: Point, p2: Point, p3: Point) -> f64 {
+            (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+        }
+
+        let d1 = sign(pt, p1, p2);
+        let d2 = sign(pt, p2, p3);
+        let d3 = sign(pt, p3, p1);
+
+        let has_neg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
+        let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
+
+        !(has_neg && has_pos)
+    }
+
+    fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
+        if handle == 4 {
+            self.translate(dx, dy);
+            return;
+        }
+        // Simplified resize
+        let half_w = self.width / 2.0;
+        let half_h = self.height / 2.0;
+        let x1 = self.center.x - half_w;
+        let y1 = self.center.y - half_h;
+        let x2 = self.center.x + half_w;
+        let y2 = self.center.y + half_h;
+
+        let (new_x1, new_y1, new_x2, new_y2) = match handle {
+            0 => (x1 + dx, y1 + dy, x2, y2),
+            1 => (x1, y1 + dy, x2 + dx, y2),
+            2 => (x1 + dx, y1, x2, y2 + dy),
+            3 => (x1, y1, x2 + dx, y2 + dy),
+            _ => (x1, y1, x2, y2),
+        };
+
+        self.width = (new_x2 - new_x1).abs();
+        self.height = (new_y2 - new_y1).abs();
+        self.center.x = (new_x1 + new_x2) / 2.0;
+        self.center.y = (new_y1 + new_y2) / 2.0;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesignPolygon {
+    pub radius: f64,
+    pub sides: u32,
+    pub center: Point,
+    pub rotation: f64,
+}
+
+impl DesignPolygon {
+    pub fn new(center: Point, radius: f64, sides: u32) -> Self {
+        Self {
+            radius,
+            sides,
+            center,
+            rotation: 0.0,
+        }
+    }
+}
+
+impl DesignerShape for DesignPolygon {
+    fn render(&self) -> Path {
+        let mut builder = Path::builder();
+        let sides = self.sides.max(3);
+
+        for i in 0..sides {
+            let theta = 2.0 * std::f64::consts::PI * (i as f64) / (sides as f64);
+            let x = self.radius * theta.cos();
+            let y = self.radius * theta.sin();
+            let p = point(x as f32, y as f32);
+
+            if i == 0 {
+                builder.begin(p);
+            } else {
+                builder.line_to(p);
+            }
+        }
+        builder.close();
+
+        let path = builder.build();
+
+        // Apply rotation first (around origin), then translate to center
+        let mut transform = Transform::identity();
+        if self.rotation.abs() > 1e-6 {
+            transform = transform
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
+        }
+        transform = transform.then_translate(lyon::math::vector(
+            self.center.x as f32,
+            self.center.y as f32,
+        ));
+
+        path.transformed(&transform)
+    }
+
+    fn as_csg(&self) -> Sketch<()> {
+        let sides = self.sides.max(3);
+        let mut points = Vec::with_capacity(sides as usize);
+
+        for i in 0..sides {
+            let theta = 2.0 * std::f64::consts::PI * (i as f64) / (sides as f64);
+            let x = self.center.x + self.radius * theta.cos();
+            let y = self.center.y + self.radius * theta.sin();
+            points.push([x, y]);
+        }
+
+        let sketch = Sketch::polygon(&points, None);
+
+        // Apply rotation around center after translation
+        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
+        let center_translate =
+            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+        let inverse_center =
+            Matrix4::new_translation(&Vector3::new(-self.center.x, -self.center.y, 0.0));
+
+        sketch.transform(&(center_translate * rotation * inverse_center))
+    }
+
+    fn bounds(&self) -> (f64, f64, f64, f64) {
+        let path = self.render();
+        let bb = lyon::algorithms::aabb::bounding_box(path.iter());
+        (
+            bb.min.x as f64,
+            bb.min.y as f64,
+            bb.max.x as f64,
+            bb.max.y as f64,
+        )
+    }
+
+    fn transform(&mut self, t: &Transform) {
+        let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
+        self.center = Point::new(p.x as f64, p.y as f64);
+
+        let angle = t.m12.atan2(t.m11) as f64;
+        self.rotation += angle;
+
+        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
+        self.radius *= sx;
+    }
+
+    fn properties(&self) -> Vec<Property> {
+        vec![
+            Property {
+                name: "Radius".to_string(),
+                value: PropertyValue::Number(self.radius),
+            },
+            Property {
+                name: "Sides".to_string(),
+                value: PropertyValue::Number(self.sides as f64),
+            },
+            Property {
+                name: "Center X".to_string(),
+                value: PropertyValue::Number(self.center.x),
+            },
+            Property {
+                name: "Center Y".to_string(),
+                value: PropertyValue::Number(self.center.y),
+            },
+            Property {
+                name: "Rotation".to_string(),
+                value: PropertyValue::Number(self.rotation),
+            },
+        ]
+    }
+
+    fn contains_point(&self, p: Point, _tolerance: f64) -> bool {
+        // Check if point is inside polygon
+        // Transform point to local space
+        let dx = p.x - self.center.x;
+        let dy = p.y - self.center.y;
+        let angle = -self.rotation;
+        let rx = dx * angle.cos() - dy * angle.sin();
+        let ry = dx * angle.sin() + dy * angle.cos();
+
+        // Ray casting algorithm for local polygon
+        let sides = self.sides.max(3);
+        let mut inside = false;
+        let mut j = (sides - 1) as usize;
+
+        for i in 0..sides as usize {
+            let theta_i = 2.0 * std::f64::consts::PI * (i as f64) / (sides as f64);
+            let xi = self.radius * theta_i.cos();
+            let yi = self.radius * theta_i.sin();
+
+            let theta_j = 2.0 * std::f64::consts::PI * (j as f64) / (sides as f64);
+            let xj = self.radius * theta_j.cos();
+            let yj = self.radius * theta_j.sin();
+
+            if ((yi > ry) != (yj > ry)) && (rx < (xj - xi) * (ry - yi) / (yj - yi) + xi) {
+                inside = !inside;
+            }
+            j = i;
+        }
+
+        inside
+    }
+
+    fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
+        if handle == 4 {
+            self.translate(dx, dy);
+            return;
+        }
+        // Resize radius based on distance from center to handle?
+        // Or just use bounding box resize logic?
+        // Let's use bounding box logic to scale radius
+        let (x1, y1, x2, y2) = self.bounds();
+        let w = x2 - x1;
+        let h = y2 - y1;
+
+        let (new_x1, new_y1, new_x2, new_y2) = match handle {
+            0 => (x1 + dx, y1 + dy, x2, y2),
+            1 => (x1, y1 + dy, x2 + dx, y2),
+            2 => (x1 + dx, y1, x2, y2 + dy),
+            3 => (x1, y1, x2 + dx, y2 + dy),
+            _ => (x1, y1, x2, y2),
+        };
+
+        let new_w = (new_x2 - new_x1).abs();
+        let new_h = (new_y2 - new_y1).abs();
+
+        let sx = if w.abs() > 1e-6 { new_w / w } else { 1.0 };
+        let sy = if h.abs() > 1e-6 { new_h / h } else { 1.0 };
+
+        // Uniform scale for radius
+        let s = (sx + sy) / 2.0;
+        self.radius *= s;
+
+        self.center.x = (new_x1 + new_x2) / 2.0;
+        self.center.y = (new_y1 + new_y2) / 2.0;
     }
 }

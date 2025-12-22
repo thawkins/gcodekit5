@@ -74,8 +74,8 @@ pub mod helpers;
 pub mod history;
 pub mod import;
 pub mod model;
-pub mod ops;
 pub mod multipass;
+pub mod ops;
 pub mod parametric;
 pub mod pocket_operations;
 pub mod render_optimizer;
@@ -117,11 +117,14 @@ pub use dxf_parser::{DxfEntity, DxfFile, DxfHeader, DxfParser};
 pub use gcode_gen::ToolpathToGcode;
 pub use history::{ActionType, HistoryAction, HistoryTransaction, UndoRedoManager};
 pub use import::{DxfImporter, FileFormat, ImportedDesign, SvgImporter};
+pub use model::{
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignRectangle as Rectangle, DesignText as TextShape, Point, Shape, ShapeType,
+};
 pub use multipass::{DepthStrategy, MultiPassConfig, MultiPassToolpathGenerator};
 pub use parametric::ParametricGenerator;
 pub use pocket_operations::{Island, PocketGenerator, PocketOperation};
 pub use render_optimizer::{RenderOptimizer, RenderStats};
-pub use model::{DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, Point, DesignRectangle as Rectangle, Shape, ShapeType, DesignPath as PathShape, DesignText as TextShape};
 pub use spatial_index::{Bounds, SpatialIndex, SpatialIndexStats};
 pub use stock_removal::{HeightMap2D, SimulationResult, StockMaterial};
 pub use templates::*;

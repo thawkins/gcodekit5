@@ -8,11 +8,12 @@ use gcodekit5_designer::canvas::DrawingObject;
 use gcodekit5_designer::commands::{DesignerCommand, PasteShapes, RemoveShape};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::font_manager;
-use gcodekit5_designer::serialization::DesignFile;
 use gcodekit5_designer::model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
-    DesignRectangle as Rectangle, DesignText as TextShape, DesignerShape, Point, Shape,
+    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
+    DesignTriangle as Triangle, DesignerShape, Point, Shape,
 };
+use gcodekit5_designer::serialization::DesignFile;
 use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
 use gcodekit5_devicedb::DeviceManager;
@@ -299,6 +300,8 @@ impl DesignerCanvas {
                 | DesignerTool::Circle
                 | DesignerTool::Line
                 | DesignerTool::Ellipse
+                | DesignerTool::Triangle
+                | DesignerTool::Polygon
                 | DesignerTool::Polyline => widget_motion.set_cursor_from_name(Some("pencil")),
             }
 
@@ -754,6 +757,7 @@ impl DesignerCanvas {
         let can_group = state.can_group();
         let can_ungroup = state.can_ungroup();
         let can_align = selected_count >= 2;
+        let can_boolean = selected_count >= 2;
         drop(state);
 
         let menu = Popover::new();
@@ -798,8 +802,13 @@ impl DesignerCanvas {
                     "delete" => canvas.delete_selected(),
                     "group" => canvas.group_selected(),
                     "ungroup" => canvas.ungroup_selected(),
+                    "boolean_union" => canvas.boolean_union(),
+                    "boolean_difference" => canvas.boolean_difference(),
+                    "boolean_intersection" => canvas.boolean_intersection(),
                     "convert_to_path" => canvas.convert_to_path(),
                     "convert_to_rectangle" => canvas.convert_to_rectangle(),
+                    "mirror_x" => canvas.mirror_x(),
+                    "mirror_y" => canvas.mirror_y(),
                     _ => {}
                 }
             });
@@ -817,6 +826,13 @@ impl DesignerCanvas {
 
         vbox.append(&create_item("Group", "group", can_group));
         vbox.append(&create_item("Ungroup", "ungroup", can_ungroup));
+
+        vbox.append(&Separator::new(Orientation::Horizontal));
+        vbox.append(&create_item("Union", "boolean_union", can_boolean));
+        vbox.append(&create_item("Diff", "boolean_difference", can_boolean));
+        vbox.append(&create_item("Inter", "boolean_intersection", can_boolean));
+        vbox.append(&create_item("Mirror on X", "mirror_x", has_selection));
+        vbox.append(&create_item("Mirror on Y", "mirror_y", has_selection));
 
         if can_align {
             let align_btn = gtk4::Button::builder()
@@ -1759,11 +1775,11 @@ impl DesignerCanvas {
                     }
                 }
                 DesignerTool::Circle => {
-                    let cx = start.0;
-                    let cy = start.1;
-                    let dx = end.0 - start.0;
-                    let dy = end.1 - start.1;
-                    let radius = (dx * dx + dy * dy).sqrt();
+                    let cx = (start.0 + end.0) / 2.0;
+                    let cy = (start.1 + end.1) / 2.0;
+                    let width = (end.0 - start.0).abs();
+                    let height = (end.1 - start.1).abs();
+                    let radius = width.min(height) / 2.0;
 
                     if radius > 1.0 {
                         Some(Shape::Circle(Circle::new(Point::new(cx, cy), radius)))
@@ -1783,6 +1799,35 @@ impl DesignerCanvas {
 
                     if rx > 1.0 && ry > 1.0 {
                         Some(Shape::Ellipse(Ellipse::new(Point::new(cx, cy), rx, ry)))
+                    } else {
+                        None
+                    }
+                }
+                DesignerTool::Triangle => {
+                    let width = (end.0 - start.0).abs();
+                    let height = (end.1 - start.1).abs();
+                    let cx = (start.0 + end.0) / 2.0;
+                    let cy = (start.1 + end.1) / 2.0;
+
+                    if width > 1.0 && height > 1.0 {
+                        Some(Shape::Triangle(Triangle::new(
+                            Point::new(cx, cy),
+                            width,
+                            height,
+                        )))
+                    } else {
+                        None
+                    }
+                }
+                DesignerTool::Polygon => {
+                    let cx = (start.0 + end.0) / 2.0;
+                    let cy = (start.1 + end.1) / 2.0;
+                    let width = (end.0 - start.0).abs();
+                    let height = (end.1 - start.1).abs();
+                    let radius = width.min(height) / 2.0;
+
+                    if radius > 1.0 {
+                        Some(Shape::Polygon(Polygon::new(Point::new(cx, cy), radius, 6)))
                     } else {
                         None
                     }
@@ -2187,6 +2232,65 @@ impl DesignerCanvas {
         self.widget.queue_draw();
     }
 
+    pub fn boolean_union(&self) {
+        let mut state = self.state.borrow_mut();
+        state.perform_boolean_union();
+        drop(state);
+
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        if let Some(ref props) = *self.properties.borrow() {
+            props.update_from_selection();
+        }
+
+        self.widget.queue_draw();
+    }
+
+    pub fn boolean_difference(&self) {
+        let mut state = self.state.borrow_mut();
+        state.perform_boolean_difference();
+        drop(state);
+
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        if let Some(ref props) = *self.properties.borrow() {
+            props.update_from_selection();
+        }
+
+        self.widget.queue_draw();
+    }
+
+    pub fn boolean_intersection(&self) {
+        let mut state = self.state.borrow_mut();
+        state.perform_boolean_intersection();
+        drop(state);
+
+        if let Some(layers_panel) = self.layers.borrow().as_ref() {
+            layers_panel.refresh(&self.state);
+        }
+        if let Some(ref props) = *self.properties.borrow() {
+            props.update_from_selection();
+        }
+
+        self.widget.queue_draw();
+    }
+
+    pub fn mirror_x(&self) {
+        let mut state = self.state.borrow_mut();
+        state.mirror_selected_x();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
+    pub fn mirror_y(&self) {
+        let mut state = self.state.borrow_mut();
+        state.mirror_selected_y();
+        drop(state);
+        self.widget.queue_draw();
+    }
+
     pub fn copy_selected(&self) {
         let mut state = self.state.borrow_mut();
         state.clipboard = state
@@ -2350,6 +2454,7 @@ impl DesignerCanvas {
                 gen.set_start_depth(shape.start_depth);
                 gen.set_cut_depth(shape.pocket_depth);
                 gen.set_step_in(shape.step_in as f64);
+                gen.set_raster_fill_ratio(shape.raster_fill_ratio);
 
                 let shape_toolpaths = match &shape.shape {
                     Shape::Rectangle(rect) => {
@@ -2402,6 +2507,30 @@ impl DesignerCanvas {
                             gen.generate_text_pocket_toolpath(text, shape.step_down as f64)
                         } else {
                             gen.generate_text_toolpath(text, shape.step_down as f64)
+                        }
+                    }
+                    Shape::Triangle(triangle) => {
+                        if shape.operation_type == OperationType::Pocket {
+                            gen.generate_triangle_pocket(
+                                triangle,
+                                shape.pocket_depth,
+                                shape.step_down as f64,
+                                shape.step_in as f64,
+                            )
+                        } else {
+                            gen.generate_triangle_contour(triangle, shape.step_down as f64)
+                        }
+                    }
+                    Shape::Polygon(polygon) => {
+                        if shape.operation_type == OperationType::Pocket {
+                            gen.generate_polygon_pocket(
+                                polygon,
+                                shape.pocket_depth,
+                                shape.step_down as f64,
+                                shape.step_in as f64,
+                            )
+                        } else {
+                            gen.generate_polygon_contour(polygon, shape.step_down as f64)
                         }
                     }
                 };
@@ -2649,7 +2778,12 @@ impl DesignerCanvas {
             cr.restore().unwrap();
         }
 
-        let selected_count = state.canvas.shape_store.iter().filter(|o| o.selected).count();
+        let selected_count = state
+            .canvas
+            .shape_store
+            .iter()
+            .filter(|o| o.selected)
+            .count();
 
         // Draw Shapes
         for obj in state.canvas.shape_store.iter() {
@@ -2735,6 +2869,9 @@ impl DesignerCanvas {
                     if ellipse.rotation.abs() > 1e-9 {
                         cr.rotate(ellipse.rotation);
                     }
+                    let base_width = cr.line_width();
+                    let scale_factor = ellipse.rx.abs().max(ellipse.ry.abs()).max(1e-6);
+                    cr.set_line_width(base_width / scale_factor);
                     cr.scale(ellipse.rx, ellipse.ry);
                     cr.arc(0.0, 0.0, 1.0, 0.0, 2.0 * std::f64::consts::PI);
                     cr.stroke().unwrap();
@@ -2768,10 +2905,8 @@ impl DesignerCanvas {
                                 let (x0, y0) = cr.current_point().unwrap();
                                 let x1 = x0 + (2.0 / 3.0) * (ctrl.x as f64 - x0);
                                 let y1 = y0 + (2.0 / 3.0) * (ctrl.y as f64 - y0);
-                                let x2 = to.x as f64 + (2.0 / 3.0)
-                                    * (ctrl.x as f64 - to.x as f64);
-                                let y2 = to.y as f64 + (2.0 / 3.0)
-                                    * (ctrl.y as f64 - to.y as f64);
+                                let x2 = to.x as f64 + (2.0 / 3.0) * (ctrl.x as f64 - to.x as f64);
+                                let y2 = to.y as f64 + (2.0 / 3.0) * (ctrl.y as f64 - to.y as f64);
                                 cr.curve_to(x1, y1, x2, y2, to.x as f64, to.y as f64);
                             }
                             lyon::path::Event::Cubic {
@@ -2806,6 +2941,17 @@ impl DesignerCanvas {
                 Shape::Text(text) => {
                     // Basic text placeholder
                     cr.save().unwrap();
+                    // Rotate around text bounds center, then flip Y for text rendering.
+                    let (x1, y1, x2, y2) = text.bounds();
+                    let cx = (x1 + x2) / 2.0;
+                    let cy = (y1 + y2) / 2.0;
+                    // Use negative angle because we flip Y after rotation.
+                    let angle = -text.rotation.to_radians();
+
+                    cr.translate(cx, cy);
+                    cr.rotate(angle);
+                    cr.translate(-cx, -cy);
+
                     // Flip Y back for text so it's not upside down
                     cr.translate(text.x, text.y);
                     cr.scale(1.0, -1.0);
@@ -2823,6 +2969,44 @@ impl DesignerCanvas {
                     cr.set_font_size(text.font_size);
                     cr.show_text(&text.text).unwrap();
                     cr.restore().unwrap();
+                }
+                Shape::Triangle(triangle) => {
+                    let path = triangle.render();
+                    cr.new_path();
+                    for event in path.iter() {
+                        match event {
+                            lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                            lyon::path::Event::Line { to, .. } => {
+                                cr.line_to(to.x as f64, to.y as f64)
+                            }
+                            lyon::path::Event::End { close, .. } => {
+                                if close {
+                                    cr.close_path();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    cr.stroke().unwrap();
+                }
+                Shape::Polygon(polygon) => {
+                    let path = polygon.render();
+                    cr.new_path();
+                    for event in path.iter() {
+                        match event {
+                            lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                            lyon::path::Event::Line { to, .. } => {
+                                cr.line_to(to.x as f64, to.y as f64)
+                            }
+                            lyon::path::Event::End { close, .. } => {
+                                if close {
+                                    cr.close_path();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    cr.stroke().unwrap();
                 }
             }
 
@@ -3076,6 +3260,8 @@ impl DesignerCanvas {
                 (min_x, min_y, max_x, max_y)
             }
             Shape::Text(text) => text.bounds(),
+            Shape::Triangle(triangle) => triangle.bounds(),
+            Shape::Polygon(polygon) => polygon.bounds(),
         }
     }
 
@@ -3333,6 +3519,18 @@ impl DesignerCanvas {
                 }
                 Shape::Text(text) => {
                     text.scale(sx, sy, anchor);
+                }
+                Shape::Triangle(triangle) => {
+                    triangle.center.x = anchor.x + (triangle.center.x - anchor.x) * sx;
+                    triangle.center.y = anchor.y + (triangle.center.y - anchor.y) * sy;
+                    triangle.width *= sx.abs();
+                    triangle.height *= sy.abs();
+                }
+                Shape::Polygon(polygon) => {
+                    polygon.center.x = anchor.x + (polygon.center.x - anchor.x) * sx;
+                    polygon.center.y = anchor.y + (polygon.center.y - anchor.y) * sy;
+                    let s = sx.abs().min(sy.abs());
+                    polygon.radius *= s;
                 }
             }
         }
@@ -4144,43 +4342,6 @@ impl DesignerView {
             }
         });
 
-        // Connect Boolean Operations
-        let canvas_union = canvas.clone();
-        let layers_union = layers.clone();
-        let properties_union = properties.clone();
-        toolbox.connect_union_clicked(move || {
-            let mut state = canvas_union.state.borrow_mut();
-            state.perform_boolean_union();
-            drop(state);
-            layers_union.refresh(&canvas_union.state);
-            properties_union.update_from_selection();
-            canvas_union.widget.queue_draw();
-        });
-
-        let canvas_diff = canvas.clone();
-        let layers_diff = layers.clone();
-        let properties_diff = properties.clone();
-        toolbox.connect_difference_clicked(move || {
-            let mut state = canvas_diff.state.borrow_mut();
-            state.perform_boolean_difference();
-            drop(state);
-            layers_diff.refresh(&canvas_diff.state);
-            properties_diff.update_from_selection();
-            canvas_diff.widget.queue_draw();
-        });
-
-        let canvas_inter = canvas.clone();
-        let layers_inter = layers.clone();
-        let properties_inter = properties.clone();
-        toolbox.connect_intersection_clicked(move || {
-            let mut state = canvas_inter.state.borrow_mut();
-            state.perform_boolean_intersection();
-            drop(state);
-            layers_inter.refresh(&canvas_inter.state);
-            properties_inter.update_from_selection();
-            canvas_inter.widget.queue_draw();
-        });
-
         let view = Rc::new(Self {
             widget: container,
             canvas: canvas.clone(),
@@ -4219,12 +4380,6 @@ impl DesignerView {
         gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             // Check if we need to update properties (when canvas is redrawn or selection changes)
             props_update.update_from_selection();
-
-            // Update boolean ops sensitivity
-            let state = canvas_props.state.borrow();
-            let can_bool = state.can_perform_boolean_op();
-            drop(state);
-            toolbox_update.update_boolean_ops_sensitivity(can_bool);
 
             gtk4::glib::ControlFlow::Continue
         });
@@ -4971,6 +5126,16 @@ impl DesignerView {
                                         l.start.x, l.start.y, l.end.x, l.end.y, style,
                                         l.rotation, (l.start.x+l.end.x)/2.0, (l.start.y+l.end.y)/2.0
                                     ));
+                                }
+                                Shape::Triangle(t) => {
+                                    let path = t.render();
+                                    let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
+                                    svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
+                                }
+                                Shape::Polygon(p) => {
+                                    let path = p.render();
+                                    let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
+                                    svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
                                 }
                                 Shape::Ellipse(e) => {
                                     svg.push_str(&format!(r#"<ellipse cx="{:.2}" cy="{:.2}" rx="{:.2}" ry="{:.2}" style="{}" transform="rotate({:.2} {:.2} {:.2})" />"#,

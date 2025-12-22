@@ -1513,7 +1513,7 @@ impl ToolsManagerView {
     fn tool_contents_equal(a: &Tool, b: &Tool) -> bool {
         // Helper for float comparison with tolerance matching UI precision (3 decimals)
         let eq_f32 = |x: f32, y: f32| (x - y).abs() < 0.0001;
-        
+
         // Helper for Option<f32>
         let eq_opt_f32 = |x: Option<f32>, y: Option<f32>| match (x, y) {
             (Some(vx), Some(vy)) => eq_f32(vx, vy),
@@ -1523,7 +1523,7 @@ impl ToolsManagerView {
 
         // Helper for shaft diameter (None implies == diameter)
         let eq_shaft = |t: &Tool| t.shaft_diameter.unwrap_or(t.diameter);
-        
+
         // Helper for strings (treat None and Some("") as equal)
         let eq_str = |x: &Option<String>, y: &Option<String>| {
             x.as_deref().unwrap_or("").trim() == y.as_deref().unwrap_or("").trim()

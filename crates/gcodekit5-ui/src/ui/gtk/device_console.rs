@@ -1,6 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow, TextView, WrapMode, gdk,
+    gdk, Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow,
+    TextView, WrapMode,
 };
 use std::{borrow::Cow, cell::RefCell, rc::Rc};
 
@@ -99,7 +100,7 @@ impl DeviceConsoleView {
         let key_controller = EventControllerKey::new();
         let history_clone = history.clone();
         let entry_clone = command_entry.clone();
-        
+
         key_controller.connect_key_pressed(move |_, keyval, _, _| {
             match keyval {
                 gdk::Key::Up => {
@@ -120,7 +121,7 @@ impl DeviceConsoleView {
                 _ => glib::Propagation::Proceed,
             }
         });
-        
+
         command_entry.add_controller(key_controller);
 
         view
@@ -138,7 +139,7 @@ impl DeviceConsoleView {
         // Append to bottom and auto-scroll
         let mut iter = buffer.end_iter();
         buffer.insert(&mut iter, msg.as_ref());
-        
+
         // Auto-scroll to bottom after inserting
         let mark = buffer.create_mark(None, &buffer.end_iter(), false);
         self.console_text.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);

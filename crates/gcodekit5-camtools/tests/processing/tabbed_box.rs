@@ -112,7 +112,11 @@ fn test_tab_protrusion_with_kerf() {
     }
 
     let min_y = y_coords.iter().cloned().fold(f32::INFINITY, f32::min);
-    assert!(min_y >= -0.001, "Expected non-negative Y coords; got min_y={:.3}", min_y);
+    assert!(
+        min_y >= -0.001,
+        "Expected non-negative Y coords; got min_y={:.3}",
+        min_y
+    );
 }
 
 #[test]
