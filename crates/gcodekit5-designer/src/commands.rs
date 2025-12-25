@@ -165,12 +165,12 @@ impl DesignerCommand {
             DesignerCommand::MoveShapes(cmd) => {
                 for id in &cmd.ids {
                     if let Some(obj) = canvas.get_shape_mut(*id) {
-                        let (x1, y1, x2, y2) = obj.shape.bounds();
+                        let (x1, y1, x2, y2) = obj.get_total_bounds();
                         let old_bounds = Bounds::new(x1, y1, x2, y2);
 
                         obj.shape.translate(cmd.dx, cmd.dy);
 
-                        let (nx1, ny1, nx2, ny2) = obj.shape.bounds();
+                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
                         let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
                         canvas.remove_from_index(*id, &old_bounds);
@@ -182,12 +182,12 @@ impl DesignerCommand {
                 // If we stored shapes, swap them
                 if let Some(new_shape) = &cmd.new_shape {
                     if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.shape.bounds();
+                        let (x1, y1, x2, y2) = obj.get_total_bounds();
                         let old_bounds = Bounds::new(x1, y1, x2, y2);
 
                         obj.shape = new_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.shape.bounds();
+                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
                         let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
                         canvas.remove_from_index(cmd.id, &old_bounds);
@@ -197,12 +197,12 @@ impl DesignerCommand {
             }
             DesignerCommand::ChangeProperty(cmd) => {
                 if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                    let (x1, y1, x2, y2) = obj.shape.bounds();
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
                     let old_bounds = Bounds::new(x1, y1, x2, y2);
 
                     *obj = cmd.new_state.clone();
 
-                    let (nx1, ny1, nx2, ny2) = obj.shape.bounds();
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
                     let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
                     canvas.remove_from_index(cmd.id, &old_bounds);
@@ -253,12 +253,12 @@ impl DesignerCommand {
             DesignerCommand::MoveShapes(cmd) => {
                 for id in &cmd.ids {
                     if let Some(obj) = canvas.get_shape_mut(*id) {
-                        let (x1, y1, x2, y2) = obj.shape.bounds();
+                        let (x1, y1, x2, y2) = obj.get_total_bounds();
                         let old_bounds = Bounds::new(x1, y1, x2, y2);
 
                         obj.shape.translate(-cmd.dx, -cmd.dy);
 
-                        let (nx1, ny1, nx2, ny2) = obj.shape.bounds();
+                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
                         let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
                         canvas.remove_from_index(*id, &old_bounds);
@@ -269,12 +269,12 @@ impl DesignerCommand {
             DesignerCommand::ResizeShape(cmd) => {
                 if let Some(old_shape) = &cmd.old_shape {
                     if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.shape.bounds();
+                        let (x1, y1, x2, y2) = obj.get_total_bounds();
                         let old_bounds = Bounds::new(x1, y1, x2, y2);
 
                         obj.shape = old_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.shape.bounds();
+                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
                         let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
                         canvas.remove_from_index(cmd.id, &old_bounds);
@@ -284,12 +284,12 @@ impl DesignerCommand {
             }
             DesignerCommand::ChangeProperty(cmd) => {
                 if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                    let (x1, y1, x2, y2) = obj.shape.bounds();
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
                     let old_bounds = Bounds::new(x1, y1, x2, y2);
 
                     *obj = cmd.old_state.clone();
 
-                    let (nx1, ny1, nx2, ny2) = obj.shape.bounds();
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
                     let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
                     canvas.remove_from_index(cmd.id, &old_bounds);

@@ -1,8 +1,26 @@
-## [0.40.0-alpha.6] - 2025-12-20
+## [0.41.0-alpha.1] - 2025-12-21
+
+### Added
+- **Designer**: Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).
+- **Designer**: Added `offset`, `fillet`, and `chamfer` properties to `DrawingObject`.
+- **Designer**: Added `get_effective_shape()` to compute modified geometry on-the-fly for rendering, selection, and G-code.
 
 ### Changed
-- **Version**: Bumped version to 0.40.0-alpha.6.
-- **CAM Tools**: Changed Vector Image CAMTool preview background to 50% grey.
+- **UI**: Removed "Apply" buttons from Geometry Operations in the Properties Panel.
+- **UI**: Geometry operations now apply immediately on Enter or Focus Out.
+- **UI**: Geometry Operations frame is now context-sensitive (hidden for Text shapes).
+- **Designer**: Updated spatial indexing and hit-testing to use the effective shape bounds.
+
+## [0.41.0-alpha.0] - 2025-12-21
+
+### Added
+- **CAM Tools**: Added new "Drill Press" tool for manual hole drilling and helical interpolation.
+- **CAM Tools**: Support for peck drilling (chip clearing) with configurable depth.
+- **CAM Tools**: Support for helical interpolation for holes larger than the tool diameter.
+- **CAM Tools**: Unit-aware parameter entry (Metric/Imperial) with dynamic switching.
+- **CAM Tools**: Ability to save and load tool parameters to JSON files.
+
+## [0.40.0-alpha.6] - 2025-12-20
 
 ### Fixed
 - **Machine Control**: Fixed feedrate display jumping and spindle speed showing zero.

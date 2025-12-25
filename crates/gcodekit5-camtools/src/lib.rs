@@ -8,6 +8,7 @@
 //! - **Advanced Features**: Cutting feeds, threading, speeds, and advanced machining operations
 //! - **Jigsaw Puzzle Maker**: Generate G-Code for cutting interlocking puzzle pieces
 //! - **Tabbed Box Maker**: Create finger-jointed box designs with customizable parameters
+//! - **Drill Press**: Specialized drilling cycles including peck drilling and helical interpolation
 //! - **Laser Engraver**: Specialized processing for laser cutting and engraving
 //! - **Vector Engraver**: Vector path cutting with advanced contour and fill options
 //! - **Arc Expander**: Arc interpolation and expansion
@@ -28,6 +29,7 @@ pub mod advanced_features;
 pub mod arc_expander;
 pub mod comment_processor;
 pub mod core_infrastructure;
+pub mod drill_press;
 pub mod gerber;
 pub mod hatch_generator;
 mod hatch_test;
@@ -52,6 +54,7 @@ pub use advanced_features::{
 pub use arc_expander::ArcExpander;
 pub use comment_processor::CommentProcessor;
 pub use core_infrastructure::{AppConfig, ApplicationState, Logger, TelemetryData};
+pub use drill_press::{DrillPressGenerator, DrillPressParameters};
 pub use gerber::{GerberConverter, GerberLayerType, GerberParameters};
 pub use jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 pub use laser_engraver::{

@@ -5,8 +5,10 @@
 
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
 use crate::model::{DesignCircle as Circle, DesignRectangle as Rectangle, Point};
+use crate::ops::clean_polyline;
 use cavalier_contours::polyline::{PlineSource, PlineSourceMut, PlineVertex, Polyline};
 use std::f64::consts::PI;
+use std::panic;
 
 fn add_center_cleanup(
     toolpath: &mut Toolpath,
@@ -823,7 +825,11 @@ impl PocketGenerator {
 
             while has_paths {
                 // Offset inwards
-                let offsets = polyline.parallel_offset(-current_offset);
+                let polyline = clean_polyline(polyline.clone());
+                let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                    polyline.parallel_offset(-current_offset)
+                }))
+                .unwrap_or_default();
 
                 if offsets.is_empty() {
                     break;
@@ -918,7 +924,12 @@ impl PocketGenerator {
         let mut innermost_centroid: Option<Point> = None;
 
         loop {
-            let offsets = polyline.parallel_offset(-current_offset);
+            let polyline = clean_polyline(polyline.clone());
+            let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                polyline.parallel_offset(-current_offset)
+            }))
+            .unwrap_or_default();
+
             if offsets.is_empty() {
                 break;
             }

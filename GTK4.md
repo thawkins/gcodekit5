@@ -49,11 +49,39 @@
 - **Navigation**: Use `Label::connect_activate_link` with `help:<topic>` links to switch topics (and keep back/forward history in-memory).
 
 
+## Live Previews for Geometry Operations
+- **Implementation**: To implement live previews for destructive operations (like Offset, Fillet, Chamfer), add a `preview_shapes: Rc<RefCell<Vec<Shape>>>` to the `DesignerCanvas`.
+- **Rendering**: In the `draw` function, iterate over `preview_shapes` and render them with a distinct color (e.g., `warning_color` / yellow) and a fixed line width.
+- **Interaction (Inspector-based)**:
+    1. Add a "Geometry Operations" section to the `PropertiesPanel` (Inspector).
+    2. Use `Entry` widgets for parameters (Distance, Radius).
+    3. Connect to the `Entry::changed` signal.
+    4. In the handler, parse the current value and generate the preview shapes using the backend geometry engine (e.g., `gcodekit5_designer::ops`).
+    5. Update the shared `preview_shapes` and trigger a redraw.
+    6. Add an "Apply" button to commit the operation to the actual shape state.
+    7. **Cleanup**: Ensure `preview_shapes` is cleared when the selection changes or when the "Apply" button is clicked (after the operation is performed).
+- **Benefits**: This approach provides a more integrated workflow than popup dialogs, as the user can see the preview while editing other properties and doesn't have to deal with modal windows.
+- **Standard Buttons**: Use `dialog.add_button("Cancel", ResponseType::Cancel)` and `dialog.add_button("Apply", ResponseType::Ok)` if using dialogs, but prefer the Inspector-based approach for a smoother workflow.
+
 ## Materials/Tools List Patterns
 - **Empty state panes**: For editor-style tabs, a `gtk4::Stack` with an `empty` page + `edit` page makes selection-driven UIs feel much clearer.
 - **ListBox placeholders**: `ListBox::set_placeholder(Some(&Label))` is an easy way to show “No results” when filtering/searching.
 - **Store row metadata**: Prefer `ListBoxRow::set_data("key", value)` over hidden widgets for IDs; retrieve via `row.data::<T>("key")`.
 - **Icon+label buttons**: Build a `Box` with `Image::from_icon_name` + `Label` and set it as `Button::set_child` for consistent look (avoid emoji labels).
+
+## Unit-Aware UI Components
+- **Dimension Rows**: Use a helper like `create_dimension_row` to create a consistent UI for length inputs. It should include an `Entry` for the value and a `Label` for the unit (mm/inch).
+- **Dynamic Unit Switching**: Listen for `measurement_system` changes in settings. When the system changes:
+    1. Parse the current value in the *old* system.
+    2. Format it in the *new* system.
+    3. Update the entry text and the unit label.
+- **Validation**: Always use `units::parse_length` to handle both decimal points and potential unit suffixes, and provide sensible defaults on failure.
+
+## Drill Press CAMTool Implementation
+- **Helical Interpolation**: For holes larger than the tool, use `G2` (or `G3`) with a `Z` component to create a spiral. The pitch of the spiral can be tied to the "Peck Depth" parameter.
+- **Peck Drilling**: For deep holes, retract to the surface (`top_z`) to clear chips, then rapid back to just above the last cut depth (`current_z + 0.5mm`) before continuing.
+- **UI Layout**: A `Paned` layout with a descriptive sidebar (40%) and a scrollable settings area (60%) works well for complex CAM tools.
+- **Parameter Persistence**: Use `serde_json` to save/load tool parameters to/from `.json` files, allowing users to reuse specific hole/tool configurations.
 
 ## GTK Label Selection
 - **Issue**: `gtk::Label` with `selectable` set to true might show all text selected by default or when content changes if not handled carefully.
@@ -107,10 +135,8 @@ When working with external crates that expose opaque types (private fields) but 
 - **Fix**: Always clean polylines before performing operations like `parallel_offset` or boolean operations.
   - Use `remove_repeat_pos(epsilon)` to remove consecutive duplicates.
   - For closed polylines, explicitly check if the last vertex equals the first vertex and remove it if so.
-  - A helper function `clean_polyline` is recommended to encapsulate this logic.
-- **Epsilon**: Use a small epsilon (e.g., `1e-5`) for vertex comparison to handle floating point inaccuracies.
-- **Boolean Operations**: Boolean operations can also produce polylines that need cleaning before further processing.
-- **FFI Boundaries**: Panics inside GTK callbacks (FFI) cause immediate aborts. It is critical to wrap *all* fallible geometry operations (like `parallel_offset` inside helper closures) in `panic::catch_unwind` to ensure the application survives geometry bugs.
+  - A helper function `clean_polyline` is implemented in `gcodekit5_designer::ops` and `gcodekit5_camtools::gerber` and should be used before any `parallel_offset` call.
+- **Panic Handling**: Wrap `cavalier_contours` operations in `panic::catch_unwind` to prevent the entire application from crashing due to geometry errors. This is especially important in GTK callbacks where panics cause immediate aborts. Use `panic::AssertUnwindSafe` to wrap the closure.
 
 ## CSGRS vs Cavalier Contours
 - **Stability**: `cavalier_contours` is excellent for offsetting but can be fragile (panics) with degenerate inputs (zero-length segments, duplicate vertices) during boolean operations.
@@ -160,6 +186,16 @@ When working with external crates that expose opaque types (private fields) but 
   - Pass all paths as a Vec to `generate_hatch`
 - This ensures the hatch generator properly respects holes - if you put multiple polygons in one Vec with shared builders, the holes won't be recognized.
 - Lyon's even-odd fill rule requires each polygon to be its own path for proper hole handling.
+
+## Parametric Shapes and Multi-Path Rendering
+- **Parametric Generators**: For complex geometry like gears (involute curves), sprockets (ANSI standard), and tabbed boxes (finger joints), encapsulate the math in a dedicated module (e.g., `parametric_shapes.rs`). Use `lyon::Path` as the common exchange format.
+- **Multi-Path Shapes**: Some shapes (like a 6-face tabbed box) are naturally represented as a collection of paths rather than a single closed loop.
+  - **Model**: Add a `render_all() -> Vec<Path>` method to the shape struct to return all individual components.
+  - **G-code Generation**: Iterate over the results of `render_all()` and generate toolpaths for each component separately. This ensures that each face of a box is cut as a distinct operation.
+  - **Rendering**: In the UI renderer (Tiny-skia or SVG), iterate over the paths and draw them sequentially.
+- **Serialization**: When adding complex parametric shapes, ensure all parameters (teeth, module, pitch, thickness, etc.) are included in the serialization format (`ShapeData`) with appropriate defaults to maintain backward compatibility.
+- **UI Properties**: Use `usize` for discrete counts (like teeth) and `f64` for dimensions. Ensure the UI `Entry` widgets are correctly mapped to these types and handle unit conversions (mm/inch) if applicable.
+- **Exhaustive Matching**: When adding new variants to the `Shape` enum, the Rust compiler will enforce exhaustive matching in all `match` statements. This is a powerful safety feature that ensures all parts of the application (rendering, toolpathing, UI, serialization) are updated to handle the new shapes.
 
 ## Machine Control UI
 - **G53 Button Removal**: The "Use G53 (Machine Coords)" button was removed from the UI as it was deemed redundant or confusing. G53 commands can still be sent via the console if needed.
@@ -212,6 +248,18 @@ When working with external crates that expose opaque types (private fields) but 
   - **Fix**: Ensure "Sides" property is visible in inspector when a polygon is selected.
   - **Fix**: Ensure polygon creation respects the marquee bounds correctly (radius vs diameter).
   - **Fix**: Polygon rotation offset - Fixed by applying rotation BEFORE translation. When rendering, use `transform.then_rotate(...).then_translate(...)` to rotate around the origin first, then translate to the center position.
+
+## Non-Destructive Geometry Operations (Offset, Fillet, Chamfer)
+- **Concept**: Instead of modifying the base shape geometry (destructive), store the operation parameters (Offset distance, Fillet radius, Chamfer distance) as properties of the `DrawingObject`.
+- **Effective Shape**: Implement a `get_effective_shape()` method on `DrawingObject` that applies these modifiers to the base shape on-the-fly.
+- **Rendering & Toolpathing**: Use the "effective shape" for all downstream operations (rendering, hit-testing, G-code generation). This allows the user to tweak parameters without losing the original shape.
+- **UI Implementation**:
+    - Remove "Apply" buttons from the Properties Panel.
+    - Use `connect_activate` (Enter key) on `Entry` widgets to commit changes to the `DesignerState` (creating undo commands).
+    - Use `connect_changed` to update a live preview on the canvas.
+    - Use `connect_leave` (via `EventControllerFocus`) to commit changes when the user clicks away.
+    - **Contextual Visibility**: Hide the Geometry Operations frame for shapes where it's not applicable (e.g., `Text`).
+- **Spatial Indexing**: When properties change, ensure the spatial index (R-Tree) is updated using the bounds of the *effective* shape, as offsetting or filleting can change the bounding box.
 
 ## Pocket G-code Generation
 - **Rapid Moves Issue**: When generating raster pockets for polygons, the tool was performing a rapid move to (0,0) between scanlines. This was due to a hardcoded `Point::new(0.0, 0.0)` in the `generate_raster_pocket` function that should have been the last point of the toolpath.

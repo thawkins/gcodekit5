@@ -25,6 +25,9 @@ pub enum DesignerTool {
     Pan = 7,
     Triangle = 8,
     Polygon = 9,
+    Gear = 10,
+    Sprocket = 11,
+    TabbedBox = 12,
 }
 
 impl DesignerTool {
@@ -40,6 +43,9 @@ impl DesignerTool {
             DesignerTool::Pan => t!("Pan"),
             DesignerTool::Triangle => t!("Triangle"),
             DesignerTool::Polygon => t!("Polygon"),
+            DesignerTool::Gear => t!("Gear"),
+            DesignerTool::Sprocket => t!("Sprocket"),
+            DesignerTool::TabbedBox => t!("Tabbed Box"),
         }
     }
 
@@ -55,6 +61,9 @@ impl DesignerTool {
             DesignerTool::Pan => "grab.svg",
             DesignerTool::Triangle => "media-playback-start-symbolic",
             DesignerTool::Polygon => "emblem-shared-symbolic",
+            DesignerTool::Gear => "system-run-symbolic",
+            DesignerTool::Sprocket => "emblem-system-symbolic",
+            DesignerTool::TabbedBox => "package-x-generic-symbolic",
         }
     }
 
@@ -70,6 +79,9 @@ impl DesignerTool {
             DesignerTool::Pan => t!("Pan (Space)"),
             DesignerTool::Triangle => t!("Triangle"),
             DesignerTool::Polygon => t!("Polygon"),
+            DesignerTool::Gear => t!("Gear"),
+            DesignerTool::Sprocket => t!("Sprocket"),
+            DesignerTool::TabbedBox => t!("Tabbed Box"),
         }
     }
 }
@@ -81,6 +93,8 @@ pub struct DesignerToolbox {
     buttons: Vec<Button>,
     tools: Vec<DesignerTool>,
     generate_btn: Button,
+    mirror_x_btn: Button,
+    mirror_y_btn: Button,
     _state: Rc<RefCell<DesignerState>>,
     _settings_controller: Rc<SettingsController>,
     _current_units: Arc<Mutex<MeasurementSystem>>,
@@ -140,6 +154,9 @@ impl DesignerToolbox {
             DesignerTool::Polygon,
             DesignerTool::Polyline,
             DesignerTool::Text,
+            DesignerTool::Gear,
+            DesignerTool::Sprocket,
+            DesignerTool::TabbedBox,
         ];
 
         let grid = gtk4::Grid::builder()
@@ -200,6 +217,37 @@ impl DesignerToolbox {
                 }
             });
         }
+
+        // Operations Section
+        let ops_label = Label::new(Some(&t!("Operations")));
+        ops_label.add_css_class("caption");
+        ops_label.set_halign(Align::Start);
+        ops_label.set_margin_top(10);
+        ops_label.set_margin_bottom(4);
+        content_box.append(&ops_label);
+
+        let ops_grid = Grid::builder()
+            .column_spacing(2)
+            .row_spacing(2)
+            .halign(Align::Center)
+            .build();
+
+        let mirror_x_btn = Button::builder()
+            .tooltip_text(t!("Mirror on X"))
+            .icon_name("object-flip-horizontal-symbolic")
+            .build();
+        mirror_x_btn.set_size_request(40, 40);
+
+        let mirror_y_btn = Button::builder()
+            .tooltip_text(t!("Mirror on Y"))
+            .icon_name("object-flip-vertical-symbolic")
+            .build();
+        mirror_y_btn.set_size_request(40, 40);
+
+        ops_grid.attach(&mirror_x_btn, 0, 0, 1, 1);
+        ops_grid.attach(&mirror_y_btn, 1, 0, 1, 1);
+
+        content_box.append(&ops_grid);
 
         // Add separator
         let separator = gtk4::Separator::new(Orientation::Horizontal);
@@ -749,6 +797,8 @@ impl DesignerToolbox {
             buttons,
             tools,
             generate_btn,
+            mirror_x_btn,
+            mirror_y_btn,
             _state: state,
             _settings_controller: settings_controller,
             _current_units: current_units,
@@ -757,6 +807,14 @@ impl DesignerToolbox {
 
     pub fn connect_generate_clicked<F: Fn() + 'static>(&self, f: F) {
         self.generate_btn.connect_clicked(move |_| f());
+    }
+
+    pub fn connect_mirror_x_clicked<F: Fn() + 'static>(&self, f: F) {
+        self.mirror_x_btn.connect_clicked(move |_| f());
+    }
+
+    pub fn connect_mirror_y_clicked<F: Fn() + 'static>(&self, f: F) {
+        self.mirror_y_btn.connect_clicked(move |_| f());
     }
 
     pub fn current_tool(&self) -> DesignerTool {

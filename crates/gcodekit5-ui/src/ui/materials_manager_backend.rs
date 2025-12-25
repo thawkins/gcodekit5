@@ -238,7 +238,7 @@ pub fn string_to_category(s: &str) -> Option<MaterialCategory> {
         "Non-Ferrous Metal" => Some(MaterialCategory::NonFerrousMetal),
         "Ferrous Metal" => Some(MaterialCategory::FerrousMetal),
         "Composite" => Some(MaterialCategory::Composite),
-        "Stone & Ceramic" => Some(MaterialCategory::StoneAndCeramic),
+        "Stone and Ceramic" => Some(MaterialCategory::StoneAndCeramic),
         _ => None,
     }
 }

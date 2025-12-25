@@ -108,6 +108,28 @@ pub struct ShapeData {
     pub raster_fill_ratio: f64,
     #[serde(default)]
     pub sides: u32,
+    #[serde(default)]
+    pub teeth: usize,
+    #[serde(default)]
+    pub module: f64,
+    #[serde(default)]
+    pub pressure_angle: f64,
+    #[serde(default)]
+    pub pitch: f64,
+    #[serde(default)]
+    pub roller_diameter: f64,
+    #[serde(default)]
+    pub thickness: f64,
+    #[serde(default)]
+    pub depth: f64,
+    #[serde(default)]
+    pub tab_size: f64,
+    #[serde(default)]
+    pub offset: f64,
+    #[serde(default)]
+    pub fillet: f64,
+    #[serde(default)]
+    pub chamfer: f64,
 }
 
 fn default_raster_fill_ratio() -> f64 {
@@ -231,6 +253,9 @@ impl DesignFile {
             ShapeType::Text => "text",
             ShapeType::Triangle => "triangle",
             ShapeType::Polygon => "polygon",
+            ShapeType::Gear => "gear",
+            ShapeType::Sprocket => "sprocket",
+            ShapeType::TabbedBox => "tabbed_box",
         };
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
@@ -263,6 +288,34 @@ impl DesignFile {
         } else {
             0
         };
+
+        let mut teeth = 0;
+        let mut module = 0.0;
+        let mut pressure_angle = 0.0;
+        let mut pitch = 0.0;
+        let mut roller_diameter = 0.0;
+        let mut thickness = 0.0;
+        let mut depth = 0.0;
+        let mut tab_size = 0.0;
+
+        match &obj.shape {
+            Shape::Gear(g) => {
+                teeth = g.teeth;
+                module = g.module;
+                pressure_angle = g.pressure_angle;
+            }
+            Shape::Sprocket(s) => {
+                teeth = s.teeth;
+                pitch = s.pitch;
+                roller_diameter = s.roller_diameter;
+            }
+            Shape::TabbedBox(b) => {
+                thickness = b.thickness;
+                depth = b.depth;
+                tab_size = b.tab_width;
+            }
+            _ => {}
+        }
 
         ShapeData {
             id: obj.id as i32,
@@ -297,6 +350,17 @@ impl DesignFile {
             pocket_strategy: obj.pocket_strategy,
             raster_fill_ratio: obj.raster_fill_ratio,
             sides,
+            teeth,
+            module,
+            pressure_angle,
+            pitch,
+            roller_diameter,
+            thickness,
+            depth,
+            tab_size,
+            offset: obj.offset,
+            fillet: obj.fillet,
+            chamfer: obj.chamfer,
         }
     }
 
@@ -366,6 +430,29 @@ impl DesignFile {
                     Shape::Rectangle(rect)
                 }
             }
+            "gear" => {
+                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let mut gear = DesignGear::new(center, data.module, data.teeth);
+                gear.pressure_angle = data.pressure_angle;
+                Shape::Gear(gear)
+            }
+            "sprocket" => {
+                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let mut sprocket = DesignSprocket::new(center, data.pitch, data.teeth);
+                sprocket.roller_diameter = data.roller_diameter;
+                Shape::Sprocket(sprocket)
+            }
+            "tabbed_box" => {
+                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                Shape::TabbedBox(DesignTabbedBox::new(
+                    center,
+                    data.width,
+                    data.height,
+                    data.depth,
+                    data.thickness,
+                    data.tab_size,
+                ))
+            }
             _ => anyhow::bail!("Unknown shape type: {}", data.shape_type),
         };
 
@@ -380,6 +467,9 @@ impl DesignFile {
             Shape::Text(s) => s.rotation = data.rotation,
             Shape::Triangle(s) => s.rotation = data.rotation,
             Shape::Polygon(s) => s.rotation = data.rotation,
+            Shape::Gear(s) => s.rotation = data.rotation,
+            Shape::Sprocket(s) => s.rotation = data.rotation,
+            Shape::TabbedBox(s) => s.rotation = data.rotation,
         }
 
         let operation_type = match data.operation_type.as_str() {
@@ -396,6 +486,9 @@ impl DesignFile {
             crate::model::ShapeType::Text => "Text",
             crate::model::ShapeType::Triangle => "Triangle",
             crate::model::ShapeType::Polygon => "Polygon",
+            crate::model::ShapeType::Gear => "Gear",
+            crate::model::ShapeType::Sprocket => "Sprocket",
+            crate::model::ShapeType::TabbedBox => "Tabbed Box",
         };
 
         Ok(DrawingObject {
@@ -417,6 +510,9 @@ impl DesignFile {
             ramp_angle: data.ramp_angle,
             pocket_strategy: data.pocket_strategy,
             raster_fill_ratio: data.raster_fill_ratio,
+            offset: data.offset,
+            fillet: data.fillet,
+            chamfer: data.chamfer,
         })
     }
 }

@@ -121,7 +121,8 @@ pub fn render_shapes(canvas: &Canvas, _width: u32, _height: u32) -> String {
             continue;
         }
 
-        let shape_path = render_shape_trait(&shape_obj.shape, viewport);
+        let effective_shape = shape_obj.get_effective_shape();
+        let shape_path = render_shape_trait(&effective_shape, viewport);
         path.push_str(&shape_path);
     }
 
@@ -140,7 +141,8 @@ pub fn render_selected_shapes(canvas: &Canvas, _width: u32, _height: u32) -> Str
             continue;
         }
 
-        let shape_path = render_shape_trait(&shape_obj.shape, viewport);
+        let effective_shape = shape_obj.get_effective_shape();
+        let shape_path = render_shape_trait(&effective_shape, viewport);
         path.push_str(&shape_path);
     }
 
@@ -154,7 +156,8 @@ pub fn render_grouped_shapes(canvas: &Canvas, _width: u32, _height: u32) -> Stri
 
     for shape_obj in canvas.shapes() {
         if shape_obj.group_id.is_some() {
-            let shape_path = render_shape_trait(&shape_obj.shape, viewport);
+            let effective_shape = shape_obj.get_effective_shape();
+            let shape_path = render_shape_trait(&effective_shape, viewport);
             path.push_str(&shape_path);
         }
     }
@@ -627,6 +630,99 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                         if close {
                             path_str.push_str("Z ");
                         }
+                    }
+                }
+            }
+            path_str
+        }
+        crate::model::Shape::Gear(gear) => {
+            let path = gear.render();
+            let mut path_str = String::new();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => {
+                        let (rx, ry) =
+                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("M {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::Line { to, .. } => {
+                        let (rx, ry) =
+                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("L {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::End { close, .. } => {
+                        if close {
+                            path_str.push_str("Z ");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            path_str
+        }
+        crate::model::Shape::Sprocket(sprocket) => {
+            let path = sprocket.render();
+            let mut path_str = String::new();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => {
+                        let (rx, ry) =
+                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("M {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::Line { to, .. } => {
+                        let (rx, ry) =
+                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                        path_str.push_str(&format!("L {} {} ", sx, sy));
+                    }
+                    lyon::path::Event::End { close, .. } => {
+                        if close {
+                            path_str.push_str("Z ");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            path_str
+        }
+        crate::model::Shape::TabbedBox(tabbed_box) => {
+            let paths = tabbed_box.render_all();
+            let mut path_str = String::new();
+            for path in paths {
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => {
+                            let (rx, ry) = rotate_point(
+                                at.x as f64,
+                                at.y as f64,
+                                center_x,
+                                center_y,
+                                rotation,
+                            );
+                            let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                            path_str.push_str(&format!("M {} {} ", sx, sy));
+                        }
+                        lyon::path::Event::Line { to, .. } => {
+                            let (rx, ry) = rotate_point(
+                                to.x as f64,
+                                to.y as f64,
+                                center_x,
+                                center_y,
+                                rotation,
+                            );
+                            let (sx, sy) = viewport.world_to_pixel(rx, ry);
+                            path_str.push_str(&format!("L {} {} ", sx, sy));
+                        }
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                path_str.push_str("Z ");
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }

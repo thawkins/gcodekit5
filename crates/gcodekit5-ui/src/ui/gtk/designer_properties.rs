@@ -41,6 +41,7 @@ pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
     state: Rc<RefCell<DesignerState>>,
     settings: Rc<RefCell<SettingsPersistence>>,
+    preview_shapes: Rc<RefCell<Vec<Shape>>>,
     _content: Box,
     header: Label,
 
@@ -51,6 +52,7 @@ pub struct PropertiesPanel {
     corner_frame: Frame,
     text_frame: Frame,
     cam_frame: Frame,
+    ops_frame: Frame,
     empty_label: Label,
 
     // Property widgets
@@ -71,6 +73,25 @@ pub struct PropertiesPanel {
     // Polygon widgets
     polygon_frame: Frame,
     sides_entry: Entry,
+
+    // Gear widgets
+    gear_frame: Frame,
+    gear_module_entry: Entry,
+    gear_teeth_entry: Entry,
+    gear_pressure_angle_entry: Entry,
+
+    // Sprocket widgets
+    sprocket_frame: Frame,
+    sprocket_pitch_entry: Entry,
+    sprocket_teeth_entry: Entry,
+    sprocket_roller_diameter_entry: Entry,
+
+    // TabbedBox widgets
+    tabbed_box_frame: Frame,
+    box_depth_entry: Entry,
+    box_thickness_entry: Entry,
+    box_tab_width_entry: Entry,
+
     // CAM widgets
     op_type_combo: DropDown,
     depth_entry: Entry,
@@ -79,6 +100,12 @@ pub struct PropertiesPanel {
     ramp_angle_entry: Entry,
     strategy_combo: DropDown,
     raster_fill_entry: Entry,
+
+    // Geometry Ops widgets
+    offset_entry: Entry,
+    fillet_entry: Entry,
+    chamfer_entry: Entry,
+
     // Unit Labels
     x_unit_label: Label,
     y_unit_label: Label,
@@ -89,6 +116,9 @@ pub struct PropertiesPanel {
     depth_unit_label: Label,
     step_down_unit_label: Label,
     step_in_unit_label: Label,
+    offset_unit_label: Label,
+    fillet_unit_label: Label,
+    chamfer_unit_label: Label,
     // Redraw callback
     redraw_callback: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     // Flag to prevent feedback loops during updates
@@ -101,6 +131,7 @@ impl PropertiesPanel {
     pub fn new(
         state: Rc<RefCell<DesignerState>>,
         settings: Rc<RefCell<SettingsPersistence>>,
+        preview_shapes: Rc<RefCell<Vec<Shape>>>,
     ) -> Rc<Self> {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -340,6 +371,161 @@ impl PropertiesPanel {
         polygon_frame.set_child(Some(&polygon_grid));
         content.append(&polygon_frame);
 
+        // Gear Section
+        let gear_frame = Self::create_section(&t!("Gear"));
+        let gear_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let module_label = Label::new(Some(&t!("Module:")));
+        module_label.set_halign(gtk4::Align::Start);
+        let gear_module_entry = Entry::new();
+        gear_module_entry.set_hexpand(true);
+
+        let teeth_label = Label::new(Some(&t!("Teeth:")));
+        teeth_label.set_halign(gtk4::Align::Start);
+        let gear_teeth_entry = Entry::new();
+        gear_teeth_entry.set_hexpand(true);
+
+        let pa_label = Label::new(Some(&t!("Pressure Angle:")));
+        pa_label.set_halign(gtk4::Align::Start);
+        let gear_pressure_angle_entry = Entry::new();
+        gear_pressure_angle_entry.set_hexpand(true);
+
+        gear_grid.attach(&module_label, 0, 0, 1, 1);
+        gear_grid.attach(&gear_module_entry, 1, 0, 1, 1);
+        gear_grid.attach(&teeth_label, 0, 1, 1, 1);
+        gear_grid.attach(&gear_teeth_entry, 1, 1, 1, 1);
+        gear_grid.attach(&pa_label, 0, 2, 1, 1);
+        gear_grid.attach(&gear_pressure_angle_entry, 1, 2, 1, 1);
+
+        gear_frame.set_child(Some(&gear_grid));
+        content.append(&gear_frame);
+
+        // Sprocket Section
+        let sprocket_frame = Self::create_section(&t!("Sprocket"));
+        let sprocket_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let pitch_label = Label::new(Some(&t!("Pitch:")));
+        pitch_label.set_halign(gtk4::Align::Start);
+        let sprocket_pitch_entry = Entry::new();
+        sprocket_pitch_entry.set_hexpand(true);
+
+        let s_teeth_label = Label::new(Some(&t!("Teeth:")));
+        s_teeth_label.set_halign(gtk4::Align::Start);
+        let sprocket_teeth_entry = Entry::new();
+        sprocket_teeth_entry.set_hexpand(true);
+
+        let roller_label = Label::new(Some(&t!("Roller Dia:")));
+        roller_label.set_halign(gtk4::Align::Start);
+        let sprocket_roller_diameter_entry = Entry::new();
+        sprocket_roller_diameter_entry.set_hexpand(true);
+
+        sprocket_grid.attach(&pitch_label, 0, 0, 1, 1);
+        sprocket_grid.attach(&sprocket_pitch_entry, 1, 0, 1, 1);
+        sprocket_grid.attach(&s_teeth_label, 0, 1, 1, 1);
+        sprocket_grid.attach(&sprocket_teeth_entry, 1, 1, 1, 1);
+        sprocket_grid.attach(&roller_label, 0, 2, 1, 1);
+        sprocket_grid.attach(&sprocket_roller_diameter_entry, 1, 2, 1, 1);
+
+        sprocket_frame.set_child(Some(&sprocket_grid));
+        content.append(&sprocket_frame);
+
+        // Tabbed Box Section
+        let tabbed_box_frame = Self::create_section(&t!("Tabbed Box"));
+        let box_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let depth_label = Label::new(Some(&t!("Depth:")));
+        depth_label.set_halign(gtk4::Align::Start);
+        let box_depth_entry = Entry::new();
+        box_depth_entry.set_hexpand(true);
+
+        let thickness_label = Label::new(Some(&t!("Thickness:")));
+        thickness_label.set_halign(gtk4::Align::Start);
+        let box_thickness_entry = Entry::new();
+        box_thickness_entry.set_hexpand(true);
+
+        let tab_width_label = Label::new(Some(&t!("Tab Width:")));
+        tab_width_label.set_halign(gtk4::Align::Start);
+        let box_tab_width_entry = Entry::new();
+        box_tab_width_entry.set_hexpand(true);
+
+        box_grid.attach(&depth_label, 0, 0, 1, 1);
+        box_grid.attach(&box_depth_entry, 1, 0, 1, 1);
+        box_grid.attach(&thickness_label, 0, 1, 1, 1);
+        box_grid.attach(&box_thickness_entry, 1, 1, 1, 1);
+        box_grid.attach(&tab_width_label, 0, 2, 1, 1);
+        box_grid.attach(&box_tab_width_entry, 1, 2, 1, 1);
+
+        tabbed_box_frame.set_child(Some(&box_grid));
+        content.append(&tabbed_box_frame);
+
+        // Geometry Operations Section
+        let ops_frame = Self::create_section(&t!("Geometry Operations"));
+        let ops_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let offset_label = Label::new(Some(&t!("Offset:")));
+        offset_label.set_halign(gtk4::Align::Start);
+        let offset_entry = Entry::new();
+        offset_entry.set_text("1.0");
+        offset_entry.set_hexpand(true);
+        let offset_unit_label = Label::new(Some("mm"));
+
+        let fillet_label = Label::new(Some(&t!("Fillet:")));
+        fillet_label.set_halign(gtk4::Align::Start);
+        let fillet_entry = Entry::new();
+        fillet_entry.set_text("2.0");
+        fillet_entry.set_hexpand(true);
+        let fillet_unit_label = Label::new(Some("mm"));
+
+        let chamfer_label = Label::new(Some(&t!("Chamfer:")));
+        chamfer_label.set_halign(gtk4::Align::Start);
+        let chamfer_entry = Entry::new();
+        chamfer_entry.set_text("2.0");
+        chamfer_entry.set_hexpand(true);
+        let chamfer_unit_label = Label::new(Some("mm"));
+
+        ops_grid.attach(&offset_label, 0, 0, 1, 1);
+        ops_grid.attach(&offset_entry, 1, 0, 1, 1);
+        ops_grid.attach(&offset_unit_label, 2, 0, 1, 1);
+
+        ops_grid.attach(&fillet_label, 0, 1, 1, 1);
+        ops_grid.attach(&fillet_entry, 1, 1, 1, 1);
+        ops_grid.attach(&fillet_unit_label, 2, 1, 1, 1);
+
+        ops_grid.attach(&chamfer_label, 0, 2, 1, 1);
+        ops_grid.attach(&chamfer_entry, 1, 2, 1, 1);
+        ops_grid.attach(&chamfer_unit_label, 2, 2, 1, 1);
+
+        ops_frame.set_child(Some(&ops_grid));
+        content.append(&ops_frame);
+
         // CAM Properties Section
         let cam_frame = Self::create_section(&t!("CAM Properties"));
         let cam_grid = gtk4::Grid::builder()
@@ -455,6 +641,7 @@ impl PropertiesPanel {
             widget: scrolled,
             state: state.clone(),
             settings: settings.clone(),
+            preview_shapes: preview_shapes.clone(),
             _content: content,
             pos_frame: pos_frame.clone(),
             size_frame: size_frame.clone(),
@@ -462,7 +649,11 @@ impl PropertiesPanel {
             corner_frame: corner_frame.clone(),
             text_frame: text_frame.clone(),
             polygon_frame: polygon_frame.clone(),
+            gear_frame: gear_frame.clone(),
+            sprocket_frame: sprocket_frame.clone(),
+            tabbed_box_frame: tabbed_box_frame.clone(),
             cam_frame: cam_frame.clone(),
+            ops_frame: ops_frame.clone(),
             empty_label: empty_label.clone(),
             pos_x_entry: pos_x_entry.clone(),
             pos_y_entry: pos_y_entry.clone(),
@@ -477,6 +668,15 @@ impl PropertiesPanel {
             font_italic_check: font_italic_check.clone(),
             font_size_entry: font_size_entry.clone(),
             sides_entry: sides_entry.clone(),
+            gear_module_entry: gear_module_entry.clone(),
+            gear_teeth_entry: gear_teeth_entry.clone(),
+            gear_pressure_angle_entry: gear_pressure_angle_entry.clone(),
+            sprocket_pitch_entry: sprocket_pitch_entry.clone(),
+            sprocket_teeth_entry: sprocket_teeth_entry.clone(),
+            sprocket_roller_diameter_entry: sprocket_roller_diameter_entry.clone(),
+            box_depth_entry: box_depth_entry.clone(),
+            box_thickness_entry: box_thickness_entry.clone(),
+            box_tab_width_entry: box_tab_width_entry.clone(),
             op_type_combo: op_type_combo.clone(),
             depth_entry: depth_entry.clone(),
             step_down_entry: step_down_entry.clone(),
@@ -484,6 +684,9 @@ impl PropertiesPanel {
             ramp_angle_entry: ramp_angle_entry.clone(),
             strategy_combo: strategy_combo.clone(),
             raster_fill_entry: raster_fill_entry.clone(),
+            offset_entry: offset_entry.clone(),
+            fillet_entry: fillet_entry.clone(),
+            chamfer_entry: chamfer_entry.clone(),
             header: header.clone(),
             x_unit_label,
             y_unit_label,
@@ -494,9 +697,12 @@ impl PropertiesPanel {
             depth_unit_label,
             step_down_unit_label,
             step_in_unit_label,
+            offset_unit_label,
+            fillet_unit_label,
+            chamfer_unit_label,
             redraw_callback: Rc::new(RefCell::new(None)),
             updating: Rc::new(RefCell::new(false)),
-            has_focus: Rc::new(RefCell::new(false)),
+            has_focus: Rc::new(RefCell::new(bool::default())),
         });
 
         // Connect value change handlers
@@ -1061,6 +1267,685 @@ impl PropertiesPanel {
             };
             designer_state.set_selected_pocket_strategy(strategy);
         });
+
+        // Gear handlers
+        let state = self.state.clone();
+        let redraw_gear = self.redraw_callback.clone();
+        let updating_gear = self.updating.clone();
+        self.gear_module_entry.connect_changed(move |entry| {
+            if *updating_gear.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20);
+                    let pa = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.pressure_angle)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20.0f64.to_radians());
+
+                    designer_state.set_selected_gear_properties(val, teeth, pa);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_gear.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let redraw_gear2 = self.redraw_callback.clone();
+        let updating_gear2 = self.updating.clone();
+        self.gear_teeth_entry.connect_changed(move |entry| {
+            if *updating_gear2.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<usize>() {
+                if val >= 3 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let module = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.module)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(2.0);
+                    let pa = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.pressure_angle)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20.0f64.to_radians());
+
+                    designer_state.set_selected_gear_properties(module, val, pa);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_gear2.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let redraw_gear3 = self.redraw_callback.clone();
+        let updating_gear3 = self.updating.clone();
+        self.gear_pressure_angle_entry
+            .connect_changed(move |entry| {
+                if *updating_gear3.borrow() {
+                    return;
+                }
+                if let Ok(val) = entry.text().parse::<f64>() {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let module = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.module)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(2.0);
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20);
+
+                    designer_state.set_selected_gear_properties(module, teeth, val.to_radians());
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_gear3.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            });
+
+        // Sprocket handlers
+        let state = self.state.clone();
+        let redraw_sprocket = self.redraw_callback.clone();
+        let updating_sprocket = self.updating.clone();
+        self.sprocket_pitch_entry.connect_changed(move |entry| {
+            if *updating_sprocket.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(15);
+                    let roller = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.roller_diameter)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(7.75);
+
+                    designer_state.set_selected_sprocket_properties(val, teeth, roller);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_sprocket.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let redraw_sprocket2 = self.redraw_callback.clone();
+        let updating_sprocket2 = self.updating.clone();
+        self.sprocket_teeth_entry.connect_changed(move |entry| {
+            if *updating_sprocket2.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<usize>() {
+                if val >= 3 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let pitch = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.pitch)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(12.7);
+                    let roller = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.roller_diameter)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(7.75);
+
+                    designer_state.set_selected_sprocket_properties(pitch, val, roller);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_sprocket2.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let redraw_sprocket3 = self.redraw_callback.clone();
+        let updating_sprocket3 = self.updating.clone();
+        self.sprocket_roller_diameter_entry
+            .connect_changed(move |entry| {
+                if *updating_sprocket3.borrow() {
+                    return;
+                }
+                if let Ok(val) = entry.text().parse::<f64>() {
+                    if val > 0.0 {
+                        entry.remove_css_class("entry-invalid");
+                        let mut designer_state = state.borrow_mut();
+                        let pitch = designer_state
+                            .canvas
+                            .shapes()
+                            .find(|s| s.selected)
+                            .and_then(|s| {
+                                if let Shape::Sprocket(sp) = &s.shape {
+                                    Some(sp.pitch)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(12.7);
+                        let teeth = designer_state
+                            .canvas
+                            .shapes()
+                            .find(|s| s.selected)
+                            .and_then(|s| {
+                                if let Shape::Sprocket(sp) = &s.shape {
+                                    Some(sp.teeth)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(15);
+
+                        designer_state.set_selected_sprocket_properties(pitch, teeth, val);
+                        drop(designer_state);
+                        if let Some(ref cb) = *redraw_sprocket3.borrow() {
+                            cb();
+                        }
+                    } else {
+                        entry.add_css_class("entry-invalid");
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            });
+
+        // Tabbed Box handlers
+        let state = self.state.clone();
+        let redraw_box = self.redraw_callback.clone();
+        let updating_box = self.updating.clone();
+        self.box_depth_entry.connect_changed(move |entry| {
+            if *updating_box.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let thickness = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::TabbedBox(b) = &s.shape {
+                                Some(b.thickness)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(3.0);
+                    let tab_width = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::TabbedBox(b) = &s.shape {
+                                Some(b.tab_width)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(10.0);
+
+                    designer_state.set_selected_tabbed_box_properties(val, thickness, tab_width);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_box.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let redraw_box2 = self.redraw_callback.clone();
+        let updating_box2 = self.updating.clone();
+        self.box_thickness_entry.connect_changed(move |entry| {
+            if *updating_box2.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let depth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::TabbedBox(b) = &s.shape {
+                                Some(b.depth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(50.0);
+                    let tab_width = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::TabbedBox(b) = &s.shape {
+                                Some(b.tab_width)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(10.0);
+
+                    designer_state.set_selected_tabbed_box_properties(depth, val, tab_width);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_box2.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        let state = self.state.clone();
+        let redraw_box3 = self.redraw_callback.clone();
+        let updating_box3 = self.updating.clone();
+        self.box_tab_width_entry.connect_changed(move |entry| {
+            if *updating_box3.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let depth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::TabbedBox(b) = &s.shape {
+                                Some(b.depth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(50.0);
+                    let thickness = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::TabbedBox(b) = &s.shape {
+                                Some(b.thickness)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(3.0);
+
+                    designer_state.set_selected_tabbed_box_properties(depth, thickness, val);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_box3.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
+        });
+
+        // Geometry Operations Handlers
+        let state = self.state.clone();
+        let preview = self.preview_shapes.clone();
+        let redraw = self.redraw_callback.clone();
+        let offset_entry = self.offset_entry.clone();
+        let updating = self.updating.clone();
+
+        let update_offset_preview = {
+            let state = state.clone();
+            let preview = preview.clone();
+            let redraw = redraw.clone();
+            let offset_entry = offset_entry.clone();
+            let updating = updating.clone();
+            move || {
+                if *updating.borrow() {
+                    return;
+                }
+                if let Ok(dist) = offset_entry.text().parse::<f64>() {
+                    offset_entry.remove_css_class("entry-invalid");
+                    let designer_state = state.borrow();
+                    let preview_shapes: Vec<Shape> = designer_state
+                        .canvas
+                        .shapes()
+                        .filter(|s| s.selected)
+                        .map(|s| gcodekit5_designer::ops::perform_offset(&s.shape, dist))
+                        .collect();
+                    *preview.borrow_mut() = preview_shapes;
+                } else {
+                    offset_entry.add_css_class("entry-invalid");
+                    preview.borrow_mut().clear();
+                }
+                if let Some(ref cb) = *redraw.borrow() {
+                    cb();
+                }
+            }
+        };
+
+        let update_offset_preview_clone = update_offset_preview.clone();
+        self.offset_entry.connect_changed(move |_| {
+            update_offset_preview_clone();
+        });
+
+        let state_activate = state.clone();
+        let preview_activate = preview.clone();
+        let redraw_activate = redraw.clone();
+        let offset_entry_activate = offset_entry.clone();
+        self.offset_entry.connect_activate(move |_| {
+            if let Ok(dist) = offset_entry_activate.text().parse::<f64>() {
+                let mut designer_state = state_activate.borrow_mut();
+                designer_state.set_offset_selected(dist);
+                preview_activate.borrow_mut().clear();
+                drop(designer_state);
+                if let Some(ref cb) = *redraw_activate.borrow() {
+                    cb();
+                }
+            }
+        });
+
+        // Commit on focus out
+        let focus_controller = EventControllerFocus::new();
+        let state_focus = state.clone();
+        let preview_focus = preview.clone();
+        let redraw_focus = redraw.clone();
+        let offset_entry_focus = offset_entry.clone();
+        let has_focus_enter = self.has_focus.clone();
+        focus_controller.connect_enter(move |_| {
+            *has_focus_enter.borrow_mut() = true;
+        });
+        let has_focus_leave = self.has_focus.clone();
+        focus_controller.connect_leave(move |_| {
+            *has_focus_leave.borrow_mut() = false;
+            if let Ok(dist) = offset_entry_focus.text().parse::<f64>() {
+                let mut designer_state = state_focus.borrow_mut();
+                designer_state.set_offset_selected(dist);
+                preview_focus.borrow_mut().clear();
+                drop(designer_state);
+                if let Some(ref cb) = *redraw_focus.borrow() {
+                    cb();
+                }
+            }
+        });
+        self.offset_entry.add_controller(focus_controller);
+
+        let fillet_entry = self.fillet_entry.clone();
+        let update_fillet_preview = {
+            let state = state.clone();
+            let preview = preview.clone();
+            let redraw = redraw.clone();
+            let fillet_entry = fillet_entry.clone();
+            let updating = updating.clone();
+            move || {
+                if *updating.borrow() {
+                    return;
+                }
+                if let Ok(radius) = fillet_entry.text().parse::<f64>() {
+                    fillet_entry.remove_css_class("entry-invalid");
+                    let designer_state = state.borrow();
+                    let preview_shapes: Vec<Shape> = designer_state
+                        .canvas
+                        .shapes()
+                        .filter(|s| s.selected)
+                        .map(|s| gcodekit5_designer::ops::perform_fillet(&s.shape, radius))
+                        .collect();
+                    *preview.borrow_mut() = preview_shapes;
+                } else {
+                    fillet_entry.add_css_class("entry-invalid");
+                    preview.borrow_mut().clear();
+                }
+                if let Some(ref cb) = *redraw.borrow() {
+                    cb();
+                }
+            }
+        };
+
+        let update_fillet_preview_clone = update_fillet_preview.clone();
+        self.fillet_entry.connect_changed(move |_| {
+            update_fillet_preview_clone();
+        });
+
+        let state_activate = state.clone();
+        let preview_activate = preview.clone();
+        let redraw_activate = redraw.clone();
+        let fillet_entry_activate = fillet_entry.clone();
+        self.fillet_entry.connect_activate(move |_| {
+            if let Ok(radius) = fillet_entry_activate.text().parse::<f64>() {
+                let mut designer_state = state_activate.borrow_mut();
+                designer_state.set_fillet_selected(radius);
+                preview_activate.borrow_mut().clear();
+                drop(designer_state);
+                if let Some(ref cb) = *redraw_activate.borrow() {
+                    cb();
+                }
+            }
+        });
+
+        // Commit on focus out
+        let focus_controller = EventControllerFocus::new();
+        let state_focus = state.clone();
+        let preview_focus = preview.clone();
+        let redraw_focus = redraw.clone();
+        let fillet_entry_focus = fillet_entry.clone();
+        let has_focus_enter = self.has_focus.clone();
+        focus_controller.connect_enter(move |_| {
+            *has_focus_enter.borrow_mut() = true;
+        });
+        let has_focus_leave = self.has_focus.clone();
+        focus_controller.connect_leave(move |_| {
+            *has_focus_leave.borrow_mut() = false;
+            if let Ok(radius) = fillet_entry_focus.text().parse::<f64>() {
+                let mut designer_state = state_focus.borrow_mut();
+                designer_state.set_fillet_selected(radius);
+                preview_focus.borrow_mut().clear();
+                drop(designer_state);
+                if let Some(ref cb) = *redraw_focus.borrow() {
+                    cb();
+                }
+            }
+        });
+        self.fillet_entry.add_controller(focus_controller);
+
+        let chamfer_entry = self.chamfer_entry.clone();
+        let update_chamfer_preview = {
+            let state = state.clone();
+            let preview = preview.clone();
+            let redraw = redraw.clone();
+            let chamfer_entry = chamfer_entry.clone();
+            let updating = updating.clone();
+            move || {
+                if *updating.borrow() {
+                    return;
+                }
+                if let Ok(dist) = chamfer_entry.text().parse::<f64>() {
+                    chamfer_entry.remove_css_class("entry-invalid");
+                    let designer_state = state.borrow();
+                    let preview_shapes: Vec<Shape> = designer_state
+                        .canvas
+                        .shapes()
+                        .filter(|s| s.selected)
+                        .map(|s| gcodekit5_designer::ops::perform_chamfer(&s.shape, dist))
+                        .collect();
+                    *preview.borrow_mut() = preview_shapes;
+                } else {
+                    chamfer_entry.add_css_class("entry-invalid");
+                    preview.borrow_mut().clear();
+                }
+                if let Some(ref cb) = *redraw.borrow() {
+                    cb();
+                }
+            }
+        };
+
+        let update_chamfer_preview_clone = update_chamfer_preview.clone();
+        self.chamfer_entry.connect_changed(move |_| {
+            update_chamfer_preview_clone();
+        });
+
+        let state_activate = state.clone();
+        let preview_activate = preview.clone();
+        let redraw_activate = redraw.clone();
+        let chamfer_entry_activate = chamfer_entry.clone();
+        self.chamfer_entry.connect_activate(move |_| {
+            if let Ok(dist) = chamfer_entry_activate.text().parse::<f64>() {
+                let mut designer_state = state_activate.borrow_mut();
+                designer_state.set_chamfer_selected(dist);
+                preview_activate.borrow_mut().clear();
+                drop(designer_state);
+                if let Some(ref cb) = *redraw_activate.borrow() {
+                    cb();
+                }
+            }
+        });
+
+        // Commit on focus out
+        let focus_controller = EventControllerFocus::new();
+        let state_focus = state.clone();
+        let preview_focus = preview.clone();
+        let redraw_focus = redraw.clone();
+        let chamfer_entry_focus = chamfer_entry.clone();
+        let has_focus_enter = self.has_focus.clone();
+        focus_controller.connect_enter(move |_| {
+            *has_focus_enter.borrow_mut() = true;
+        });
+        let has_focus_leave = self.has_focus.clone();
+        focus_controller.connect_leave(move |_| {
+            *has_focus_leave.borrow_mut() = false;
+            if let Ok(dist) = chamfer_entry_focus.text().parse::<f64>() {
+                let mut designer_state = state_focus.borrow_mut();
+                designer_state.set_chamfer_selected(dist);
+                preview_focus.borrow_mut().clear();
+                drop(designer_state);
+                if let Some(ref cb) = *redraw_focus.borrow() {
+                    cb();
+                }
+            }
+        });
+        self.chamfer_entry.add_controller(focus_controller);
     }
 
     fn update_shape_position_and_size(shape: &mut Shape, x: f64, y: f64, width: f64, height: f64) {
@@ -1132,6 +2017,24 @@ impl PropertiesPanel {
                 polygon.center.y = y;
                 polygon.radius = width.min(height) / 2.0;
             }
+            Shape::Gear(gear) => {
+                gear.center.x = x;
+                gear.center.y = y;
+                // module * teeth = pitch diameter
+                gear.module = width / gear.teeth as f64;
+            }
+            Shape::Sprocket(sprocket) => {
+                sprocket.center.x = x;
+                sprocket.center.y = y;
+                // pitch = pitch_dia * sin(PI / teeth)
+                sprocket.pitch = width * (std::f64::consts::PI / sprocket.teeth as f64).sin();
+            }
+            Shape::TabbedBox(tabbed_box) => {
+                tabbed_box.center.x = x;
+                tabbed_box.center.y = y;
+                tabbed_box.width = width;
+                tabbed_box.height = height;
+            }
         }
     }
 
@@ -1155,6 +2058,9 @@ impl PropertiesPanel {
         self.depth_unit_label.set_text(unit_label);
         self.step_down_unit_label.set_text(unit_label);
         self.step_in_unit_label.set_text(unit_label);
+        self.offset_unit_label.set_text(unit_label);
+        self.fillet_unit_label.set_text(unit_label);
+        self.chamfer_unit_label.set_text(unit_label);
 
         // Extract data first to avoid holding the borrow while updating widgets
         let selection_data = {
@@ -1170,6 +2076,7 @@ impl PropertiesPanel {
             } else if selected.len() == 1 {
                 // Single selection - show all properties
                 let obj = &selected[0];
+                let any_not_text = !matches!(obj.shape, Shape::Text(_));
                 Some((
                     vec![obj.id],
                     Some(obj.shape.clone()),
@@ -1180,10 +2087,15 @@ impl PropertiesPanel {
                     obj.ramp_angle,
                     obj.pocket_strategy,
                     obj.raster_fill_ratio,
+                    obj.offset,
+                    obj.fillet,
+                    obj.chamfer,
+                    any_not_text,
                 ))
             } else {
                 // Multiple selection - only show CAM properties (use first shape's values)
                 let obj = &selected[0];
+                let any_not_text = selected.iter().any(|s| !matches!(s.shape, Shape::Text(_)));
                 Some((
                     selected.iter().map(|s| s.id).collect(),
                     None, // No shape data for multi-selection
@@ -1194,6 +2106,10 @@ impl PropertiesPanel {
                     obj.ramp_angle,
                     obj.pocket_strategy,
                     obj.raster_fill_ratio,
+                    obj.offset,
+                    obj.fillet,
+                    obj.chamfer,
+                    any_not_text,
                 ))
             }
         };
@@ -1208,6 +2124,10 @@ impl PropertiesPanel {
             ramp_angle,
             strategy,
             raster_fill,
+            offset,
+            fillet,
+            chamfer,
+            any_not_text,
         )) = selection_data
         {
             // Set flag to prevent feedback loop during updates
@@ -1233,6 +2153,7 @@ impl PropertiesPanel {
                 self.size_frame.set_visible(true);
                 self.rot_frame.set_visible(true);
                 self.cam_frame.set_visible(true);
+                // Visibility of ops_frame will be set in the shape match block
             } else {
                 // Multi-select: CAM only
                 self.pos_frame.set_visible(false);
@@ -1241,11 +2162,15 @@ impl PropertiesPanel {
                 self.corner_frame.set_visible(false);
                 self.text_frame.set_visible(false);
                 self.polygon_frame.set_visible(false);
+                self.gear_frame.set_visible(false);
+                self.sprocket_frame.set_visible(false);
+                self.tabbed_box_frame.set_visible(false);
                 self.cam_frame.set_visible(true);
+                self.ops_frame.set_visible(any_not_text);
             }
 
             // Clear validation state on programmatic updates
-            for e in [
+            let entries: &[&Entry] = &[
                 &self.pos_x_entry,
                 &self.pos_y_entry,
                 &self.width_entry,
@@ -1254,11 +2179,21 @@ impl PropertiesPanel {
                 &self.corner_radius_entry,
                 &self.font_size_entry,
                 &self.sides_entry,
+                &self.gear_module_entry,
+                &self.gear_teeth_entry,
+                &self.gear_pressure_angle_entry,
+                &self.sprocket_pitch_entry,
+                &self.sprocket_teeth_entry,
+                &self.sprocket_roller_diameter_entry,
+                &self.box_depth_entry,
+                &self.box_thickness_entry,
+                &self.box_tab_width_entry,
                 &self.depth_entry,
                 &self.step_down_entry,
                 &self.step_in_entry,
                 &self.ramp_angle_entry,
-            ] {
+            ];
+            for e in entries {
                 e.remove_css_class("entry-invalid");
             }
 
@@ -1277,6 +2212,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(true);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(rect.center.x as f32, system));
@@ -1306,6 +2242,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(circle.center.x as f32, system));
@@ -1330,6 +2267,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(ellipse.center.x as f32, system));
@@ -1354,6 +2292,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(line.start.x as f32, system));
@@ -1382,6 +2321,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         let (x1, y1, x2, y2) = path.bounds();
                         let w = x2 - x1;
@@ -1412,6 +2352,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(true);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(false);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(text.x as f32, system));
@@ -1470,6 +2411,7 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(triangle.center.x as f32, system));
@@ -1494,6 +2436,10 @@ impl PropertiesPanel {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(true);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(false);
+                        self.tabbed_box_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
 
                         self.pos_x_entry
                             .set_text(&units::format_length(polygon.center.x as f32, system));
@@ -1513,6 +2459,104 @@ impl PropertiesPanel {
                         self.text_entry.set_text("");
                         self.text_entry.set_sensitive(false);
                         self.font_size_entry.set_text(&format_font_points(0.0));
+                        self.font_size_entry.set_sensitive(false);
+                    }
+                    Shape::Gear(gear) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(true);
+                        self.sprocket_frame.set_visible(false);
+                        self.tabbed_box_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
+
+                        self.pos_x_entry
+                            .set_text(&units::format_length(gear.center.x as f32, system));
+                        self.pos_y_entry
+                            .set_text(&units::format_length(gear.center.y as f32, system));
+                        let pitch_dia = gear.module * gear.teeth as f64;
+                        self.width_entry
+                            .set_text(&units::format_length(pitch_dia as f32, system));
+                        self.height_entry
+                            .set_text(&units::format_length(pitch_dia as f32, system));
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", gear.rotation.to_degrees()));
+
+                        self.gear_module_entry
+                            .set_text(&format!("{:.3}", gear.module));
+                        self.gear_teeth_entry.set_text(&gear.teeth.to_string());
+                        self.gear_pressure_angle_entry
+                            .set_text(&format!("{:.1}", gear.pressure_angle.to_degrees()));
+
+                        self.corner_radius_entry.set_sensitive(false);
+                        self.is_slot_check.set_sensitive(false);
+                        self.text_entry.set_sensitive(false);
+                        self.font_size_entry.set_sensitive(false);
+                    }
+                    Shape::Sprocket(sprocket) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(true);
+                        self.tabbed_box_frame.set_visible(false);
+                        self.ops_frame.set_visible(true);
+
+                        self.pos_x_entry
+                            .set_text(&units::format_length(sprocket.center.x as f32, system));
+                        self.pos_y_entry
+                            .set_text(&units::format_length(sprocket.center.y as f32, system));
+                        let pitch_dia =
+                            sprocket.pitch / (std::f64::consts::PI / sprocket.teeth as f64).sin();
+                        self.width_entry
+                            .set_text(&units::format_length(pitch_dia as f32, system));
+                        self.height_entry
+                            .set_text(&units::format_length(pitch_dia as f32, system));
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", sprocket.rotation.to_degrees()));
+
+                        self.sprocket_pitch_entry
+                            .set_text(&format!("{:.3}", sprocket.pitch));
+                        self.sprocket_teeth_entry
+                            .set_text(&sprocket.teeth.to_string());
+                        self.sprocket_roller_diameter_entry
+                            .set_text(&format!("{:.3}", sprocket.roller_diameter));
+
+                        self.corner_radius_entry.set_sensitive(false);
+                        self.is_slot_check.set_sensitive(false);
+                        self.text_entry.set_sensitive(false);
+                        self.font_size_entry.set_sensitive(false);
+                    }
+                    Shape::TabbedBox(tabbed_box) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(false);
+                        self.tabbed_box_frame.set_visible(true);
+                        self.ops_frame.set_visible(true);
+
+                        self.pos_x_entry
+                            .set_text(&units::format_length(tabbed_box.center.x as f32, system));
+                        self.pos_y_entry
+                            .set_text(&units::format_length(tabbed_box.center.y as f32, system));
+                        self.width_entry
+                            .set_text(&units::format_length(tabbed_box.width as f32, system));
+                        self.height_entry
+                            .set_text(&units::format_length(tabbed_box.height as f32, system));
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", tabbed_box.rotation.to_degrees()));
+
+                        self.box_depth_entry
+                            .set_text(&units::format_length(tabbed_box.depth as f32, system));
+                        self.box_thickness_entry
+                            .set_text(&units::format_length(tabbed_box.thickness as f32, system));
+                        self.box_tab_width_entry
+                            .set_text(&units::format_length(tabbed_box.tab_width as f32, system));
+
+                        self.corner_radius_entry.set_sensitive(false);
+                        self.is_slot_check.set_sensitive(false);
+                        self.text_entry.set_sensitive(false);
                         self.font_size_entry.set_sensitive(false);
                     }
                 }
@@ -1560,6 +2604,10 @@ impl PropertiesPanel {
             self.raster_fill_entry
                 .set_text(&format!("{:.0}", raster_fill * 100.0));
 
+            self.offset_entry.set_text(&units::format_length(offset as f32, system));
+            self.fillet_entry.set_text(&units::format_length(fillet as f32, system));
+            self.chamfer_entry.set_text(&units::format_length(chamfer as f32, system));
+
             // Enable CAM controls
             self.op_type_combo.set_sensitive(true);
             self.depth_entry.set_sensitive(true);
@@ -1582,6 +2630,10 @@ impl PropertiesPanel {
             self.corner_frame.set_visible(false);
             self.text_frame.set_visible(false);
             self.polygon_frame.set_visible(false);
+            self.gear_frame.set_visible(false);
+            self.sprocket_frame.set_visible(false);
+            self.tabbed_box_frame.set_visible(false);
+            self.ops_frame.set_visible(false);
             self.cam_frame.set_visible(false);
 
             self.pos_x_entry.set_sensitive(false);
@@ -1624,6 +2676,18 @@ impl PropertiesPanel {
             &self.ramp_angle_entry,
             &self.raster_fill_entry,
             &self.sides_entry,
+            &self.gear_module_entry,
+            &self.gear_teeth_entry,
+            &self.gear_pressure_angle_entry,
+            &self.sprocket_pitch_entry,
+            &self.sprocket_teeth_entry,
+            &self.sprocket_roller_diameter_entry,
+            &self.box_depth_entry,
+            &self.box_thickness_entry,
+            &self.box_tab_width_entry,
+            &self.offset_entry,
+            &self.fillet_entry,
+            &self.chamfer_entry,
         ];
 
         for entry in entries {

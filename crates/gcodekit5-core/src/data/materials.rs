@@ -38,7 +38,7 @@ impl std::fmt::Display for MaterialCategory {
             Self::NonFerrousMetal => write!(f, "Non-Ferrous Metal"),
             Self::FerrousMetal => write!(f, "Ferrous Metal"),
             Self::Composite => write!(f, "Composite"),
-            Self::StoneAndCeramic => write!(f, "Stone & Ceramic"),
+            Self::StoneAndCeramic => write!(f, "Stone and Ceramic"),
         }
     }
 }

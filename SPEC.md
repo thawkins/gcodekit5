@@ -1,23 +1,30 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.40.0-alpha.6
-**Last Updated**: 2025-12-16
+**Version**: 0.41.0-alpha.1
+**Last Updated**: 2025-12-21
 **Status**: Alpha Release
 
-### Latest Release (v0.40.0-alpha.6) - UI Polish & Fixes
-- ✅ **Machine Control**
-  - Fixed feedrate display jumping and spindle speed showing zero.
-  - Fixed override controls (Feed/Spindle) not working correctly.
-  - Added commanded vs actual feedrate/spindle speed tracking.
-  - Fixed elapsed time display to reset correctly on stop/estop.
-  - Removed "Use G53" button.
-  - Added logging of all sent commands to device console.
-- ✅ **CAM Tools**
-  - Changed Vector Image CAMTool preview background to 50% grey.
+### Latest Release (v0.41.0-alpha.1) - Non-Destructive Geometry
+- ✅ **Designer**
+  - Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).
+  - Geometry modifiers are now properties of the shape, allowing live tweaking.
+  - Updated rendering, hit-testing, and G-code generation to use the "effective shape".
+- ✅ **UI**
+  - Removed "Apply" buttons from Geometry Operations in the Properties Panel.
+  - Geometry operations now apply immediately on Enter or Focus Out.
+  - Geometry Operations frame is now context-sensitive (hidden for Text shapes).
 - ✅ **Version**
-  - Bumped version to 0.40.0-alpha.6.
+  - Bumped version to 0.41.0-alpha.1.
 
-### Previous Release (v0.40.0-alpha.5) - Device Manager & Machine Control
+### Previous Release (v0.41.0-alpha.0) - Drill Press CAMTool
+- ✅ **CAM Tools**
+  - Added new "Drill Press" tool for manual hole drilling and helical interpolation.
+  - Support for peck drilling (chip clearing) with configurable depth.
+  - Support for helical interpolation for holes larger than the tool diameter.
+  - Unit-aware parameter entry (Metric/Imperial) with dynamic switching.
+  - Ability to save and load tool parameters to JSON files.
+
+### Previous Release (v0.40.0-alpha.6) - UI Polish & Fixes
 - ✅ **Device Manager**
   - Added device type selection (CNC, Laser, Other) to Device Config tab.
   - Automatically configures `$32` (Laser Mode) and device capabilities based on type.

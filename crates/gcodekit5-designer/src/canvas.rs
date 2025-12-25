@@ -58,11 +58,14 @@ pub enum DrawingMode {
     Text,
     Triangle,
     Polygon,
+    Gear,
+    Sprocket,
+    TabbedBox,
     Pan,
 }
 
 /// Drawing object on the canvas that can be selected and manipulated.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DrawingObject {
     pub id: u64,
     pub group_id: Option<u64>,
@@ -78,9 +81,40 @@ pub struct DrawingObject {
     pub ramp_angle: f32,
     pub pocket_strategy: PocketStrategy,
     pub raster_fill_ratio: f64,
+    pub offset: f64,
+    pub fillet: f64,
+    pub chamfer: f64,
 }
 
 impl DrawingObject {
+    pub fn get_effective_shape(&self) -> Shape {
+        let mut shape = self.shape.clone();
+        if self.offset != 0.0 {
+            shape = crate::ops::perform_offset(&shape, self.offset);
+        }
+        if self.fillet != 0.0 {
+            shape = crate::ops::perform_fillet(&shape, self.fillet);
+        }
+        if self.chamfer != 0.0 {
+            shape = crate::ops::perform_chamfer(&shape, self.chamfer);
+        }
+        shape
+    }
+
+    pub fn get_total_bounds(&self) -> (f64, f64, f64, f64) {
+        let (x1, y1, x2, y2) = self.shape.bounds();
+        if self.offset.abs() < 1e-6 && self.fillet.abs() < 1e-6 && self.chamfer.abs() < 1e-6 {
+            return (x1, y1, x2, y2);
+        }
+        let (ex1, ey1, ex2, ey2) = self.get_effective_shape().bounds();
+        (x1.min(ex1), y1.min(ey1), x2.max(ex2), y2.max(ey2))
+    }
+
+    pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
+        self.shape.contains_point(*point, tolerance)
+            || self.get_effective_shape().contains_point(*point, tolerance)
+    }
+
     /// Creates a new drawing object.
     pub fn new(id: u64, shape: Shape) -> Self {
         let name = match shape.shape_type() {
@@ -92,6 +126,9 @@ impl DrawingObject {
             ShapeType::Text => "Text",
             ShapeType::Triangle => "Triangle",
             ShapeType::Polygon => "Polygon",
+            ShapeType::Gear => "Gear",
+            ShapeType::Sprocket => "Sprocket",
+            ShapeType::TabbedBox => "Tabbed Box",
         }
         .to_string();
 
@@ -110,27 +147,9 @@ impl DrawingObject {
             ramp_angle: 0.0,
             pocket_strategy: PocketStrategy::ContourParallel,
             raster_fill_ratio: 0.5,
-        }
-    }
-}
-
-impl Clone for DrawingObject {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            group_id: self.group_id,
-            name: self.name.clone(),
-            shape: self.shape.clone(),
-            selected: self.selected,
-            operation_type: self.operation_type,
-            use_custom_values: self.use_custom_values,
-            pocket_depth: self.pocket_depth,
-            start_depth: self.start_depth,
-            step_down: self.step_down,
-            step_in: self.step_in,
-            ramp_angle: self.ramp_angle,
-            pocket_strategy: self.pocket_strategy,
-            raster_fill_ratio: self.raster_fill_ratio,
+            offset: 0.0,
+            fillet: 0.0,
+            chamfer: 0.0,
         }
     }
 }
@@ -439,7 +458,7 @@ impl Canvas {
     /// Removes a shape and returns it (used for undo/redo).
     pub fn remove_shape_return(&mut self, id: u64) -> Option<DrawingObject> {
         if let Some(obj) = self.shape_store.remove(id) {
-            let (min_x, min_y, max_x, max_y) = obj.shape.bounds();
+            let (min_x, min_y, max_x, max_y) = obj.get_total_bounds();
             self.spatial_manager
                 .remove_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
 
@@ -455,7 +474,7 @@ impl Canvas {
     /// Restores a shape (used for undo/redo).
     pub fn restore_shape(&mut self, obj: DrawingObject) {
         let id = obj.id;
-        let (min_x, min_y, max_x, max_y) = obj.shape.bounds();
+        let (min_x, min_y, max_x, max_y) = obj.get_total_bounds();
         self.spatial_manager
             .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         self.shape_store.insert(id, obj);
@@ -490,7 +509,7 @@ impl Canvas {
     pub fn is_point_in_selected(&self, point: &Point) -> bool {
         if let Some(id) = self.selection_manager.selected_id() {
             if let Some(obj) = self.shape_store.get(id) {
-                return obj.shape.contains_point(*point, 3.0);
+                return obj.contains_point(point, 3.0);
             }
         }
         false
@@ -592,7 +611,7 @@ impl Canvas {
         let mut max_y = f64::NEG_INFINITY;
 
         for obj in self.shape_store.iter() {
-            let (x1, y1, x2, y2) = obj.shape.bounds();
+            let (x1, y1, x2, y2) = obj.get_total_bounds();
             min_x = min_x.min(x1);
             min_y = min_y.min(y1);
             max_x = max_x.max(x2);
@@ -647,11 +666,11 @@ impl Canvas {
 
         for obj in self.shape_store.iter_mut() {
             if obj.selected {
-                let (old_x1, old_y1, old_x2, old_y2) = obj.shape.bounds();
+                let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
 
                 obj.shape.translate(dx, dy);
 
-                let (new_x1, new_y1, new_x2, new_y2) = obj.shape.bounds();
+                let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
@@ -661,6 +680,24 @@ impl Canvas {
         }
 
         for (id, old_bounds, new_bounds) in updates {
+            self.spatial_manager.remove_bounds(id, &old_bounds);
+            self.spatial_manager.insert_bounds(id, &new_bounds);
+        }
+    }
+
+    /// Updates the geometry modifiers for a shape.
+    pub fn update_shape_geometry(&mut self, id: u64, offset: f64, fillet: f64, chamfer: f64) {
+        if let Some(obj) = self.shape_store.get_mut(id) {
+            let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
+            let old_bounds = Bounds::new(old_x1, old_y1, old_x2, old_y2);
+
+            obj.offset = offset;
+            obj.fillet = fillet;
+            obj.chamfer = chamfer;
+
+            let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
+            let new_bounds = Bounds::new(new_x1, new_y1, new_x2, new_y2);
+
             self.spatial_manager.remove_bounds(id, &old_bounds);
             self.spatial_manager.insert_bounds(id, &new_bounds);
         }
@@ -795,6 +832,9 @@ impl Canvas {
                 ramp_angle: obj.ramp_angle,
                 pocket_strategy: obj.pocket_strategy,
                 raster_fill_ratio: obj.raster_fill_ratio,
+                offset: obj.offset,
+                fillet: obj.fillet,
+                chamfer: obj.chamfer,
             };
 
             self.shape_store.insert(id, new_obj);
@@ -876,7 +916,7 @@ impl Canvas {
 
         for obj in self.shape_store.iter_mut() {
             if obj.selected {
-                let (old_x1, old_y1, old_x2, old_y2) = obj.shape.bounds();
+                let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
 
                 // Scale relative to the center of the SELECTION bounding box
                 obj.shape.scale(sx, sy, Point::new(center_x, center_y));
@@ -886,7 +926,7 @@ impl Canvas {
                 let t_dy = new_center_y - center_y;
                 obj.shape.translate(t_dx, t_dy);
 
-                let (new_x1, new_y1, new_x2, new_y2) = obj.shape.bounds();
+                let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
@@ -999,6 +1039,41 @@ impl Canvas {
                     let radius = snapped_width.min(snapped_height) / 2.0;
                     Shape::Polygon(Polygon::new(center, radius, polygon.sides))
                 }
+                Shape::Gear(gear) => {
+                    let center = Point::new(
+                        snapped_x1 + snapped_width / 2.0,
+                        snapped_y1 + snapped_height / 2.0,
+                    );
+                    let module = snapped_width / gear.teeth as f64;
+                    Shape::Gear(crate::model::DesignGear::new(center, module, gear.teeth))
+                }
+                Shape::Sprocket(sprocket) => {
+                    let center = Point::new(
+                        snapped_x1 + snapped_width / 2.0,
+                        snapped_y1 + snapped_height / 2.0,
+                    );
+                    let pitch =
+                        snapped_width * (std::f64::consts::PI / sprocket.teeth as f64).sin();
+                    Shape::Sprocket(crate::model::DesignSprocket::new(
+                        center,
+                        pitch,
+                        sprocket.teeth,
+                    ))
+                }
+                Shape::TabbedBox(tabbed_box) => {
+                    let center = Point::new(
+                        snapped_x1 + snapped_width / 2.0,
+                        snapped_y1 + snapped_height / 2.0,
+                    );
+                    Shape::TabbedBox(crate::model::DesignTabbedBox::new(
+                        center,
+                        snapped_width,
+                        snapped_height,
+                        tabbed_box.depth,
+                        tabbed_box.thickness,
+                        tabbed_box.tab_width,
+                    ))
+                }
             };
 
             let mut new_obj = obj.clone();
@@ -1015,6 +1090,7 @@ impl Canvas {
 
         for obj in self.shape_store.iter_mut() {
             if obj.selected {
+                let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
                 let (x1, y1, x2, y2) = obj.shape.bounds();
                 let width = x2 - x1;
                 let height = y2 - y1;
@@ -1115,13 +1191,68 @@ impl Canvas {
                             shape.clone()
                         }
                     }
+                    ShapeType::Gear => {
+                        if let Some(gear) =
+                            shape.as_any().downcast_ref::<crate::model::DesignGear>()
+                        {
+                            let center = Point::new(
+                                snapped_x1 + snapped_width / 2.0,
+                                snapped_y1 + snapped_height / 2.0,
+                            );
+                            let module = snapped_width / gear.teeth as f64;
+                            Shape::Gear(crate::model::DesignGear::new(center, module, gear.teeth))
+                        } else {
+                            shape.clone()
+                        }
+                    }
+                    ShapeType::Sprocket => {
+                        if let Some(sprocket) = shape
+                            .as_any()
+                            .downcast_ref::<crate::model::DesignSprocket>()
+                        {
+                            let center = Point::new(
+                                snapped_x1 + snapped_width / 2.0,
+                                snapped_y1 + snapped_height / 2.0,
+                            );
+                            let pitch = snapped_width
+                                * (std::f64::consts::PI / sprocket.teeth as f64).sin();
+                            Shape::Sprocket(crate::model::DesignSprocket::new(
+                                center,
+                                pitch,
+                                sprocket.teeth,
+                            ))
+                        } else {
+                            shape.clone()
+                        }
+                    }
+                    ShapeType::TabbedBox => {
+                        if let Some(tabbed_box) = shape
+                            .as_any()
+                            .downcast_ref::<crate::model::DesignTabbedBox>()
+                        {
+                            let center = Point::new(
+                                snapped_x1 + snapped_width / 2.0,
+                                snapped_y1 + snapped_height / 2.0,
+                            );
+                            Shape::TabbedBox(crate::model::DesignTabbedBox::new(
+                                center,
+                                snapped_width,
+                                snapped_height,
+                                tabbed_box.depth,
+                                tabbed_box.thickness,
+                                tabbed_box.tab_width,
+                            ))
+                        } else {
+                            shape.clone()
+                        }
+                    }
                 };
                 obj.shape = new_shape;
 
-                let (new_x1, new_y1, new_x2, new_y2) = obj.shape.bounds();
+                let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
                 updates.push((
                     obj.id,
-                    Bounds::new(x1, y1, x2, y2),
+                    Bounds::new(old_x1, old_y1, old_x2, old_y2),
                     Bounds::new(new_x1, new_y1, new_x2, new_y2),
                 ));
             }
@@ -1280,7 +1411,7 @@ impl Canvas {
                 continue;
             }
 
-            let (old_x, old_y, old_x2, old_y2) = obj.shape.bounds();
+            let (old_x, old_y, old_x2, old_y2) = obj.get_total_bounds();
 
             // Apply scaling relative to group center
             obj.shape
@@ -1297,7 +1428,7 @@ impl Canvas {
 
             changed_any = true;
 
-            let (new_x1, new_y1, new_x2, new_y2) = obj.shape.bounds();
+            let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
             updates.push((
                 obj.id,
                 Bounds::new(old_x, old_y, old_x2, old_y2),
@@ -1342,13 +1473,13 @@ impl Canvas {
                 continue;
             }
             if let Some(text) = obj.shape.as_any().downcast_ref::<TextShape>() {
-                let (old_x1, old_y1, old_x2, old_y2) = obj.shape.bounds();
+                let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
                 let (x, y) = (text.x, text.y);
 
                 obj.shape = Shape::Text(TextShape::new(content.to_string(), x, y, font_size));
                 changed = true;
 
-                let (new_x1, new_y1, new_x2, new_y2) = obj.shape.bounds();
+                let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
@@ -1405,7 +1536,7 @@ impl Canvas {
                 continue;
             }
             if let Some(rect) = obj.shape.as_any().downcast_ref::<Rectangle>() {
-                let (old_x1, old_y1, old_x2, old_y2) = obj.shape.bounds();
+                let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
 
                 let mut new_rect = rect.clone();
                 new_rect.corner_radius = corner_radius;
@@ -1422,7 +1553,7 @@ impl Canvas {
                 obj.shape = Shape::Rectangle(new_rect);
                 changed = true;
 
-                let (new_x1, new_y1, new_x2, new_y2) = obj.shape.bounds();
+                let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),

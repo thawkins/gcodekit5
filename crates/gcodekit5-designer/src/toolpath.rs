@@ -3,9 +3,9 @@
 use super::pocket_operations::{PocketGenerator, PocketOperation, PocketStrategy};
 use crate::font_manager;
 use crate::model::{
-    rotate_point, DesignCircle as Circle, DesignLine as Line, DesignPath as PathShape,
-    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
-    DesignTriangle as Triangle, DesignerShape, Point,
+    rotate_point, DesignCircle as Circle, DesignGear, DesignLine as Line, DesignPath as PathShape,
+    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignSprocket, DesignTabbedBox,
+    DesignText as TextShape, DesignTriangle as Triangle, DesignerShape, Point,
 };
 use lyon::path::iterator::PathIterator;
 use rusttype::{GlyphId, OutlineBuilder, Scale};
@@ -1512,6 +1512,65 @@ impl ToolpathGenerator {
     pub fn generate_text_toolpath(&self, text_shape: &TextShape, step_down: f64) -> Vec<Toolpath> {
         let segments = self.build_text_outline_segments(text_shape);
         self.create_multipass_toolpaths(segments, step_down)
+    }
+
+    /// Generates a contour toolpath for a gear.
+    pub fn generate_gear_contour(&self, gear: &DesignGear, step_down: f64) -> Vec<Toolpath> {
+        let path = gear.render();
+        let path_shape = PathShape::from_lyon_path(&path);
+        self.generate_path_contour(&path_shape, step_down)
+    }
+
+    /// Generates a pocket toolpath for a gear.
+    pub fn generate_gear_pocket(
+        &self,
+        gear: &DesignGear,
+        pocket_depth: f64,
+        step_down: f64,
+        step_in: f64,
+    ) -> Vec<Toolpath> {
+        let path = gear.render();
+        let path_shape = PathShape::from_lyon_path(&path);
+        self.generate_path_pocket(&path_shape, pocket_depth, step_down, step_in)
+    }
+
+    /// Generates a contour toolpath for a sprocket.
+    pub fn generate_sprocket_contour(
+        &self,
+        sprocket: &DesignSprocket,
+        step_down: f64,
+    ) -> Vec<Toolpath> {
+        let path = sprocket.render();
+        let path_shape = PathShape::from_lyon_path(&path);
+        self.generate_path_contour(&path_shape, step_down)
+    }
+
+    /// Generates a pocket toolpath for a sprocket.
+    pub fn generate_sprocket_pocket(
+        &self,
+        sprocket: &DesignSprocket,
+        pocket_depth: f64,
+        step_down: f64,
+        step_in: f64,
+    ) -> Vec<Toolpath> {
+        let path = sprocket.render();
+        let path_shape = PathShape::from_lyon_path(&path);
+        self.generate_path_pocket(&path_shape, pocket_depth, step_down, step_in)
+    }
+
+    /// Generates a contour toolpath for a tabbed box.
+    pub fn generate_tabbed_box_contour(
+        &self,
+        tbox: &DesignTabbedBox,
+        step_down: f64,
+    ) -> Vec<Toolpath> {
+        let paths = tbox.render_all();
+        let mut all_toolpaths = Vec::new();
+        for path in paths {
+            let path_shape = PathShape::from_lyon_path(&path);
+            all_toolpaths.extend(self.generate_path_contour(&path_shape, step_down));
+        }
+        all_toolpaths
     }
 }
 

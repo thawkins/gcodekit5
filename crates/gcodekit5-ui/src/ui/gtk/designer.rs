@@ -130,6 +130,8 @@ pub struct DesignerCanvas {
     ctrl_pressed: Rc<RefCell<bool>>,
     // Polyline state
     polyline_points: Rc<RefCell<Vec<Point>>>,
+    // Preview shapes (e.g. for offset/fillet)
+    preview_shapes: Rc<RefCell<Vec<Shape>>>,
     // Toolpath preview
     preview_toolpaths: Rc<RefCell<Vec<Toolpath>>>,
     preview_generating: Rc<std::cell::Cell<bool>>,
@@ -178,6 +180,7 @@ impl DesignerCanvas {
         let last_drag_offset = Rc::new(RefCell::new((0.0, 0.0)));
         let did_drag = Rc::new(RefCell::new(false));
         let polyline_points = Rc::new(RefCell::new(Vec::new()));
+        let preview_shapes = Rc::new(RefCell::new(Vec::new()));
         let preview_toolpaths = Rc::new(RefCell::new(Vec::new()));
 
         let state_clone = state.clone();
@@ -185,6 +188,7 @@ impl DesignerCanvas {
         let creation_start_clone = creation_start.clone();
         let creation_current_clone = creation_current.clone();
         let polyline_points_clone = polyline_points.clone();
+        let preview_shapes_clone = preview_shapes.clone();
         let preview_toolpaths_clone = preview_toolpaths.clone();
         let device_manager_draw = device_manager.clone();
 
@@ -200,6 +204,7 @@ impl DesignerCanvas {
             let preview_start = *creation_start_clone.borrow();
             let preview_current = *creation_current_clone.borrow();
             let poly_points = polyline_points_clone.borrow();
+            let preview_shapes = preview_shapes_clone.borrow();
             let toolpaths = preview_toolpaths_clone.borrow();
             let bounds = compute_device_bbox(&device_manager_draw);
 
@@ -214,6 +219,7 @@ impl DesignerCanvas {
                 preview_start,
                 preview_current,
                 &poly_points,
+                &preview_shapes,
                 &toolpaths,
                 bounds,
                 &style_context,
@@ -239,6 +245,7 @@ impl DesignerCanvas {
             shift_pressed: Rc::new(RefCell::new(false)),
             ctrl_pressed: Rc::new(RefCell::new(false)),
             polyline_points: polyline_points.clone(),
+            preview_shapes: preview_shapes.clone(),
             preview_toolpaths: preview_toolpaths.clone(),
             preview_generating: Rc::new(std::cell::Cell::new(false)),
             preview_pending: Rc::new(std::cell::Cell::new(false)),
@@ -302,7 +309,10 @@ impl DesignerCanvas {
                 | DesignerTool::Ellipse
                 | DesignerTool::Triangle
                 | DesignerTool::Polygon
-                | DesignerTool::Polyline => widget_motion.set_cursor_from_name(Some("pencil")),
+                | DesignerTool::Polyline
+                | DesignerTool::Gear
+                | DesignerTool::Sprocket
+                | DesignerTool::TabbedBox => widget_motion.set_cursor_from_name(Some("pencil")),
             }
 
             widget_motion.queue_draw();
@@ -576,7 +586,7 @@ impl DesignerCanvas {
             let mut has_shapes = false;
             for obj in state.canvas.shapes() {
                 has_shapes = true;
-                let (sx, sy, ex, ey) = obj.shape.bounds();
+                let (sx, sy, ex, ey) = obj.get_total_bounds();
                 min_x = min_x.min(sx);
                 min_y = min_y.min(sy);
                 max_x = max_x.max(ex);
@@ -718,40 +728,30 @@ impl DesignerCanvas {
 
         let mut state = self.state.borrow_mut();
 
-        // Check for hit
-        let mut clicked_shape_id = None;
+        // Check for hit using select_at logic (handles groups)
         let tolerance = 3.0;
-        for obj in state.canvas.shapes() {
-            if obj.shape.contains_point(point, tolerance) {
-                clicked_shape_id = Some(obj.id);
+        let clicked_shape_id = state.canvas.select_at(&point, tolerance, false);
+
+        if let Some(_id) = clicked_shape_id {
+            // Update UI
+            drop(state); // Drop before calling update methods that might borrow
+            if let Some(ref props) = *self.properties.borrow() {
+                props.update_from_selection();
             }
+            if let Some(ref layers) = *self.layers.borrow() {
+                layers.refresh(&self.state);
+            }
+            self.widget.queue_draw();
+
+            // Re-borrow for next steps
+            state = self.state.borrow_mut();
         }
 
-        if let Some(id) = clicked_shape_id {
-            let is_selected = state.canvas.selection_manager.selected_id() == Some(id)
-                || state.canvas.shapes().any(|s| s.id == id && s.selected);
-
-            if !is_selected {
-                // Select it
-                state.canvas.deselect_all();
-                state.canvas.select_shape(id, false);
-
-                // Update UI
-                drop(state); // Drop before calling update methods that might borrow
-                if let Some(ref props) = *self.properties.borrow() {
-                    props.update_from_selection();
-                }
-                if let Some(ref layers) = *self.layers.borrow() {
-                    layers.refresh(&self.state);
-                }
-                self.widget.queue_draw();
-
-                // Re-borrow for next steps
-                state = self.state.borrow_mut();
-            }
-        }
-
-        let has_selection = state.canvas.selection_manager.selected_id().is_some();
+        let has_selection = state
+            .canvas
+            .selection_manager
+            .selected_count(&state.canvas.shape_store)
+            > 0;
         let selected_count = state.canvas.shapes().filter(|s| s.selected).count();
         let can_paste = !state.clipboard.is_empty();
         let can_group = state.can_group();
@@ -907,6 +907,7 @@ impl DesignerCanvas {
         ));
 
         menu.set_child(Some(&vbox));
+        menu.set_autohide(true);
         menu.popup();
     }
 
@@ -1198,7 +1199,7 @@ impl DesignerCanvas {
                 let mut clicked_shape_id = None;
                 let tolerance = 3.0;
                 for obj in state.canvas.shapes() {
-                    if obj.shape.contains_point(point, tolerance) {
+                    if obj.contains_point(&point, tolerance) {
                         clicked_shape_id = Some(obj.id);
                     }
                 }
@@ -1319,7 +1320,7 @@ impl DesignerCanvas {
             let mut clicked_shape_id = None;
             let tolerance = 3.0;
             for obj in state.canvas.shapes() {
-                if obj.shape.contains_point(point, tolerance) {
+                if obj.contains_point(&point, tolerance) {
                     clicked_shape_id = Some(obj.id);
                 }
             }
@@ -1698,7 +1699,7 @@ impl DesignerCanvas {
                             .shapes()
                             .filter(|obj| {
                                 let (shape_min_x, shape_min_y, shape_max_x, shape_max_y) =
-                                    obj.shape.bounds();
+                                    obj.get_total_bounds();
                                 // Check if bounding boxes intersect
                                 !(shape_max_x < min_x
                                     || shape_min_x > max_x
@@ -1828,6 +1829,66 @@ impl DesignerCanvas {
 
                     if radius > 1.0 {
                         Some(Shape::Polygon(Polygon::new(Point::new(cx, cy), radius, 6)))
+                    } else {
+                        None
+                    }
+                }
+                DesignerTool::Gear => {
+                    let cx = (start.0 + end.0) / 2.0;
+                    let cy = (start.1 + end.1) / 2.0;
+                    let width = (end.0 - start.0).abs();
+                    let height = (end.1 - start.1).abs();
+                    let radius = width.min(height) / 2.0;
+
+                    if radius > 1.0 {
+                        // Default to module 2.0, 20 teeth
+                        Some(Shape::Gear(gcodekit5_designer::model::DesignGear::new(
+                            Point::new(cx, cy),
+                            2.0,
+                            20,
+                        )))
+                    } else {
+                        None
+                    }
+                }
+                DesignerTool::Sprocket => {
+                    let cx = (start.0 + end.0) / 2.0;
+                    let cy = (start.1 + end.1) / 2.0;
+                    let width = (end.0 - start.0).abs();
+                    let height = (end.1 - start.1).abs();
+                    let radius = width.min(height) / 2.0;
+
+                    if radius > 1.0 {
+                        // Default to 12.7mm pitch (ANSI 40), 15 teeth
+                        Some(Shape::Sprocket(
+                            gcodekit5_designer::model::DesignSprocket::new(
+                                Point::new(cx, cy),
+                                12.7,
+                                15,
+                            ),
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                DesignerTool::TabbedBox => {
+                    let x = start.0.min(end.0);
+                    let y = start.1.min(end.1);
+                    let width = (end.0 - start.0).abs();
+                    let height = (end.1 - start.1).abs();
+
+                    if width > 1.0 && height > 1.0 {
+                        // Default to 100x100x50, 3mm thickness, 10mm tabs
+                        Some(Shape::TabbedBox(
+                            gcodekit5_designer::model::DesignTabbedBox::new(
+                                Point::new(x + width / 2.0, y + height / 2.0),
+                                width,
+                                height,
+                                50.0,
+                                3.0,
+                                10.0,
+                            ),
+                        ))
                     } else {
                         None
                     }
@@ -2456,7 +2517,8 @@ impl DesignerCanvas {
                 gen.set_step_in(shape.step_in as f64);
                 gen.set_raster_fill_ratio(shape.raster_fill_ratio);
 
-                let shape_toolpaths = match &shape.shape {
+                let effective_shape = shape.get_effective_shape();
+                let shape_toolpaths = match &effective_shape {
                     Shape::Rectangle(rect) => {
                         if shape.operation_type == OperationType::Pocket {
                             gen.generate_rectangle_pocket(
@@ -2532,6 +2594,33 @@ impl DesignerCanvas {
                         } else {
                             gen.generate_polygon_contour(polygon, shape.step_down as f64)
                         }
+                    }
+                    Shape::Gear(gear) => {
+                        if shape.operation_type == OperationType::Pocket {
+                            gen.generate_gear_pocket(
+                                gear,
+                                shape.pocket_depth,
+                                shape.step_down as f64,
+                                shape.step_in as f64,
+                            )
+                        } else {
+                            gen.generate_gear_contour(gear, shape.step_down as f64)
+                        }
+                    }
+                    Shape::Sprocket(sprocket) => {
+                        if shape.operation_type == OperationType::Pocket {
+                            gen.generate_sprocket_pocket(
+                                sprocket,
+                                shape.pocket_depth,
+                                shape.step_down as f64,
+                                shape.step_in as f64,
+                            )
+                        } else {
+                            gen.generate_sprocket_contour(sprocket, shape.step_down as f64)
+                        }
+                    }
+                    Shape::TabbedBox(tbox) => {
+                        gen.generate_tabbed_box_contour(tbox, shape.step_down as f64)
                     }
                 };
                 toolpaths.extend(shape_toolpaths);
@@ -2617,6 +2706,7 @@ impl DesignerCanvas {
         preview_start: Option<(f64, f64)>,
         preview_current: Option<(f64, f64)>,
         polyline_points: &[Point],
+        preview_shapes: &[Shape],
         toolpaths: &[Toolpath],
         device_bounds: (f64, f64, f64, f64),
         style_context: &gtk4::StyleContext,
@@ -2787,6 +2877,7 @@ impl DesignerCanvas {
 
         // Draw Shapes
         for obj in state.canvas.shape_store.iter() {
+            // 1. Draw Base Shape
             cr.save().unwrap();
 
             if obj.selected {
@@ -2815,209 +2906,42 @@ impl DesignerCanvas {
                 cr.set_line_width(2.0 / zoom);
             }
 
-            match &obj.shape {
-                Shape::Rectangle(rect) => {
-                    cr.save().unwrap();
-                    cr.translate(rect.center.x, rect.center.y);
-                    if rect.rotation.abs() > 1e-9 {
-                        cr.rotate(rect.rotation);
-                    }
+            Self::draw_shape_geometry(cr, &obj.shape);
 
-                    if rect.corner_radius > 0.001 {
-                        let x = -rect.width / 2.0;
-                        let y = -rect.height / 2.0;
-                        let w = rect.width;
-                        let h = rect.height;
-                        let r = rect.corner_radius.min(w / 2.0).min(h / 2.0);
-                        let pi = std::f64::consts::PI;
-
-                        cr.new_sub_path();
-                        // Start at right edge, bottom of TR corner
-                        cr.arc(x + w - r, y + h - r, r, 0.0, 0.5 * pi); // TR
-                        cr.arc(x + r, y + h - r, r, 0.5 * pi, pi); // TL
-                        cr.arc(x + r, y + r, r, pi, 1.5 * pi); // BL
-                        cr.arc(x + w - r, y + r, r, 1.5 * pi, 2.0 * pi); // BR
-                        cr.close_path();
-                        cr.stroke().unwrap();
-                    } else {
-                        let x = -rect.width / 2.0;
-                        let y = -rect.height / 2.0;
-                        cr.rectangle(x, y, rect.width, rect.height);
-                        cr.stroke().unwrap();
-                    }
-
-                    cr.restore().unwrap();
-                }
-                Shape::Circle(circle) => {
-                    cr.arc(
-                        circle.center.x,
-                        circle.center.y,
-                        circle.radius,
-                        0.0,
-                        2.0 * std::f64::consts::PI,
-                    );
-                    cr.stroke().unwrap();
-                }
-                Shape::Line(line) => {
-                    cr.move_to(line.start.x, line.start.y);
-                    cr.line_to(line.end.x, line.end.y);
-                    cr.stroke().unwrap();
-                }
-                Shape::Ellipse(ellipse) => {
-                    cr.save().unwrap();
-                    cr.translate(ellipse.center.x, ellipse.center.y);
-                    if ellipse.rotation.abs() > 1e-9 {
-                        cr.rotate(ellipse.rotation);
-                    }
-                    let base_width = cr.line_width();
-                    let scale_factor = ellipse.rx.abs().max(ellipse.ry.abs()).max(1e-6);
-                    cr.set_line_width(base_width / scale_factor);
-                    cr.scale(ellipse.rx, ellipse.ry);
-                    cr.arc(0.0, 0.0, 1.0, 0.0, 2.0 * std::f64::consts::PI);
-                    cr.stroke().unwrap();
-                    cr.restore().unwrap();
-                }
-                Shape::Path(path_shape) => {
-                    let (x1, y1, x2, y2) = path_shape.bounds();
-                    let cx = (x1 + x2) / 2.0;
-                    let cy = (y1 + y2) / 2.0;
-
-                    cr.save().unwrap();
-                    if path_shape.rotation.abs() > 1e-9 {
-                        cr.translate(cx, cy);
-                        cr.rotate(path_shape.rotation);
-                        cr.translate(-cx, -cy);
-                    }
-
-                    cr.new_path();
-                    // Iterate lyon path
-                    for event in path_shape.render().iter() {
-                        match event {
-                            lyon::path::Event::Begin { at } => {
-                                cr.move_to(at.x as f64, at.y as f64);
-                            }
-                            lyon::path::Event::Line { from: _, to } => {
-                                cr.line_to(to.x as f64, to.y as f64);
-                            }
-                            lyon::path::Event::Quadratic { from: _, ctrl, to } => {
-                                // Cairo doesn't have quadratic, convert to cubic.
-                                // We use current point as 'from'.
-                                let (x0, y0) = cr.current_point().unwrap();
-                                let x1 = x0 + (2.0 / 3.0) * (ctrl.x as f64 - x0);
-                                let y1 = y0 + (2.0 / 3.0) * (ctrl.y as f64 - y0);
-                                let x2 = to.x as f64 + (2.0 / 3.0) * (ctrl.x as f64 - to.x as f64);
-                                let y2 = to.y as f64 + (2.0 / 3.0) * (ctrl.y as f64 - to.y as f64);
-                                cr.curve_to(x1, y1, x2, y2, to.x as f64, to.y as f64);
-                            }
-                            lyon::path::Event::Cubic {
-                                from: _,
-                                ctrl1,
-                                ctrl2,
-                                to,
-                            } => {
-                                cr.curve_to(
-                                    ctrl1.x as f64,
-                                    ctrl1.y as f64,
-                                    ctrl2.x as f64,
-                                    ctrl2.y as f64,
-                                    to.x as f64,
-                                    to.y as f64,
-                                );
-                            }
-                            lyon::path::Event::End {
-                                last: _,
-                                first: _,
-                                close,
-                            } => {
-                                if close {
-                                    cr.close_path();
-                                }
-                            }
-                        }
-                    }
-                    cr.stroke().unwrap();
-                    cr.restore().unwrap();
-                }
-                Shape::Text(text) => {
-                    // Basic text placeholder
-                    cr.save().unwrap();
-                    // Rotate around text bounds center, then flip Y for text rendering.
-                    let (x1, y1, x2, y2) = text.bounds();
-                    let cx = (x1 + x2) / 2.0;
-                    let cy = (y1 + y2) / 2.0;
-                    // Use negative angle because we flip Y after rotation.
-                    let angle = -text.rotation.to_radians();
-
-                    cr.translate(cx, cy);
-                    cr.rotate(angle);
-                    cr.translate(-cx, -cy);
-
-                    // Flip Y back for text so it's not upside down
-                    cr.translate(text.x, text.y);
-                    cr.scale(1.0, -1.0);
-                    let slant = if text.italic {
-                        gtk4::cairo::FontSlant::Italic
-                    } else {
-                        gtk4::cairo::FontSlant::Normal
-                    };
-                    let weight = if text.bold {
-                        gtk4::cairo::FontWeight::Bold
-                    } else {
-                        gtk4::cairo::FontWeight::Normal
-                    };
-                    cr.select_font_face(&text.font_family, slant, weight);
-                    cr.set_font_size(text.font_size);
-                    cr.show_text(&text.text).unwrap();
-                    cr.restore().unwrap();
-                }
-                Shape::Triangle(triangle) => {
-                    let path = triangle.render();
-                    cr.new_path();
-                    for event in path.iter() {
-                        match event {
-                            lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
-                            lyon::path::Event::Line { to, .. } => {
-                                cr.line_to(to.x as f64, to.y as f64)
-                            }
-                            lyon::path::Event::End { close, .. } => {
-                                if close {
-                                    cr.close_path();
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    cr.stroke().unwrap();
-                }
-                Shape::Polygon(polygon) => {
-                    let path = polygon.render();
-                    cr.new_path();
-                    for event in path.iter() {
-                        match event {
-                            lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
-                            lyon::path::Event::Line { to, .. } => {
-                                cr.line_to(to.x as f64, to.y as f64)
-                            }
-                            lyon::path::Event::End { close, .. } => {
-                                if close {
-                                    cr.close_path();
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    cr.stroke().unwrap();
-                }
-            }
-
-            // Draw resize handles:
-            // - Single selection: draw handles on that shape.
-            // - Multi selection: draw handles on the combined group bounds (drawn once after loop).
+            // Draw resize handles on BASE shape
             if selected_count <= 1 && obj.selected {
                 let bounds = Self::selection_bounds(&obj.shape);
                 Self::draw_resize_handles(cr, &bounds, zoom, &accent_color);
             }
 
+            cr.restore().unwrap();
+
+            // 2. Draw Effective Shape (Yellow Overlay) if modified
+            if obj.offset.abs() > 1e-6 || obj.fillet.abs() > 1e-6 || obj.chamfer.abs() > 1e-6 {
+                cr.save().unwrap();
+                cr.set_source_rgba(
+                    warning_color.red() as f64,
+                    warning_color.green() as f64,
+                    warning_color.blue() as f64,
+                    1.0,
+                );
+                cr.set_line_width(2.0 / zoom);
+                Self::draw_shape_geometry(cr, &obj.get_effective_shape());
+                cr.restore().unwrap();
+            }
+        }
+
+        // Draw Preview Shapes (e.g. for offset/fillet) in yellow
+        for shape in preview_shapes {
+            cr.save().unwrap();
+            cr.set_source_rgba(
+                warning_color.red() as f64,
+                warning_color.green() as f64,
+                warning_color.blue() as f64,
+                1.0,
+            );
+            cr.set_line_width(2.0 / zoom);
+            Self::draw_shape_geometry(cr, shape);
             cr.restore().unwrap();
         }
 
@@ -3262,6 +3186,257 @@ impl DesignerCanvas {
             Shape::Text(text) => text.bounds(),
             Shape::Triangle(triangle) => triangle.bounds(),
             Shape::Polygon(polygon) => polygon.bounds(),
+            Shape::Gear(gear) => gear.bounds(),
+            Shape::Sprocket(sprocket) => sprocket.bounds(),
+            Shape::TabbedBox(tbox) => tbox.bounds(),
+        }
+    }
+
+    fn draw_shape_geometry(cr: &gtk4::cairo::Context, shape: &Shape) {
+        match shape {
+            Shape::Rectangle(rect) => {
+                cr.save().unwrap();
+                cr.translate(rect.center.x, rect.center.y);
+                if rect.rotation.abs() > 1e-9 {
+                    cr.rotate(rect.rotation);
+                }
+
+                if rect.corner_radius > 0.001 {
+                    let x = -rect.width / 2.0;
+                    let y = -rect.height / 2.0;
+                    let w = rect.width;
+                    let h = rect.height;
+                    let r = rect.corner_radius.min(w / 2.0).min(h / 2.0);
+                    let pi = std::f64::consts::PI;
+
+                    cr.new_sub_path();
+                    // Start at right edge, bottom of TR corner
+                    cr.arc(x + w - r, y + h - r, r, 0.0, 0.5 * pi); // TR
+                    cr.arc(x + r, y + h - r, r, 0.5 * pi, pi); // TL
+                    cr.arc(x + r, y + r, r, pi, 1.5 * pi); // BL
+                    cr.arc(x + w - r, y + r, r, 1.5 * pi, 2.0 * pi); // BR
+                    cr.close_path();
+                    cr.stroke().unwrap();
+                } else {
+                    let x = -rect.width / 2.0;
+                    let y = -rect.height / 2.0;
+                    cr.rectangle(x, y, rect.width, rect.height);
+                    cr.stroke().unwrap();
+                }
+
+                cr.restore().unwrap();
+            }
+            Shape::Circle(circle) => {
+                cr.arc(
+                    circle.center.x,
+                    circle.center.y,
+                    circle.radius,
+                    0.0,
+                    2.0 * std::f64::consts::PI,
+                );
+                cr.stroke().unwrap();
+            }
+            Shape::Line(line) => {
+                cr.move_to(line.start.x, line.start.y);
+                cr.line_to(line.end.x, line.end.y);
+                cr.stroke().unwrap();
+            }
+            Shape::Ellipse(ellipse) => {
+                cr.save().unwrap();
+                cr.translate(ellipse.center.x, ellipse.center.y);
+                if ellipse.rotation.abs() > 1e-9 {
+                    cr.rotate(ellipse.rotation);
+                }
+                let base_width = cr.line_width();
+                let scale_factor = ellipse.rx.abs().max(ellipse.ry.abs()).max(1e-6);
+                cr.set_line_width(base_width / scale_factor);
+                cr.scale(ellipse.rx, ellipse.ry);
+                cr.arc(0.0, 0.0, 1.0, 0.0, 2.0 * std::f64::consts::PI);
+                cr.stroke().unwrap();
+                cr.restore().unwrap();
+            }
+            Shape::Path(path_shape) => {
+                let (x1, y1, x2, y2) = path_shape.bounds();
+                let cx = (x1 + x2) / 2.0;
+                let cy = (y1 + y2) / 2.0;
+
+                cr.save().unwrap();
+                if path_shape.rotation.abs() > 1e-9 {
+                    cr.translate(cx, cy);
+                    cr.rotate(path_shape.rotation);
+                    cr.translate(-cx, -cy);
+                }
+
+                cr.new_path();
+                // Iterate lyon path
+                for event in path_shape.render().iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => {
+                            cr.move_to(at.x as f64, at.y as f64);
+                        }
+                        lyon::path::Event::Line { from: _, to } => {
+                            cr.line_to(to.x as f64, to.y as f64);
+                        }
+                        lyon::path::Event::Quadratic { from: _, ctrl, to } => {
+                            // Cairo doesn't have quadratic, convert to cubic.
+                            // We use current point as 'from'.
+                            let (x0, y0) = cr.current_point().unwrap();
+                            let x1 = x0 + (2.0 / 3.0) * (ctrl.x as f64 - x0);
+                            let y1 = y0 + (2.0 / 3.0) * (ctrl.y as f64 - y0);
+                            let x2 = to.x as f64 + (2.0 / 3.0) * (ctrl.x as f64 - to.x as f64);
+                            let y2 = to.y as f64 + (2.0 / 3.0) * (ctrl.y as f64 - to.y as f64);
+                            cr.curve_to(x1, y1, x2, y2, to.x as f64, to.y as f64);
+                        }
+                        lyon::path::Event::Cubic {
+                            from: _,
+                            ctrl1,
+                            ctrl2,
+                            to,
+                        } => {
+                            cr.curve_to(
+                                ctrl1.x as f64,
+                                ctrl1.y as f64,
+                                ctrl2.x as f64,
+                                ctrl2.y as f64,
+                                to.x as f64,
+                                to.y as f64,
+                            );
+                        }
+                        lyon::path::Event::End {
+                            last: _,
+                            first: _,
+                            close,
+                        } => {
+                            if close {
+                                cr.close_path();
+                            }
+                        }
+                    }
+                }
+                cr.stroke().unwrap();
+                cr.restore().unwrap();
+            }
+            Shape::Text(text) => {
+                // Basic text placeholder
+                cr.save().unwrap();
+                // Rotate around text bounds center, then flip Y for text rendering.
+                let (x1, y1, x2, y2) = text.bounds();
+                let cx = (x1 + x2) / 2.0;
+                let cy = (y1 + y2) / 2.0;
+                // Use negative angle because we flip Y after rotation.
+                let angle = -text.rotation.to_radians();
+
+                cr.translate(cx, cy);
+                cr.rotate(angle);
+                cr.translate(-cx, -cy);
+
+                // Flip Y back for text so it's not upside down
+                cr.translate(text.x, text.y);
+                cr.scale(1.0, -1.0);
+                let slant = if text.italic {
+                    gtk4::cairo::FontSlant::Italic
+                } else {
+                    gtk4::cairo::FontSlant::Normal
+                };
+                let weight = if text.bold {
+                    gtk4::cairo::FontWeight::Bold
+                } else {
+                    gtk4::cairo::FontWeight::Normal
+                };
+                cr.select_font_face(&text.font_family, slant, weight);
+                cr.set_font_size(text.font_size);
+                cr.show_text(&text.text).unwrap();
+                cr.restore().unwrap();
+            }
+            Shape::Triangle(triangle) => {
+                let path = triangle.render();
+                cr.new_path();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                        lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                cr.close_path();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                cr.stroke().unwrap();
+            }
+            Shape::Polygon(polygon) => {
+                let path = polygon.render();
+                cr.new_path();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                        lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                cr.close_path();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                cr.stroke().unwrap();
+            }
+            Shape::Gear(gear) => {
+                let path = gear.render();
+                cr.new_path();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                        lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                cr.close_path();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                cr.stroke().unwrap();
+            }
+            Shape::Sprocket(sprocket) => {
+                let path = sprocket.render();
+                cr.new_path();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                        lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                cr.close_path();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                cr.stroke().unwrap();
+            }
+            Shape::TabbedBox(tabbed_box) => {
+                let paths = tabbed_box.render_all();
+                for path in paths {
+                    cr.new_path();
+                    for event in path.iter() {
+                        match event {
+                            lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
+                            lyon::path::Event::Line { to, .. } => {
+                                cr.line_to(to.x as f64, to.y as f64)
+                            }
+                            lyon::path::Event::End { close, .. } => {
+                                if close {
+                                    cr.close_path();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    cr.stroke().unwrap();
+                }
+            }
         }
     }
 
@@ -3531,6 +3706,25 @@ impl DesignerCanvas {
                     polygon.center.y = anchor.y + (polygon.center.y - anchor.y) * sy;
                     let s = sx.abs().min(sy.abs());
                     polygon.radius *= s;
+                }
+                Shape::Gear(gear) => {
+                    gear.center.x = anchor.x + (gear.center.x - anchor.x) * sx;
+                    gear.center.y = anchor.y + (gear.center.y - anchor.y) * sy;
+                    let s = sx.abs().min(sy.abs());
+                    gear.module *= s;
+                }
+                Shape::Sprocket(sprocket) => {
+                    sprocket.center.x = anchor.x + (sprocket.center.x - anchor.x) * sx;
+                    sprocket.center.y = anchor.y + (sprocket.center.y - anchor.y) * sy;
+                    let s = sx.abs().min(sy.abs());
+                    sprocket.pitch *= s;
+                    sprocket.roller_diameter *= s;
+                }
+                Shape::TabbedBox(tbox) => {
+                    tbox.center.x = anchor.x + (tbox.center.x - anchor.x) * sx;
+                    tbox.center.y = anchor.y + (tbox.center.y - anchor.y) * sy;
+                    tbox.width *= sx.abs();
+                    tbox.height *= sy.abs();
                 }
             }
         }
@@ -3946,8 +4140,11 @@ impl DesignerView {
         }
 
         // Create properties panel
-        let properties =
-            PropertiesPanel::new(state.clone(), settings_controller.persistence.clone());
+        let properties = PropertiesPanel::new(
+            state.clone(),
+            settings_controller.persistence.clone(),
+            canvas.preview_shapes.clone(),
+        );
         properties.widget.set_vexpand(true);
         properties.widget.set_valign(gtk4::Align::Fill);
 
@@ -4342,6 +4539,17 @@ impl DesignerView {
             }
         });
 
+        // Connect toolbox operation buttons
+        let canvas_mirror_x = canvas.clone();
+        toolbox.connect_mirror_x_clicked(move || {
+            canvas_mirror_x.mirror_x();
+        });
+
+        let canvas_mirror_y = canvas.clone();
+        toolbox.connect_mirror_y_clicked(move || {
+            canvas_mirror_y.mirror_y();
+        });
+
         let view = Rc::new(Self {
             widget: container,
             canvas: canvas.clone(),
@@ -4375,8 +4583,6 @@ impl DesignerView {
 
         // Update properties panel and toolbox when selection changes
         let props_update = properties.clone();
-        let canvas_props = canvas.clone();
-        let toolbox_update = toolbox.clone();
         gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             // Check if we need to update properties (when canvas is redrawn or selection changes)
             props_update.update_from_selection();
@@ -4509,6 +4715,7 @@ impl DesignerView {
         // Grab focus on canvas when clicked
         let canvas_focus = canvas.clone();
         let click_for_focus = GestureClick::new();
+        click_for_focus.set_button(1); // Only left click for focus to avoid interfering with right-click menu
         click_for_focus.connect_pressed(move |_, _, _, _| {
             canvas_focus.widget.grab_focus();
         });
@@ -5083,7 +5290,7 @@ impl DesignerView {
                         }
 
                         for obj in &shapes {
-                            let (x1, y1, x2, y2) = obj.shape.bounds();
+                            let (x1, y1, x2, y2) = obj.get_effective_shape().bounds();
                             min_x = min_x.min(x1);
                             min_y = min_y.min(y1);
                             max_x = max_x.max(x2);
@@ -5107,7 +5314,8 @@ impl DesignerView {
 
                         for obj in &shapes {
                             let style = "fill:none;stroke:black;stroke-width:0.5";
-                            match &obj.shape {
+                            let effective_shape = obj.get_effective_shape();
+                            match &effective_shape {
                                 Shape::Rectangle(r) => {
                                     let x = r.center.x - r.width / 2.0;
                                     let y = r.center.y - r.height / 2.0;
@@ -5169,6 +5377,23 @@ impl DesignerView {
                                         t.rotation, t.x, t.y,
                                         t.text
                                     ));
+                                }
+                                Shape::Gear(g) => {
+                                    let path = g.render();
+                                    let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
+                                    svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
+                                }
+                                Shape::Sprocket(s) => {
+                                    let path = s.render();
+                                    let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
+                                    svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
+                                }
+                                Shape::TabbedBox(b) => {
+                                    let paths = b.render_all();
+                                    for path in paths {
+                                        let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
+                                        svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
+                                    }
                                 }
                             }
                             svg.push('\n');

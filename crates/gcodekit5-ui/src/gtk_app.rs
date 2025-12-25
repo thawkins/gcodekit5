@@ -270,11 +270,16 @@ pub fn main() {
         let editor_clone = editor.clone();
         let stack_clone_for_cam = stack.clone();
         let settings_controller_cam = settings_controller.clone();
-        let cam_tools_view = CamToolsView::new(settings_controller_cam, move |gcode| {
-            editor_clone.set_text(&gcode);
-            stack_clone_for_cam.set_visible_child_name("editor");
-            editor_clone.grab_focus();
-        });
+        let machine_control_cam = machine_control.clone();
+        let cam_tools_view = CamToolsView::new(
+            settings_controller_cam,
+            Some(machine_control_cam),
+            move |gcode| {
+                editor_clone.set_text(&gcode);
+                stack_clone_for_cam.set_visible_child_name("editor");
+                editor_clone.grab_focus();
+            },
+        );
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), &t!("CAM Tools"));
 
         // 6. Designer

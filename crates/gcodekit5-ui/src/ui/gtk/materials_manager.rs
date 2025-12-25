@@ -119,7 +119,7 @@ impl MaterialsManagerView {
         category_filter.append(Some("non_ferrous"), "Non-Ferrous Metal");
         category_filter.append(Some("ferrous"), "Ferrous Metal");
         category_filter.append(Some("composite"), "Composite");
-        category_filter.append(Some("stone"), "Stone & Ceramic");
+        category_filter.append(Some("stone"), "Stone and Ceramic");
         category_filter.set_active_id(Some("all"));
         sidebar.append(&category_filter);
 
@@ -377,7 +377,7 @@ impl MaterialsManagerView {
         edit_category.append(Some("non_ferrous"), "Non-Ferrous Metal");
         edit_category.append(Some("ferrous"), "Ferrous Metal");
         edit_category.append(Some("composite"), "Composite");
-        edit_category.append(Some("stone"), "Stone & Ceramic");
+        edit_category.append(Some("stone"), "Stone and Ceramic");
         edit_category.set_active_id(Some("wood"));
         cat_grid.attach(&cat_label, 0, 0, 1, 1);
         cat_grid.attach(&edit_category, 1, 0, 1, 1);

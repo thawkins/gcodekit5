@@ -188,6 +188,108 @@ impl DesignerState {
         selected_count >= 2
     }
 
+    /// Sets the offset for the selected shapes.
+    pub fn set_offset_selected(&mut self, distance: f64) {
+        let selected_ids: Vec<u64> = self
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .map(|s| s.id)
+            .collect();
+
+        if selected_ids.is_empty() {
+            return;
+        }
+
+        let mut commands = Vec::new();
+        for id in selected_ids {
+            if let Some(obj) = self.canvas.get_shape(id) {
+                let mut new_obj = obj.clone();
+                new_obj.offset = distance;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+            commands,
+            name: "Set Offset".to_string(),
+        });
+        self.push_command(cmd);
+    }
+
+    /// Sets the fillet for the selected shapes.
+    pub fn set_fillet_selected(&mut self, radius: f64) {
+        let selected_ids: Vec<u64> = self
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .map(|s| s.id)
+            .collect();
+
+        if selected_ids.is_empty() {
+            return;
+        }
+
+        let mut commands = Vec::new();
+        for id in selected_ids {
+            if let Some(obj) = self.canvas.get_shape(id) {
+                let mut new_obj = obj.clone();
+                new_obj.fillet = radius;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+            commands,
+            name: "Set Fillet".to_string(),
+        });
+        self.push_command(cmd);
+    }
+
+    /// Sets the chamfer for the selected shapes.
+    pub fn set_chamfer_selected(&mut self, distance: f64) {
+        let selected_ids: Vec<u64> = self
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .map(|s| s.id)
+            .collect();
+
+        if selected_ids.is_empty() {
+            return;
+        }
+
+        let mut commands = Vec::new();
+        for id in selected_ids {
+            if let Some(obj) = self.canvas.get_shape(id) {
+                let mut new_obj = obj.clone();
+                new_obj.chamfer = distance;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+            commands,
+            name: "Set Chamfer".to_string(),
+        });
+        self.push_command(cmd);
+    }
+
     /// Check if ungrouping is possible (any selected item is in a group)
     pub fn can_ungroup(&self) -> bool {
         self.canvas
@@ -222,7 +324,12 @@ impl DesignerState {
             4 => DrawingMode::Ellipse,
             5 => DrawingMode::Polyline,
             6 => DrawingMode::Text,
-            7 => DrawingMode::Pan,
+            7 => DrawingMode::Triangle,
+            8 => DrawingMode::Polygon,
+            9 => DrawingMode::Gear,
+            10 => DrawingMode::Sprocket,
+            11 => DrawingMode::TabbedBox,
+            12 => DrawingMode::Pan,
             _ => DrawingMode::Select,
         };
         self.canvas.set_mode(drawing_mode);
@@ -673,10 +780,10 @@ impl DesignerState {
         // Store shape-to-toolpath mapping (plus whether we had to fall back from pocket->profile)
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
-        for shape in self.canvas.shapes() {
+        for shape_obj in self.canvas.shapes() {
             // Set strategy for this shape
             self.toolpath_generator
-                .set_pocket_strategy(shape.pocket_strategy);
+                .set_pocket_strategy(shape_obj.pocket_strategy);
 
             // Set start depth for this shape (overrides global setting if needed, but here we just use the shape's property)
             // Note: shape.start_depth defaults to 0.0, which matches global default.
@@ -685,60 +792,62 @@ impl DesignerState {
             // However, currently UI only updates global start_depth.
             // If we want per-object start_depth, we should use shape.start_depth.
             // Let's assume shape.start_depth is the authority.
-            self.toolpath_generator.set_start_depth(shape.start_depth);
+            self.toolpath_generator.set_start_depth(shape_obj.start_depth);
 
             // Use shape's pocket_depth as the cut depth for profiles as well.
             // This ensures that the depth set on the shape is respected for both pockets and profiles.
-            self.toolpath_generator.set_cut_depth(shape.pocket_depth);
+            self.toolpath_generator.set_cut_depth(shape_obj.pocket_depth);
 
-            self.toolpath_generator.set_step_in(shape.step_in as f64);
+            self.toolpath_generator.set_step_in(shape_obj.step_in as f64);
             self.toolpath_generator
-                .set_ramp_angle(shape.ramp_angle as f64);
+                .set_ramp_angle(shape_obj.ramp_angle as f64);
             self.toolpath_generator
-                .set_raster_fill_ratio(shape.raster_fill_ratio);
+                .set_raster_fill_ratio(shape_obj.raster_fill_ratio);
 
-            let (toolpaths, pocket_fallback_to_profile) = match &shape.shape {
+            let effective_shape = shape_obj.get_effective_shape();
+
+            let (toolpaths, pocket_fallback_to_profile) = match &effective_shape {
                 crate::model::Shape::Rectangle(rect) => {
-                    if shape.operation_type == OperationType::Pocket {
+                    if shape_obj.operation_type == OperationType::Pocket {
                         (
                             self.toolpath_generator.generate_rectangle_pocket(
                                 rect,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
                             ),
                             false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_rectangle_contour(rect, shape.step_down as f64),
+                                .generate_rectangle_contour(rect, shape_obj.step_down as f64),
                             false,
                         )
                     }
                 }
                 crate::model::Shape::Circle(circle) => {
-                    if shape.operation_type == OperationType::Pocket {
+                    if shape_obj.operation_type == OperationType::Pocket {
                         (
                             self.toolpath_generator.generate_circle_pocket(
                                 circle,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
                             ),
                             false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_circle_contour(circle, shape.step_down as f64),
+                                .generate_circle_contour(circle, shape_obj.step_down as f64),
                             false,
                         )
                     }
                 }
                 crate::model::Shape::Line(line) => (
                     self.toolpath_generator
-                        .generate_line_contour(line, shape.step_down as f64),
+                        .generate_line_contour(line, shape_obj.step_down as f64),
                     false,
                 ),
                 crate::model::Shape::Ellipse(ellipse) => {
@@ -749,40 +858,40 @@ impl DesignerState {
                     let circle = Circle::new(Point::new(cx, cy), radius);
                     (
                         self.toolpath_generator
-                            .generate_circle_contour(&circle, shape.step_down as f64),
+                            .generate_circle_contour(&circle, shape_obj.step_down as f64),
                         false,
                     )
                 }
                 crate::model::Shape::Path(path_shape) => {
-                    if shape.operation_type == OperationType::Pocket {
+                    if shape_obj.operation_type == OperationType::Pocket {
                         (
                             self.toolpath_generator.generate_path_pocket(
                                 path_shape,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
                             ),
                             false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_path_contour(path_shape, shape.step_down as f64),
+                                .generate_path_contour(path_shape, shape_obj.step_down as f64),
                             false,
                         )
                     }
                 }
                 crate::model::Shape::Text(text) => {
-                    if shape.operation_type == OperationType::Pocket {
+                    if shape_obj.operation_type == OperationType::Pocket {
                         let pocket = self
                             .toolpath_generator
-                            .generate_text_pocket_toolpath(text, shape.step_down as f64);
+                            .generate_text_pocket_toolpath(text, shape_obj.step_down as f64);
                         let pocket_len: f64 = pocket.iter().map(|tp| tp.total_length()).sum();
 
                         if pocket_len <= 1e-9 {
                             (
                                 self.toolpath_generator
-                                    .generate_text_toolpath(text, shape.step_down as f64),
+                                    .generate_text_toolpath(text, shape_obj.step_down as f64),
                                 true,
                             )
                         } else {
@@ -791,51 +900,87 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_text_toolpath(text, shape.step_down as f64),
+                                .generate_text_toolpath(text, shape_obj.step_down as f64),
                             false,
                         )
                     }
                 }
                 crate::model::Shape::Triangle(triangle) => {
-                    if shape.operation_type == OperationType::Pocket {
+                    if shape_obj.operation_type == OperationType::Pocket {
                         (
                             self.toolpath_generator.generate_triangle_pocket(
                                 triangle,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
                             ),
                             false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_triangle_contour(triangle, shape.step_down as f64),
+                                .generate_triangle_contour(triangle, shape_obj.step_down as f64),
                             false,
                         )
                     }
                 }
                 crate::model::Shape::Polygon(polygon) => {
-                    if shape.operation_type == OperationType::Pocket {
+                    if shape_obj.operation_type == OperationType::Pocket {
                         (
                             self.toolpath_generator.generate_polygon_pocket(
                                 polygon,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
                             ),
                             false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_polygon_contour(polygon, shape.step_down as f64),
+                                .generate_polygon_contour(polygon, shape_obj.step_down as f64),
                             false,
                         )
                     }
                 }
+                crate::model::Shape::TabbedBox(tabbed_box) => {
+                    let paths = tabbed_box.render_all();
+                    let mut all_toolpaths = Vec::new();
+                    for path in paths {
+                        let design_path = crate::model::DesignPath::from_lyon_path(&path);
+                        let tps = if shape_obj.operation_type == OperationType::Pocket {
+                            self.toolpath_generator.generate_path_pocket(
+                                &design_path,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
+                            )
+                        } else {
+                            self.toolpath_generator
+                                .generate_path_contour(&design_path, shape_obj.step_down as f64)
+                        };
+                        all_toolpaths.extend(tps);
+                    }
+                    (all_toolpaths, false)
+                }
+                _ => {
+                    let path = effective_shape.render();
+                    let design_path = crate::model::DesignPath::from_lyon_path(&path);
+                    let toolpaths = if shape_obj.operation_type == OperationType::Pocket {
+                        self.toolpath_generator.generate_path_pocket(
+                            &design_path,
+                            shape_obj.pocket_depth,
+                            shape_obj.step_down as f64,
+                            shape_obj.step_in as f64,
+                        )
+                    } else {
+                        self.toolpath_generator
+                            .generate_path_contour(&design_path, shape_obj.step_down as f64)
+                    };
+                    (toolpaths, false)
+                }
             };
-            shape_toolpaths.push((shape.clone(), toolpaths, pocket_fallback_to_profile));
+            shape_toolpaths.push((shape_obj.clone(), toolpaths, pocket_fallback_to_profile));
         }
 
         // Calculate total length from all toolpaths
@@ -943,6 +1088,24 @@ impl DesignerState {
                     gcode.push_str(&format!(
                         "; Polygon: Center ({:.3}, {:.3}), Radius: {:.3}mm, Sides: {}\n",
                         polygon.center.x, polygon.center.y, polygon.radius, polygon.sides
+                    ));
+                }
+                crate::model::Shape::Gear(gear) => {
+                    gcode.push_str(&format!(
+                        "; Gear: Center ({:.3}, {:.3}), Module: {:.3}, Teeth: {}\n",
+                        gear.center.x, gear.center.y, gear.module, gear.teeth
+                    ));
+                }
+                crate::model::Shape::Sprocket(sprocket) => {
+                    gcode.push_str(&format!(
+                        "; Sprocket: Center ({:.3}, {:.3}), Pitch: {:.3}, Teeth: {}\n",
+                        sprocket.center.x, sprocket.center.y, sprocket.pitch, sprocket.teeth
+                    ));
+                }
+                crate::model::Shape::TabbedBox(tabbed_box) => {
+                    gcode.push_str(&format!(
+                        "; Tabbed Box: Center ({:.3}, {:.3}), Size: {:.3}x{:.3}x{:.3}, Thickness: {:.3}\n",
+                        tabbed_box.center.x, tabbed_box.center.y, tabbed_box.width, tabbed_box.height, tabbed_box.depth, tabbed_box.thickness
                     ));
                 }
             }
@@ -1193,6 +1356,43 @@ impl DesignerState {
                 let id = self.canvas.generate_id();
                 let polygon = crate::model::DesignPolygon::new(Point::new(x, y), 30.0, 6);
                 let obj = DrawingObject::new(id, Shape::Polygon(polygon));
+                let cmd = DesignerCommand::AddShape(AddShape {
+                    id,
+                    object: Some(obj),
+                });
+                self.push_command(cmd);
+            }
+            DrawingMode::Gear => {
+                let id = self.canvas.generate_id();
+                let gear = crate::model::DesignGear::new(Point::new(x, y), 2.0, 20);
+                let obj = DrawingObject::new(id, Shape::Gear(gear));
+                let cmd = DesignerCommand::AddShape(AddShape {
+                    id,
+                    object: Some(obj),
+                });
+                self.push_command(cmd);
+            }
+            DrawingMode::Sprocket => {
+                let id = self.canvas.generate_id();
+                let sprocket = crate::model::DesignSprocket::new(Point::new(x, y), 12.7, 15);
+                let obj = DrawingObject::new(id, Shape::Sprocket(sprocket));
+                let cmd = DesignerCommand::AddShape(AddShape {
+                    id,
+                    object: Some(obj),
+                });
+                self.push_command(cmd);
+            }
+            DrawingMode::TabbedBox => {
+                let id = self.canvas.generate_id();
+                let tabbed_box = crate::model::DesignTabbedBox::new(
+                    Point::new(x, y),
+                    100.0,
+                    100.0,
+                    50.0,
+                    3.0,
+                    10.0,
+                );
+                let obj = DrawingObject::new(id, Shape::TabbedBox(tabbed_box));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -1794,6 +1994,9 @@ impl DesignerState {
                         crate::model::Shape::Text(s) => s.rotation += angle_delta,
                         crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
+                        crate::model::Shape::Gear(s) => s.rotation += angle_delta,
+                        crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
+                        crate::model::Shape::TabbedBox(s) => s.rotation += angle_delta,
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -1833,6 +2036,9 @@ impl DesignerState {
                         crate::model::Shape::Text(s) => s.rotation = rotation,
                         crate::model::Shape::Triangle(s) => s.rotation = rotation,
                         crate::model::Shape::Polygon(s) => s.rotation = rotation,
+                        crate::model::Shape::Gear(s) => s.rotation = rotation,
+                        crate::model::Shape::Sprocket(s) => s.rotation = rotation,
+                        crate::model::Shape::TabbedBox(s) => s.rotation = rotation,
                     }
 
                     if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
@@ -1908,6 +2114,118 @@ impl DesignerState {
             let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
                 name: "Change Name".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
+    pub fn set_selected_gear_properties(&mut self, module: f64, teeth: usize, pressure_angle: f64) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes_mut() {
+            if obj.selected {
+                if let crate::model::Shape::Gear(gear) = &obj.shape {
+                    if (gear.module - module).abs() > f64::EPSILON
+                        || gear.teeth != teeth
+                        || (gear.pressure_angle - pressure_angle).abs() > f64::EPSILON
+                    {
+                        let mut new_obj = obj.clone();
+                        if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
+                            new_gear.module = module;
+                            new_gear.teeth = teeth;
+                            new_gear.pressure_angle = pressure_angle;
+                        }
+
+                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                            id: obj.id,
+                            old_state: obj.clone(),
+                            new_state: new_obj,
+                        }));
+                    }
+                }
+            }
+        }
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Gear Properties".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
+    pub fn set_selected_sprocket_properties(
+        &mut self,
+        pitch: f64,
+        teeth: usize,
+        roller_diameter: f64,
+    ) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes_mut() {
+            if obj.selected {
+                if let crate::model::Shape::Sprocket(sprocket) = &obj.shape {
+                    if (sprocket.pitch - pitch).abs() > f64::EPSILON
+                        || sprocket.teeth != teeth
+                        || (sprocket.roller_diameter - roller_diameter).abs() > f64::EPSILON
+                    {
+                        let mut new_obj = obj.clone();
+                        if let crate::model::Shape::Sprocket(new_sprocket) = &mut new_obj.shape {
+                            new_sprocket.pitch = pitch;
+                            new_sprocket.teeth = teeth;
+                            new_sprocket.roller_diameter = roller_diameter;
+                        }
+
+                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                            id: obj.id,
+                            old_state: obj.clone(),
+                            new_state: new_obj,
+                        }));
+                    }
+                }
+            }
+        }
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Sprocket Properties".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
+    pub fn set_selected_tabbed_box_properties(
+        &mut self,
+        depth: f64,
+        thickness: f64,
+        tab_width: f64,
+    ) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes_mut() {
+            if obj.selected {
+                if let crate::model::Shape::TabbedBox(tabbed_box) = &obj.shape {
+                    if (tabbed_box.depth - depth).abs() > f64::EPSILON
+                        || (tabbed_box.thickness - thickness).abs() > f64::EPSILON
+                        || (tabbed_box.tab_width - tab_width).abs() > f64::EPSILON
+                    {
+                        let mut new_obj = obj.clone();
+                        if let crate::model::Shape::TabbedBox(new_box) = &mut new_obj.shape {
+                            new_box.depth = depth;
+                            new_box.thickness = thickness;
+                            new_box.tab_width = tab_width;
+                        }
+
+                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                            id: obj.id,
+                            old_state: obj.clone(),
+                            new_state: new_obj,
+                        }));
+                    }
+                }
+            }
+        }
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Tabbed Box Properties".to_string(),
             });
             self.push_command(cmd);
         }
@@ -2213,6 +2531,9 @@ impl DesignerState {
                                 crate::model::Shape::Text(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Gear(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
+                                crate::model::Shape::TabbedBox(s) => s.rotation += angle_delta,
                             }
                         }
                     }
@@ -2252,6 +2573,9 @@ impl DesignerState {
                                 crate::model::Shape::Text(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Gear(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
+                                crate::model::Shape::TabbedBox(s) => s.rotation += angle_delta,
                             }
                         }
                     }

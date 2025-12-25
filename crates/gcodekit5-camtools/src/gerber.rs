@@ -47,6 +47,18 @@ impl std::fmt::Display for GerberLayerType {
     }
 }
 
+pub fn clean_polyline(mut pline: Polyline<f64>) -> Polyline<f64> {
+    pline.remove_repeat_pos(1e-5);
+    if pline.is_closed() && pline.vertex_count() > 1 {
+        let first = pline.get(0).unwrap();
+        let last = pline.get(pline.vertex_count() - 1).unwrap();
+        if (first.x - last.x).abs() < 1e-5 && (first.y - last.y).abs() < 1e-5 {
+            pline.remove(pline.vertex_count() - 1);
+        }
+    }
+    pline
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GerberParameters {
@@ -656,6 +668,7 @@ impl GerberConverter {
             } else {
                 isolation_offset
             };
+            let poly = clean_polyline(poly);
             let offset_res =
                 panic::catch_unwind(panic::AssertUnwindSafe(|| poly.parallel_offset(offset_val)));
 
@@ -754,6 +767,7 @@ impl GerberConverter {
             } else {
                 isolation_offset
             };
+            let poly = clean_polyline(poly);
             let offset_res =
                 panic::catch_unwind(panic::AssertUnwindSafe(|| poly.parallel_offset(offset_val)));
 

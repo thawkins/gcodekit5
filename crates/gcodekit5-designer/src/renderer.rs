@@ -95,7 +95,8 @@ pub fn render_canvas(
         // We can fill or stroke. Let's assume stroke for lines/paths and fill for closed shapes?
         // The original renderer drew filled rectangles/circles/ellipses and stroked lines/paths.
 
-        match &shape_obj.shape {
+        let effective_shape = shape_obj.get_effective_shape();
+        match &effective_shape {
             crate::model::Shape::Rectangle(rect) => {
                 let rect_path = Rect::from_xywh(
                     (rect.center.x - rect.width / 2.0) as f32,
@@ -210,6 +211,87 @@ pub fn render_canvas(
             }
             crate::model::Shape::Polygon(polygon) => {
                 let path = polygon.render();
+                let mut pb = PathBuilder::new();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                pb.close();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
+                }
+            }
+            crate::model::Shape::Gear(gear) => {
+                let path = gear.render();
+                let mut pb = PathBuilder::new();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                            pb.quad_to(ctrl.x as f32, ctrl.y as f32, to.x as f32, to.y as f32)
+                        }
+                        lyon::path::Event::Cubic {
+                            ctrl1, ctrl2, to, ..
+                        } => pb.cubic_to(
+                            ctrl1.x as f32,
+                            ctrl1.y as f32,
+                            ctrl2.x as f32,
+                            ctrl2.y as f32,
+                            to.x as f32,
+                            to.y as f32,
+                        ),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                pb.close();
+                            }
+                        }
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
+                }
+            }
+            crate::model::Shape::Sprocket(sprocket) => {
+                let path = sprocket.render();
+                let mut pb = PathBuilder::new();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                            pb.quad_to(ctrl.x as f32, ctrl.y as f32, to.x as f32, to.y as f32)
+                        }
+                        lyon::path::Event::Cubic {
+                            ctrl1, ctrl2, to, ..
+                        } => pb.cubic_to(
+                            ctrl1.x as f32,
+                            ctrl1.y as f32,
+                            ctrl2.x as f32,
+                            ctrl2.y as f32,
+                            to.x as f32,
+                            to.y as f32,
+                        ),
+                        lyon::path::Event::End { close, .. } => {
+                            if close {
+                                pb.close();
+                            }
+                        }
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
+                }
+            }
+            crate::model::Shape::TabbedBox(tabbed_box) => {
+                let path = tabbed_box.render();
                 let mut pb = PathBuilder::new();
                 for event in path.iter() {
                     match event {

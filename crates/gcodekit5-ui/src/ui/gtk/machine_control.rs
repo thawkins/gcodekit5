@@ -1398,26 +1398,14 @@ impl MachineControlView {
             });
         }
         {
-            let communicator = view.communicator.clone();
             let editor = view.editor.clone();
-            let send_queue = view.send_queue.clone();
-            let is_streaming = view.is_streaming.clone();
-            let is_paused = view.is_paused.clone();
-            let waiting_for_ack = view.waiting_for_ack.clone();
-            let total_lines = view.total_lines.clone();
-            let console = view.device_console.clone();
             let widget_for_dialog = view.widget.clone();
-            let job_start_time = view.job_start_time.clone();
+            let view_clone = view.clone();
 
             view.send_btn.connect_clicked(move |_| {
-                if *is_streaming.lock().unwrap() {
-                    return;
-                }
-
                 let mut content = String::new();
                 if let Some(ed) = editor.as_ref() {
                     content = ed.get_text();
-                } else {
                 }
 
                 if content.trim().is_empty() {
@@ -1441,87 +1429,7 @@ impl MachineControlView {
                     return;
                 }
 
-                let lines: Vec<String> = content
-                    .lines()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty() && !s.starts_with(';') && !s.starts_with('('))
-                    .collect();
-
-                if lines.is_empty() {
-                    if let Some(c) = console.as_ref() {
-                        c.append_log(&format!("{}\n", t!("No valid G-Code lines found.")));
-                    }
-                    return;
-                }
-
-                // Scan first 100 lines for F and S commands to set initial commanded values
-                let mut found_f = false;
-                let mut found_s = false;
-                for line in lines.iter().take(100) {
-                    if found_f && found_s {
-                        break;
-                    }
-
-                    // Simple parsing for F and S
-                    // This is a heuristic; a proper parser would be better but this is fast
-                    let upper = line.to_ascii_uppercase();
-
-                    if !found_f {
-                        if let Some(idx) = upper.find('F') {
-                            let rest = &upper[idx + 1..];
-                            let val_str: String = rest
-                                .chars()
-                                .take_while(|c| c.is_ascii_digit() || *c == '.')
-                                .collect();
-                            if let Ok(val) = val_str.parse::<f32>() {
-                                device_status::update_commanded_feed_rate(val);
-                                found_f = true;
-                            }
-                        }
-                    }
-
-                    if !found_s {
-                        if let Some(idx) = upper.find('S') {
-                            let rest = &upper[idx + 1..];
-                            let val_str: String = rest
-                                .chars()
-                                .take_while(|c| c.is_ascii_digit() || *c == '.')
-                                .collect();
-                            if let Ok(val) = val_str.parse::<f32>() {
-                                device_status::update_commanded_spindle_speed(val);
-                                found_s = true;
-                            }
-                        }
-                    }
-                }
-
-                {
-                    let mut queue = send_queue.lock().unwrap();
-                    queue.clear();
-                    for line in lines.iter() {
-                        queue.push_back(line.clone());
-                    }
-                    *total_lines.lock().unwrap() = queue.len();
-                }
-
-                *is_streaming.lock().unwrap() = true;
-                *is_paused.lock().unwrap() = false;
-                *waiting_for_ack.lock().unwrap() = false;
-                *job_start_time.lock().unwrap() = Some(std::time::Instant::now());
-
-                // Kickstart
-                if let Ok(mut comm) = communicator.lock() {
-                    let mut queue = send_queue.lock().unwrap();
-                    if let Some(cmd) = queue.pop_front() {
-                        if let Some(c) = console.as_ref() {
-                            c.append_log(&format!("> {}\n", cmd));
-                        }
-                        let _ = comm.send_command(&cmd);
-                        *waiting_for_ack.lock().unwrap() = true;
-                    } else {
-                    }
-                } else {
-                }
+                view_clone.start_job(&content);
             });
         }
 
@@ -1688,35 +1596,9 @@ impl MachineControlView {
 
         // E-Stop
         {
-            let communicator = view.communicator.clone();
-            let is_streaming = view.is_streaming.clone();
-            let is_paused = view.is_paused.clone();
-            let waiting_for_ack = view.waiting_for_ack.clone();
-            let send_queue = view.send_queue.clone();
-            let status_bar = view.status_bar.clone();
-            let device_console = view.device_console.clone();
-            let job_start_time = view.job_start_time.clone();
-
+            let view_clone = view.clone();
             view.estop_btn.connect_clicked(move |_| {
-                if let Ok(mut comm) = communicator.lock() {
-                    let _ = comm.send(&[0x18]);
-                }
-
-                *is_streaming.lock().unwrap() = false;
-                *is_paused.lock().unwrap() = false;
-                *waiting_for_ack.lock().unwrap() = false;
-                *job_start_time.lock().unwrap() = None;
-                send_queue.lock().unwrap().clear();
-
-                // Reset progress
-                if let Some(sb) = status_bar.as_ref() {
-                    sb.set_progress(0.0, "", "");
-                }
-
-                // Match StatusBar eStop behavior
-                if let Some(c) = device_console.as_ref() {
-                    c.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
-                }
+                view_clone.emergency_stop();
             });
         }
 
@@ -2666,5 +2548,111 @@ impl MachineControlView {
 
     pub fn get_step_size(&self) -> f64 {
         *self.jog_step_mm.lock().unwrap() as f64
+    }
+
+    pub fn start_job(&self, content: &str) {
+        if *self.is_streaming.lock().unwrap() {
+            return;
+        }
+
+        let lines: Vec<String> = content
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && !s.starts_with(';') && !s.starts_with('('))
+            .collect();
+
+        if lines.is_empty() {
+            if let Some(c) = self.device_console.as_ref() {
+                c.append_log(&format!("{}\n", t!("No valid G-Code lines found.")));
+            }
+            return;
+        }
+
+        // Scan first 100 lines for F and S commands to set initial commanded values
+        let mut found_f = false;
+        let mut found_s = false;
+        for line in lines.iter().take(100) {
+            if found_f && found_s {
+                break;
+            }
+
+            let upper = line.to_ascii_uppercase();
+
+            if !found_f {
+                if let Some(idx) = upper.find('F') {
+                    let rest = &upper[idx + 1..];
+                    let val_str: String = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit() || *c == '.')
+                        .collect();
+                    if let Ok(val) = val_str.parse::<f32>() {
+                        device_status::update_commanded_feed_rate(val);
+                        found_f = true;
+                    }
+                }
+            }
+
+            if !found_s {
+                if let Some(idx) = upper.find('S') {
+                    let rest = &upper[idx + 1..];
+                    let val_str: String = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit() || *c == '.')
+                        .collect();
+                    if let Ok(val) = val_str.parse::<f32>() {
+                        device_status::update_commanded_spindle_speed(val);
+                        found_s = true;
+                    }
+                }
+            }
+        }
+
+        {
+            let mut queue = self.send_queue.lock().unwrap();
+            queue.clear();
+            for line in lines.iter() {
+                queue.push_back(line.clone());
+            }
+            *self.total_lines.lock().unwrap() = queue.len();
+        }
+
+        *self.is_streaming.lock().unwrap() = true;
+        *self.is_paused.lock().unwrap() = false;
+        *self.waiting_for_ack.lock().unwrap() = false;
+        *self.job_start_time.lock().unwrap() = Some(std::time::Instant::now());
+
+        // Kickstart
+        if let Ok(mut comm) = self.communicator.lock() {
+            let mut queue = self.send_queue.lock().unwrap();
+            if let Some(cmd) = queue.pop_front() {
+                if let Some(c) = self.device_console.as_ref() {
+                    c.append_log(&format!("> {}\n", cmd));
+                }
+                let _ = comm.send_command(&cmd);
+                *self.waiting_for_ack.lock().unwrap() = true;
+            }
+        }
+    }
+
+    pub fn emergency_stop(&self) {
+        if let Ok(mut comm) = self.communicator.lock() {
+            let _ = comm.send(&[0x18]);
+        }
+
+        *self.is_streaming.lock().unwrap() = false;
+        *self.is_paused.lock().unwrap() = false;
+        *self.waiting_for_ack.lock().unwrap() = false;
+        *self.job_start_time.lock().unwrap() = None;
+        self.send_queue.lock().unwrap().clear();
+
+        // Reset progress
+        if let Some(sb) = self.status_bar.as_ref() {
+            sb.set_progress(0.0, "", "");
+        }
+
+        // Match StatusBar eStop behavior
+        if let Some(c) = self.device_console.as_ref() {
+            c.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
+        }
     }
 }

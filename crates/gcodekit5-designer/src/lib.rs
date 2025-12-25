@@ -77,6 +77,7 @@ pub mod model;
 pub mod multipass;
 pub mod ops;
 pub mod parametric;
+pub mod parametric_shapes;
 pub mod pocket_operations;
 pub mod render_optimizer;
 pub mod renderer;
