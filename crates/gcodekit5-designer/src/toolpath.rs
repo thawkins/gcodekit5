@@ -4,8 +4,8 @@ use super::pocket_operations::{PocketGenerator, PocketOperation, PocketStrategy}
 use crate::font_manager;
 use crate::model::{
     rotate_point, DesignCircle as Circle, DesignGear, DesignLine as Line, DesignPath as PathShape,
-    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignSprocket, DesignTabbedBox,
-    DesignText as TextShape, DesignTriangle as Triangle, DesignerShape, Point,
+    DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignSprocket, DesignText as TextShape,
+    DesignTriangle as Triangle, DesignerShape, Point,
 };
 use lyon::path::iterator::PathIterator;
 use rusttype::{GlyphId, OutlineBuilder, Scale};
@@ -219,7 +219,7 @@ impl ToolpathGenerator {
         // Helper to rotate a point if needed
         let transform_point = |p: Point| -> Point {
             if rotation.abs() > 1e-6 {
-                rotate_point(p, rect.center, rotation.to_degrees())
+                rotate_point(p, rect.center, rotation)
             } else {
                 p
             }
@@ -578,7 +578,7 @@ impl ToolpathGenerator {
 
         let transform_point = |p: Point| -> Point {
             if rotation.abs() > 1e-6 {
-                rotate_point(p, circle.center, rotation.to_degrees())
+                rotate_point(p, circle.center, rotation)
             } else {
                 p
             }
@@ -770,7 +770,7 @@ impl ToolpathGenerator {
             // Apply rotation
             if rect.rotation.abs() > 1e-6 {
                 let center = rect.center;
-                let rotation_deg = rect.rotation.to_degrees();
+                let rotation_deg = rect.rotation;
                 for p in &mut vertices {
                     *p = crate::model::rotate_point(*p, center, rotation_deg);
                 }
@@ -860,7 +860,7 @@ impl ToolpathGenerator {
         let transform_point = |p: Point| -> Point {
             let mut pt = p;
             if rotation.abs() > 1e-6 {
-                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation.to_degrees());
+                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation);
             }
             Point::new(pt.x + center.x, pt.y + center.y)
         };
@@ -928,7 +928,7 @@ impl ToolpathGenerator {
         let transform_point = |p: Point| -> Point {
             let mut pt = p;
             if rotation.abs() > 1e-6 {
-                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation.to_degrees());
+                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation);
             }
             Point::new(pt.x + center.x, pt.y + center.y)
         };
@@ -999,7 +999,7 @@ impl ToolpathGenerator {
         let transform_point = |p: Point| -> Point {
             let mut pt = p;
             if rotation.abs() > 1e-6 {
-                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation.to_degrees());
+                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation);
             }
             Point::new(pt.x + center.x, pt.y + center.y)
         };
@@ -1029,7 +1029,7 @@ impl ToolpathGenerator {
         let transform_point = |p: Point| -> Point {
             let mut pt = p;
             if rotation.abs() > 1e-6 {
-                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation.to_degrees());
+                pt = rotate_point(pt, Point::new(0.0, 0.0), rotation);
             }
             Point::new(pt.x + center.x, pt.y + center.y)
         };
@@ -1066,7 +1066,7 @@ impl ToolpathGenerator {
                 lyon::path::Event::Begin { at } => {
                     let mut p = Point::new(at.x as f64, at.y as f64);
                     if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation.to_degrees());
+                        p = crate::model::rotate_point(p, center, rotation);
                     }
                     segments.push(ToolpathSegment::new(
                         ToolpathSegmentType::RapidMove,
@@ -1081,7 +1081,7 @@ impl ToolpathGenerator {
                 lyon::path::Event::Line { from: _, to } => {
                     let mut p = Point::new(to.x as f64, to.y as f64);
                     if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation.to_degrees());
+                        p = crate::model::rotate_point(p, center, rotation);
                     }
                     segments.push(ToolpathSegment::new(
                         ToolpathSegmentType::LinearMove,
@@ -1149,14 +1149,14 @@ impl ToolpathGenerator {
                 lyon::path::Event::Begin { at } => {
                     let mut p = Point::new(at.x as f64, at.y as f64);
                     if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation.to_degrees());
+                        p = crate::model::rotate_point(p, center, rotation);
                     }
                     vertices.push(p);
                 }
                 lyon::path::Event::Line { from: _, to } => {
                     let mut p = Point::new(to.x as f64, to.y as f64);
                     if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation.to_degrees());
+                        p = crate::model::rotate_point(p, center, rotation);
                     }
                     vertices.push(p);
                 }
@@ -1217,7 +1217,7 @@ impl ToolpathGenerator {
                 pen,
                 Point::new(caret_x as f64, baseline_y as f64),
                 rotation_center,
-                text_shape.rotation.to_degrees(),
+                text_shape.rotation,
             );
             scaled.build_outline(&mut builder);
             pen = builder.current_point;
@@ -1558,20 +1558,7 @@ impl ToolpathGenerator {
         self.generate_path_pocket(&path_shape, pocket_depth, step_down, step_in)
     }
 
-    /// Generates a contour toolpath for a tabbed box.
-    pub fn generate_tabbed_box_contour(
-        &self,
-        tbox: &DesignTabbedBox,
-        step_down: f64,
-    ) -> Vec<Toolpath> {
-        let paths = tbox.render_all();
-        let mut all_toolpaths = Vec::new();
-        for path in paths {
-            let path_shape = PathShape::from_lyon_path(&path);
-            all_toolpaths.extend(self.generate_path_contour(&path_shape, step_down));
-        }
-        all_toolpaths
-    }
+
 }
 
 fn contours_from_outline_segments(segments: &[ToolpathSegment]) -> Vec<Vec<Point>> {
@@ -1661,8 +1648,9 @@ impl ToolpathBuilder {
 
     fn map_point(&self, x: f32, y: f32) -> Point {
         // rusttype/cairo glyph outlines are Y-down; convert to designer world (Y-up).
+        // Negate rotation to match Cairo rendering (which uses -rotation due to Y-flip)
         let p = Point::new(x as f64 + self.offset.x, self.offset.y - y as f64);
-        rotate_point(p, self.rotation_center, self.rotation_deg)
+        rotate_point(p, self.rotation_center, -self.rotation_deg)
     }
 }
 

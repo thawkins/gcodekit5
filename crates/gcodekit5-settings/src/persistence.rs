@@ -342,11 +342,21 @@ impl SettingsPersistence {
 
         dialog.add_setting(
             Setting::new(
-                "show_experimental",
-                "Show Experimental",
-                SettingValue::Boolean(ui.show_experimental),
+                "enable_stock_removal_3d",
+                "3D Stock Removal Visualization",
+                SettingValue::Boolean(ui.enable_stock_removal_3d),
             )
-            .with_description("Enable experimental features (e.g. 3D stock removal)")
+            .with_description("Enable experimental 3D stock removal visualization in the visualizer")
+            .with_category(SettingsCategory::Advanced),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "enable_stl_import",
+                "STL File Import",
+                SettingValue::Boolean(ui.enable_stl_import),
+            )
+            .with_description("Enable experimental STL import with shadow projection in the designer")
             .with_category(SettingsCategory::Advanced),
         );
     }
@@ -516,9 +526,15 @@ impl SettingsPersistence {
 
     /// Update advanced settings in config from dialog
     fn update_advanced_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
-        if let Some(setting) = dialog.get_setting("show_experimental") {
+        if let Some(setting) = dialog.get_setting("enable_stock_removal_3d") {
             if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config.ui.show_experimental = value;
+                self.config.ui.enable_stock_removal_3d = value;
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("enable_stl_import") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config.ui.enable_stl_import = value;
             }
         }
 

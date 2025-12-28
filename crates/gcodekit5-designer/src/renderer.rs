@@ -290,25 +290,6 @@ pub fn render_canvas(
                     pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
                 }
             }
-            crate::model::Shape::TabbedBox(tabbed_box) => {
-                let path = tabbed_box.render();
-                let mut pb = PathBuilder::new();
-                for event in path.iter() {
-                    match event {
-                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
-                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                pb.close();
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                if let Some(p) = pb.finish() {
-                    pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
-                }
-            }
             crate::model::Shape::Text(text_shape) => {
                 // Text rendering using rusttype, drawing di(rect.center.y - rect.height/2.0) to pixmap pixels or using paths
                 // For simplicity and quality, let's convert glyphs to paths if possible, or just draw pixels.

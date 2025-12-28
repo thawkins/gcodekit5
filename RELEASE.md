@@ -1,18 +1,34 @@
-Version: 0.40.0-alpha.6
+Version: 0.42.0-alpha.1
 
-## [0.40.0-alpha.6] - 2025-12-20
+## [0.42.0-alpha.1] - TBD
 
-### Changed
-- **Version**: Bumped version to 0.40.0-alpha.6.
-- **CAM Tools**: Changed Vector Image CAMTool preview background to 50% grey.
+### Changed  
+- **Designer**: Right-click context menu now appears whenever there are selected shapes, regardless of click location.
+- **Designer**: Simplified right-click logic to avoid complex coordinate and geometry calculations.
 
 ### Fixed
-- **Machine Control**: Fixed feedrate display jumping and spindle speed showing zero.
-- **Machine Control**: Fixed override controls (Feed/Spindle) not working correctly.
-- **Machine Control**: Added commanded vs actual feedrate/spindle speed tracking.
-- **Machine Control**: Fixed elapsed time display to reset correctly on stop/estop.
-- **Machine Control**: Removed "Use G53" button.
-- **Machine Control**: Added logging of all sent commands to device console.
+- **Designer**: Fixed right-click context menu reliability issues with multi-selections and groups.
+- **Designer**: Fixed height/width property editing incorrectly changing x/y position during typing.
+- **Designer**: Entry widgets now use `connect_activate` and focus-out handlers to prevent intermediate keystroke updates.
+
+### Added
+- **Designer**: Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).
+- **Designer**: Added `offset`, `fillet`, and `chamfer` properties to `DrawingObject`.
+- **Designer**: Added `get_effective_shape()` to compute modified geometry on-the-fly for rendering, selection, and G-code.
+
+### Changed
+- **UI**: Removed "Apply" buttons from Geometry Operations in the Properties Panel.
+- **UI**: Geometry operations now apply immediately on Enter or Focus Out.
+- **UI**: Geometry Operations frame is now context-sensitive (hidden for Text shapes).
+- **Designer**: Updated spatial indexing and hit-testing to use the effective shape bounds.
+
+## [Unreleased]
+### Fixed
+- **Designer**: Fixed issue where changing height or width of shapes in the inspector would incorrectly alter the position.
+  - For multi-selection: The bounding box center now remains fixed when resizing multiple shapes.
+  - For single selection: Width and height changes now preserve the current position directly from the shape data instead of reading from UI text fields.
+  - Width and height changes now only apply when the user finishes editing (Enter key or Tab to next field) instead of on every keystroke, preventing intermediate values from causing position shifts.
+- **Designer**: Fixed UI formatting issue where position values would appear to change after editing size properties due to text field reformatting from user input to formatted output.
 
 ## [0.40.0-alpha.5] - 2025-12-19
 

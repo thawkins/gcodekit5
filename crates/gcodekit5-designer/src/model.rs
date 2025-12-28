@@ -73,7 +73,6 @@ pub enum Shape {
     Polygon(DesignPolygon),
     Gear(DesignGear),
     Sprocket(DesignSprocket),
-    TabbedBox(DesignTabbedBox),
 }
 
 impl DesignerShape for Shape {
@@ -89,7 +88,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.render(),
             Shape::Gear(s) => s.render(),
             Shape::Sprocket(s) => s.render(),
-            Shape::TabbedBox(s) => s.render(),
         }
     }
 
@@ -105,7 +103,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.as_csg(),
             Shape::Gear(s) => s.as_csg(),
             Shape::Sprocket(s) => s.as_csg(),
-            Shape::TabbedBox(s) => s.as_csg(),
         }
     }
 
@@ -121,7 +118,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.bounds(),
             Shape::Gear(s) => s.bounds(),
             Shape::Sprocket(s) => s.bounds(),
-            Shape::TabbedBox(s) => s.bounds(),
         }
     }
 
@@ -137,7 +133,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.transform(t),
             Shape::Gear(s) => s.transform(t),
             Shape::Sprocket(s) => s.transform(t),
-            Shape::TabbedBox(s) => s.transform(t),
         }
     }
 
@@ -153,7 +148,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.properties(),
             Shape::Gear(s) => s.properties(),
             Shape::Sprocket(s) => s.properties(),
-            Shape::TabbedBox(s) => s.properties(),
         }
     }
 
@@ -169,7 +163,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.contains_point(p, tolerance),
             Shape::Gear(s) => s.contains_point(p, tolerance),
             Shape::Sprocket(s) => s.contains_point(p, tolerance),
-            Shape::TabbedBox(s) => s.contains_point(p, tolerance),
         }
     }
 
@@ -185,7 +178,6 @@ impl DesignerShape for Shape {
             Shape::Polygon(s) => s.resize(handle, dx, dy),
             Shape::Gear(s) => s.resize(handle, dx, dy),
             Shape::Sprocket(s) => s.resize(handle, dx, dy),
-            Shape::TabbedBox(s) => s.resize(handle, dx, dy),
         }
     }
 }
@@ -196,6 +188,7 @@ pub struct DesignRectangle {
     pub height: f64,
     pub center: Point,
     pub corner_radius: f64,
+    /// Rotation angle in degrees (converted to radians for rendering)
     pub rotation: f64,
     pub is_slot: bool,
 }
@@ -254,7 +247,7 @@ impl DesignerShape for DesignRectangle {
         let center_fix =
             Matrix4::new_translation(&Vector3::new(-self.width / 2.0, -self.height / 2.0, 0.0));
 
-        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
+        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation =
             Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
 
@@ -1728,10 +1721,10 @@ impl Shape {
             Shape::Polygon(_) => ShapeType::Polygon,
             Shape::Gear(_) => ShapeType::Gear,
             Shape::Sprocket(_) => ShapeType::Sprocket,
-            Shape::TabbedBox(_) => ShapeType::TabbedBox,
         }
     }
 
+    /// Returns the rotation angle in degrees
     pub fn rotation(&self) -> f64 {
         match self {
             Shape::Rectangle(s) => s.rotation,
@@ -1744,7 +1737,6 @@ impl Shape {
             Shape::Polygon(s) => s.rotation,
             Shape::Gear(s) => s.rotation,
             Shape::Sprocket(s) => s.rotation,
-            Shape::TabbedBox(s) => s.rotation,
         }
     }
 
@@ -1760,7 +1752,6 @@ impl Shape {
             Shape::Polygon(s) => s,
             Shape::Gear(s) => s,
             Shape::Sprocket(s) => s,
-            Shape::TabbedBox(s) => s,
         }
     }
 
@@ -1778,7 +1769,6 @@ impl Shape {
                 Shape::Polygon(s) => s.rotation,
                 Shape::Gear(s) => s.rotation,
                 Shape::Sprocket(s) => s.rotation,
-                Shape::TabbedBox(s) => s.rotation,
             },
         }
     }
@@ -1862,7 +1852,6 @@ pub enum ShapeType {
     Polygon,
     Gear,
     Sprocket,
-    TabbedBox,
 }
 
 impl DesignPath {
@@ -2138,184 +2127,6 @@ impl DesignerShape for DesignSprocket {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DesignTabbedBox {
-    pub center: Point,
-    pub width: f64,
-    pub height: f64,
-    pub depth: f64,
-    pub thickness: f64,
-    pub tab_width: f64,
-    pub rotation: f64,
-}
-
-impl DesignTabbedBox {
-    pub fn new(
-        center: Point,
-        width: f64,
-        height: f64,
-        depth: f64,
-        thickness: f64,
-        tab_width: f64,
-    ) -> Self {
-        Self {
-            center,
-            width,
-            height,
-            depth,
-            thickness,
-            tab_width,
-            rotation: 0.0,
-        }
-    }
-
-    pub fn render_all(&self) -> Vec<Path> {
-        let paths = crate::parametric_shapes::generate_tabbed_box(
-            self.width,
-            self.height,
-            self.depth,
-            self.thickness,
-            self.tab_width,
-        );
-
-        // Apply transformation to each path
-        let combined = {
-            let mut builder = Path::builder();
-            for path in &paths {
-                for event in path.iter() {
-                    builder.path_event(event);
-                }
-            }
-            builder.build()
-        };
-
-        let bb = lyon::algorithms::aabb::bounding_box(combined.iter());
-        let cx = (bb.min.x + bb.max.x) / 2.0;
-        let cy = (bb.min.y + bb.max.y) / 2.0;
-
-        let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
-            .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
-            .then_translate(lyon::math::vector(-cx, -cy));
-
-        paths
-            .into_iter()
-            .map(|p| p.transformed(&transform))
-            .collect()
-    }
-}
-
-impl DesignerShape for DesignTabbedBox {
-    fn render(&self) -> Path {
-        let paths = crate::parametric_shapes::generate_tabbed_box(
-            self.width,
-            self.height,
-            self.depth,
-            self.thickness,
-            self.tab_width,
-        );
-
-        let mut builder = Path::builder();
-        for path in paths {
-            for event in path.iter() {
-                builder.path_event(event);
-            }
-        }
-        let combined = builder.build();
-
-        // Center the combined path and apply rotation
-        let bb = lyon::algorithms::aabb::bounding_box(combined.iter());
-        let cx = (bb.min.x + bb.max.x) / 2.0;
-        let cy = (bb.min.y + bb.max.y) / 2.0;
-
-        let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
-            .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
-            .then_translate(lyon::math::vector(-cx, -cy));
-
-        combined.transformed(&transform)
-    }
-
-    fn as_csg(&self) -> Sketch<()> {
-        let path = self.render();
-        DesignPath::from_lyon_path(&path).as_csg()
-    }
-
-    fn bounds(&self) -> (f64, f64, f64, f64) {
-        let path = self.render();
-        let bb = lyon::algorithms::aabb::bounding_box(path.iter());
-        (
-            bb.min.x as f64,
-            bb.min.y as f64,
-            bb.max.x as f64,
-            bb.max.y as f64,
-        )
-    }
-
-    fn transform(&mut self, t: &Transform) {
-        let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
-        self.center = Point::new(p.x as f64, p.y as f64);
-
-        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
-        self.rotation += angle_deg;
-
-        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
-        self.width *= sx;
-        self.height *= sx;
-        self.depth *= sx;
-        self.thickness *= sx;
-        self.tab_width *= sx;
-    }
-
-    fn properties(&self) -> Vec<Property> {
-        vec![
-            Property {
-                name: "Width".to_string(),
-                value: PropertyValue::Number(self.width),
-            },
-            Property {
-                name: "Height".to_string(),
-                value: PropertyValue::Number(self.height),
-            },
-            Property {
-                name: "Depth".to_string(),
-                value: PropertyValue::Number(self.depth),
-            },
-            Property {
-                name: "Thickness".to_string(),
-                value: PropertyValue::Number(self.thickness),
-            },
-            Property {
-                name: "Tab Width".to_string(),
-                value: PropertyValue::Number(self.tab_width),
-            },
-            Property {
-                name: "Center X".to_string(),
-                value: PropertyValue::Number(self.center.x),
-            },
-            Property {
-                name: "Center Y".to_string(),
-                value: PropertyValue::Number(self.center.y),
-            },
-            Property {
-                name: "Rotation".to_string(),
-                value: PropertyValue::Number(self.rotation),
-            },
-        ]
-    }
-
-    fn contains_point(&self, p: Point, tolerance: f64) -> bool {
-        let (x1, y1, x2, y2) = self.bounds();
-        p.x >= x1 - tolerance
-            && p.x <= x2 + tolerance
-            && p.y >= y1 - tolerance
-            && p.y <= y2 + tolerance
-    }
-
-    fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
-        if handle == 4 {
-            self.translate(dx, dy);
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignTriangle {
@@ -2378,7 +2189,7 @@ impl DesignerShape for DesignTriangle {
 
         let sketch = Sketch::polygon(&points, None);
 
-        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
+        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation =
             Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
 
@@ -2567,7 +2378,7 @@ impl DesignerShape for DesignPolygon {
         let sketch = Sketch::polygon(&points, None);
 
         // Apply rotation around center after translation
-        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation));
+        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let center_translate =
             Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
         let inverse_center =

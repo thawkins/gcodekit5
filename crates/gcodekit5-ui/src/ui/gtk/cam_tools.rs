@@ -38,6 +38,8 @@ use gcodekit5_camtools::tabbed_box::{
 };
 use gcodekit5_camtools::vector_engraver::{VectorEngraver, VectorEngravingParameters};
 
+use gcodekit5_designer::{Shape, PathShape, Point};
+
 fn set_paned_initial_fraction(paned: &Paned, fraction: f64) {
     let done = Rc::new(Cell::new(false));
     let done2 = done.clone();
@@ -103,6 +105,15 @@ impl CamToolsView {
         machine_control: Option<MachineControlView>,
         on_generate: F,
     ) -> Self {
+        Self::new_with_designer(settings, machine_control, on_generate, None)
+    }
+
+    pub fn new_with_designer<F: Fn(String) + 'static>(
+        settings: Rc<SettingsController>,
+        machine_control: Option<MachineControlView>,
+        on_generate: F,
+        designer_view: Option<Rc<crate::ui::gtk::designer::DesignerView>>,
+    ) -> Self {
         let on_generate = Rc::new(on_generate);
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
@@ -112,7 +123,7 @@ impl CamToolsView {
         stack.add_named(&dashboard, Some("dashboard"));
 
         // Tool Pages
-        let tabbed_box = TabbedBoxMaker::new(&stack, settings.clone(), on_generate.clone());
+        let tabbed_box = TabbedBoxMaker::new(&stack, settings.clone(), on_generate.clone(), designer_view.clone());
         stack.add_named(tabbed_box.widget(), Some("tabbed_box"));
 
         // Placeholders for other tools
@@ -555,6 +566,7 @@ struct JigsawWidgets {
     passes: Entry,
     power: Entry,
     feed_rate: Entry,
+    z_step_down: Entry,
     offset_x: Entry,
     offset_y: Entry,
     home_before: CheckButton,
@@ -650,6 +662,8 @@ impl JigsawTool {
         let passes = Entry::builder().text("3").valign(Align::Center).build();
         let power = Entry::builder().text("1000").valign(Align::Center).build();
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
+        let (z_step_down_row, z_step_down, z_step_down_unit) =
+            create_dimension_row("Z Step Down:", 0.5, &settings);
         let (offset_x_row, offset_x, offset_x_unit) =
             create_dimension_row("Offset X:", 10.0, &settings);
         let (offset_y_row, offset_y, offset_y_unit) =
@@ -698,6 +712,7 @@ impl JigsawTool {
         laser_group.add(&Self::create_row("Passes:", &passes));
         laser_group.add(&Self::create_row("Power (S):", &power));
         laser_group.add(&Self::create_row("Feed Rate:", &feed_rate));
+        laser_group.add(&z_step_down_row);
         scroll_content.append(&laser_group);
 
         let offset_group = PreferencesGroup::builder().title("Work Offsets").build();
@@ -751,6 +766,7 @@ impl JigsawTool {
             passes,
             power,
             feed_rate,
+            z_step_down,
             offset_x,
             offset_y,
             home_before,
@@ -764,6 +780,7 @@ impl JigsawTool {
             let height_unit = height_unit.clone();
             let kerf_unit = kerf_unit.clone();
             let corner_radius_unit = corner_radius_unit.clone();
+            let z_step_down_unit = z_step_down_unit.clone();
             let offset_x_unit = offset_x_unit.clone();
             let offset_y_unit = offset_y_unit.clone();
 
@@ -795,6 +812,7 @@ impl JigsawTool {
                         update_entry(&w.height, &height_unit);
                         update_entry(&w.kerf, &kerf_unit);
                         update_entry(&w.corner_radius, &corner_radius_unit);
+                        update_entry(&w.z_step_down, &z_step_down_unit);
                         update_entry(&w.offset_x, &offset_x_unit);
                         update_entry(&w.offset_y, &offset_y_unit);
 
@@ -973,6 +991,7 @@ impl JigsawTool {
             laser_passes: w.passes.text().parse().unwrap_or(3),
             laser_power: w.power.text().parse().unwrap_or(1000),
             feed_rate: w.feed_rate.text().parse().unwrap_or(500.0),
+            z_step_down: units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.5),
             offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
             offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
         }
@@ -1059,6 +1078,8 @@ impl JigsawTool {
         w.passes.set_text(&p.laser_passes.to_string());
         w.power.set_text(&p.laser_power.to_string());
         w.feed_rate.set_text(&p.feed_rate.to_string());
+        w.z_step_down
+            .set_text(&units::format_length(p.z_step_down as f32, system));
         w.offset_x
             .set_text(&units::format_length(p.offset_x as f32, system));
         w.offset_y
@@ -1879,7 +1900,7 @@ struct VectorEngravingWidgets {
     power_scale: Entry,
     multi_pass: CheckButton,
     num_passes: Entry,
-    z_increment: Entry,
+    z_step_down: Entry,
     invert_power: CheckButton,
     desired_width: Entry,
     offset_x: Entry,
@@ -2029,8 +2050,8 @@ impl VectorEngravingTool {
             .valign(Align::Center)
             .build();
         let num_passes = Entry::builder().text("1").valign(Align::Center).build();
-        let (z_increment_row, z_increment, z_increment_unit) =
-            create_dimension_row("Z Increment:", 0.5, &settings);
+        let (z_increment_row, z_step_down, z_increment_unit) =
+            create_dimension_row("Z Step Down:", 0.5, &settings);
         let invert_power = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -2165,7 +2186,7 @@ impl VectorEngravingTool {
             power_scale,
             multi_pass,
             num_passes,
-            z_increment,
+            z_step_down,
             invert_power,
             desired_width,
             offset_x,
@@ -2219,7 +2240,7 @@ impl VectorEngravingTool {
                             label.set_text(unit_label);
                         };
 
-                        update_entry(&w.z_increment, &z_increment_unit);
+                        update_entry(&w.z_step_down, &z_increment_unit);
                         update_entry(&w.desired_width, &desired_width_unit);
                         update_entry(&w.offset_x, &offset_x_unit);
                         update_entry(&w.offset_y, &offset_y_unit);
@@ -2497,7 +2518,7 @@ impl VectorEngravingTool {
             power_scale: w.power_scale.text().parse().unwrap_or(1000.0),
             multi_pass: w.multi_pass.is_active(),
             num_passes: w.num_passes.text().parse().unwrap_or(1),
-            z_increment: units::parse_length(&w.z_increment.text(), system).unwrap_or(0.5),
+            z_step_down: units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.5),
             invert_power: w.invert_power.is_active(),
             desired_width: units::parse_length(&w.desired_width.text(), system).unwrap_or(100.0),
             offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
@@ -2525,7 +2546,7 @@ impl VectorEngravingTool {
             "power_scale": w.power_scale.text().to_string(),
             "multi_pass": w.multi_pass.is_active(),
             "num_passes": w.num_passes.text().to_string(),
-            "z_increment": units::parse_length(&w.z_increment.text(), system).unwrap_or(0.5),
+            "z_step_down": units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.5),
             "invert_power": w.invert_power.is_active(),
             "desired_width": units::parse_length(&w.desired_width.text(), system).unwrap_or(100.0),
             "offset_x": units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
@@ -2568,8 +2589,8 @@ impl VectorEngravingTool {
         if let Some(v) = params.get("num_passes").and_then(|v| v.as_str()) {
             w.num_passes.set_text(v);
         }
-        if let Some(v) = params.get("z_increment").and_then(|v| v.as_f64()) {
-            w.z_increment
+        if let Some(v) = params.get("z_step_down").and_then(|v| v.as_f64()) {
+            w.z_step_down
                 .set_text(&units::format_length(v as f32, system));
         }
         if let Some(v) = params.get("invert_power").and_then(|v| v.as_bool()) {
@@ -2836,6 +2857,7 @@ struct TabbedBoxWidgets {
     passes: Entry,
     power: Entry,
     feed_rate: Entry,
+    z_step_down: Entry,
     offset_x: Entry,
     offset_y: Entry,
     home_before: CheckButton,
@@ -2850,6 +2872,7 @@ impl TabbedBoxMaker {
         stack: &Stack,
         settings: Rc<SettingsController>,
         on_generate: Rc<F>,
+        designer_view: Option<Rc<crate::ui::gtk::designer::DesignerView>>,
     ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
@@ -2966,6 +2989,8 @@ impl TabbedBoxMaker {
         let power = Entry::builder().text("1000").valign(Align::Center).build();
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
 
+        let (z_step_down_row, z_step_down, z_step_down_unit) = create_dimension_row("Z Step Down:", 0.1, &settings);
+
         let (offset_x_row, offset_x, offset_x_unit) =
             create_dimension_row("Offset X:", 10.0, &settings);
         let (offset_y_row, offset_y, offset_y_unit) =
@@ -3029,6 +3054,7 @@ impl TabbedBoxMaker {
         laser_group.add(&Self::create_row("Passes:", &passes));
         laser_group.add(&Self::create_row("Power (S):", &power));
         laser_group.add(&Self::create_row("Feed Rate:", &feed_rate));
+        laser_group.add(&z_step_down_row);
         scroll_content.append(&laser_group);
 
         // Work Origin Offsets
@@ -3058,13 +3084,15 @@ impl TabbedBoxMaker {
         let load_btn = Button::with_label("Load");
         let save_btn = Button::with_label("Save");
         let cancel_btn = Button::with_label("Cancel");
-        let generate_btn = Button::with_label("Generate");
-        generate_btn.add_css_class("suggested-action");
+        let generate_gcode_btn = Button::with_label("Generate G-code");
+        let generate_shapes_btn = Button::with_label("Generate Shapes");
+        generate_gcode_btn.add_css_class("suggested-action");
 
         action_box.append(&load_btn);
         action_box.append(&save_btn);
         action_box.append(&cancel_btn);
-        action_box.append(&generate_btn);
+        action_box.append(&generate_gcode_btn);
+        action_box.append(&generate_shapes_btn);
         right_panel.append(&action_box);
 
         paned.set_start_child(Some(&sidebar));
@@ -3095,6 +3123,7 @@ impl TabbedBoxMaker {
             passes,
             power,
             feed_rate,
+            z_step_down,
             offset_x,
             offset_y,
             home_before,
@@ -3111,6 +3140,7 @@ impl TabbedBoxMaker {
             let burn_unit = burn_unit.clone();
             let play_unit = play_unit.clone();
             let extra_length_unit = extra_length_unit.clone();
+            let z_step_down_unit = z_step_down_unit.clone();
             let offset_x_unit = offset_x_unit.clone();
             let offset_y_unit = offset_y_unit.clone();
 
@@ -3145,6 +3175,7 @@ impl TabbedBoxMaker {
                         update_entry(&w.burn, &burn_unit);
                         update_entry(&w.play, &play_unit);
                         update_entry(&w.extra_length, &extra_length_unit);
+                        update_entry(&w.z_step_down, &z_step_down_unit);
                         update_entry(&w.offset_x, &offset_x_unit);
                         update_entry(&w.offset_y, &offset_y_unit);
 
@@ -3158,7 +3189,7 @@ impl TabbedBoxMaker {
         let widgets_gen = widgets.clone();
         let on_generate = on_generate.clone();
         let settings_gen = settings.clone();
-        generate_btn.connect_clicked(move |_| {
+        generate_gcode_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&widgets_gen, &settings_gen);
             let home_before = widgets_gen.home_before.is_active();
 
@@ -3258,6 +3289,134 @@ impl TabbedBoxMaker {
             });
         });
 
+        // Generate Shapes button
+        let widgets_shapes = widgets.clone();
+        let settings_shapes = settings.clone();
+        let designer_view_shapes = designer_view.clone();
+        generate_shapes_btn.connect_clicked(move |_| {
+            if let Some(designer_view) = &designer_view_shapes {
+                let params = Self::collect_params(&widgets_shapes, &settings_shapes);
+
+                // Create progress dialog
+                let progress_window = gtk4::Window::builder()
+                    .title("Generating Box Shapes")
+                    .modal(true)
+                    .default_width(400)
+                    .default_height(150)
+                    .resizable(false)
+                    .build();
+
+                let vbox = Box::new(Orientation::Vertical, 12);
+                vbox.set_margin_top(24);
+                vbox.set_margin_bottom(24);
+                vbox.set_margin_start(24);
+                vbox.set_margin_end(24);
+
+                let status_label = Label::new(Some("Generating box panel shapes..."));
+                vbox.append(&status_label);
+
+                let progress_bar = gtk4::ProgressBar::new();
+                progress_bar.set_show_text(true);
+                progress_bar.set_fraction(0.0);
+                vbox.append(&progress_bar);
+
+                let button_box = Box::new(Orientation::Horizontal, 6);
+                button_box.set_halign(Align::End);
+                let cancel_button = Button::with_label("Cancel");
+                button_box.append(&cancel_button);
+                vbox.append(&button_box);
+
+                progress_window.set_child(Some(&vbox));
+                progress_window.show();
+
+                let designer_view_clone = designer_view.clone();
+                let progress_window_clone = progress_window.clone();
+                let progress_bar_clone = progress_bar.clone();
+
+                let (result_tx, result_rx) = std::sync::mpsc::channel();
+                let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
+
+                let cancel_tx_clone = cancel_tx.clone();
+                cancel_button.connect_clicked(move |_| {
+                    let _ = cancel_tx_clone.send(());
+                });
+
+                // Spawn background thread for shape generation
+                std::thread::spawn(move || {
+                    let result = (|| -> Result<Vec<Shape>, String> {
+                        if cancel_rx.try_recv().is_ok() {
+                            return Err("Cancelled by user".to_string());
+                        }
+
+                        let mut generator = Generator::new(params)?;
+                        generator.generate()?;
+
+                        // Convert paths to shapes
+                        let shapes: Vec<Shape> = generator.paths().iter().map(|path| {
+                            // Convert Vec<Point> to Vec<gcodekit5_designer::Point>
+                            let points: Vec<Point> = path.iter().map(|p| {
+                                Point::new(p.x as f64, p.y as f64)
+                            }).collect();
+
+                            // Create PathShape from points (closed paths for box panels)
+                            let path_shape = PathShape::from_points(&points, true);
+                            Shape::Path(path_shape)
+                        }).collect();
+
+                        Ok(shapes)
+                    })();
+
+                    let _ = result_tx.send(result);
+                });
+
+                // Simulate progress and handle result
+                let mut progress = 0.0;
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    // Check for result
+                    if let Ok(result) = result_rx.try_recv() {
+                        progress_window_clone.close();
+
+                        match result {
+                            Ok(shapes) => {
+                                // Add shapes to designer canvas
+                                for shape in shapes {
+                                    designer_view_clone.add_shape(shape);
+                                }
+
+                                // Switch to designer tab
+                                if let Some(parent) = designer_view_clone.widget.parent() {
+                                    if let Ok(stack) = parent.downcast::<gtk4::Stack>() {
+                                        stack.set_visible_child_name("designer");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                CamToolsView::show_error_dialog(
+                                    "Shape Generation Failed",
+                                    &format!("Failed to generate box shapes: {}", e),
+                                );
+                            }
+                        }
+                        glib::ControlFlow::Break
+                    } else {
+                        // Simulate progress
+                        progress += 0.05;
+                        if progress > 0.95 {
+                            progress = 0.95;
+                        }
+                        progress_bar_clone.set_fraction(progress);
+                        progress_bar_clone.set_text(Some(&format!("{:.0}%", progress * 100.0)));
+                        glib::ControlFlow::Continue
+                    }
+                });
+            } else {
+                CamToolsView::show_error_dialog(
+                    "Error",
+                    "Designer view not available for shape generation.",
+                );
+            }
+        });
+
         let widgets_save = widgets.clone();
         let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
@@ -3322,6 +3481,7 @@ impl TabbedBoxMaker {
         params.laser_passes = w.passes.text().parse().unwrap_or(3);
         params.laser_power = w.power.text().parse().unwrap_or(1000);
         params.feed_rate = w.feed_rate.text().parse().unwrap_or(500.0);
+        params.z_step_down = units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.1);
 
         params.offset_x = units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0);
         params.offset_y = units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0);
@@ -3426,6 +3586,8 @@ impl TabbedBoxMaker {
         w.passes.set_text(&p.laser_passes.to_string());
         w.power.set_text(&p.laser_power.to_string());
         w.feed_rate.set_text(&p.feed_rate.to_string());
+        w.z_step_down
+            .set_text(&units::format_length(p.z_step_down as f32, system));
 
         w.offset_x
             .set_text(&units::format_length(p.offset_x as f32, system));

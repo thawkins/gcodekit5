@@ -291,6 +291,7 @@ pub fn register_callbacks(
                         dividers_y,
                         optimize_layout: optimize,
                         key_divider_type,
+                        z_step_down: 0.1, // Default value for multi-pass depth stepping
                     };
 
                     // Generate G-code

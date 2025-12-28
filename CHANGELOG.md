@@ -1,3 +1,42 @@
+## [0.42.0-alpha.1] - TBD
+
+### Added 🎉
+- **3D Model Integration**: Complete implementation of "Shadow Feature" for 3D-to-2D machining workflows
+  - **STL Import**: Full support for importing STL files directly into the designer interface
+  - **Shadow Projection Engine**: Advanced multi-view projection system supporting orthographic, perspective, and isometric views  
+  - **3D Visualization**: OpenGL-based hardware-accelerated 3D mesh rendering with materials, lighting, and wireframe modes
+  - **Slice-to-Toolpath**: Complete 2.5D machining workflow with multiple cutting strategies (contour, pocket, engrave, adaptive)
+  - **Scene Management**: Unified 3D scene combining meshes with existing G-code toolpath visualization
+  - **CNC Workflow**: End-to-end pipeline from STL import to G-code export for 2.5D operations
+- **Core Infrastructure**: Enhanced 3D mathematics and geometry processing capabilities
+  - `gcodekit5_designer::model3d`: 3D mesh data structures with Triangle3D and Mesh3D
+  - `gcodekit5_designer::shadow_projection`: Multi-angle projection algorithms  
+  - `gcodekit5_designer::slice_toolpath`: 2.5D machining workflow conversion
+  - `gcodekit5_visualizer::mesh_rendering`: OpenGL mesh rendering pipeline
+- **Testing**: Comprehensive 3D integration test suite with generated STL test files
+
+### Changed  
+- **Designer**: Right-click context menu now appears whenever there are selected shapes, regardless of click location.
+- **Designer**: Simplified right-click logic to avoid complex coordinate and geometry calculations.
+- **Architecture**: Enhanced import system to support STL alongside existing SVG/DXF importers
+
+### Dependencies Added
+- `stl_io = "0.7"` for STL file parsing and processing
+- `nalgebra = "0.33"` for advanced 3D mathematical operations
+- `csgrs` with STL support for complex geometry operations  
+- `lyon = "1.0"` enhanced for 2D path operations in visualizer
+- `bytemuck = "1.14"` for efficient OpenGL data marshaling
+
+### Fixed
+- **Designer**: Fixed right-click context menu reliability issues with multi-selections and groups.
+- **Designer**: Fixed height/width property editing incorrectly changing x/y position during typing.
+- **Designer**: Entry widgets now use `connect_activate` and focus-out handlers to prevent intermediate keystroke updates.
+
+### Documentation
+- Complete 3D integration documentation in `docs/implementation/`
+- Updated designer upgrade plan to reflect completed Step 3 milestone
+- Comprehensive testing plan and validation results
+
 ## [0.41.0-alpha.1] - 2025-12-21
 
 ### Added
@@ -1866,7 +1905,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   
 
 ## [Unreleased]
-### Added
-- Right Angle Triangle tool in Designer.
-- N-sided Polygon tool in Designer.
-- G-code generation support for Triangle and Polygon shapes (profile and pocket).
+
+### Fixed
+- **Designer**: Fixed issue where changing height or width of shapes in the inspector would incorrectly alter the position.
+  - For multi-selection: The bounding box center now remains fixed when resizing multiple shapes.
+  - For single selection: Width and height changes now preserve the current position directly from the shape data instead of reading from UI text fields.
+  - Width and height changes now only apply when the user finishes editing (Enter key or Tab to next field) instead of on every keystroke, preventing intermediate values from causing position shifts.
+- **Designer**: Fixed UI formatting issue where position values would appear to change after editing size properties due to text field reformatting from user input to formatted output.

@@ -29,7 +29,7 @@ pub struct VectorEngravingParameters {
     /// Number of passes if multi_pass is enabled
     pub num_passes: u32,
     /// Z-axis depth increment per pass (mm)
-    pub z_increment: f32,
+    pub z_step_down: f32,
     /// Invert cut and engrave power
     pub invert_power: bool,
     /// Desired output width in mm for scaling SVG/DXF
@@ -64,7 +64,7 @@ impl Default for VectorEngravingParameters {
             power_scale: 1000.0,
             multi_pass: false,
             num_passes: 1,
-            z_increment: 0.5,
+            z_step_down: 0.5,
             invert_power: false,
             desired_width: 100.0,
             offset_x: 10.0,
@@ -906,7 +906,7 @@ impl VectorEngraver {
         if self.params.multi_pass {
             gcode.push_str(&format!(
                 "; Multi-pass: {} passes, {:.2} mm per pass\n",
-                self.params.num_passes, self.params.z_increment
+                self.params.num_passes, self.params.z_step_down
             ));
         }
         gcode.push_str(&format!("; Number of paths: {}\n", self.paths.len()));
@@ -1008,7 +1008,7 @@ impl VectorEngraver {
         // Multi-pass loop
         for pass in 0..num_passes {
             let z_depth = if self.params.multi_pass {
-                -(pass as f32 * self.params.z_increment)
+                -(pass as f32 * self.params.z_step_down)
             } else {
                 0.0
             };

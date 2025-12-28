@@ -337,3 +337,329 @@ pub fn generate_tabbed_box(
 
     paths
 }
+pub fn generate_helical_gear(
+    center: Point,
+    module: f64,
+    teeth: usize,
+    pressure_angle_deg: f64,
+    helix_angle_deg: f64,
+    hole_radius: f64,
+) -> Path {
+    // For simplicity, we'll generate a basic involute gear and add a helical offset
+    // A true helical gear would have the involute curve skewed along the helix
+    // This is a simplified approximation
+
+    let mut builder = Path::builder();
+
+    let pitch_radius = (module * teeth as f64) / 2.0;
+    let addendum = module;
+    let dedendum = 1.25 * module;
+    let outer_radius = pitch_radius + addendum;
+    let root_radius = pitch_radius - dedendum;
+    let base_radius = pitch_radius * pressure_angle_deg.to_radians().cos();
+
+    let angle_per_tooth = 2.0 * PI / teeth as f64;
+    let helix_offset = helix_angle_deg.to_radians().tan() * module; // Simplified helix offset
+
+    let mut points = Vec::new();
+
+    for i in 0..teeth {
+        let tooth_center_angle = i as f64 * angle_per_tooth;
+
+        let t_max = ((outer_radius / base_radius).powi(2) - 1.0).sqrt();
+        let steps = 5;
+
+        let mut tooth_points = Vec::new();
+        for j in 0..=steps {
+            let t = (j as f64 / steps as f64) * t_max;
+            let x = base_radius * (t.cos() + t * t.sin());
+            let y = base_radius * (t.sin() - t * t.cos());
+
+            let r = (x * x + y * y).sqrt();
+            let phi = y.atan2(x);
+
+            let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
+            let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
+                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+
+            let angle = tooth_center_angle - (PI / (2.0 * teeth as f64)) - phi_pitch + phi;
+
+            // Add helical offset
+            let helical_angle = angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
+
+            tooth_points.push(Point::new(
+                center.x + r * helical_angle.cos(),
+                center.y + r * helical_angle.sin(),
+            ));
+        }
+
+        if root_radius < base_radius {
+            let p0 = tooth_points[0];
+            let angle0 = (p0.y - center.y).atan2(p0.x - center.x);
+            points.push(Point::new(
+                center.x + root_radius * angle0.cos(),
+                center.y + root_radius * angle0.sin(),
+            ));
+        }
+
+        points.extend(tooth_points.clone());
+
+        let mut right_points = Vec::new();
+        for j in (0..=steps).rev() {
+            let t = (j as f64 / steps as f64) * t_max;
+            let x = base_radius * (t.cos() + t * t.sin());
+            let y = -(base_radius * (t.sin() - t * t.cos()));
+
+            let r = (x * x + y * y).sqrt();
+            let phi = y.atan2(x);
+
+            let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
+            let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
+                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+
+            let angle = tooth_center_angle + (PI / (2.0 * teeth as f64)) + phi_pitch + phi;
+            let helical_angle = angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
+
+            right_points.push(Point::new(
+                center.x + r * helical_angle.cos(),
+                center.y + r * helical_angle.sin(),
+            ));
+        }
+        points.extend(right_points);
+
+        if root_radius < base_radius {
+            let p_last = points.last().unwrap();
+            let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
+            points.push(Point::new(
+                center.x + root_radius * angle_last.cos(),
+                center.y + root_radius * angle_last.sin(),
+            ));
+        }
+    }
+
+    if !points.is_empty() {
+        builder.begin(point(points[0].x as f32, points[0].y as f32));
+        for p in points.iter().skip(1) {
+            builder.line_to(point(p.x as f32, p.y as f32));
+        }
+        builder.close();
+    }
+
+    if hole_radius > 0.0 {
+        builder.add_circle(
+            point(center.x as f32, center.y as f32),
+            hole_radius as f32,
+            lyon::path::Winding::Negative,
+        );
+    }
+
+    builder.build()
+}
+
+/// Generate a timing pulley (XL series approximation)
+pub fn generate_timing_pulley(
+    center: Point,
+    pitch: f64,
+    teeth: usize,
+    belt_width: f64,
+    hole_radius: f64,
+) -> Path {
+    let mut builder = Path::builder();
+
+    // XL timing belt parameters (simplified)
+    let tooth_height = 1.27; // mm
+
+    let outer_radius = (pitch * teeth as f64) / (2.0 * PI) * (PI / teeth as f64).sin().recip();
+    let root_radius = outer_radius - tooth_height;
+
+    let mut points = Vec::new();
+    let angle_per_tooth = 2.0 * PI / teeth as f64;
+
+    for i in 0..teeth {
+        let tooth_center_angle = i as f64 * angle_per_tooth;
+
+        // Tooth tip
+        let tip_angle = tooth_center_angle;
+        points.push(Point::new(
+            center.x + outer_radius * tip_angle.cos(),
+            center.y + outer_radius * tip_angle.sin(),
+        ));
+
+        // Left flank
+        let left_angle = tooth_center_angle - angle_per_tooth * 0.3;
+        points.push(Point::new(
+            center.x + root_radius * left_angle.cos(),
+            center.y + root_radius * left_angle.sin(),
+        ));
+
+        // Bottom of tooth
+        let bottom_angle = tooth_center_angle - angle_per_tooth * 0.2;
+        points.push(Point::new(
+            center.x + root_radius * bottom_angle.cos(),
+            center.y + root_radius * bottom_angle.sin(),
+        ));
+
+        // Right flank
+        let right_angle = tooth_center_angle + angle_per_tooth * 0.3;
+        points.push(Point::new(
+            center.x + root_radius * right_angle.cos(),
+            center.y + root_radius * right_angle.sin(),
+        ));
+    }
+
+    if !points.is_empty() {
+        builder.begin(point(points[0].x as f32, points[0].y as f32));
+        for p in points.iter().skip(1) {
+            builder.line_to(point(p.x as f32, p.y as f32));
+        }
+        builder.close();
+    }
+
+    if hole_radius > 0.0 {
+        builder.add_circle(
+            point(center.x as f32, center.y as f32),
+            hole_radius as f32,
+            lyon::path::Winding::Negative,
+        );
+    }
+
+    builder.build()
+}
+
+/// Generate a slot (rectangular cutout)
+pub fn generate_slot(
+    center: Point,
+    length: f64,
+    width: f64,
+    corner_radius: f64,
+) -> Path {
+    let mut builder = Path::builder();
+
+    let half_length = length / 2.0;
+    let half_width = width / 2.0;
+
+    if corner_radius > 0.0 {
+        // Rounded rectangle slot
+        let cr = corner_radius.min(half_width).min(half_length);
+        builder.add_rounded_rectangle(
+            &lyon::math::Box2D::new(
+                point((center.x - half_length) as f32, (center.y - half_width) as f32),
+                point((center.x + half_length) as f32, (center.y + half_width) as f32),
+            ),
+            &lyon::path::builder::BorderRadii::new(cr as f32),
+            lyon::path::Winding::Positive,
+        );
+    } else {
+        // Rectangular slot
+        builder.add_rectangle(
+            &lyon::math::Box2D::new(
+                point((center.x - half_length) as f32, (center.y - half_width) as f32),
+                point((center.x + half_length) as f32, (center.y + half_width) as f32),
+            ),
+            lyon::path::Winding::Positive,
+        );
+    }
+
+    builder.build()
+}
+
+/// Generate an L-bracket
+pub fn generate_l_bracket(
+    center: Point,
+    width: f64,
+    height: f64,
+    thickness: f64,
+    hole_diameter: f64,
+    hole_spacing: f64,
+) -> Path {
+    let mut builder = Path::builder();
+
+    let half_width = width / 2.0;
+    let half_height = height / 2.0;
+
+    // Create L-shape
+    let points = vec![
+        Point::new(center.x - half_width, center.y - half_height),
+        Point::new(center.x + half_width, center.y - half_height),
+        Point::new(center.x + half_width, center.y - half_height + thickness),
+        Point::new(center.x - half_width + thickness, center.y - half_height + thickness),
+        Point::new(center.x - half_width + thickness, center.y + half_height),
+        Point::new(center.x - half_width, center.y + half_height),
+    ];
+
+    builder.begin(point(points[0].x as f32, points[0].y as f32));
+    for p in points.iter().skip(1) {
+        builder.line_to(point(p.x as f32, p.y as f32));
+    }
+    builder.close();
+
+    // Add mounting holes
+    let hole_radius = hole_diameter / 2.0;
+    let hole_centers = vec![
+        Point::new(center.x - half_width + thickness / 2.0, center.y - half_height + thickness / 2.0),
+        Point::new(center.x + half_width - hole_spacing, center.y - half_height + thickness / 2.0),
+        Point::new(center.x - half_width + thickness / 2.0, center.y + half_height - hole_spacing),
+    ];
+
+    for hc in hole_centers {
+        builder.add_circle(
+            point(hc.x as f32, hc.y as f32),
+            hole_radius as f32,
+            lyon::path::Winding::Negative,
+        );
+    }
+
+    builder.build()
+}
+
+/// Generate a U-bracket/channel
+pub fn generate_u_bracket(
+    center: Point,
+    length: f64,
+    width: f64,
+    thickness: f64,
+    hole_diameter: f64,
+    hole_spacing: f64,
+) -> Path {
+    let mut builder = Path::builder();
+
+    let half_length = length / 2.0;
+    let half_width = width / 2.0;
+
+    // Create U-shape
+    let points = vec![
+        Point::new(center.x - half_length, center.y - half_width),
+        Point::new(center.x + half_length, center.y - half_width),
+        Point::new(center.x + half_length, center.y + half_width),
+        Point::new(center.x + half_length - thickness, center.y + half_width),
+        Point::new(center.x + half_length - thickness, center.y - half_width + thickness),
+        Point::new(center.x - half_length + thickness, center.y - half_width + thickness),
+        Point::new(center.x - half_length + thickness, center.y + half_width),
+        Point::new(center.x - half_length, center.y + half_width),
+    ];
+
+    builder.begin(point(points[0].x as f32, points[0].y as f32));
+    for p in points.iter().skip(1) {
+        builder.line_to(point(p.x as f32, p.y as f32));
+    }
+    builder.close();
+
+    // Add mounting holes
+    let hole_radius = hole_diameter / 2.0;
+    let hole_centers = vec![
+        Point::new(center.x - half_length + thickness / 2.0, center.y - half_width + thickness / 2.0),
+        Point::new(center.x + half_length - thickness / 2.0, center.y - half_width + thickness / 2.0),
+        Point::new(center.x - half_length + thickness / 2.0, center.y + half_width - hole_spacing),
+        Point::new(center.x + half_length - thickness / 2.0, center.y + half_width - hole_spacing),
+    ];
+
+    for hc in hole_centers {
+        builder.add_circle(
+            point(hc.x as f32, hc.y as f32),
+            hole_radius as f32,
+            lyon::path::Winding::Negative,
+        );
+    }
+
+    builder.build()
+}

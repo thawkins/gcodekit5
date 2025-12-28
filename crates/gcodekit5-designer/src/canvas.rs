@@ -60,7 +60,6 @@ pub enum DrawingMode {
     Polygon,
     Gear,
     Sprocket,
-    TabbedBox,
     Pan,
 }
 
@@ -128,7 +127,6 @@ impl DrawingObject {
             ShapeType::Polygon => "Polygon",
             ShapeType::Gear => "Gear",
             ShapeType::Sprocket => "Sprocket",
-            ShapeType::TabbedBox => "Tabbed Box",
         }
         .to_string();
 
@@ -505,7 +503,7 @@ impl Canvas {
         self.selection_manager.select_all(&mut self.shape_store);
     }
 
-    /// Checks if point is inside currently selected shape
+    /// Checks if point is inside currently selected shape (primary selection only)
     pub fn is_point_in_selected(&self, point: &Point) -> bool {
         if let Some(id) = self.selection_manager.selected_id() {
             if let Some(obj) = self.shape_store.get(id) {
@@ -1060,20 +1058,6 @@ impl Canvas {
                         sprocket.teeth,
                     ))
                 }
-                Shape::TabbedBox(tabbed_box) => {
-                    let center = Point::new(
-                        snapped_x1 + snapped_width / 2.0,
-                        snapped_y1 + snapped_height / 2.0,
-                    );
-                    Shape::TabbedBox(crate::model::DesignTabbedBox::new(
-                        center,
-                        snapped_width,
-                        snapped_height,
-                        tabbed_box.depth,
-                        tabbed_box.thickness,
-                        tabbed_box.tab_width,
-                    ))
-                }
             };
 
             let mut new_obj = obj.clone();
@@ -1225,27 +1209,6 @@ impl Canvas {
                             shape.clone()
                         }
                     }
-                    ShapeType::TabbedBox => {
-                        if let Some(tabbed_box) = shape
-                            .as_any()
-                            .downcast_ref::<crate::model::DesignTabbedBox>()
-                        {
-                            let center = Point::new(
-                                snapped_x1 + snapped_width / 2.0,
-                                snapped_y1 + snapped_height / 2.0,
-                            );
-                            Shape::TabbedBox(crate::model::DesignTabbedBox::new(
-                                center,
-                                snapped_width,
-                                snapped_height,
-                                tabbed_box.depth,
-                                tabbed_box.thickness,
-                                tabbed_box.tab_width,
-                            ))
-                        } else {
-                            shape.clone()
-                        }
-                    }
                 };
                 obj.shape = new_shape;
 
@@ -1297,12 +1260,10 @@ impl Canvas {
 
         let old_w = max_x - min_x;
         let old_h = max_y - min_y;
-        let old_x = min_x;
-        let old_y = min_y;
 
         // 2. Determine target values
-        let target_x = if update_position { x } else { old_x };
-        let target_y = if update_position { y } else { old_y };
+        let target_x = if update_position { x } else { x };
+        let target_y = if update_position { y } else { y };
         let target_w = if update_size { w } else { old_w };
         let target_h = if update_size { h } else { old_h };
 
@@ -1378,12 +1339,10 @@ impl Canvas {
 
         let old_w = max_x - min_x;
         let old_h = max_y - min_y;
-        let old_x = min_x;
-        let old_y = min_y;
 
         // 2. Determine target values
-        let target_x = if update_position { x } else { old_x };
-        let target_y = if update_position { y } else { old_y };
+        let target_x = if update_position { x } else { x };
+        let target_y = if update_position { y } else { y };
         let target_w = if update_size { w } else { old_w };
         let target_h = if update_size { h } else { old_h };
 

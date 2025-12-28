@@ -267,11 +267,18 @@ pub fn main() {
         });
 
         // 5. CAM Tools
+        // First create the designer view so we can pass it to CAM tools
+        let designer = DesignerView::new(
+            Some(device_manager.clone()),
+            settings_controller.clone(),
+            Some(status_bar.clone()),
+        );
+
         let editor_clone = editor.clone();
         let stack_clone_for_cam = stack.clone();
         let settings_controller_cam = settings_controller.clone();
         let machine_control_cam = machine_control.clone();
-        let cam_tools_view = CamToolsView::new(
+        let cam_tools_view = CamToolsView::new_with_designer(
             settings_controller_cam,
             Some(machine_control_cam),
             move |gcode| {
@@ -279,15 +286,11 @@ pub fn main() {
                 stack_clone_for_cam.set_visible_child_name("editor");
                 editor_clone.grab_focus();
             },
+            Some(designer.clone()),
         );
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), &t!("CAM Tools"));
 
         // 6. Designer
-        let designer = DesignerView::new(
-            Some(device_manager.clone()),
-            settings_controller.clone(),
-            Some(status_bar.clone()),
-        );
         stack.add_titled(&designer.widget, Some("designer"), &t!("Designer"));
 
         // Connect Designer G-Code Generation to Editor

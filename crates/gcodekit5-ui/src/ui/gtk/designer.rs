@@ -21,9 +21,10 @@ use gcodekit5_settings::controller::SettingsController;
 use gtk4::gdk::{Key, ModifierType};
 use gtk4::prelude::*;
 use gtk4::{
-    Adjustment, Box, CheckButton, Dialog, DrawingArea, DropDown, Entry, EventControllerKey,
+    Adjustment, Box, Button, CheckButton, Dialog, DrawingArea, DropDown, Entry, EventControllerKey,
     EventControllerMotion, FileChooserAction, FileChooserNative, GestureClick, GestureDrag, Grid,
-    Label, Orientation, Overlay, Paned, Popover, ResponseType, Scrollbar, Separator, StringList,
+    Label, Orientation, Overlay, Paned, Popover, PositionType, ResponseType, Scrollbar, Separator, 
+    StringList,
 };
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -311,8 +312,7 @@ impl DesignerCanvas {
                 | DesignerTool::Polygon
                 | DesignerTool::Polyline
                 | DesignerTool::Gear
-                | DesignerTool::Sprocket
-                | DesignerTool::TabbedBox => widget_motion.set_cursor_from_name(Some("pencil")),
+                | DesignerTool::Sprocket => widget_motion.set_cursor_from_name(Some("pencil")),
             }
 
             widget_motion.queue_draw();
@@ -381,12 +381,13 @@ impl DesignerCanvas {
         let right_click_gesture = GestureClick::new();
         right_click_gesture.set_button(3); // Right click
         let canvas_right_click = canvas.clone();
-        right_click_gesture.connect_pressed(move |_gesture, _n_press, x, y| {
+        right_click_gesture.connect_released(move |_gesture, _n_press, x, y| {
             canvas_right_click.handle_right_click(x, y);
         });
         widget.add_controller(right_click_gesture);
 
         let drag_gesture = GestureDrag::new();
+        drag_gesture.set_button(1); // Left click only
         let canvas_drag = canvas.clone();
         drag_gesture.connect_drag_begin(move |_gesture, x, y| {
             canvas_drag.handle_drag_begin(x, y);
@@ -433,7 +434,7 @@ impl DesignerCanvas {
                         .selected_id()
                         .is_some()
                     {
-                        designer_state.canvas.remove_selected();
+                        designer_state.delete_selected();
                         drop(designer_state);
 
                         // Refresh layers
@@ -478,7 +479,7 @@ impl DesignerCanvas {
                             let path_shape = PathShape::from_points(&points, false);
                             let shape = Shape::Path(path_shape);
 
-                            designer_state.canvas.add_shape(shape);
+                            designer_state.add_shape_with_undo(shape);
 
                             // Refresh layers
                             if let Some(layers) = layers_key.borrow().as_ref() {
@@ -687,18 +688,25 @@ impl DesignerCanvas {
     /// Public method to fit to device working area from DesignerView
     // removed; wrapper belongs on DesignerView
 
-    fn handle_right_click(&self, x: f64, y: f64) {
-        // Check if we are building a polyline
+    fn handle_right_click(&self, _x: f64, _y: f64) {
+        // Check if we are actively building a polyline (tool is polyline AND we have points)
+        let current_tool = self.toolbox
+            .as_ref()
+            .map(|t| t.current_tool())
+            .unwrap_or(DesignerTool::Select);
+        let is_polyline_mode = matches!(current_tool, DesignerTool::Polyline);
+        
         {
             let mut points = self.polyline_points.borrow_mut();
-            if !points.is_empty() {
+            if is_polyline_mode && !points.is_empty() {
+                tracing::info!("Polyline mode with points - finishing polyline");
                 if points.len() >= 2 {
                     // Create polyline
                     let path_shape = PathShape::from_points(&points, false); // Open polyline
                     let shape = Shape::Path(path_shape);
 
                     let mut state = self.state.borrow_mut();
-                    state.canvas.add_shape(shape);
+                    state.add_shape_with_undo(shape);
                     drop(state);
 
                     // Refresh layers panel
@@ -712,72 +720,111 @@ impl DesignerCanvas {
             }
         }
 
-        // Convert to canvas coordinates for hit testing
-        let height = self.widget.height() as f64;
         let state_borrow = self.state.borrow();
-        let zoom = state_borrow.canvas.zoom();
-        let pan_x = state_borrow.canvas.pan_x();
-        let pan_y = state_borrow.canvas.pan_y();
-        drop(state_borrow);
-
-        let y_flipped = height - y;
-        let canvas_x = (x - pan_x) / zoom;
-        let canvas_y = (y_flipped - pan_y) / zoom;
-        let (canvas_x, canvas_y) = self.snap_canvas_point(canvas_x, canvas_y);
-        let point = Point::new(canvas_x, canvas_y);
-
-        let mut state = self.state.borrow_mut();
-
-        // Check for hit using select_at logic (handles groups)
-        let tolerance = 3.0;
-        let clicked_shape_id = state.canvas.select_at(&point, tolerance, false);
-
-        if let Some(_id) = clicked_shape_id {
-            // Update UI
-            drop(state); // Drop before calling update methods that might borrow
-            if let Some(ref props) = *self.properties.borrow() {
-                props.update_from_selection();
-            }
-            if let Some(ref layers) = *self.layers.borrow() {
-                layers.refresh(&self.state);
-            }
-            self.widget.queue_draw();
-
-            // Re-borrow for next steps
-            state = self.state.borrow_mut();
-        }
-
-        let has_selection = state
+        let has_selection = state_borrow
             .canvas
             .selection_manager
-            .selected_count(&state.canvas.shape_store)
+            .selected_count(&state_borrow.canvas.shape_store)
             > 0;
-        let selected_count = state.canvas.shapes().filter(|s| s.selected).count();
-        let can_paste = !state.clipboard.is_empty();
-        let can_group = state.can_group();
-        let can_ungroup = state.can_ungroup();
+        
+        // Only show context menu if we have any selected shapes
+        if !has_selection {
+            drop(state_borrow);
+            return;
+        }
+
+        let selected_count = state_borrow.canvas.shapes().filter(|s| s.selected).count();
+        let can_paste = !state_borrow.clipboard.is_empty();
+        let can_group = state_borrow.can_group();
+        let can_ungroup = state_borrow.can_ungroup();
         let can_align = selected_count >= 2;
         let can_boolean = selected_count >= 2;
-        drop(state);
+        drop(state_borrow);
 
         let menu = Popover::new();
         menu.set_parent(&self.widget);
         menu.set_has_arrow(false);
-        // Set position
-        let rect = gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+        menu.set_autohide(true);
+        
+        // Set preferred position but allow GTK to adjust if needed
+        let rect = gtk4::gdk::Rectangle::new(_x as i32 - 5, _y as i32 - 5, 10, 10);
         menu.set_pointing_to(Some(&rect));
+        menu.set_position(PositionType::Bottom);  // Prefer bottom-right, but allow adjustment
+        
+        // Create menu content
+        let menu_box = Box::new(Orientation::Vertical, 0);
+        menu_box.add_css_class("context-menu");
+
+        // Always available actions
+        let cut_button = Button::with_label("Cut");
+        let copy_button = Button::with_label("Copy");
+        let delete_button = Button::with_label("Delete");
+        
+        menu_box.append(&cut_button);
+        menu_box.append(&copy_button);
+        if can_paste {
+            let paste_button = Button::with_label("Paste");
+            menu_box.append(&paste_button);
+        }
+        menu_box.append(&delete_button);
+
+        // Conditional actions - only show if applicable
+        if can_group {
+            let separator = Separator::new(Orientation::Horizontal);
+            separator.add_css_class("menu-separator");
+            menu_box.append(&separator);
+            
+            let group_button = Button::with_label("Group");
+            menu_box.append(&group_button);
+        }
+        
+        if can_ungroup {
+            if !can_group {  // Add separator if not already added
+                let separator = Separator::new(Orientation::Horizontal);
+                separator.add_css_class("menu-separator");
+                menu_box.append(&separator);
+            }
+            let ungroup_button = Button::with_label("Ungroup");
+            menu_box.append(&ungroup_button);
+        }
+
+        if can_align {
+            let separator = Separator::new(Orientation::Horizontal);
+            separator.add_css_class("menu-separator");
+            menu_box.append(&separator);
+            
+            let align_button = Button::with_label("Align");
+            menu_box.append(&align_button);
+        }
+
+        if can_boolean {
+            let separator = Separator::new(Orientation::Horizontal);
+            separator.add_css_class("menu-separator");
+            menu_box.append(&separator);
+            
+            let union_button = Button::with_label("Union");
+            let difference_button = Button::with_label("Difference");
+            let intersection_button = Button::with_label("Intersection");
+            menu_box.append(&union_button);
+            menu_box.append(&difference_button);
+            menu_box.append(&intersection_button);
+        }
+
+        menu.set_child(Some(&menu_box));
+        menu.present();
+        
+        // Don't constrain position at all - let GTK place it wherever it fits
 
         let vbox = Box::new(Orientation::Vertical, 0);
         vbox.add_css_class("context-menu");
 
         // Helper to create menu items
-        let create_item = |label: &str, action: &str, enabled: bool| {
+        let create_item = |label: &str, action: &str| {
             let btn = gtk4::Button::builder()
                 .label(label)
                 .has_frame(false)
                 .halign(gtk4::Align::Start)
                 .build();
-            btn.set_sensitive(enabled);
 
             let canvas = self.clone();
             let menu_clone = menu.clone();
@@ -816,23 +863,88 @@ impl DesignerCanvas {
             btn
         };
 
-        // Edit
-        vbox.append(&create_item("Cut", "cut", has_selection));
-        vbox.append(&create_item("Copy", "copy", has_selection));
-        vbox.append(&create_item("Paste", "paste", can_paste));
-        vbox.append(&create_item("Delete", "delete", has_selection));
+        // Edit - only show items that are actionable
+        vbox.append(&create_item("Cut", "cut"));
+        vbox.append(&create_item("Copy", "copy"));
+        if can_paste {
+            vbox.append(&create_item("Paste", "paste"));
+        }
+        vbox.append(&create_item("Delete", "delete"));
 
         vbox.append(&Separator::new(Orientation::Horizontal));
 
-        vbox.append(&create_item("Group", "group", can_group));
-        vbox.append(&create_item("Ungroup", "ungroup", can_ungroup));
+        if can_group {
+            vbox.append(&create_item("Group", "group"));
+        }
+        if can_ungroup {
+            vbox.append(&create_item("Ungroup", "ungroup"));
+        }
 
-        vbox.append(&Separator::new(Orientation::Horizontal));
-        vbox.append(&create_item("Union", "boolean_union", can_boolean));
-        vbox.append(&create_item("Diff", "boolean_difference", can_boolean));
-        vbox.append(&create_item("Inter", "boolean_intersection", can_boolean));
-        vbox.append(&create_item("Mirror on X", "mirror_x", has_selection));
-        vbox.append(&create_item("Mirror on Y", "mirror_y", has_selection));
+        if can_group || can_ungroup {
+            vbox.append(&Separator::new(Orientation::Horizontal));
+        }
+        
+        if can_boolean {
+            vbox.append(&create_item("Union", "boolean_union"));
+            vbox.append(&create_item("Diff", "boolean_difference"));
+            vbox.append(&create_item("Inter", "boolean_intersection"));
+            vbox.append(&Separator::new(Orientation::Horizontal));
+        }
+        
+        vbox.append(&create_item("Mirror on X", "mirror_x"));
+        vbox.append(&create_item("Mirror on Y", "mirror_y"));
+
+        // Rotate menu is always shown since we have a selection
+        {
+            let rotate_btn = gtk4::Button::builder()
+                .label("Rotate ▸")
+                .has_frame(false)
+                .halign(gtk4::Align::Start)
+                .build();
+
+            let rotate_menu = Popover::new();
+            rotate_menu.set_parent(&rotate_btn);
+            rotate_menu.set_has_arrow(false);
+            rotate_menu.set_position(gtk4::PositionType::Right);
+
+            let rotate_vbox = Box::new(Orientation::Vertical, 0);
+            rotate_vbox.add_css_class("context-menu");
+
+            // Helper for rotate items
+            let create_rotate_item = |label: &str, angle_degrees: f64| {
+                let btn = gtk4::Button::builder()
+                    .label(label)
+                    .has_frame(false)
+                    .halign(gtk4::Align::Start)
+                    .build();
+
+                let canvas = self.clone();
+                let menu_clone = menu.clone(); // Main menu
+                let rotate_menu_clone = rotate_menu.clone();
+                let angle_radians = angle_degrees.to_radians();
+
+                btn.connect_clicked(move |_| {
+                    rotate_menu_clone.popdown();
+                    menu_clone.popdown();
+                    canvas.set_selected_rotation(angle_radians);
+                });
+                btn
+            };
+
+            rotate_vbox.append(&create_rotate_item("90° CW", -90.0));
+            rotate_vbox.append(&create_rotate_item("90° CCW", 90.0));
+            rotate_vbox.append(&create_rotate_item("45° CW", -45.0));
+            rotate_vbox.append(&create_rotate_item("45° CCW", 45.0));
+            rotate_vbox.append(&create_rotate_item("180°", 180.0));
+
+            rotate_menu.set_child(Some(&rotate_vbox));
+
+            rotate_btn.connect_clicked(move |_| {
+                rotate_menu.popup();
+            });
+
+            vbox.append(&rotate_btn);
+        }
 
         if can_align {
             let align_btn = gtk4::Button::builder()
@@ -898,16 +1010,13 @@ impl DesignerCanvas {
         vbox.append(&create_item(
             "Convert to Path",
             "convert_to_path",
-            has_selection,
         ));
         vbox.append(&create_item(
             "Convert to Rectangle",
             "convert_to_rectangle",
-            has_selection,
         ));
 
         menu.set_child(Some(&vbox));
-        menu.set_autohide(true);
         menu.popup();
     }
 
@@ -1037,7 +1146,7 @@ impl DesignerCanvas {
                             shape.font_family = family;
                             shape.bold = bold;
                             shape.italic = italic;
-                            let id = state.canvas.add_shape(Shape::Text(shape));
+                            let id = state.add_shape_with_undo(Shape::Text(shape));
                             state.canvas.deselect_all();
                             state.canvas.select_shape(id, false);
                             drop(state);
@@ -1249,13 +1358,8 @@ impl DesignerCanvas {
                         let shape = Shape::Path(path_shape);
 
                         let mut state = self.state.borrow_mut();
-                        state.canvas.add_shape(shape);
+                        state.add_shape_with_undo(shape);
                         drop(state);
-
-                        // Refresh layers panel
-                        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-                            layers_panel.refresh(&self.state);
-                        }
                     }
                     points.clear();
                     self.widget.queue_draw();
@@ -1564,7 +1668,8 @@ impl DesignerCanvas {
                             }
                         }
 
-                        // Apply incremental movement
+                        // Apply incremental movement directly to canvas (without undo)
+                        // We'll create the undo command when drag ends
                         state.canvas.move_selected(delta_x, -delta_y);
 
                         // Update last offset
@@ -1679,13 +1784,81 @@ impl DesignerCanvas {
 
             match tool {
                 DesignerTool::Select => {
+                    // Check if we were resizing and need to create undo command
+                    let was_resizing = self.active_resize_handle.borrow().is_some();
+                    let resize_originals = self.resize_original_shapes.borrow().clone();
+                    
                     // Clear resize state
                     *self.active_resize_handle.borrow_mut() = None;
                     *self.resize_original_bounds.borrow_mut() = None;
                     *self.resize_original_shapes.borrow_mut() = None;
 
-                    // If we didn't have a selection and we dragged, perform marquee selection
                     let mut state = self.state.borrow_mut();
+                    
+                    // If we were resizing, create an undo command for the resize
+                    if was_resizing && resize_originals.is_some() {
+                        let originals = resize_originals.unwrap();
+                        let mut commands = Vec::new();
+                        
+                        for (id, old_shape) in originals {
+                            if let Some(obj) = state.canvas.get_shape(id) {
+                                if obj.selected {
+                                    commands.push(gcodekit5_designer::commands::DesignerCommand::ResizeShape(
+                                        gcodekit5_designer::commands::ResizeShape {
+                                            id,
+                                            handle: 0, // Not used in undo/redo
+                                            dx: 0.0,   // Not used in undo/redo
+                                            dy: 0.0,   // Not used in undo/redo
+                                            old_shape: Some(old_shape),
+                                            new_shape: Some(obj.shape.clone()),
+                                        }
+                                    ));
+                                }
+                            }
+                        }
+                        
+                        if !commands.is_empty() {
+                            let cmd = gcodekit5_designer::commands::DesignerCommand::CompositeCommand(
+                                gcodekit5_designer::commands::CompositeCommand {
+                                    commands,
+                                    name: "Resize Shapes".to_string(),
+                                }
+                            );
+                            state.record_command(cmd);
+                        }
+                    }
+                    // If we were moving (not resizing, not marquee selecting), create undo command
+                    else if state.canvas.selection_manager.selected_id().is_some() {
+                        let last_offset = *self.last_drag_offset.borrow();
+                        if last_offset.0.abs() > 0.1 || last_offset.1.abs() > 0.1 {
+                            // We moved - calculate total movement from start
+                            let total_dx = canvas_offset_x;
+                            let total_dy = -canvas_offset_y;
+                            
+                            if total_dx.abs() > 0.01 || total_dy.abs() > 0.01 {
+                                let ids: Vec<u64> = state.canvas.shapes()
+                                    .filter(|s| s.selected)
+                                    .map(|s| s.id)
+                                    .collect();
+                                    
+                                if !ids.is_empty() {
+                                    let cmd = gcodekit5_designer::commands::DesignerCommand::MoveShapes(
+                                        gcodekit5_designer::commands::MoveShapes {
+                                            ids,
+                                            dx: total_dx,
+                                            dy: total_dy,
+                                        }
+                                    );
+                                    state.record_command(cmd);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Reset drag offset
+                    *self.last_drag_offset.borrow_mut() = (0.0, 0.0);
+
+                    // If we didn't have a selection and we dragged, perform marquee selection
                     if state.canvas.selection_manager.selected_id().is_none() {
                         // Calculate selection rectangle
                         let min_x = start.0.min(end_x);
@@ -1871,33 +2044,11 @@ impl DesignerCanvas {
                         None
                     }
                 }
-                DesignerTool::TabbedBox => {
-                    let x = start.0.min(end.0);
-                    let y = start.1.min(end.1);
-                    let width = (end.0 - start.0).abs();
-                    let height = (end.1 - start.1).abs();
-
-                    if width > 1.0 && height > 1.0 {
-                        // Default to 100x100x50, 3mm thickness, 10mm tabs
-                        Some(Shape::TabbedBox(
-                            gcodekit5_designer::model::DesignTabbedBox::new(
-                                Point::new(x + width / 2.0, y + height / 2.0),
-                                width,
-                                height,
-                                50.0,
-                                3.0,
-                                10.0,
-                            ),
-                        ))
-                    } else {
-                        None
-                    }
-                }
                 _ => None,
             };
 
             if let Some(shape) = shape {
-                state.canvas.add_shape(shape);
+                state.add_shape_with_undo(shape);
             }
         } // Drop the mutable borrow here
 
@@ -2352,6 +2503,13 @@ impl DesignerCanvas {
         self.widget.queue_draw();
     }
 
+    pub fn set_selected_rotation(&self, rotation: f64) {
+        let mut state = self.state.borrow_mut();
+        state.set_selected_rotation(rotation);
+        drop(state);
+        self.widget.queue_draw();
+    }
+
     pub fn copy_selected(&self) {
         let mut state = self.state.borrow_mut();
         state.clipboard = state
@@ -2618,9 +2776,6 @@ impl DesignerCanvas {
                         } else {
                             gen.generate_sprocket_contour(sprocket, shape.step_down as f64)
                         }
-                    }
-                    Shape::TabbedBox(tbox) => {
-                        gen.generate_tabbed_box_contour(tbox, shape.step_down as f64)
                     }
                 };
                 toolpaths.extend(shape_toolpaths);
@@ -2965,30 +3120,32 @@ impl DesignerCanvas {
             }
         }
 
-        // Draw preview marquee if creating a shape
-        if let (Some(start), Some(current)) = (preview_start, preview_current) {
-            cr.save().unwrap();
+        // Draw preview marquee if creating a shape (only when no shapes are selected)
+        if selected_count == 0 {
+            if let (Some(start), Some(current)) = (preview_start, preview_current) {
+                cr.save().unwrap();
 
-            // Draw dashed preview outline
-            cr.set_source_rgba(
-                accent_color.red() as f64,
-                accent_color.green() as f64,
-                accent_color.blue() as f64,
-                0.7,
-            );
-            cr.set_line_width(2.0 / zoom);
-            cr.set_dash(&[5.0 / zoom, 5.0 / zoom], 0.0); // Dashed line
+                // Draw dashed preview outline
+                cr.set_source_rgba(
+                    accent_color.red() as f64,
+                    accent_color.green() as f64,
+                    accent_color.blue() as f64,
+                    0.7,
+                );
+                cr.set_line_width(2.0 / zoom);
+                cr.set_dash(&[5.0 / zoom, 5.0 / zoom], 0.0); // Dashed line
 
-            // Draw bounding box for the preview
-            let x1 = start.0.min(current.0);
-            let y1 = start.1.min(current.1);
-            let x2 = start.0.max(current.0);
-            let y2 = start.1.max(current.1);
+                // Draw bounding box for the preview
+                let x1 = start.0.min(current.0);
+                let y1 = start.1.min(current.1);
+                let x2 = start.0.max(current.0);
+                let y2 = start.1.max(current.1);
 
-            cr.rectangle(x1, y1, x2 - x1, y2 - y1);
-            cr.stroke().unwrap();
+                cr.rectangle(x1, y1, x2 - x1, y2 - y1);
+                cr.stroke().unwrap();
 
-            cr.restore().unwrap();
+                cr.restore().unwrap();
+            }
         }
     }
 
@@ -3127,7 +3284,7 @@ impl DesignerCanvas {
                 let mut max_y = f64::NEG_INFINITY;
 
                 for (x, y) in corners {
-                    let (rx, ry) = rotate_xy(x, y, cx, cy, rect.rotation);
+                    let (rx, ry) = rotate_xy(x, y, cx, cy, rect.rotation.to_radians());
                     min_x = min_x.min(rx);
                     min_y = min_y.min(ry);
                     max_x = max_x.max(rx);
@@ -3144,7 +3301,7 @@ impl DesignerCanvas {
                 }
 
                 // Axis-aligned bounding box of a rotated ellipse.
-                let theta = ellipse.rotation;
+                let theta = ellipse.rotation.to_radians();
                 let cos_t = theta.cos();
                 let sin_t = theta.sin();
                 let half_w = ((ellipse.rx * cos_t).powi(2) + (ellipse.ry * sin_t).powi(2)).sqrt();
@@ -3174,7 +3331,7 @@ impl DesignerCanvas {
                 let mut max_y = f64::NEG_INFINITY;
 
                 for (x, y) in corners {
-                    let (rx, ry) = rotate_xy(x, y, cx, cy, path_shape.rotation);
+                    let (rx, ry) = rotate_xy(x, y, cx, cy, path_shape.rotation.to_radians());
                     min_x = min_x.min(rx);
                     min_y = min_y.min(ry);
                     max_x = max_x.max(rx);
@@ -3188,7 +3345,6 @@ impl DesignerCanvas {
             Shape::Polygon(polygon) => polygon.bounds(),
             Shape::Gear(gear) => gear.bounds(),
             Shape::Sprocket(sprocket) => sprocket.bounds(),
-            Shape::TabbedBox(tbox) => tbox.bounds(),
         }
     }
 
@@ -3198,7 +3354,7 @@ impl DesignerCanvas {
                 cr.save().unwrap();
                 cr.translate(rect.center.x, rect.center.y);
                 if rect.rotation.abs() > 1e-9 {
-                    cr.rotate(rect.rotation);
+                    cr.rotate(rect.rotation.to_radians());
                 }
 
                 if rect.corner_radius > 0.001 {
@@ -3245,7 +3401,7 @@ impl DesignerCanvas {
                 cr.save().unwrap();
                 cr.translate(ellipse.center.x, ellipse.center.y);
                 if ellipse.rotation.abs() > 1e-9 {
-                    cr.rotate(ellipse.rotation);
+                    cr.rotate(ellipse.rotation.to_radians());
                 }
                 let base_width = cr.line_width();
                 let scale_factor = ellipse.rx.abs().max(ellipse.ry.abs()).max(1e-6);
@@ -3263,7 +3419,7 @@ impl DesignerCanvas {
                 cr.save().unwrap();
                 if path_shape.rotation.abs() > 1e-9 {
                     cr.translate(cx, cy);
-                    cr.rotate(path_shape.rotation);
+                    cr.rotate(path_shape.rotation.to_radians());
                     cr.translate(-cx, -cy);
                 }
 
@@ -3324,6 +3480,7 @@ impl DesignerCanvas {
                 let cx = (x1 + x2) / 2.0;
                 let cy = (y1 + y2) / 2.0;
                 // Use negative angle because we flip Y after rotation.
+                // Note: text.rotation is in degrees, convert to radians for Cairo
                 let angle = -text.rotation.to_radians();
 
                 cr.translate(cx, cy);
@@ -3415,27 +3572,6 @@ impl DesignerCanvas {
                     }
                 }
                 cr.stroke().unwrap();
-            }
-            Shape::TabbedBox(tabbed_box) => {
-                let paths = tabbed_box.render_all();
-                for path in paths {
-                    cr.new_path();
-                    for event in path.iter() {
-                        match event {
-                            lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
-                            lyon::path::Event::Line { to, .. } => {
-                                cr.line_to(to.x as f64, to.y as f64)
-                            }
-                            lyon::path::Event::End { close, .. } => {
-                                if close {
-                                    cr.close_path();
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    cr.stroke().unwrap();
-                }
             }
         }
     }
@@ -3720,12 +3856,6 @@ impl DesignerCanvas {
                     sprocket.pitch *= s;
                     sprocket.roller_diameter *= s;
                 }
-                Shape::TabbedBox(tbox) => {
-                    tbox.center.x = anchor.x + (tbox.center.x - anchor.x) * sx;
-                    tbox.center.y = anchor.y + (tbox.center.y - anchor.y) * sy;
-                    tbox.width *= sx.abs();
-                    tbox.height *= sy.abs();
-                }
             }
         }
     }
@@ -3970,11 +4100,23 @@ impl DesignerView {
         let empty_open_btn = gtk4::Button::with_label(&t!("Load Design"));
         let empty_import_svg_btn = gtk4::Button::with_label(&t!("Import SVG"));
         let empty_import_dxf_btn = gtk4::Button::with_label(&t!("Import DXF"));
+        let empty_import_stl_btn = gtk4::Button::with_label(&t!("Import STL"));
+
+        // Check STL import setting for STL import visibility
+        let enable_stl_import = settings_controller
+            .persistence
+            .borrow()
+            .config()
+            .ui
+            .enable_stl_import;
+        
+        empty_import_stl_btn.set_visible(enable_stl_import);
 
         empty_actions.append(&empty_new_btn);
         empty_actions.append(&empty_open_btn);
         empty_actions.append(&empty_import_svg_btn);
         empty_actions.append(&empty_import_dxf_btn);
+        empty_actions.append(&empty_import_stl_btn);
         empty_box.append(&empty_actions);
 
         empty_box.set_visible(true);
@@ -4539,15 +4681,17 @@ impl DesignerView {
             }
         });
 
-        // Connect toolbox operation buttons
-        let canvas_mirror_x = canvas.clone();
-        toolbox.connect_mirror_x_clicked(move || {
-            canvas_mirror_x.mirror_x();
-        });
+        // Connect fast shape gallery to insert shapes
+        let canvas_shape = canvas.clone();
+        let layers_shape = layers.clone();
+        toolbox.fast_shape_gallery().connect_shape_selected(move |shape| {
+            let mut state = canvas_shape.state.borrow_mut();
+            state.add_shape_with_undo(shape);
+            drop(state);
 
-        let canvas_mirror_y = canvas.clone();
-        toolbox.connect_mirror_y_clicked(move || {
-            canvas_mirror_y.mirror_y();
+            // Refresh layers panel
+            layers_shape.refresh(&canvas_shape.state);
+            canvas_shape.widget.queue_draw();
         });
 
         let view = Rc::new(Self {
@@ -4579,6 +4723,22 @@ impl DesignerView {
         {
             let v = view.clone();
             empty_import_dxf_btn.connect_clicked(move |_| v.import_dxf_file());
+        }
+        {
+            let v = view.clone();
+            empty_import_stl_btn.connect_clicked(move |_| v.import_stl_file());
+        }
+
+        // Add settings change listener for STL import feature
+        {
+            let empty_import_stl_btn = empty_import_stl_btn.clone();
+            settings_controller.on_setting_changed(move |key, value| {
+                if key != "enable_stl_import" {
+                    return;
+                }
+                let enabled = value == "true";
+                empty_import_stl_btn.set_visible(enabled);
+            });
         }
 
         // Update properties panel and toolbox when selection changes
@@ -4903,6 +5063,7 @@ impl DesignerView {
         let title = match kind {
             Some("svg") => t!("Import SVG File"),
             Some("dxf") => t!("Import DXF File"),
+            Some("stl") => t!("Import STL File (3D Shadow)"),
             _ => t!("Import Design File"),
         };
 
@@ -4929,6 +5090,17 @@ impl DesignerView {
             }
         }
 
+        // Check STL import setting for STL support
+        let enable_stl_import = if let Some(ref settings) = self.settings_persistence {
+            if let Ok(settings_ref) = settings.try_borrow() {
+                settings_ref.config().ui.enable_stl_import
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
         match kind {
             Some("svg") => {
                 let svg_filter = gtk4::FileFilter::new();
@@ -4942,11 +5114,23 @@ impl DesignerView {
                 dxf_filter.add_pattern("*.dxf");
                 dialog.add_filter(&dxf_filter);
             }
+            Some("stl") => {
+                // Only show STL filter if STL import is enabled
+                if enable_stl_import {
+                    let stl_filter = gtk4::FileFilter::new();
+                    stl_filter.set_name(Some(&t!("STL Files")));
+                    stl_filter.add_pattern("*.stl");
+                    dialog.add_filter(&stl_filter);
+                }
+            }
             _ => {
                 let filter = gtk4::FileFilter::new();
                 filter.set_name(Some(&t!("Supported Files")));
                 filter.add_pattern("*.svg");
                 filter.add_pattern("*.dxf");
+                if enable_stl_import {
+                    filter.add_pattern("*.stl");
+                }
                 dialog.add_filter(&filter);
 
                 let svg_filter = gtk4::FileFilter::new();
@@ -4958,6 +5142,13 @@ impl DesignerView {
                 dxf_filter.set_name(Some(&t!("DXF Files")));
                 dxf_filter.add_pattern("*.dxf");
                 dialog.add_filter(&dxf_filter);
+
+                if enable_stl_import {
+                    let stl_filter = gtk4::FileFilter::new();
+                    stl_filter.set_name(Some(&t!("STL Files")));
+                    stl_filter.add_pattern("*.stl");
+                    dialog.add_filter(&stl_filter);
+                }
             }
         }
 
@@ -4969,11 +5160,23 @@ impl DesignerView {
         let canvas = self.canvas.clone();
         let layers = self.layers.clone();
         let status_label = self.status_label.clone();
+        let settings_persistence = self.settings_persistence.clone();
 
         dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
                 if let Some(file) = dialog.file() {
                     if let Some(path) = file.path() {
+                        // Check STL import setting for STL processing
+                        let enable_stl_import = if let Some(ref settings) = settings_persistence {
+                            if let Ok(settings_ref) = settings.try_borrow() {
+                                settings_ref.config().ui.enable_stl_import
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
                         let result = if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
                             match ext.to_lowercase().as_str() {
                                 "svg" => match std::fs::read_to_string(&path) {
@@ -4990,6 +5193,31 @@ impl DesignerView {
                                         gcodekit5_designer::import::DxfImporter::new(1.0, 0.0, 0.0);
                                     importer.import_file(path.to_str().unwrap_or(""))
                                 }
+                                "stl" => {
+                                    // Only allow STL import if STL import is enabled
+                                    if enable_stl_import {
+                                        let importer =
+                                            gcodekit5_designer::import::StlImporter::new()
+                                                .with_scale(1.0)
+                                                .with_centering(true);
+                                        
+                                        // Import STL and create shadow projection
+                                        let result = importer.import_file(path.to_str().unwrap_or(""));
+                                    
+                                        // TODO: Add 3D mesh to visualizer for preview
+                                        // This would integrate with the new Scene3D system:
+                                        // if let Ok(ref design) = result {
+                                        //     if let Some(mesh_3d) = &design.mesh_3d {
+                                        //         // Add to 3D scene for preview
+                                        //         // Show 3D visualization panel
+                                        //     }
+                                        // }
+                                        
+                                        result
+                                    } else {
+                                        Err(anyhow::anyhow!("STL import requires the STL import feature to be enabled in settings"))
+                                    }
+                                }
                                 _ => Err(anyhow::anyhow!("Unsupported file format")),
                             }
                         } else {
@@ -5002,7 +5230,7 @@ impl DesignerView {
 
                                 // Add imported shapes to canvas
                                 for shape in design.shapes {
-                                    state.canvas.add_shape(shape);
+                                    state.add_shape_with_undo(shape);
                                 }
 
                                 drop(state);
@@ -5046,6 +5274,10 @@ impl DesignerView {
 
     pub fn import_dxf_file(&self) {
         self.import_file_internal(Some("dxf"));
+    }
+
+    pub fn import_stl_file(&self) {
+        self.import_file_internal(Some("stl"));
     }
 
     pub fn save_file(&self) {
@@ -5388,13 +5620,6 @@ impl DesignerView {
                                     let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
                                     svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
                                 }
-                                Shape::TabbedBox(b) => {
-                                    let paths = b.render_all();
-                                    for path in paths {
-                                        let d = gcodekit5_designer::model::DesignPath::from_lyon_path(&path).to_svg_path();
-                                        svg.push_str(&format!(r#"<path d="{}" style="{}" />"#, d, style));
-                                    }
-                                }
                             }
                             svg.push('\n');
                         }
@@ -5421,4 +5646,12 @@ impl DesignerView {
 
     // File operations - TODO: Implement once shape structures are aligned
     // Phase 8 infrastructure is in place but needs shape struct updates
+
+    pub fn add_shape(&self, shape: gcodekit5_designer::model::Shape) {
+        let mut state = self.canvas.state.borrow_mut();
+        state.add_shape_with_undo(shape);
+        drop(state);
+        self.layers.refresh(&self.canvas.state);
+        self.canvas.widget.queue_draw();
+    }
 }

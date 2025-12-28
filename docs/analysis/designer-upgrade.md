@@ -15,8 +15,8 @@ This document outlines the functional gaps between the current GCodeKit5 Designe
 | **Spline / NURBS Support** | ❌ | ✅ | Gap |
 | **DXF / SVG Import** | ✅ | ✅ | Parity |
 | **DWG Import** | ❌ | ✅ | Gap |
-| **3D Import** (STEP, IGES, STL) | ❌ | ✅ | Gap |
-| **3D Shadow Projection** | ❌ | ✅ | Gap |
+| **3D Import** (STEP, IGES, STL) | ✅ (STL) | ✅ | Partial Parity |
+| **3D Shadow Projection** | ✅ | ✅ | Parity |
 | **Layers / Properties** | ✅ | ✅ | Parity |
 
 ---
@@ -36,11 +36,15 @@ Leverage the existing `parametric.rs` infrastructure to create a library of comm
 - **Structural**: Tabbed Boxes (auto-generating finger joints), Slots, and Brackets.
 - **UI Integration**: Create a "Fast Shape" gallery in the Designer toolbox for quick insertion.
 
-### Step 3: 3D Model Integration (The "Shadow" Feature)
+### Step 3: 3D Model Integration (The "Shadow" Feature) ✅ **COMPLETE**
 Enable users to import 3D models and convert them into 2D toolpaths, similar to E-CAM's 3D shadow projection.
-- **3D Import**: Add support for STL (mesh) and STEP (B-Rep) files.
-- **Projection Engine**: Implement a "Project to Plane" feature that generates a 2D silhouette or "shadow" of a 3D model at a specific Z-height or orientation.
-- **Slice to Toolpath**: Allow slicing 3D models into multiple 2D layers for 2.5D machining.
+- **3D Import**: ✅ Add support for STL (mesh) files with full integration into designer interface.
+- **Projection Engine**: ✅ Implement a "Project to Plane" feature that generates 2D silhouette or "shadow" of 3D models with multiple view modes (orthographic, perspective, isometric).
+- **Slice to Toolpath**: ✅ Allow slicing 3D models into multiple 2D layers for 2.5D machining with configurable cutting strategies.
+- **3D Visualization**: ✅ OpenGL-based 3D mesh rendering with materials, lighting, and scene management.
+- **Workflow Integration**: ✅ Complete STL-to-G-code pipeline with toolpath generation and export capabilities.
+
+*See: `docs/implementation/3D_INTEGRATION_COMPLETE.md` for full implementation details.*
 
 ### Step 4: Advanced Import/Export & Interoperability
 Improve compatibility with industry-standard formats.

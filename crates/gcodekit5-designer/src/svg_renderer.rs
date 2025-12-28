@@ -689,45 +689,6 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
             }
             path_str
         }
-        crate::model::Shape::TabbedBox(tabbed_box) => {
-            let paths = tabbed_box.render_all();
-            let mut path_str = String::new();
-            for path in paths {
-                for event in path.iter() {
-                    match event {
-                        lyon::path::Event::Begin { at } => {
-                            let (rx, ry) = rotate_point(
-                                at.x as f64,
-                                at.y as f64,
-                                center_x,
-                                center_y,
-                                rotation,
-                            );
-                            let (sx, sy) = viewport.world_to_pixel(rx, ry);
-                            path_str.push_str(&format!("M {} {} ", sx, sy));
-                        }
-                        lyon::path::Event::Line { to, .. } => {
-                            let (rx, ry) = rotate_point(
-                                to.x as f64,
-                                to.y as f64,
-                                center_x,
-                                center_y,
-                                rotation,
-                            );
-                            let (sx, sy) = viewport.world_to_pixel(rx, ry);
-                            path_str.push_str(&format!("L {} {} ", sx, sy));
-                        }
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                path_str.push_str("Z ");
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            path_str
-        }
     }
 }
 

@@ -1,9 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::gerber::{GerberConverter, GerberLayerType, GerberParameters};
-    use crate::hatch_generator;
-    use lyon::math::point;
-    use lyon::path::Path;
 
     #[test]
     fn test_hatch_generation_events() {

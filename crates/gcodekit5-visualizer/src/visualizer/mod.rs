@@ -5,11 +5,16 @@
 //! - Toolpath visualization (rendering)
 //! - Interactive camera controls (controls)
 //! - Grid and axis rendering
+//! - 3D mesh rendering for STL models
 
 pub mod camera;
 pub mod canvas_renderer;
 pub mod controls;
 pub mod features;
+pub mod mesh_rendering;
+pub mod mesh_renderer;
+pub mod mesh_shaders;
+pub mod scene3d;
 pub mod setup;
 pub mod stock_removal_3d;
 pub mod toolpath_cache;
@@ -27,6 +32,9 @@ pub use controls::{CameraController, ViewPreset, VisualizerControls};
 pub use features::{
     BoundingBox, GridConfig, MachineLimits, SceneFeatures, ToolMarker, WorkCoordinateSystem,
 };
+pub use mesh_rendering::{RenderableMesh, MeshCollection, MeshMaterial};
+pub use mesh_renderer::{MeshRenderer, LightingParams, MeshRenderError};
+pub use scene3d::{Scene3D, Scene3DStats, Renderer3D, stl_integration};
 pub use setup::{Camera, CameraType, Color, Light, LightType, Renderer, Scene, Vector3};
 pub use stock_removal_3d::{
     generate_surface_mesh, StockSimulator3D, ToolpathSegment, ToolpathSegmentType, VoxelGrid,

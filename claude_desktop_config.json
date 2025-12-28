@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "praetorian": {
-      "command": "bunx",
-      "args": ["claude-praetorian-mcp"],
-      "env": {}
-    }
-  }
-}

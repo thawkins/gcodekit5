@@ -800,7 +800,7 @@ dependencies = [
  "parry3d-f64",
  "rapier3d-f64",
  "robust",
- "stl_io",
+ "stl_io 0.8.6",
  "svg",
  "thiserror 2.0.17",
  "ttf-parser 0.25.1",
@@ -1327,7 +1327,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-camtools"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1369,7 +1369,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-communication"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-core"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1402,7 +1402,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-designer"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1416,6 +1416,7 @@ dependencies = [
  "rusttype",
  "serde",
  "serde_json",
+ "stl_io 0.7.0",
  "tempfile",
  "tiny-skia",
  "tracing",
@@ -1424,7 +1425,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-devicedb"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -1435,14 +1436,14 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-gcodeeditor"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "ropey",
 ]
 
 [[package]]
 name = "gcodekit5-settings"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "dirs",
  "gcodekit5-core",
@@ -1453,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-ui"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1492,13 +1493,16 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-visualizer"
-version = "0.41.0-alpha.1"
+version = "0.43.0-alpha.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "chrono",
  "gcodekit5-core",
+ "gcodekit5-designer",
  "glam",
  "glow",
+ "lyon",
  "regex",
  "serde",
  "serde_json",
@@ -4143,6 +4147,16 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "stl_io"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d520eb03e632e666ac32f3c0cf018ac6dcd535ab0be1420937e2d896f44f7cf7"
+dependencies = [
+ "byteorder",
+ "float-cmp",
+]
 
 [[package]]
 name = "stl_io"

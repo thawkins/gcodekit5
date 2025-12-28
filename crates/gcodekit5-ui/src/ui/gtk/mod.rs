@@ -4,6 +4,7 @@ pub mod designer;
 pub mod designer_layers;
 pub mod designer_properties;
 pub mod designer_toolbox;
+pub mod fast_shape_gallery;
 pub mod device_console;
 pub mod device_manager;
 pub mod editor;

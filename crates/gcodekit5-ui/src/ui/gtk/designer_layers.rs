@@ -291,7 +291,6 @@ impl LayersPanel {
                         gcodekit5_designer::model::Shape::Polygon(_) => t!("Poly"),
                         gcodekit5_designer::model::Shape::Gear(_) => t!("Gear"),
                         gcodekit5_designer::model::Shape::Sprocket(_) => t!("Spro"),
-                        gcodekit5_designer::model::Shape::TabbedBox(_) => t!("Box"),
                     };
                     (
                         shape_obj.id,

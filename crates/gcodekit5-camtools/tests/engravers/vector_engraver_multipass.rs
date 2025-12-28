@@ -17,7 +17,7 @@ fn test_multipass_generation() {
     let mut params = VectorEngravingParameters::default();
     params.multi_pass = true;
     params.num_passes = 3;
-    params.z_increment = 0.5;
+    params.z_step_down = 0.5;
 
     let engraver = VectorEngraver::from_file(&svg_path, params).unwrap();
 

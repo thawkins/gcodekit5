@@ -9,6 +9,7 @@ description = "G-code visualization and parsing for GCodeKit4"
 
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
+gcodekit5-designer = { path = "../gcodekit5-designer" }
 regex = "1.10"
 thiserror = "2.0.17"
 serde = { version = "1.0", features = ["derive"] }
@@ -19,5 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 glam = "0.29"
 glow = "0.14"
+bytemuck = "1.14"
+lyon = "1.0"
 
 [dev-dependencies]

@@ -16,6 +16,7 @@ fn test_user_reported_bug_thickness_1_5mm() {
         finger_joint: FingerJointSettings::default(),
         burn: 0.0,
         laser_passes: 1,
+        z_step_down: 0.5,
         laser_power: 1000,
         feed_rate: 500.0,
         offset_x: 0.0,

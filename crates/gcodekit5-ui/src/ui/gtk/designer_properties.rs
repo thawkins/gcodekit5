@@ -2,7 +2,7 @@ use crate::t;
 use gcodekit5_core::units;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::font_manager;
-use gcodekit5_designer::model::{DesignerShape, Point, Shape};
+use gcodekit5_designer::model::{DesignerShape, Shape};
 use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_settings::SettingsPersistence;
@@ -85,12 +85,6 @@ pub struct PropertiesPanel {
     sprocket_pitch_entry: Entry,
     sprocket_teeth_entry: Entry,
     sprocket_roller_diameter_entry: Entry,
-
-    // TabbedBox widgets
-    tabbed_box_frame: Frame,
-    box_depth_entry: Entry,
-    box_thickness_entry: Entry,
-    box_tab_width_entry: Entry,
 
     // CAM widgets
     op_type_combo: DropDown,
@@ -443,42 +437,6 @@ impl PropertiesPanel {
         sprocket_frame.set_child(Some(&sprocket_grid));
         content.append(&sprocket_frame);
 
-        // Tabbed Box Section
-        let tabbed_box_frame = Self::create_section(&t!("Tabbed Box"));
-        let box_grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
-
-        let depth_label = Label::new(Some(&t!("Depth:")));
-        depth_label.set_halign(gtk4::Align::Start);
-        let box_depth_entry = Entry::new();
-        box_depth_entry.set_hexpand(true);
-
-        let thickness_label = Label::new(Some(&t!("Thickness:")));
-        thickness_label.set_halign(gtk4::Align::Start);
-        let box_thickness_entry = Entry::new();
-        box_thickness_entry.set_hexpand(true);
-
-        let tab_width_label = Label::new(Some(&t!("Tab Width:")));
-        tab_width_label.set_halign(gtk4::Align::Start);
-        let box_tab_width_entry = Entry::new();
-        box_tab_width_entry.set_hexpand(true);
-
-        box_grid.attach(&depth_label, 0, 0, 1, 1);
-        box_grid.attach(&box_depth_entry, 1, 0, 1, 1);
-        box_grid.attach(&thickness_label, 0, 1, 1, 1);
-        box_grid.attach(&box_thickness_entry, 1, 1, 1, 1);
-        box_grid.attach(&tab_width_label, 0, 2, 1, 1);
-        box_grid.attach(&box_tab_width_entry, 1, 2, 1, 1);
-
-        tabbed_box_frame.set_child(Some(&box_grid));
-        content.append(&tabbed_box_frame);
-
         // Geometry Operations Section
         let ops_frame = Self::create_section(&t!("Geometry Operations"));
         let ops_grid = gtk4::Grid::builder()
@@ -651,7 +609,6 @@ impl PropertiesPanel {
             polygon_frame: polygon_frame.clone(),
             gear_frame: gear_frame.clone(),
             sprocket_frame: sprocket_frame.clone(),
-            tabbed_box_frame: tabbed_box_frame.clone(),
             cam_frame: cam_frame.clone(),
             ops_frame: ops_frame.clone(),
             empty_label: empty_label.clone(),
@@ -674,9 +631,6 @@ impl PropertiesPanel {
             sprocket_pitch_entry: sprocket_pitch_entry.clone(),
             sprocket_teeth_entry: sprocket_teeth_entry.clone(),
             sprocket_roller_diameter_entry: sprocket_roller_diameter_entry.clone(),
-            box_depth_entry: box_depth_entry.clone(),
-            box_thickness_entry: box_thickness_entry.clone(),
-            box_tab_width_entry: box_tab_width_entry.clone(),
             op_type_combo: op_type_combo.clone(),
             depth_entry: depth_entry.clone(),
             step_down_entry: step_down_entry.clone(),
@@ -745,16 +699,24 @@ impl PropertiesPanel {
             if let Ok(val) = units::parse_length(&entry.text(), system) {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+                let selected_count = designer_state.selected_count();
+
+                if selected_count == 1 {
+                    // Single selection - use undo-aware method
                     let y = units::parse_length(&pos_y.text(), system).unwrap_or(0.0) as f64;
                     let w = units::parse_length(&width.text(), system).unwrap_or(0.0) as f64;
                     let h = units::parse_length(&height.text(), system).unwrap_or(0.0) as f64;
                     let x = val as f64;
 
-                    // Update shape position
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        Self::update_shape_position_and_size(&mut obj.shape, x, y, w, h);
-                    }
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, true, false);
+                } else if selected_count > 1 {
+                    // Multi-selection - use bounding box
+                    let y = units::parse_length(&pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let w = units::parse_length(&width.text(), system).unwrap_or(0.0) as f64;
+                    let h = units::parse_length(&height.text(), system).unwrap_or(0.0) as f64;
+                    let x = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, true, false);
                 }
                 drop(designer_state);
                 if let Some(ref cb) = *redraw1.borrow() {
@@ -783,15 +745,24 @@ impl PropertiesPanel {
             if let Ok(val) = units::parse_length(&entry.text(), system) {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+                let selected_count = designer_state.selected_count();
+
+                if selected_count == 1 {
+                    // Single selection - use undo-aware method
                     let x = units::parse_length(&pos_x.text(), system).unwrap_or(0.0) as f64;
                     let w = units::parse_length(&width.text(), system).unwrap_or(0.0) as f64;
                     let h = units::parse_length(&height.text(), system).unwrap_or(0.0) as f64;
                     let y = val as f64;
 
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        Self::update_shape_position_and_size(&mut obj.shape, x, y, w, h);
-                    }
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, true, false);
+                } else if selected_count > 1 {
+                    // Multi-selection - use bounding box
+                    let x = units::parse_length(&pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let w = units::parse_length(&width.text(), system).unwrap_or(0.0) as f64;
+                    let h = units::parse_length(&height.text(), system).unwrap_or(0.0) as f64;
+                    let y = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, true, false);
                 }
                 drop(designer_state);
                 if let Some(ref cb) = *redraw2.borrow() {
@@ -811,8 +782,8 @@ impl PropertiesPanel {
         let redraw3 = self.redraw_callback.clone();
         let updating3 = self.updating.clone();
 
-        // Width changed
-        self.width_entry.connect_changed(move |entry| {
+        // Width changed (on Enter/activate)
+        self.width_entry.connect_activate(move |entry| {
             if *updating3.borrow() {
                 return;
             }
@@ -820,15 +791,24 @@ impl PropertiesPanel {
             if let Ok(val) = units::parse_length(&entry.text(), system) {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+                let selected_count = designer_state.selected_count();
+
+                if selected_count == 1 {
+                    // Single selection - use undo-aware method
                     let x = units::parse_length(&pos_x.text(), system).unwrap_or(0.0) as f64;
                     let y = units::parse_length(&pos_y.text(), system).unwrap_or(0.0) as f64;
                     let h = units::parse_length(&height.text(), system).unwrap_or(0.0) as f64;
                     let w = val as f64;
 
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        Self::update_shape_position_and_size(&mut obj.shape, x, y, w, h);
-                    }
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
+                } else if selected_count > 1 {
+                    // Multi-selection - use bounding box
+                    let x = units::parse_length(&pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let y = units::parse_length(&pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let h = units::parse_length(&height.text(), system).unwrap_or(0.0) as f64;
+                    let w = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
                 }
                 drop(designer_state);
                 if let Some(ref cb) = *redraw3.borrow() {
@@ -848,8 +828,8 @@ impl PropertiesPanel {
         let redraw4 = self.redraw_callback.clone();
         let updating4 = self.updating.clone();
 
-        // Height changed
-        self.height_entry.connect_changed(move |entry| {
+        // Height changed (on Enter/activate)
+        self.height_entry.connect_activate(move |entry| {
             if *updating4.borrow() {
                 return;
             }
@@ -857,15 +837,24 @@ impl PropertiesPanel {
             if let Ok(val) = units::parse_length(&entry.text(), system) {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+                let selected_count = designer_state.selected_count();
+
+                if selected_count == 1 {
+                    // Single selection - use undo-aware method
                     let x = units::parse_length(&pos_x.text(), system).unwrap_or(0.0) as f64;
                     let y = units::parse_length(&pos_y.text(), system).unwrap_or(0.0) as f64;
                     let w = units::parse_length(&width.text(), system).unwrap_or(0.0) as f64;
                     let h = val as f64;
 
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        Self::update_shape_position_and_size(&mut obj.shape, x, y, w, h);
-                    }
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
+                } else if selected_count > 1 {
+                    // Multi-selection - use bounding box
+                    let x = units::parse_length(&pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let y = units::parse_length(&pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let w = units::parse_length(&width.text(), system).unwrap_or(0.0) as f64;
+                    let h = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
                 }
                 drop(designer_state);
                 if let Some(ref cb) = *redraw4.borrow() {
@@ -948,16 +937,15 @@ impl PropertiesPanel {
             if *updating6.borrow() {
                 return;
             }
+            let text = entry.text().to_string();
             let mut designer_state = state.borrow_mut();
-            if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                let text = entry.text().to_string();
-
-                if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                    if let Shape::Text(text_shape) = &mut obj.shape {
-                        text_shape.text = text;
-                    }
+            
+            Self::modify_selected_shape_with_undo(&mut designer_state, |obj| {
+                if let Shape::Text(text_shape) = &mut obj.shape {
+                    text_shape.text = text;
                 }
-            }
+            });
+            
             drop(designer_state);
             if let Some(ref cb) = *redraw6.borrow() {
                 cb();
@@ -977,13 +965,13 @@ impl PropertiesPanel {
             if let Some(size_mm) = parse_font_points_mm(&entry.text()) {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        if let Shape::Text(text_shape) = &mut obj.shape {
-                            text_shape.font_size = size_mm;
-                        }
+                
+                Self::modify_selected_shape_with_undo(&mut designer_state, |obj| {
+                    if let Shape::Text(text_shape) = &mut obj.shape {
+                        text_shape.font_size = size_mm;
                     }
-                }
+                });
+                
                 drop(designer_state);
                 if let Some(ref cb) = *redraw7.borrow() {
                     cb();
@@ -1015,15 +1003,14 @@ impl PropertiesPanel {
                 let italic = italic_check.is_active();
 
                 let mut designer_state = state.borrow_mut();
-                if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                    if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                        if let Shape::Text(text_shape) = &mut obj.shape {
-                            text_shape.font_family = family;
-                            text_shape.bold = bold;
-                            text_shape.italic = italic;
-                        }
+                let family_clone = family.clone();
+                Self::modify_selected_shape_with_undo(&mut designer_state, |obj| {
+                    if let Shape::Text(text_shape) = &mut obj.shape {
+                        text_shape.font_family = family_clone;
+                        text_shape.bold = bold;
+                        text_shape.italic = italic;
                     }
-                }
+                });
                 drop(designer_state);
                 if let Some(ref cb) = *redraw_font.borrow() {
                     cb();
@@ -1051,15 +1038,14 @@ impl PropertiesPanel {
             let italic = italic_check.is_active();
 
             let mut designer_state = state.borrow_mut();
-            if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                    if let Shape::Text(text_shape) = &mut obj.shape {
-                        text_shape.font_family = family;
-                        text_shape.bold = bold;
-                        text_shape.italic = italic;
-                    }
+            let family_clone = family.clone();
+            Self::modify_selected_shape_with_undo(&mut designer_state, |obj| {
+                if let Shape::Text(text_shape) = &mut obj.shape {
+                    text_shape.font_family = family_clone;
+                    text_shape.bold = bold;
+                    text_shape.italic = italic;
                 }
-            }
+            });
             drop(designer_state);
             if let Some(ref cb) = *redraw_style.borrow() {
                 cb();
@@ -1087,15 +1073,14 @@ impl PropertiesPanel {
             let italic = italic_check2.is_active();
 
             let mut designer_state = state.borrow_mut();
-            if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                    if let Shape::Text(text_shape) = &mut obj.shape {
-                        text_shape.font_family = family;
-                        text_shape.bold = bold;
-                        text_shape.italic = italic;
-                    }
+            let family_clone = family.clone();
+            Self::modify_selected_shape_with_undo(&mut designer_state, |obj| {
+                if let Shape::Text(text_shape) = &mut obj.shape {
+                    text_shape.font_family = family_clone;
+                    text_shape.bold = bold;
+                    text_shape.italic = italic;
                 }
-            }
+            });
             drop(designer_state);
             if let Some(ref cb) = *redraw_style2.borrow() {
                 cb();
@@ -1115,13 +1100,13 @@ impl PropertiesPanel {
                 if val >= 3 {
                     entry.remove_css_class("entry-invalid");
                     let mut designer_state = state.borrow_mut();
-                    if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-                        if let Some(obj) = designer_state.canvas.shape_store.get_mut(id) {
-                            if let Shape::Polygon(polygon) = &mut obj.shape {
-                                polygon.sides = val;
-                            }
+                    
+                    Self::modify_selected_shape_with_undo(&mut designer_state, |obj| {
+                        if let Shape::Polygon(polygon) = &mut obj.shape {
+                            polygon.sides = val;
                         }
-                    }
+                    });
+                    
                     drop(designer_state);
                     if let Some(ref cb) = *redraw_sides.borrow() {
                         cb();
@@ -1562,154 +1547,6 @@ impl PropertiesPanel {
                 }
             });
 
-        // Tabbed Box handlers
-        let state = self.state.clone();
-        let redraw_box = self.redraw_callback.clone();
-        let updating_box = self.updating.clone();
-        self.box_depth_entry.connect_changed(move |entry| {
-            if *updating_box.borrow() {
-                return;
-            }
-            if let Ok(val) = entry.text().parse::<f64>() {
-                if val > 0.0 {
-                    entry.remove_css_class("entry-invalid");
-                    let mut designer_state = state.borrow_mut();
-                    let thickness = designer_state
-                        .canvas
-                        .shapes()
-                        .find(|s| s.selected)
-                        .and_then(|s| {
-                            if let Shape::TabbedBox(b) = &s.shape {
-                                Some(b.thickness)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(3.0);
-                    let tab_width = designer_state
-                        .canvas
-                        .shapes()
-                        .find(|s| s.selected)
-                        .and_then(|s| {
-                            if let Shape::TabbedBox(b) = &s.shape {
-                                Some(b.tab_width)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(10.0);
-
-                    designer_state.set_selected_tabbed_box_properties(val, thickness, tab_width);
-                    drop(designer_state);
-                    if let Some(ref cb) = *redraw_box.borrow() {
-                        cb();
-                    }
-                } else {
-                    entry.add_css_class("entry-invalid");
-                }
-            } else {
-                entry.add_css_class("entry-invalid");
-            }
-        });
-
-        let state = self.state.clone();
-        let redraw_box2 = self.redraw_callback.clone();
-        let updating_box2 = self.updating.clone();
-        self.box_thickness_entry.connect_changed(move |entry| {
-            if *updating_box2.borrow() {
-                return;
-            }
-            if let Ok(val) = entry.text().parse::<f64>() {
-                if val > 0.0 {
-                    entry.remove_css_class("entry-invalid");
-                    let mut designer_state = state.borrow_mut();
-                    let depth = designer_state
-                        .canvas
-                        .shapes()
-                        .find(|s| s.selected)
-                        .and_then(|s| {
-                            if let Shape::TabbedBox(b) = &s.shape {
-                                Some(b.depth)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(50.0);
-                    let tab_width = designer_state
-                        .canvas
-                        .shapes()
-                        .find(|s| s.selected)
-                        .and_then(|s| {
-                            if let Shape::TabbedBox(b) = &s.shape {
-                                Some(b.tab_width)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(10.0);
-
-                    designer_state.set_selected_tabbed_box_properties(depth, val, tab_width);
-                    drop(designer_state);
-                    if let Some(ref cb) = *redraw_box2.borrow() {
-                        cb();
-                    }
-                } else {
-                    entry.add_css_class("entry-invalid");
-                }
-            } else {
-                entry.add_css_class("entry-invalid");
-            }
-        });
-
-        let state = self.state.clone();
-        let redraw_box3 = self.redraw_callback.clone();
-        let updating_box3 = self.updating.clone();
-        self.box_tab_width_entry.connect_changed(move |entry| {
-            if *updating_box3.borrow() {
-                return;
-            }
-            if let Ok(val) = entry.text().parse::<f64>() {
-                if val > 0.0 {
-                    entry.remove_css_class("entry-invalid");
-                    let mut designer_state = state.borrow_mut();
-                    let depth = designer_state
-                        .canvas
-                        .shapes()
-                        .find(|s| s.selected)
-                        .and_then(|s| {
-                            if let Shape::TabbedBox(b) = &s.shape {
-                                Some(b.depth)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(50.0);
-                    let thickness = designer_state
-                        .canvas
-                        .shapes()
-                        .find(|s| s.selected)
-                        .and_then(|s| {
-                            if let Shape::TabbedBox(b) = &s.shape {
-                                Some(b.thickness)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(3.0);
-
-                    designer_state.set_selected_tabbed_box_properties(depth, thickness, val);
-                    drop(designer_state);
-                    if let Some(ref cb) = *redraw_box3.borrow() {
-                        cb();
-                    }
-                } else {
-                    entry.add_css_class("entry-invalid");
-                }
-            } else {
-                entry.add_css_class("entry-invalid");
-            }
-        });
-
         // Geometry Operations Handlers
         let state = self.state.clone();
         let preview = self.preview_shapes.clone();
@@ -1946,95 +1783,110 @@ impl PropertiesPanel {
             }
         });
         self.chamfer_entry.add_controller(focus_controller);
+
+        // Add focus-out handlers for width and height to apply changes when user tabs away
+        let width_focus_controller = EventControllerFocus::new();
+        let width_state = self.state.clone();
+        let width_settings = self.settings.clone();
+        let width_pos_x = self.pos_x_entry.clone();
+        let width_pos_y = self.pos_y_entry.clone();
+        let width_height = self.height_entry.clone();
+        let width_redraw = self.redraw_callback.clone();
+        let width_updating = self.updating.clone();
+        let width_entry_clone = self.width_entry.clone();
+        
+        width_focus_controller.connect_leave(move |_| {
+            if *width_updating.borrow() {
+                return;
+            }
+            let system = width_settings.borrow().config().ui.measurement_system;
+            if let Ok(val) = units::parse_length(&width_entry_clone.text(), system) {
+                width_entry_clone.remove_css_class("entry-invalid");
+                let mut designer_state = width_state.borrow_mut();
+                let selected_count = designer_state.selected_count();
+
+                if selected_count == 1 {
+                    // Single selection - use undo-aware method
+                    let x = units::parse_length(&width_pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let y = units::parse_length(&width_pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let h = units::parse_length(&width_height.text(), system).unwrap_or(0.0) as f64;
+                    let w = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
+                } else if selected_count > 1 {
+                    // Multi-selection - use bounding box
+                    let x = units::parse_length(&width_pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let y = units::parse_length(&width_pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let h = units::parse_length(&width_height.text(), system).unwrap_or(0.0) as f64;
+                    let w = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
+                }
+                drop(designer_state);
+                if let Some(ref cb) = *width_redraw.borrow() {
+                    cb();
+                }
+            } else {
+                width_entry_clone.add_css_class("entry-invalid");
+            }
+        });
+        self.width_entry.add_controller(width_focus_controller);
+
+        let height_focus_controller = EventControllerFocus::new();
+        let height_state = self.state.clone();
+        let height_settings = self.settings.clone();
+        let height_pos_x = self.pos_x_entry.clone();
+        let height_pos_y = self.pos_y_entry.clone();
+        let height_width = self.width_entry.clone();
+        let height_redraw = self.redraw_callback.clone();
+        let height_updating = self.updating.clone();
+        let height_entry_clone = self.height_entry.clone();
+        
+        height_focus_controller.connect_leave(move |_| {
+            if *height_updating.borrow() {
+                return;
+            }
+            let system = height_settings.borrow().config().ui.measurement_system;
+            if let Ok(val) = units::parse_length(&height_entry_clone.text(), system) {
+                height_entry_clone.remove_css_class("entry-invalid");
+                let mut designer_state = height_state.borrow_mut();
+                let selected_count = designer_state.selected_count();
+
+                if selected_count == 1 {
+                    // Single selection - use undo-aware method
+                    let x = units::parse_length(&height_pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let y = units::parse_length(&height_pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let w = units::parse_length(&height_width.text(), system).unwrap_or(0.0) as f64;
+                    let h = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
+                } else if selected_count > 1 {
+                    // Multi-selection - use bounding box
+                    let x = units::parse_length(&height_pos_x.text(), system).unwrap_or(0.0) as f64;
+                    let y = units::parse_length(&height_pos_y.text(), system).unwrap_or(0.0) as f64;
+                    let w = units::parse_length(&height_width.text(), system).unwrap_or(0.0) as f64;
+                    let h = val as f64;
+
+                    designer_state.set_selected_position_and_size_with_flags(x, y, w, h, false, true);
+                }
+                drop(designer_state);
+                if let Some(ref cb) = *height_redraw.borrow() {
+                    cb();
+                }
+            } else {
+                height_entry_clone.add_css_class("entry-invalid");
+            }
+        });
+        self.height_entry.add_controller(height_focus_controller);
     }
 
-    fn update_shape_position_and_size(shape: &mut Shape, x: f64, y: f64, width: f64, height: f64) {
-        match shape {
-            Shape::Rectangle(rect) => {
-                rect.center.x = x;
-                rect.center.y = y;
-                rect.width = width;
-                rect.height = height;
-
-                if rect.is_slot {
-                    rect.corner_radius = rect.width.min(rect.height) / 2.0;
-                }
+    fn set_entry_text_if_changed(&self, entry: &Entry, new_value: f32, system: gcodekit5_core::units::MeasurementSystem) {
+        if let Ok(current_parsed) = units::parse_length(&entry.text(), system) {
+            if (current_parsed as f64 - new_value as f64).abs() > 1e-6 {
+                entry.set_text(&units::format_length(new_value, system));
             }
-            Shape::Circle(circle) => {
-                circle.center = Point::new(x, y);
-                circle.radius = width / 2.0; // Use width as diameter
-            }
-            Shape::Ellipse(ellipse) => {
-                ellipse.center = Point::new(x, y);
-                ellipse.rx = width / 2.0;
-                ellipse.ry = height / 2.0;
-            }
-            Shape::Line(line) => {
-                // For line, x,y is start point, width/height define end point
-                line.start = Point::new(x, y);
-                line.end = Point::new(x + width, y + height);
-            }
-            Shape::Path(path) => {
-                // Calculate current center and size
-                let (x1, y1, x2, y2) = path.bounds();
-                let current_w = x2 - x1;
-                let current_h = y2 - y1;
-                let current_cx = (x1 + x2) / 2.0;
-                let current_cy = (y1 + y2) / 2.0;
-
-                // Calculate scale factors
-                let sx = if current_w.abs() > 1e-6 {
-                    width / current_w
-                } else {
-                    1.0
-                };
-                let sy = if current_h.abs() > 1e-6 {
-                    height / current_h
-                } else {
-                    1.0
-                };
-
-                // Scale around current center
-                path.scale(sx, sy, Point::new(current_cx, current_cy));
-
-                // Translate to new center
-                path.translate(x - current_cx, y - current_cy);
-            }
-            Shape::Text(text) => {
-                text.x = x;
-                text.y = y;
-                // Width/Height are derived from font size and content, so we don't update them here
-                // unless we want to implement scaling via width/height
-            }
-            Shape::Triangle(triangle) => {
-                triangle.center.x = x;
-                triangle.center.y = y;
-                triangle.width = width;
-                triangle.height = height;
-            }
-            Shape::Polygon(polygon) => {
-                polygon.center.x = x;
-                polygon.center.y = y;
-                polygon.radius = width.min(height) / 2.0;
-            }
-            Shape::Gear(gear) => {
-                gear.center.x = x;
-                gear.center.y = y;
-                // module * teeth = pitch diameter
-                gear.module = width / gear.teeth as f64;
-            }
-            Shape::Sprocket(sprocket) => {
-                sprocket.center.x = x;
-                sprocket.center.y = y;
-                // pitch = pitch_dia * sin(PI / teeth)
-                sprocket.pitch = width * (std::f64::consts::PI / sprocket.teeth as f64).sin();
-            }
-            Shape::TabbedBox(tabbed_box) => {
-                tabbed_box.center.x = x;
-                tabbed_box.center.y = y;
-                tabbed_box.width = width;
-                tabbed_box.height = height;
-            }
+        } else {
+            entry.set_text(&units::format_length(new_value, system));
         }
     }
 
@@ -2155,16 +2007,15 @@ impl PropertiesPanel {
                 self.cam_frame.set_visible(true);
                 // Visibility of ops_frame will be set in the shape match block
             } else {
-                // Multi-select: CAM only
-                self.pos_frame.set_visible(false);
-                self.size_frame.set_visible(false);
-                self.rot_frame.set_visible(false);
+                // Multi-select: show bounding box properties + CAM
+                self.pos_frame.set_visible(true);
+                self.size_frame.set_visible(true);
+                self.rot_frame.set_visible(true);
                 self.corner_frame.set_visible(false);
                 self.text_frame.set_visible(false);
                 self.polygon_frame.set_visible(false);
                 self.gear_frame.set_visible(false);
                 self.sprocket_frame.set_visible(false);
-                self.tabbed_box_frame.set_visible(false);
                 self.cam_frame.set_visible(true);
                 self.ops_frame.set_visible(any_not_text);
             }
@@ -2185,9 +2036,6 @@ impl PropertiesPanel {
                 &self.sprocket_pitch_entry,
                 &self.sprocket_teeth_entry,
                 &self.sprocket_roller_diameter_entry,
-                &self.box_depth_entry,
-                &self.box_thickness_entry,
-                &self.box_tab_width_entry,
                 &self.depth_entry,
                 &self.step_down_entry,
                 &self.step_in_entry,
@@ -2214,16 +2062,12 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(rect.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(rect.center.y as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length(rect.width as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length(rect.height as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, rect.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, rect.center.y as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, rect.width as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, rect.height as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", rect.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", rect.rotation));
 
                         self.corner_radius_entry
                             .set_text(&units::format_length(rect.corner_radius as f32, system));
@@ -2244,16 +2088,12 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(circle.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(circle.center.y as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length((circle.radius * 2.0) as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length((circle.radius * 2.0) as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, circle.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, circle.center.y as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, (circle.radius * 2.0) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (circle.radius * 2.0) as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", circle.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", circle.rotation));
 
                         self.corner_radius_entry.set_sensitive(false);
                         self.is_slot_check.set_sensitive(false);
@@ -2269,16 +2109,12 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(ellipse.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(ellipse.center.y as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length((ellipse.rx * 2.0) as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length((ellipse.ry * 2.0) as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, ellipse.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, ellipse.center.y as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, (ellipse.rx * 2.0) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (ellipse.ry * 2.0) as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", ellipse.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", ellipse.rotation));
 
                         self.corner_radius_entry.set_sensitive(false);
                         self.is_slot_check.set_sensitive(false);
@@ -2294,18 +2130,10 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(line.start.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(line.start.y as f32, system));
-                        self.width_entry.set_text(&units::format_length(
-                            (line.end.x - line.start.x) as f32,
-                            system,
-                        ));
-                        self.height_entry.set_text(&units::format_length(
-                            (line.end.y - line.start.y) as f32,
-                            system,
-                        ));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, line.start.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, line.start.y as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, (line.end.x - line.start.x) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (line.end.y - line.start.y) as f32, system);
                         self.rotation_entry
                             .set_text(&format!("{:.1}", line.rotation));
 
@@ -2329,16 +2157,12 @@ impl PropertiesPanel {
                         let cx = (x1 + x2) / 2.0;
                         let cy = (y1 + y2) / 2.0;
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(cx as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(cy as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length(w as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length(h as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, cx as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, cy as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, w as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, h as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", path.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", path.rotation));
 
                         self.corner_radius_entry.set_sensitive(false);
                         self.is_slot_check.set_sensitive(false);
@@ -2354,18 +2178,14 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.ops_frame.set_visible(false);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(text.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(text.y as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, text.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, text.y as f32, system);
                         // Width/Height are derived, maybe show bounding box size?
                         let (x1, y1, x2, y2) = text.bounds();
-                        self.width_entry
-                            .set_text(&units::format_length((x2 - x1) as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length((y2 - y1) as f32, system));
+                        self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", text.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", text.rotation));
 
                         self.width_entry.set_sensitive(false);
                         self.height_entry.set_sensitive(false);
@@ -2413,16 +2233,12 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(triangle.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(triangle.center.y as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length(triangle.width as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length(triangle.height as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, triangle.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, triangle.center.y as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, triangle.width as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, triangle.height as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", triangle.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", triangle.rotation));
 
                         self.corner_radius_entry.set_sensitive(false);
                         self.is_slot_check.set_sensitive(false);
@@ -2438,19 +2254,14 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(true);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
-                        self.tabbed_box_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(polygon.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(polygon.center.y as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length((polygon.radius * 2.0) as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length((polygon.radius * 2.0) as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, polygon.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, polygon.center.y as f32, system);
+                        self.set_entry_text_if_changed(&self.width_entry, (polygon.radius * 2.0) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (polygon.radius * 2.0) as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", polygon.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", polygon.rotation));
                         self.sides_entry.set_text(&polygon.sides.to_string());
 
                         self.corner_radius_entry.set_sensitive(false);
@@ -2467,20 +2278,15 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(true);
                         self.sprocket_frame.set_visible(false);
-                        self.tabbed_box_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(gear.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(gear.center.y as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, gear.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, gear.center.y as f32, system);
                         let pitch_dia = gear.module * gear.teeth as f64;
-                        self.width_entry
-                            .set_text(&units::format_length(pitch_dia as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length(pitch_dia as f32, system));
+                        self.set_entry_text_if_changed(&self.width_entry, pitch_dia as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, pitch_dia as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", gear.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", gear.rotation));
 
                         self.gear_module_entry
                             .set_text(&format!("{:.3}", gear.module));
@@ -2499,21 +2305,16 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(true);
-                        self.tabbed_box_frame.set_visible(false);
                         self.ops_frame.set_visible(true);
 
-                        self.pos_x_entry
-                            .set_text(&units::format_length(sprocket.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(sprocket.center.y as f32, system));
+                        self.set_entry_text_if_changed(&self.pos_x_entry, sprocket.center.x as f32, system);
+                        self.set_entry_text_if_changed(&self.pos_y_entry, sprocket.center.y as f32, system);
                         let pitch_dia =
                             sprocket.pitch / (std::f64::consts::PI / sprocket.teeth as f64).sin();
-                        self.width_entry
-                            .set_text(&units::format_length(pitch_dia as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length(pitch_dia as f32, system));
+                        self.set_entry_text_if_changed(&self.width_entry, pitch_dia as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, pitch_dia as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", sprocket.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", sprocket.rotation));
 
                         self.sprocket_pitch_entry
                             .set_text(&format!("{:.3}", sprocket.pitch));
@@ -2527,60 +2328,58 @@ impl PropertiesPanel {
                         self.text_entry.set_sensitive(false);
                         self.font_size_entry.set_sensitive(false);
                     }
-                    Shape::TabbedBox(tabbed_box) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.tabbed_box_frame.set_visible(true);
-                        self.ops_frame.set_visible(true);
-
-                        self.pos_x_entry
-                            .set_text(&units::format_length(tabbed_box.center.x as f32, system));
-                        self.pos_y_entry
-                            .set_text(&units::format_length(tabbed_box.center.y as f32, system));
-                        self.width_entry
-                            .set_text(&units::format_length(tabbed_box.width as f32, system));
-                        self.height_entry
-                            .set_text(&units::format_length(tabbed_box.height as f32, system));
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", tabbed_box.rotation.to_degrees()));
-
-                        self.box_depth_entry
-                            .set_text(&units::format_length(tabbed_box.depth as f32, system));
-                        self.box_thickness_entry
-                            .set_text(&units::format_length(tabbed_box.thickness as f32, system));
-                        self.box_tab_width_entry
-                            .set_text(&units::format_length(tabbed_box.tab_width as f32, system));
-
-                        self.corner_radius_entry.set_sensitive(false);
-                        self.is_slot_check.set_sensitive(false);
-                        self.text_entry.set_sensitive(false);
-                        self.font_size_entry.set_sensitive(false);
-                    }
                 }
             } else {
-                // Multiple selection - disable geometry properties
-                self.pos_x_entry.set_sensitive(false);
-                self.pos_y_entry.set_sensitive(false);
-                self.width_entry.set_sensitive(false);
-                self.height_entry.set_sensitive(false);
-                self.rotation_entry.set_sensitive(false);
-                self.corner_radius_entry.set_sensitive(false);
-                self.is_slot_check.set_sensitive(false);
-                self.text_entry.set_sensitive(false);
-                self.font_size_entry.set_sensitive(false);
+                // Multiple selection - show bounding box properties
+                // Calculate bounding box of all selected shapes
+                let designer_state = self.state.borrow();
+                if let Some((min_x, min_y, max_x, max_y)) = designer_state.canvas.selection_bounds() {
+                    let center_x = (min_x + max_x) / 2.0;
+                    let center_y = (min_y + max_y) / 2.0;
+                    let width = max_x - min_x;
+                    let height = max_y - min_y;
 
-                // Clear values
-                self.pos_x_entry.set_text("");
-                self.pos_y_entry.set_text("");
-                self.width_entry.set_text("");
-                self.height_entry.set_text("");
-                self.rotation_entry.set_text("");
-                self.corner_radius_entry.set_text("");
-                self.text_entry.set_text("");
-                self.font_size_entry.set_text("");
+                    // Enable position and size controls for bounding box
+                    self.pos_x_entry.set_sensitive(true);
+                    self.pos_y_entry.set_sensitive(true);
+                    self.width_entry.set_sensitive(true);
+                    self.height_entry.set_sensitive(true);
+                    self.rotation_entry.set_sensitive(false); // Disable rotation for multi-selection
+
+                    // Set bounding box values
+                    self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
+                    self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
+                    self.set_entry_text_if_changed(&self.width_entry, width as f32, system);
+                    self.set_entry_text_if_changed(&self.height_entry, height as f32, system);
+                    self.rotation_entry.set_text("0.0"); // Multi-selection rotation not supported
+
+                    // Disable other shape-specific controls
+                    self.corner_radius_entry.set_sensitive(false);
+                    self.is_slot_check.set_sensitive(false);
+                    self.text_entry.set_sensitive(false);
+                    self.font_size_entry.set_sensitive(false);
+                } else {
+                    // Fallback if no bounds (shouldn't happen for multi-selection)
+                    self.pos_x_entry.set_sensitive(false);
+                    self.pos_y_entry.set_sensitive(false);
+                    self.width_entry.set_sensitive(false);
+                    self.height_entry.set_sensitive(false);
+                    self.rotation_entry.set_sensitive(false);
+                    self.corner_radius_entry.set_sensitive(false);
+                    self.is_slot_check.set_sensitive(false);
+                    self.text_entry.set_sensitive(false);
+                    self.font_size_entry.set_sensitive(false);
+
+                    // Clear values
+                    self.pos_x_entry.set_text("");
+                    self.pos_y_entry.set_text("");
+                    self.width_entry.set_text("");
+                    self.height_entry.set_text("");
+                    self.rotation_entry.set_text("");
+                    self.corner_radius_entry.set_text("");
+                    self.text_entry.set_text("");
+                    self.font_size_entry.set_text("");
+                }
             }
 
             // Update CAM properties (always enabled for single or multi-selection)
@@ -2632,7 +2431,6 @@ impl PropertiesPanel {
             self.polygon_frame.set_visible(false);
             self.gear_frame.set_visible(false);
             self.sprocket_frame.set_visible(false);
-            self.tabbed_box_frame.set_visible(false);
             self.ops_frame.set_visible(false);
             self.cam_frame.set_visible(false);
 
@@ -2682,9 +2480,6 @@ impl PropertiesPanel {
             &self.sprocket_pitch_entry,
             &self.sprocket_teeth_entry,
             &self.sprocket_roller_diameter_entry,
-            &self.box_depth_entry,
-            &self.box_thickness_entry,
-            &self.box_tab_width_entry,
             &self.offset_entry,
             &self.fillet_entry,
             &self.chamfer_entry,
@@ -2722,5 +2517,35 @@ impl PropertiesPanel {
     /// Clear the focus flag - call this when user interacts with the canvas
     pub fn clear_focus(&self) {
         *self.has_focus.borrow_mut() = false;
+    }
+
+    /// Helper to modify a single shape's property with undo support
+    fn modify_selected_shape_with_undo<F>(
+        designer_state: &mut DesignerState,
+        modifier: F,
+    ) where
+        F: FnOnce(&mut gcodekit5_designer::canvas::DrawingObject),
+    {
+        use gcodekit5_designer::commands::{ChangeProperty, DesignerCommand};
+
+        if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+            if let Some(old_obj) = designer_state.canvas.get_shape(id) {
+                let old_obj = old_obj.clone();
+                
+                // Apply modification
+                if let Some(obj) = designer_state.canvas.get_shape_mut(id) {
+                    modifier(obj);
+                    let new_obj = obj.clone();
+
+                    // Create undo command
+                    let cmd = DesignerCommand::ChangeProperty(ChangeProperty {
+                        id,
+                        old_state: old_obj,
+                        new_state: new_obj,
+                    });
+                    designer_state.record_command(cmd);
+                }
+            }
+        }
     }
 }

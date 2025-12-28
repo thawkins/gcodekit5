@@ -10,7 +10,7 @@ pub struct VectorEngravingParams {
     pub power_scale: f32,
     pub multi_pass: bool,
     pub num_passes: i32,
-    pub z_increment: f32,
+    pub z_step_down: f32,
     pub invert_power: bool,
     pub desired_width: f32,
     pub offset_x: String,

@@ -255,7 +255,6 @@ impl DesignFile {
             ShapeType::Polygon => "polygon",
             ShapeType::Gear => "gear",
             ShapeType::Sprocket => "sprocket",
-            ShapeType::TabbedBox => "tabbed_box",
         };
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
@@ -294,9 +293,9 @@ impl DesignFile {
         let mut pressure_angle = 0.0;
         let mut pitch = 0.0;
         let mut roller_diameter = 0.0;
-        let mut thickness = 0.0;
-        let mut depth = 0.0;
-        let mut tab_size = 0.0;
+        let thickness = 0.0;
+        let depth = 0.0;
+        let tab_size = 0.0;
 
         match &obj.shape {
             Shape::Gear(g) => {
@@ -308,11 +307,6 @@ impl DesignFile {
                 teeth = s.teeth;
                 pitch = s.pitch;
                 roller_diameter = s.roller_diameter;
-            }
-            Shape::TabbedBox(b) => {
-                thickness = b.thickness;
-                depth = b.depth;
-                tab_size = b.tab_width;
             }
             _ => {}
         }
@@ -442,17 +436,6 @@ impl DesignFile {
                 sprocket.roller_diameter = data.roller_diameter;
                 Shape::Sprocket(sprocket)
             }
-            "tabbed_box" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
-                Shape::TabbedBox(DesignTabbedBox::new(
-                    center,
-                    data.width,
-                    data.height,
-                    data.depth,
-                    data.thickness,
-                    data.tab_size,
-                ))
-            }
             _ => anyhow::bail!("Unknown shape type: {}", data.shape_type),
         };
 
@@ -469,7 +452,6 @@ impl DesignFile {
             Shape::Polygon(s) => s.rotation = data.rotation,
             Shape::Gear(s) => s.rotation = data.rotation,
             Shape::Sprocket(s) => s.rotation = data.rotation,
-            Shape::TabbedBox(s) => s.rotation = data.rotation,
         }
 
         let operation_type = match data.operation_type.as_str() {
@@ -488,7 +470,6 @@ impl DesignFile {
             crate::model::ShapeType::Polygon => "Polygon",
             crate::model::ShapeType::Gear => "Gear",
             crate::model::ShapeType::Sprocket => "Sprocket",
-            crate::model::ShapeType::TabbedBox => "Tabbed Box",
         };
 
         Ok(DrawingObject {

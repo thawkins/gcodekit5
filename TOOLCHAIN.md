@@ -49,52 +49,6 @@ rustc 1.90.0 (...)
 cargo 1.90.0 (...)
 ```
 
-## Installing the Wild Linker (Optional)
-
-The Wild linker is a modern, fast linker written in Rust that significantly speeds up link times during development.
-
-### Install LLD (LLVM Linker Driver)
-
-The wild linker uses LLD as its backend. Install it using your package manager:
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install -y lld
-```
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install -y llvm-tools
-```
-
-**macOS:**
-```bash
-brew install llvm
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S lld
-```
-
-**Windows:**
-1. Install **Visual Studio Build Tools** (2019 or newer) with the "Desktop development with C++" workload.
-2. Install Rust using `rustup-init.exe` from [rustup.rs](https://rustup.rs).
-3. (Optional) Install `lld` via Cargo or use the MSVC linker (default).
-   - To use `lld` on Windows, you may need to install LLVM separately or use `cargo-binutils`.
-   - Note: The default MSVC linker is generally sufficient for Windows development.
-
-### Verify LLD Installation
-
-```bash
-lld --version
-```
-
-You should see output similar to:
-```
-LLD 18.1.3 ...
-```
-
 ## Installing Tokei
 
 Tokei is a fast and accurate code statistics tool used to count lines of code in the project. It is required for updating the project statistics.
@@ -110,17 +64,6 @@ cargo install tokei
 ```bash
 tokei --version
 ```
-
-## Configuring GCodeKit5 for Wild Linker
-
-The project is pre-configured to use the wild linker. The configuration is in `.cargo/config.toml`:
-
-```toml
-[build]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-```
-
-This tells the Rust compiler to use LLD (wild linker) instead of the default system linker.
 
 ## Building GCodeKit5
 
@@ -157,31 +100,6 @@ The wild linker provides significant improvements:
 - **Incremental builds**: Even more dramatic improvements
 
 ## Troubleshooting
-
-### "lld not found" error
-
-If you get an error that `lld` is not found, ensure it's installed and in your PATH:
-
-```bash
-which lld
-```
-
-If it returns nothing, reinstall LLD using your package manager (see above).
-
-### Reverting to Default Linker
-
-If you encounter issues with the wild linker, you can temporarily disable it by commenting out the line in `.cargo/config.toml`:
-
-```toml
-# [build]
-# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-```
-
-Then rebuild:
-```bash
-cargo clean
-cargo build
-```
 
 ### Building for Different Targets
 
@@ -232,7 +150,6 @@ incremental = true      # Highly recommended for dev builds
 
 For issues related to:
 - **Rust installation**: Visit [rustup.rs](https://rustup.rs)
-- **Wild linker/LLD**: Check [lld.llvm.org](https://lld.llvm.org/)
 - **GCodeKit5 builds**: See the main [README.md](README.md)
 
 ---

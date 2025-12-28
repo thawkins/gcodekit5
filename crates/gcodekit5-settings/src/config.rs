@@ -175,9 +175,13 @@ pub struct UiSettings {
     #[serde(default)]
     pub show_about_on_startup: bool,
 
-    /// Show experimental features (may be unstable)
+    /// Enable 3D stock removal visualization (experimental)
     #[serde(default)]
-    pub show_experimental: bool,
+    pub enable_stock_removal_3d: bool,
+
+    /// Enable STL file import with shadow projection (experimental)
+    #[serde(default)]
+    pub enable_stl_import: bool,
     /// Visualizer sidebar splitter position (Paned position in pixels)
     #[serde(default)]
     pub visualizer_sidebar_position: Option<i32>,
@@ -237,7 +241,8 @@ impl Default for UiSettings {
             feed_rate_units: FeedRateUnits::default(),
             startup_tab: StartupTab::default(),
             show_about_on_startup: false,
-            show_experimental: false,
+            enable_stock_removal_3d: false,
+            enable_stl_import: false,
             visualizer_sidebar_position: None,
             device_config_sidebar_position: None,
             tools_sidebar_position: None,

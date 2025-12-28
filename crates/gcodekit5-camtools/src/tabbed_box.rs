@@ -116,6 +116,7 @@ pub struct BoxParameters {
     pub finger_joint: FingerJointSettings,
     pub burn: f32,
     pub laser_passes: i32,
+    pub z_step_down: f32,
     pub laser_power: i32,
     pub feed_rate: f32,
     pub offset_x: f32,
@@ -138,6 +139,7 @@ impl Default for BoxParameters {
             finger_joint: FingerJointSettings::default(),
             burn: 0.1,
             laser_passes: 3,
+            z_step_down: 0.5,
             laser_power: 1000,
             feed_rate: 500.0,
             offset_x: 10.0,
@@ -151,9 +153,9 @@ impl Default for BoxParameters {
 }
 
 #[derive(Debug, Clone)]
-struct Point {
-    x: f32,
-    y: f32,
+pub struct Point {
+    pub x: f32,
+    pub y: f32,
 }
 
 impl Point {
@@ -1047,11 +1049,8 @@ impl TabbedBoxMaker {
         }
     }
 
-    pub fn get_paths(&self) -> Vec<Vec<(f32, f32)>> {
-        self.paths
-            .iter()
-            .map(|path| path.iter().map(|p| (p.x, p.y)).collect())
-            .collect()
+    pub fn paths(&self) -> &Vec<Vec<Point>> {
+        &self.paths
     }
 
     fn start_new_group(&mut self) {
@@ -1420,10 +1419,19 @@ impl TabbedBoxMaker {
                 ));
 
                 for pass_num in 1..=self.params.laser_passes {
+                    let z_depth = -(pass_num as f32 - 1.0) * self.params.z_step_down;
                     gcode.push_str(&format!(
-                        "; Pass {}/{}\n",
-                        pass_num, self.params.laser_passes
+                        "; Pass {}/{} at Z{:.2}\n",
+                        pass_num, self.params.laser_passes, z_depth
                     ));
+                    
+                    if pass_num > 1 {
+                        gcode.push_str(&format!(
+                            "G0 Z{:.2} ; Move to pass depth\n",
+                            z_depth
+                        ));
+                    }
+                    
                     gcode.push_str(&format!("M3 S{} ; Laser on\n", self.params.laser_power));
 
                     for (idx, point) in path.iter().skip(1).enumerate() {

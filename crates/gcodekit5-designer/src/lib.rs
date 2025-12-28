@@ -74,6 +74,7 @@ pub mod helpers;
 pub mod history;
 pub mod import;
 pub mod model;
+pub mod model3d;
 pub mod multipass;
 pub mod ops;
 pub mod parametric;
@@ -83,8 +84,10 @@ pub mod render_optimizer;
 pub mod renderer;
 pub mod selection_manager;
 pub mod serialization;
+pub mod shadow_projection;
 pub mod shape_store;
 pub mod shapes;
+pub mod slice_toolpath;
 pub mod spatial_index;
 pub mod spatial_manager;
 pub mod stock_removal;
@@ -117,15 +120,23 @@ pub use drilling_patterns::*;
 pub use dxf_parser::{DxfEntity, DxfFile, DxfHeader, DxfParser};
 pub use gcode_gen::ToolpathToGcode;
 pub use history::{ActionType, HistoryAction, HistoryTransaction, UndoRedoManager};
-pub use import::{DxfImporter, FileFormat, ImportedDesign, SvgImporter};
+pub use import::{DxfImporter, FileFormat, ImportedDesign, StlImporter, SvgImporter};
 pub use model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
     DesignRectangle as Rectangle, DesignText as TextShape, Point, Shape, ShapeType,
 };
+pub use model3d::{Mesh3D, Model3DFormat, Model3DImporter, ProjectionParams, Triangle3D};
 pub use multipass::{DepthStrategy, MultiPassConfig, MultiPassToolpathGenerator};
 pub use parametric::ParametricGenerator;
 pub use pocket_operations::{Island, PocketGenerator, PocketOperation};
 pub use render_optimizer::{RenderOptimizer, RenderStats};
+pub use shadow_projection::{
+    BatchProjector, ProjectionMethod, ShadowProjectionParams, ShadowProjector, SliceLayer,
+    SlicingParams,
+};
+pub use slice_toolpath::{
+    JobSummary, LayerToolpath, SliceStrategy, SliceToToolpath, SliceToolpathParams, SlicedJob,
+};
 pub use spatial_index::{Bounds, SpatialIndex, SpatialIndexStats};
 pub use stock_removal::{HeightMap2D, SimulationResult, StockMaterial};
 pub use templates::*;

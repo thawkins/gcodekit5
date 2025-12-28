@@ -439,18 +439,18 @@ impl GcodeVisualizer {
             .active(true)
             .build();
 
-        let show_experimental = settings_controller
+        let enable_stock_removal_3d = settings_controller
             .persistence
             .borrow()
             .config()
             .ui
-            .show_experimental;
+            .enable_stock_removal_3d;
 
         let show_stock_removal = CheckButton::builder()
             .label(t!("Show Stock Removal"))
             .active(false)
             .build();
-        show_stock_removal.set_visible(show_experimental);
+        show_stock_removal.set_visible(enable_stock_removal_3d);
 
         // Stock configuration
 
@@ -528,7 +528,7 @@ impl GcodeVisualizer {
         stock_revealer.set_transition_type(gtk4::RevealerTransitionType::SlideDown);
         stock_revealer.set_child(Some(&stock_box));
         stock_revealer.set_reveal_child(show_stock_removal.is_active());
-        stock_revealer.set_visible(show_experimental);
+        stock_revealer.set_visible(enable_stock_removal_3d);
 
         {
             let stock_revealer = stock_revealer.clone();
@@ -538,7 +538,7 @@ impl GcodeVisualizer {
         }
 
         // Gate stock removal to experimental-only.
-        if !show_experimental {
+        if !enable_stock_removal_3d {
             show_stock_removal.set_active(false);
             stock_revealer.set_reveal_child(false);
         }
@@ -547,7 +547,7 @@ impl GcodeVisualizer {
             let show_stock_removal = show_stock_removal.clone();
             let stock_revealer = stock_revealer.clone();
             settings_controller.on_setting_changed(move |key, value| {
-                if key != "show_experimental" {
+                if key != "enable_stock_removal_3d" {
                     return;
                 }
                 let enabled = value == "true";

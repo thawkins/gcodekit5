@@ -1,8 +1,8 @@
 {
-  "x": 70.0,
-  "y": 60.0,
-  "h": 40.0,
-  "thickness": 3.0,
+  "x": 60.0,
+  "y": 40.0,
+  "h": 30.0,
+  "thickness": 2.0,
   "outside": false,
   "box_type": "NoTop",
   "finger_joint": {
@@ -16,13 +16,14 @@
     "dimple_length": 0.0
   },
   "burn": 0.1,
-  "laser_passes": 3,
+  "laser_passes": 20,
+  "z_step_down": 0.1,
   "laser_power": 1000,
   "feed_rate": 500.0,
-  "offset_x": 0.0,
-  "offset_y": 0.0,
-  "dividers_x": 2,
-  "dividers_y": 2,
+  "offset_x": 10.0,
+  "offset_y": 10.0,
+  "dividers_x": 1,
+  "dividers_y": 1,
   "optimize_layout": true,
   "key_divider_type": "WallsAndFloor"
 }

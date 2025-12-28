@@ -1,4 +1,5 @@
 use crate::t;
+use crate::ui::gtk::fast_shape_gallery::FastShapeGallery;
 use gcodekit5_core::units::MeasurementSystem;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_settings::controller::SettingsController;
@@ -27,7 +28,6 @@ pub enum DesignerTool {
     Polygon = 9,
     Gear = 10,
     Sprocket = 11,
-    TabbedBox = 12,
 }
 
 impl DesignerTool {
@@ -45,7 +45,6 @@ impl DesignerTool {
             DesignerTool::Polygon => t!("Polygon"),
             DesignerTool::Gear => t!("Gear"),
             DesignerTool::Sprocket => t!("Sprocket"),
-            DesignerTool::TabbedBox => t!("Tabbed Box"),
         }
     }
 
@@ -63,7 +62,6 @@ impl DesignerTool {
             DesignerTool::Polygon => "emblem-shared-symbolic",
             DesignerTool::Gear => "system-run-symbolic",
             DesignerTool::Sprocket => "emblem-system-symbolic",
-            DesignerTool::TabbedBox => "package-x-generic-symbolic",
         }
     }
 
@@ -81,7 +79,6 @@ impl DesignerTool {
             DesignerTool::Polygon => t!("Polygon"),
             DesignerTool::Gear => t!("Gear"),
             DesignerTool::Sprocket => t!("Sprocket"),
-            DesignerTool::TabbedBox => t!("Tabbed Box"),
         }
     }
 }
@@ -93,8 +90,7 @@ pub struct DesignerToolbox {
     buttons: Vec<Button>,
     tools: Vec<DesignerTool>,
     generate_btn: Button,
-    mirror_x_btn: Button,
-    mirror_y_btn: Button,
+    fast_shape_gallery: Rc<FastShapeGallery>,
     _state: Rc<RefCell<DesignerState>>,
     _settings_controller: Rc<SettingsController>,
     _current_units: Arc<Mutex<MeasurementSystem>>,
@@ -156,7 +152,6 @@ impl DesignerToolbox {
             DesignerTool::Text,
             DesignerTool::Gear,
             DesignerTool::Sprocket,
-            DesignerTool::TabbedBox,
         ];
 
         let grid = gtk4::Grid::builder()
@@ -218,36 +213,31 @@ impl DesignerToolbox {
             });
         }
 
-        // Operations Section
-        let ops_label = Label::new(Some(&t!("Operations")));
-        ops_label.add_css_class("caption");
-        ops_label.set_halign(Align::Start);
-        ops_label.set_margin_top(10);
-        ops_label.set_margin_bottom(4);
-        content_box.append(&ops_label);
+        // Fast Shapes Section
+        let fast_shapes_label = Label::new(Some(&t!("Fast Shapes")));
+        fast_shapes_label.add_css_class("caption");
+        fast_shapes_label.set_halign(Align::Start);
+        fast_shapes_label.set_margin_top(10);
+        fast_shapes_label.set_margin_bottom(4);
+        content_box.append(&fast_shapes_label);
 
-        let ops_grid = Grid::builder()
-            .column_spacing(2)
-            .row_spacing(2)
-            .halign(Align::Center)
-            .build();
+        let fast_shapes_btn = Button::with_label(&t!("Shape Gallery…"));
+        fast_shapes_btn.set_margin_start(5);
+        fast_shapes_btn.set_margin_end(5);
+        fast_shapes_btn.set_margin_bottom(5);
 
-        let mirror_x_btn = Button::builder()
-            .tooltip_text(t!("Mirror on X"))
-            .icon_name("object-flip-horizontal-symbolic")
-            .build();
-        mirror_x_btn.set_size_request(40, 40);
+        let fast_shape_gallery = FastShapeGallery::new();
+        let gallery_clone = fast_shape_gallery.clone();
+        let fast_shapes_btn_clone = fast_shapes_btn.clone();
+        fast_shapes_btn.connect_clicked(move |_| {
+            if let Some(root) = fast_shapes_btn_clone.root() {
+                if let Ok(win) = root.downcast::<gtk4::Window>() {
+                    gallery_clone.show(&win);
+                }
+            }
+        });
 
-        let mirror_y_btn = Button::builder()
-            .tooltip_text(t!("Mirror on Y"))
-            .icon_name("object-flip-vertical-symbolic")
-            .build();
-        mirror_y_btn.set_size_request(40, 40);
-
-        ops_grid.attach(&mirror_x_btn, 0, 0, 1, 1);
-        ops_grid.attach(&mirror_y_btn, 1, 0, 1, 1);
-
-        content_box.append(&ops_grid);
+        content_box.append(&fast_shapes_btn);
 
         // Add separator
         let separator = gtk4::Separator::new(Orientation::Horizontal);
@@ -797,8 +787,7 @@ impl DesignerToolbox {
             buttons,
             tools,
             generate_btn,
-            mirror_x_btn,
-            mirror_y_btn,
+            fast_shape_gallery,
             _state: state,
             _settings_controller: settings_controller,
             _current_units: current_units,
@@ -809,12 +798,8 @@ impl DesignerToolbox {
         self.generate_btn.connect_clicked(move |_| f());
     }
 
-    pub fn connect_mirror_x_clicked<F: Fn() + 'static>(&self, f: F) {
-        self.mirror_x_btn.connect_clicked(move |_| f());
-    }
-
-    pub fn connect_mirror_y_clicked<F: Fn() + 'static>(&self, f: F) {
-        self.mirror_y_btn.connect_clicked(move |_| f());
+    pub fn fast_shape_gallery(&self) -> Rc<FastShapeGallery> {
+        self.fast_shape_gallery.clone()
     }
 
     pub fn current_tool(&self) -> DesignerTool {

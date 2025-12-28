@@ -328,8 +328,7 @@ impl DesignerState {
             8 => DrawingMode::Polygon,
             9 => DrawingMode::Gear,
             10 => DrawingMode::Sprocket,
-            11 => DrawingMode::TabbedBox,
-            12 => DrawingMode::Pan,
+            11 => DrawingMode::Pan,
             _ => DrawingMode::Select,
         };
         self.canvas.set_mode(drawing_mode);
@@ -943,26 +942,6 @@ impl DesignerState {
                         )
                     }
                 }
-                crate::model::Shape::TabbedBox(tabbed_box) => {
-                    let paths = tabbed_box.render_all();
-                    let mut all_toolpaths = Vec::new();
-                    for path in paths {
-                        let design_path = crate::model::DesignPath::from_lyon_path(&path);
-                        let tps = if shape_obj.operation_type == OperationType::Pocket {
-                            self.toolpath_generator.generate_path_pocket(
-                                &design_path,
-                                shape_obj.pocket_depth,
-                                shape_obj.step_down as f64,
-                                shape_obj.step_in as f64,
-                            )
-                        } else {
-                            self.toolpath_generator
-                                .generate_path_contour(&design_path, shape_obj.step_down as f64)
-                        };
-                        all_toolpaths.extend(tps);
-                    }
-                    (all_toolpaths, false)
-                }
                 _ => {
                     let path = effective_shape.render();
                     let design_path = crate::model::DesignPath::from_lyon_path(&path);
@@ -1100,12 +1079,6 @@ impl DesignerState {
                     gcode.push_str(&format!(
                         "; Sprocket: Center ({:.3}, {:.3}), Pitch: {:.3}, Teeth: {}\n",
                         sprocket.center.x, sprocket.center.y, sprocket.pitch, sprocket.teeth
-                    ));
-                }
-                crate::model::Shape::TabbedBox(tabbed_box) => {
-                    gcode.push_str(&format!(
-                        "; Tabbed Box: Center ({:.3}, {:.3}), Size: {:.3}x{:.3}x{:.3}, Thickness: {:.3}\n",
-                        tabbed_box.center.x, tabbed_box.center.y, tabbed_box.width, tabbed_box.height, tabbed_box.depth, tabbed_box.thickness
                     ));
                 }
             }
@@ -1252,7 +1225,7 @@ impl DesignerState {
     }
 
     /// Adds a shape to the canvas with undo/redo support.
-    pub fn add_shape_with_undo(&mut self, shape: Shape) {
+    pub fn add_shape_with_undo(&mut self, shape: Shape) -> u64 {
         let id = self.canvas.generate_id();
         let obj = DrawingObject::new(id, shape);
         let cmd = DesignerCommand::AddShape(AddShape {
@@ -1260,6 +1233,7 @@ impl DesignerState {
             object: Some(obj),
         });
         self.push_command(cmd);
+        id
     }
 
     /// Adds a shape to the canvas at the specified position based on current mode.
@@ -1376,23 +1350,6 @@ impl DesignerState {
                 let id = self.canvas.generate_id();
                 let sprocket = crate::model::DesignSprocket::new(Point::new(x, y), 12.7, 15);
                 let obj = DrawingObject::new(id, Shape::Sprocket(sprocket));
-                let cmd = DesignerCommand::AddShape(AddShape {
-                    id,
-                    object: Some(obj),
-                });
-                self.push_command(cmd);
-            }
-            DrawingMode::TabbedBox => {
-                let id = self.canvas.generate_id();
-                let tabbed_box = crate::model::DesignTabbedBox::new(
-                    Point::new(x, y),
-                    100.0,
-                    100.0,
-                    50.0,
-                    3.0,
-                    10.0,
-                );
-                let obj = DrawingObject::new(id, Shape::TabbedBox(tabbed_box));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -1996,7 +1953,6 @@ impl DesignerState {
                         crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                         crate::model::Shape::Gear(s) => s.rotation += angle_delta,
                         crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-                        crate::model::Shape::TabbedBox(s) => s.rotation += angle_delta,
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -2038,7 +1994,6 @@ impl DesignerState {
                         crate::model::Shape::Polygon(s) => s.rotation = rotation,
                         crate::model::Shape::Gear(s) => s.rotation = rotation,
                         crate::model::Shape::Sprocket(s) => s.rotation = rotation,
-                        crate::model::Shape::TabbedBox(s) => s.rotation = rotation,
                     }
 
                     if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
@@ -2187,45 +2142,6 @@ impl DesignerState {
             let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
                 name: "Change Sprocket Properties".to_string(),
-            });
-            self.push_command(cmd);
-        }
-    }
-
-    pub fn set_selected_tabbed_box_properties(
-        &mut self,
-        depth: f64,
-        thickness: f64,
-        tab_width: f64,
-    ) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::TabbedBox(tabbed_box) = &obj.shape {
-                    if (tabbed_box.depth - depth).abs() > f64::EPSILON
-                        || (tabbed_box.thickness - thickness).abs() > f64::EPSILON
-                        || (tabbed_box.tab_width - tab_width).abs() > f64::EPSILON
-                    {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::TabbedBox(new_box) = &mut new_obj.shape {
-                            new_box.depth = depth;
-                            new_box.thickness = thickness;
-                            new_box.tab_width = tab_width;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
-                }
-            }
-        }
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Change Tabbed Box Properties".to_string(),
             });
             self.push_command(cmd);
         }
@@ -2533,7 +2449,6 @@ impl DesignerState {
                                 crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Gear(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-                                crate::model::Shape::TabbedBox(s) => s.rotation += angle_delta,
                             }
                         }
                     }
@@ -2575,7 +2490,6 @@ impl DesignerState {
                                 crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Gear(s) => s.rotation += angle_delta,
                                 crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-                                crate::model::Shape::TabbedBox(s) => s.rotation += angle_delta,
                             }
                         }
                     }

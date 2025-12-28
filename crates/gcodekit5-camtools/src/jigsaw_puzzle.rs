@@ -15,6 +15,7 @@ pub struct PuzzleParameters {
     pub laser_passes: i32,
     pub laser_power: i32,
     pub feed_rate: f32,
+    pub z_step_down: f32,
     pub seed: u32,
     pub tab_size_percent: f32,
     pub jitter_percent: f32,
@@ -34,6 +35,7 @@ impl Default for PuzzleParameters {
             laser_passes: 3,
             laser_power: 1000,
             feed_rate: 500.0,
+            z_step_down: 0.5,
             seed: 42,
             tab_size_percent: 20.0,
             jitter_percent: 4.0,
@@ -526,10 +528,19 @@ impl JigsawPuzzleMaker {
                 ));
 
                 for pass_num in 1..=self.params.laser_passes {
+                    let z_depth = -(pass_num as f32 - 1.0) * self.params.z_step_down;
                     gcode.push_str(&format!(
-                        "; Pass {}/{}\n",
-                        pass_num, self.params.laser_passes
+                        "; Pass {}/{} at Z{:.2}\n",
+                        pass_num, self.params.laser_passes, z_depth
                     ));
+                    
+                    if pass_num > 1 {
+                        gcode.push_str(&format!(
+                            "G0 Z{:.2} ; Move to pass depth\n",
+                            z_depth
+                        ));
+                    }
+                    
                     gcode.push_str(&format!("M3 S{} ; Laser on\n", self.params.laser_power));
 
                     // Add feed rate to every G1 command for GRBL compatibility

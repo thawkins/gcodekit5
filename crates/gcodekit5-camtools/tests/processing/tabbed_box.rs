@@ -16,6 +16,7 @@ fn test_tab_protrusion_equals_thickness_no_kerf() {
         finger_joint: FingerJointSettings::default(),
         burn: 0.0,
         laser_passes: 1,
+        z_step_down: 0.5,
         laser_power: 1000,
         feed_rate: 500.0,
         offset_x: 0.0,
@@ -80,6 +81,7 @@ fn test_tab_protrusion_with_kerf() {
         finger_joint: FingerJointSettings::default(),
         burn: 0.5,
         laser_passes: 1,
+        z_step_down: 0.5,
         laser_power: 1000,
         feed_rate: 500.0,
         offset_x: 0.0,
@@ -190,6 +192,7 @@ fn test_slots_containment_with_optimization() {
         finger_joint: FingerJointSettings::default(),
         burn: 0.0,
         laser_passes: 1,
+        z_step_down: 0.5,
         laser_power: 1000,
         feed_rate: 500.0,
         offset_x: 0.0,
@@ -203,17 +206,17 @@ fn test_slots_containment_with_optimization() {
     let mut maker = TabbedBoxMaker::new(params).expect("Failed to create TabbedBoxMaker");
     maker.generate().expect("Failed to generate box");
 
-    let paths = maker.get_paths();
+    let paths = maker.paths();
 
     // Identify paths
     let mut walls = Vec::new();
     let mut slots = Vec::new();
 
     for path in &paths {
-        let min_x = path.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
-        let max_x = path.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
-        let min_y = path.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
-        let max_y = path.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
+        let min_x = path.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let max_x = path.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = path.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+        let max_y = path.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
 
         let width = max_x - min_x;
         let height = max_y - min_y;
