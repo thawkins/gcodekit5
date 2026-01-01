@@ -361,23 +361,25 @@ impl PocketGenerator {
                     continue;
                 }
 
-                let needs_rapid = toolpath
+                // Check if we need to traverse to the next segment
+                let needs_traverse = toolpath
                     .segments
                     .last()
-                    .map(|s| s.end.distance_to(&start_pt) > self.operation.tool_diameter * 1.5)
+                    .map(|s| s.end.distance_to(&start_pt) > 0.1)
                     .unwrap_or(true);
 
-                if needs_rapid {
-                    let mut rapid = ToolpathSegment::new(
-                        ToolpathSegmentType::RapidMove,
+                if needs_traverse {
+                    // Use LinearMove at cutting depth instead of RapidMove (which retracts to safe_z)
+                    let mut traverse = ToolpathSegment::new(
+                        ToolpathSegmentType::LinearMove,
                         toolpath.segments.last().map(|s| s.end).unwrap_or(start_pt),
                         start_pt,
                         self.operation.feed_rate,
                         self.operation.spindle_speed,
                     );
-                    rapid.start_z = Some(depth);
-                    rapid.z_depth = Some(depth);
-                    toolpath.add_segment(rapid);
+                    traverse.start_z = Some(depth);
+                    traverse.z_depth = Some(depth);
+                    toolpath.add_segment(traverse);
                 }
 
                 let mut cut = ToolpathSegment::new(
@@ -542,6 +544,7 @@ impl PocketGenerator {
             };
             let z_passes = (total_depth / z_step).ceil() as u32;
             let mut prev_z = self.operation.start_depth;
+            let mut is_first_z_pass = true;
 
             for z_pass in 1..=z_passes {
                 let current_z =
@@ -550,6 +553,7 @@ impl PocketGenerator {
 
                 // Start from the outside (boundary) and work inwards
                 let mut current_offset = half_tool;
+                let mut is_first_stepin = true;
 
                 while current_offset < max_offset {
                     let inset_x = (rect.center.x - rect.width / 2.0) + current_offset;
@@ -569,18 +573,35 @@ impl PocketGenerator {
                         Point::new(inset_x, inset_y),
                     ];
 
-                    // Add rapid move to start of this loop to avoid cutting across
+                    // Move to start of this contour loop
                     if let Some(first_point) = points.first() {
                         if self.operation.ramp_angle > 0.0 {
                             self.add_helical_ramp(&mut toolpath, *first_point, prev_z, current_z);
-                        } else {
+                        } else if is_first_z_pass && is_first_stepin {
+                            // Very first step-in of first Z pass: use RapidMove to approach from safe Z
                             toolpath.add_segment(ToolpathSegment::new(
                                 ToolpathSegmentType::RapidMove,
-                                Point::new(0.0, 0.0), // Start point ignored for Rapid in current logic? No, it uses end.
+                                Point::new(0.0, 0.0),
                                 *first_point,
                                 self.operation.feed_rate,
                                 self.operation.spindle_speed,
                             ));
+                            is_first_stepin = false;
+                        } else {
+                            // Subsequent step-ins or Z passes: use LinearMove at current depth
+                            let last_pt = toolpath
+                                .segments
+                                .last()
+                                .map(|s| s.end)
+                                .unwrap_or(*first_point);
+                            toolpath.add_segment(ToolpathSegment::new(
+                                ToolpathSegmentType::LinearMove,
+                                last_pt,
+                                *first_point,
+                                self.operation.feed_rate,
+                                self.operation.spindle_speed,
+                            ));
+                            is_first_stepin = false;
                         }
                     }
 
@@ -604,6 +625,7 @@ impl PocketGenerator {
                 }
                 toolpaths.push(toolpath);
                 prev_z = current_z;
+                is_first_z_pass = false;
             }
 
             toolpaths
@@ -648,6 +670,7 @@ impl PocketGenerator {
             };
             let z_passes = (total_depth / z_step).ceil() as u32;
             let mut prev_z = self.operation.start_depth;
+            let mut is_first_z_pass = true;
 
             for z_pass in 1..=z_passes {
                 let current_z =
@@ -656,6 +679,7 @@ impl PocketGenerator {
 
                 let segments = 36;
                 let mut current_offset = half_tool;
+                let mut is_first_stepin = true;
 
                 while current_offset < max_offset {
                     let inset_radius = circle.radius - current_offset;
@@ -663,7 +687,7 @@ impl PocketGenerator {
                         break;
                     }
 
-                    // Add rapid move to start of circle
+                    // Calculate start point of this contour
                     let start_angle: f64 = 0.0;
                     let start_x = circle.center.x + inset_radius * start_angle.cos();
                     let start_y = circle.center.y + inset_radius * start_angle.sin();
@@ -671,7 +695,8 @@ impl PocketGenerator {
 
                     if self.operation.ramp_angle > 0.0 {
                         self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
-                    } else {
+                    } else if is_first_z_pass && is_first_stepin {
+                        // Very first step-in of first Z pass: use RapidMove to approach from safe Z
                         toolpath.add_segment(ToolpathSegment::new(
                             ToolpathSegmentType::RapidMove,
                             Point::new(0.0, 0.0),
@@ -679,6 +704,23 @@ impl PocketGenerator {
                             self.operation.feed_rate,
                             self.operation.spindle_speed,
                         ));
+                        is_first_stepin = false;
+                    } else {
+                        // Subsequent step-ins or subsequent Z passes: use LinearMove
+                        // (the G-code generator will handle the Z plunge based on toolpath.depth)
+                        let last_pt = toolpath
+                            .segments
+                            .last()
+                            .map(|s| s.end)
+                            .unwrap_or(start_pt);
+                        toolpath.add_segment(ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            last_pt,
+                            start_pt,
+                            self.operation.feed_rate,
+                            self.operation.spindle_speed,
+                        ));
+                        is_first_stepin = false;
                     }
 
                     for i in 0..segments {
@@ -720,6 +762,7 @@ impl PocketGenerator {
                 }
                 toolpaths.push(toolpath);
                 prev_z = current_z;
+                is_first_z_pass = false;
             }
 
             toolpaths
@@ -820,6 +863,7 @@ impl PocketGenerator {
         let z_passes = (total_depth / z_step).ceil() as u32;
         let tool_radius = self.operation.tool_diameter / 2.0;
         let mut prev_z = self.operation.start_depth;
+        let mut is_first_z_pass = true;
 
         for z_pass in 1..=z_passes {
             let current_z = self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
@@ -828,6 +872,7 @@ impl PocketGenerator {
             let mut current_offset = tool_radius;
             let has_paths = true;
             let mut last_loop_centroid: Option<Point> = None;
+            let mut is_first_stepin = true;
 
             while has_paths {
                 // Offset inwards
@@ -858,8 +903,8 @@ impl PocketGenerator {
 
                     if self.operation.ramp_angle > 0.0 {
                         self.add_helical_ramp(&mut toolpath, points[0], prev_z, current_z);
-                    } else {
-                        // Add rapid to start
+                    } else if is_first_z_pass && is_first_stepin {
+                        // Very first step-in of first Z pass: use RapidMove to approach from safe Z
                         toolpath.add_segment(ToolpathSegment::new(
                             ToolpathSegmentType::RapidMove,
                             Point::new(0.0, 0.0),
@@ -867,6 +912,22 @@ impl PocketGenerator {
                             self.operation.feed_rate,
                             self.operation.spindle_speed,
                         ));
+                        is_first_stepin = false;
+                    } else {
+                        // Subsequent step-ins or subsequent Z passes: use LinearMove
+                        let last_pt = toolpath
+                            .segments
+                            .last()
+                            .map(|s| s.end)
+                            .unwrap_or(points[0]);
+                        toolpath.add_segment(ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            last_pt,
+                            points[0],
+                            self.operation.feed_rate,
+                            self.operation.spindle_speed,
+                        ));
+                        is_first_stepin = false;
                     }
 
                     // Add segments
@@ -898,12 +959,14 @@ impl PocketGenerator {
                 }
             }
 
+            // Push main contour toolpath first, then raster cleanup
+            toolpaths.push(toolpath);
             // Sweep a raster cleanup over the whole polygon to catch any voids
             if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
                 toolpaths.push(raster);
             }
-            toolpaths.push(toolpath);
             prev_z = current_z;
+            is_first_z_pass = false;
         }
         toolpaths
     }
@@ -965,12 +1028,13 @@ impl PocketGenerator {
         }
 
         let mut prev_z = self.operation.start_depth;
+        let mut is_first_z_pass = true;
 
         for z_pass in 1..=z_passes {
             let current_z = self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
             let mut toolpath = Toolpath::new(self.operation.tool_diameter, current_z);
 
-            // Helical Entry for the first (innermost) level
+            // Entry for the first (innermost) level
             if let Some(first_level) = levels.first() {
                 if let Some(first_path) = first_level.first() {
                     if !first_path.vertex_data.is_empty() {
@@ -979,11 +1043,20 @@ impl PocketGenerator {
 
                         if self.operation.ramp_angle > 0.0 {
                             self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
-                        } else {
-                            // Rapid to start XY, Safe Z
+                        } else if is_first_z_pass {
+                            // First Z pass: Rapid to start XY from safe Z
                             toolpath.add_segment(ToolpathSegment::new(
                                 ToolpathSegmentType::RapidMove,
                                 Point::new(0.0, 0.0),
+                                start_pt,
+                                self.operation.feed_rate,
+                                self.operation.spindle_speed,
+                            ));
+                        } else {
+                            // Subsequent Z passes: LinearMove to start XY, plunge handled by toolpath.depth
+                            toolpath.add_segment(ToolpathSegment::new(
+                                ToolpathSegmentType::LinearMove,
+                                start_pt, // Start from current position (will be handled by generator)
                                 start_pt,
                                 self.operation.feed_rate,
                                 self.operation.spindle_speed,
@@ -1007,19 +1080,24 @@ impl PocketGenerator {
                     // Close the loop
                     points.push(points[0]);
 
-                    // If not connected to previous point, rapid move
-                    // (In a real adaptive path, we would link these smoothly)
+                    // If not connected to previous point, linear move to new start
+                    // (Tool is already at cutting depth, no need to retract)
                     let start_pt = points[0];
-                    let needs_rapid = if let Some(last_seg) = toolpath.segments.last() {
+                    let needs_traverse = if let Some(last_seg) = toolpath.segments.last() {
                         last_seg.end.distance_to(&start_pt) > 0.1
                     } else {
-                        true
+                        false // First contour already handled with RapidMove above
                     };
 
-                    if needs_rapid {
+                    if needs_traverse {
+                        let last_pt = toolpath
+                            .segments
+                            .last()
+                            .map(|s| s.end)
+                            .unwrap_or(start_pt);
                         toolpath.add_segment(ToolpathSegment::new(
-                            ToolpathSegmentType::RapidMove,
-                            Point::new(0.0, 0.0),
+                            ToolpathSegmentType::LinearMove,
+                            last_pt,
                             start_pt,
                             self.operation.feed_rate,
                             self.operation.spindle_speed,
@@ -1064,12 +1142,13 @@ impl PocketGenerator {
                 }
             }
 
+            // Push main adaptive toolpath first, then raster cleanup
+            toolpaths.push(toolpath);
             if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
                 toolpaths.push(raster);
             }
-
-            toolpaths.push(toolpath);
             prev_z = current_z;
+            is_first_z_pass = false;
         }
         toolpaths
     }
@@ -1135,6 +1214,7 @@ impl PocketGenerator {
 
         let tool_radius = self.operation.tool_diameter / 2.0;
         let mut prev_z = self.operation.start_depth;
+        let mut is_first_z_pass = true;
 
         for z_pass in 1..=z_passes {
             let current_z = self.operation.start_depth - (z_step * z_pass as f64).min(total_depth);
@@ -1198,14 +1278,17 @@ impl PocketGenerator {
                     let end_pt = inv_rotate(Point::new(end_x, current_y));
 
                     if !self.is_in_island(&start_pt) && !self.is_in_island(&end_pt) {
-                        // If bidirectional and close to previous end, linear move, else rapid
+                        // If close to previous end, linear move at cutting depth
                         let is_connected = if let Some(last_seg) = toolpath.segments.last() {
                             last_seg.end.distance_to(&start_pt) < self.operation.tool_diameter * 1.5
                         } else {
                             false
                         };
 
-                        if bidirectional && is_connected {
+                        let is_first_segment = toolpath.segments.is_empty();
+
+                        if is_connected {
+                            // Close enough - traverse directly at cutting depth
                             toolpath.add_segment(ToolpathSegment::new(
                                 ToolpathSegmentType::LinearMove,
                                 toolpath.segments.last().unwrap().end,
@@ -1213,23 +1296,43 @@ impl PocketGenerator {
                                 self.operation.feed_rate,
                                 self.operation.spindle_speed,
                             ));
-                        } else {
-                            let last_point = toolpath
-                                .segments
-                                .last()
-                                .map(|s| s.end)
-                                .unwrap_or(Point::new(0.0, 0.0));
+                        } else if is_first_segment {
+                            // First segment of this Z pass - check if it's the very first Z pass
                             if self.operation.ramp_angle > 0.0 {
                                 self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
-                            } else {
+                            } else if is_first_z_pass {
+                                // First Z pass: approach from safe Z with RapidMove
                                 toolpath.add_segment(ToolpathSegment::new(
                                     ToolpathSegmentType::RapidMove,
-                                    last_point,
+                                    Point::new(0.0, 0.0),
+                                    start_pt,
+                                    self.operation.feed_rate,
+                                    self.operation.spindle_speed,
+                                ));
+                            } else {
+                                // Subsequent Z passes: LinearMove to start, plunge via toolpath.depth
+                                toolpath.add_segment(ToolpathSegment::new(
+                                    ToolpathSegmentType::LinearMove,
+                                    start_pt, // Will be ignored, generator uses current position
                                     start_pt,
                                     self.operation.feed_rate,
                                     self.operation.spindle_speed,
                                 ));
                             }
+                        } else {
+                            // Not first segment, but not close - still traverse at cutting depth
+                            let last_point = toolpath
+                                .segments
+                                .last()
+                                .map(|s| s.end)
+                                .unwrap_or(start_pt);
+                            toolpath.add_segment(ToolpathSegment::new(
+                                ToolpathSegmentType::LinearMove,
+                                last_point,
+                                start_pt,
+                                self.operation.feed_rate,
+                                self.operation.spindle_speed,
+                            ));
                         }
 
                         toolpath.add_segment(ToolpathSegment::new(
@@ -1248,6 +1351,7 @@ impl PocketGenerator {
 
             toolpaths.push(toolpath);
             prev_z = current_z;
+            is_first_z_pass = false;
         }
 
         toolpaths

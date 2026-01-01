@@ -13,8 +13,8 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     accessible::Property as AccessibleProperty, pango::EllipsizeMode, Align, Box, Button,
-    ComboBoxText, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned, PolicyType,
-    ScrolledWindow, SizeGroup, SizeGroupMode, ToggleButton,
+    CheckButton, ComboBoxText, EventControllerKey, Grid, Image, Label, Orientation, Overlay,
+    Paned, PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, ToggleButton,
 };
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -120,6 +120,7 @@ pub struct MachineControlView {
     pub z_zero_btn: Button,
     pub zero_all_btn: Button,
     pub goto_zero_btn: Button,
+    pub goto_zero_include_z: CheckButton,
     pub world_x: Label,
     pub world_y: Label,
     pub world_z: Label,
@@ -587,8 +588,18 @@ impl MachineControlView {
         zero_actions.append(&zero_all_btn);
 
         let goto_zero_btn = make_icon_label_button("go-jump-symbolic", &t!("Go to Work Zero"));
-        goto_zero_btn.set_tooltip_text(Some(&t!("Rapid move to work origin (G0 X0 Y0)")));
-        zero_actions.append(&goto_zero_btn);
+        goto_zero_btn.set_tooltip_text(Some(&t!("Rapid move to work origin (X/Y, or X/Y/Z if Include Z is checked)")));
+
+        // Checkbox for including Z axis in go to work zero
+        let goto_zero_include_z = CheckButton::with_label(&t!("Include Z"));
+        goto_zero_include_z.set_active(false);
+        goto_zero_include_z.set_tooltip_text(Some(&t!("When checked, Go to Work Zero will also move to Z0")));
+
+        let goto_zero_row = Box::new(Orientation::Horizontal, 8);
+        goto_zero_row.set_halign(Align::Start);
+        goto_zero_row.append(&goto_zero_btn);
+        goto_zero_row.append(&goto_zero_include_z);
+        zero_actions.append(&goto_zero_row);
 
         dro_container.append(&dro_box);
         dro_container.append(&zero_actions);
@@ -1103,6 +1114,7 @@ impl MachineControlView {
             z_zero_btn,
             zero_all_btn,
             goto_zero_btn,
+            goto_zero_include_z,
             world_x,
             world_y,
             world_z,
@@ -1584,12 +1596,18 @@ impl MachineControlView {
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let include_z_check = view.goto_zero_include_z.clone();
             view.goto_zero_btn.connect_clicked(move |_| {
+                let cmd = if include_z_check.is_active() {
+                    "G0 X0 Y0 Z0"
+                } else {
+                    "G0 X0 Y0"
+                };
                 if let Some(c) = console.as_ref() {
-                    c.append_log("> G0 X0 Y0\n");
+                    c.append_log(&format!("> {}\n", cmd));
                 }
                 if let Ok(mut comm) = communicator.lock() {
-                    let _ = comm.send_command("G0 X0 Y0");
+                    let _ = comm.send_command(cmd);
                 }
             });
         }

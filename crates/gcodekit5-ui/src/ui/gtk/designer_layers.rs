@@ -1,15 +1,21 @@
 use gtk4::gdk::ModifierType;
 use gtk4::prelude::*;
-use gtk4::{Box, Button, DrawingArea, Entry, Label, ListBox, Orientation, ScrolledWindow};
+use gtk4::{Box, Button, DrawingArea, Entry, Image, Label, ListBox, Orientation, ScrolledWindow};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::t;
 use gcodekit5_designer::designer_state::DesignerState;
+use gcodekit5_designer::shapes::OperationType;
 
 pub struct LayersPanel {
     pub widget: Box,
     list_box: ListBox,
+    // Z-order control buttons for sensitivity updates
+    bring_front_btn: Button,
+    bring_forward_btn: Button,
+    send_backward_btn: Button,
+    send_back_btn: Button,
 }
 
 impl LayersPanel {
@@ -132,29 +138,36 @@ impl LayersPanel {
         widget.append(&scrolled);
 
         // Z-order controls
+        // Note: The list displays shapes in draw order (first row = back/bottom, last row = front/top)
+        // So "Move Up" in the list means moving toward the first row (toward back in z-order)
+        // And "Move Down" in the list means moving toward the last row (toward front in z-order)
         let z_order_box = Box::new(Orientation::Horizontal, 6);
 
         let bring_front_btn = Button::from_icon_name("go-top-symbolic");
-        bring_front_btn.set_tooltip_text(Some(&t!("Bring to Front")));
+        bring_front_btn.set_tooltip_text(Some(&t!("Move to First")));
         bring_front_btn
-            .update_property(&[gtk4::accessible::Property::Label(&t!("Bring to Front"))]);
+            .update_property(&[gtk4::accessible::Property::Label(&t!("Move to First"))]);
+        bring_front_btn.set_sensitive(false);
         z_order_box.append(&bring_front_btn);
 
         let bring_forward_btn = Button::from_icon_name("go-up-symbolic");
-        bring_forward_btn.set_tooltip_text(Some(&t!("Bring Forward")));
+        bring_forward_btn.set_tooltip_text(Some(&t!("Move Up")));
         bring_forward_btn
-            .update_property(&[gtk4::accessible::Property::Label(&t!("Bring Forward"))]);
+            .update_property(&[gtk4::accessible::Property::Label(&t!("Move Up"))]);
+        bring_forward_btn.set_sensitive(false);
         z_order_box.append(&bring_forward_btn);
 
         let send_backward_btn = Button::from_icon_name("go-down-symbolic");
-        send_backward_btn.set_tooltip_text(Some(&t!("Send Backward")));
+        send_backward_btn.set_tooltip_text(Some(&t!("Move Down")));
         send_backward_btn
-            .update_property(&[gtk4::accessible::Property::Label(&t!("Send Backward"))]);
+            .update_property(&[gtk4::accessible::Property::Label(&t!("Move Down"))]);
+        send_backward_btn.set_sensitive(false);
         z_order_box.append(&send_backward_btn);
 
         let send_back_btn = Button::from_icon_name("go-bottom-symbolic");
-        send_back_btn.set_tooltip_text(Some(&t!("Send to Back")));
-        send_back_btn.update_property(&[gtk4::accessible::Property::Label(&t!("Send to Back"))]);
+        send_back_btn.set_tooltip_text(Some(&t!("Move to Last")));
+        send_back_btn.update_property(&[gtk4::accessible::Property::Label(&t!("Move to Last"))]);
+        send_back_btn.set_sensitive(false);
         z_order_box.append(&send_back_btn);
 
         widget.append(&z_order_box);
@@ -183,58 +196,62 @@ impl LayersPanel {
             });
         }
 
-        // Connect bring to front
+        // Connect bring to front (go-top) -> moves to first in list (back in z-order)
         {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
             bring_front_btn.connect_clicked(move |_| {
-                Self::bring_to_front(&state_clone);
-                Self::refresh_list_box(&list_box_refresh, &state_clone);
-                canvas_refresh.queue_draw();
-            });
-        }
-
-        // Connect bring forward
-        {
-            let state_clone = state.clone();
-            let list_box_refresh = list_box.clone();
-            let canvas_refresh = canvas.clone();
-            bring_forward_btn.connect_clicked(move |_| {
-                Self::bring_forward(&state_clone);
-                Self::refresh_list_box(&list_box_refresh, &state_clone);
-                canvas_refresh.queue_draw();
-            });
-        }
-
-        // Connect send backward
-        {
-            let state_clone = state.clone();
-            let list_box_refresh = list_box.clone();
-            let canvas_refresh = canvas.clone();
-            send_backward_btn.connect_clicked(move |_| {
-                Self::send_backward(&state_clone);
-                Self::refresh_list_box(&list_box_refresh, &state_clone);
-                canvas_refresh.queue_draw();
-            });
-        }
-
-        // Connect send to back
-        {
-            let state_clone = state.clone();
-            let list_box_refresh = list_box.clone();
-            let canvas_refresh = canvas.clone();
-            send_back_btn.connect_clicked(move |_| {
                 Self::send_to_back(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
             });
         }
 
-        // Connect list selection to shape selection
+        // Connect bring forward (go-up) -> moves up in list (backward in z-order)
+        {
+            let state_clone = state.clone();
+            let list_box_refresh = list_box.clone();
+            let canvas_refresh = canvas.clone();
+            bring_forward_btn.connect_clicked(move |_| {
+                Self::send_backward(&state_clone);
+                Self::refresh_list_box(&list_box_refresh, &state_clone);
+                canvas_refresh.queue_draw();
+            });
+        }
+
+        // Connect send backward (go-down) -> moves down in list (forward in z-order)
+        {
+            let state_clone = state.clone();
+            let list_box_refresh = list_box.clone();
+            let canvas_refresh = canvas.clone();
+            send_backward_btn.connect_clicked(move |_| {
+                Self::bring_forward(&state_clone);
+                Self::refresh_list_box(&list_box_refresh, &state_clone);
+                canvas_refresh.queue_draw();
+            });
+        }
+
+        // Connect send to back (go-bottom) -> moves to last in list (front in z-order)
+        {
+            let state_clone = state.clone();
+            let list_box_refresh = list_box.clone();
+            let canvas_refresh = canvas.clone();
+            send_back_btn.connect_clicked(move |_| {
+                Self::bring_to_front(&state_clone);
+                Self::refresh_list_box(&list_box_refresh, &state_clone);
+                canvas_refresh.queue_draw();
+            });
+        }
+
+        // Connect list selection to shape selection and update button sensitivity
         {
             let state_clone = state.clone();
             let canvas_refresh = canvas.clone();
+            let bring_front_btn_clone = bring_front_btn.clone();
+            let bring_forward_btn_clone = bring_forward_btn.clone();
+            let send_backward_btn_clone = send_backward_btn.clone();
+            let send_back_btn_clone = send_back_btn.clone();
             list_box.connect_selected_rows_changed(move |list| {
                 let rows = list.selected_rows();
                 let mut state_mut = state_clone.borrow_mut();
@@ -245,7 +262,7 @@ impl LayersPanel {
                     .deselect_all(&mut canvas.shape_store);
 
                 let mut first: Option<u64> = None;
-                for row in rows {
+                for row in &rows {
                     let id_str = row.widget_name();
                     if let Ok(shape_id) = id_str.as_str().parse::<u64>() {
                         if first.is_none() {
@@ -258,22 +275,90 @@ impl LayersPanel {
                 }
 
                 canvas.selection_manager.set_selected_id(first);
+
+                // Update button sensitivity based on selection position
+                let total_rows = Self::list_box_rows(list).len();
+                let has_selection = !rows.is_empty();
+                
+                if has_selection && rows.len() == 1 {
+                    // Single selection: enable based on position
+                    let selected_idx = rows[0].index() as usize;
+                    let is_first = selected_idx == 0;
+                    let is_last = selected_idx == total_rows.saturating_sub(1);
+                    
+                    // Up/First buttons: enabled only if NOT first
+                    bring_front_btn_clone.set_sensitive(!is_first);
+                    bring_forward_btn_clone.set_sensitive(!is_first);
+                    
+                    // Down/Last buttons: enabled only if NOT last
+                    send_backward_btn_clone.set_sensitive(!is_last);
+                    send_back_btn_clone.set_sensitive(!is_last);
+                } else if has_selection {
+                    // Multiple selection: enable all (operations work on primary selection)
+                    bring_front_btn_clone.set_sensitive(true);
+                    bring_forward_btn_clone.set_sensitive(true);
+                    send_backward_btn_clone.set_sensitive(true);
+                    send_back_btn_clone.set_sensitive(true);
+                } else {
+                    // No selection: disable all
+                    bring_front_btn_clone.set_sensitive(false);
+                    bring_forward_btn_clone.set_sensitive(false);
+                    send_backward_btn_clone.set_sensitive(false);
+                    send_back_btn_clone.set_sensitive(false);
+                }
+
                 drop(state_mut);
                 canvas_refresh.queue_draw();
             });
         }
 
-        Self { widget, list_box }
+        Self {
+            widget,
+            list_box,
+            bring_front_btn,
+            bring_forward_btn,
+            send_backward_btn,
+            send_back_btn,
+        }
     }
 
     pub fn refresh(&self, state: &Rc<RefCell<DesignerState>>) {
         Self::refresh_list_box(&self.list_box, state);
+        self.update_button_sensitivity();
+    }
+
+    /// Update button sensitivity based on current list selection
+    fn update_button_sensitivity(&self) {
+        let rows = self.list_box.selected_rows();
+        let total_rows = Self::list_box_rows(&self.list_box).len();
+        let has_selection = !rows.is_empty();
+        
+        if has_selection && rows.len() == 1 {
+            let selected_idx = rows[0].index() as usize;
+            let is_first = selected_idx == 0;
+            let is_last = selected_idx == total_rows.saturating_sub(1);
+            
+            self.bring_front_btn.set_sensitive(!is_first);
+            self.bring_forward_btn.set_sensitive(!is_first);
+            self.send_backward_btn.set_sensitive(!is_last);
+            self.send_back_btn.set_sensitive(!is_last);
+        } else if has_selection {
+            self.bring_front_btn.set_sensitive(true);
+            self.bring_forward_btn.set_sensitive(true);
+            self.send_backward_btn.set_sensitive(true);
+            self.send_back_btn.set_sensitive(true);
+        } else {
+            self.bring_front_btn.set_sensitive(false);
+            self.bring_forward_btn.set_sensitive(false);
+            self.send_backward_btn.set_sensitive(false);
+            self.send_back_btn.set_sensitive(false);
+        }
     }
 
     fn refresh_list_box(list_box: &ListBox, state: &Rc<RefCell<DesignerState>>) {
         // Don't hold a RefCell borrow across GTK mutations, because clearing the list triggers
         // selection-change signals which may borrow_mut() the same state.
-        let shapes: Vec<(u64, String, Option<u64>, String)> = {
+        let shapes: Vec<(u64, String, Option<u64>, String, OperationType)> = {
             let state_ref = state.borrow();
             state_ref
                 .canvas
@@ -297,6 +382,7 @@ impl LayersPanel {
                         shape_obj.name.clone(),
                         shape_obj.group_id,
                         shape_type,
+                        shape_obj.operation_type,
                     )
                 })
                 .collect()
@@ -308,12 +394,22 @@ impl LayersPanel {
         }
 
         // Rebuild rows
-        for (shape_id, shape_name, group_id, shape_type) in shapes {
+        for (shape_id, shape_name, group_id, shape_type, operation_type) in shapes {
             let row_box = Box::new(Orientation::Horizontal, 6);
             row_box.set_margin_start(6);
             row_box.set_margin_end(6);
             row_box.set_margin_top(3);
             row_box.set_margin_bottom(3);
+
+            // CAM operation icon
+            let (op_icon, op_tooltip) = match operation_type {
+                OperationType::Pocket => ("selection-mode-symbolic", t!("Pocket operation")),
+                OperationType::Profile => ("emblem-documents-symbolic", t!("Profile operation")),
+            };
+            let op_image = Image::from_icon_name(op_icon);
+            op_image.set_tooltip_text(Some(&op_tooltip));
+            op_image.set_pixel_size(16);
+            row_box.append(&op_image);
 
             // Shape type icon/label
             let type_label = Label::new(Some(&shape_type));

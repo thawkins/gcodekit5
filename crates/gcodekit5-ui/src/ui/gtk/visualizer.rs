@@ -197,6 +197,12 @@ pub struct GcodeVisualizer {
 }
 
 impl GcodeVisualizer {
+    /// Queue a redraw of the visualizer
+    pub fn queue_draw(&self) {
+        self.drawing_area.queue_draw();
+        self.gl_area.queue_render();
+    }
+
     pub fn set_current_position(&self, x: f32, y: f32, z: f32) {
         *self.current_pos.borrow_mut() = (x, y, z);
         if self.show_laser.is_active() {
@@ -777,6 +783,7 @@ impl GcodeVisualizer {
             height: 200.0,
             thickness: 10.0,
             origin: (0.0, 0.0, 0.0),
+            safe_z: 10.0,
         });
         let stock_material = Rc::new(RefCell::new(initial_stock));
         let tool_diameter = Rc::new(RefCell::new(3.175f32)); // Default 1/8" end mill
@@ -1791,12 +1798,17 @@ impl GcodeVisualizer {
         let device_manager_draw = device_manager.clone();
         let current_pos_draw = current_pos.clone();
         let grid_spacing_draw = grid_spacing_mm.clone();
+        let settings_draw = settings_controller.clone();
 
         drawing_area.set_draw_func(move |da, cr, width, height| {
             let vis = vis_draw.borrow();
             let mut cache = render_cache_draw.borrow_mut();
             let pos = *current_pos_draw.borrow();
             let style = da.style_context();
+            let config = settings_draw.persistence.borrow();
+            let grid_major_width = config.config().ui.grid_major_line_width;
+            let grid_minor_width = config.config().ui.grid_minor_line_width;
+            drop(config);
             Self::draw(
                 cr,
                 &vis,
@@ -1816,6 +1828,8 @@ impl GcodeVisualizer {
                 pos,
                 &device_manager_draw,
                 grid_spacing_draw.get(),
+                grid_major_width,
+                grid_minor_width,
                 &style,
             );
         });
@@ -3070,6 +3084,8 @@ impl GcodeVisualizer {
         current_pos: (f32, f32, f32),
         device_manager: &Option<Arc<DeviceManager>>,
         grid_spacing_mm: f64,
+        grid_major_line_width: f64,
+        grid_minor_line_width: f64,
         style_context: &gtk4::StyleContext,
     ) {
         // Phase 4: Calculate cache hash from visualizer state
@@ -3120,7 +3136,7 @@ impl GcodeVisualizer {
 
         // Draw Grid
         if show_grid {
-            Self::draw_grid(cr, vis, grid_spacing_mm.max(0.1), &fg_color);
+            Self::draw_grid(cr, vis, grid_spacing_mm.max(0.1), &fg_color, grid_major_line_width, grid_minor_line_width);
         }
 
         // Draw Machine Bounds
@@ -3648,20 +3664,52 @@ impl GcodeVisualizer {
         vis: &Visualizer,
         grid_size: f64,
         fg_color: &gtk4::gdk::RGBA,
+        major_line_width: f64,
+        minor_line_width: f64,
     ) {
-        let grid_alpha = 0.25;
-
         // Calculate visible area in world coordinates
         // This is a simplification, ideally we'd project the viewport corners
         let range = core_constants::WORLD_EXTENT_MM as f64; // Draw a large enough grid to match world extent
 
+        let minor_spacing = grid_size / 5.0;
+
+        // Minor grid lines (lighter) - configurable constant width
         cr.set_source_rgba(
             fg_color.red() as f64,
             fg_color.green() as f64,
             fg_color.blue() as f64,
-            grid_alpha,
+            0.2,
         );
-        cr.set_line_width(1.0 / vis.zoom_scale as f64);
+        cr.set_line_width(minor_line_width / vis.zoom_scale as f64);
+
+        let mut x = -range;
+        while x <= range {
+            if ((x / grid_size).round() - x / grid_size).abs() > 0.01 {
+                cr.move_to(x, -range);
+                cr.line_to(x, range);
+            }
+            x += minor_spacing;
+        }
+
+        let mut y = -range;
+        while y <= range {
+            if ((y / grid_size).round() - y / grid_size).abs() > 0.01 {
+                cr.move_to(-range, y);
+                cr.line_to(range, y);
+            }
+            y += minor_spacing;
+        }
+
+        cr.stroke().unwrap();
+
+        // Major grid lines (darker) - configurable constant width
+        cr.set_source_rgba(
+            fg_color.red() as f64,
+            fg_color.green() as f64,
+            fg_color.blue() as f64,
+            0.4,
+        );
+        cr.set_line_width(major_line_width / vis.zoom_scale as f64);
 
         let mut x = -range;
         while x <= range {

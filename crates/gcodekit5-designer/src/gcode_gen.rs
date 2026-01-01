@@ -6,7 +6,8 @@ use gcodekit5_core::Units;
 /// G-code generator for converting toolpaths to G-code commands.
 pub struct ToolpathToGcode {
     _units: Units,
-    safe_z: f64,
+    /// Safe Z height for rapid moves between shapes
+    pub safe_z: f64,
     line_numbers_enabled: bool,
 }
 
@@ -90,9 +91,20 @@ impl ToolpathToGcode {
 
     /// Generates the G-code body (moves) for a toolpath.
     pub fn generate_body(&self, toolpath: &Toolpath, start_line_number: u32) -> String {
+        self.generate_body_continuing(toolpath, start_line_number, self.safe_z).0
+    }
+
+    /// Generates the G-code body continuing from a given Z position.
+    /// Returns (gcode_string, final_z_position) to allow chaining toolpaths without unnecessary retracts.
+    pub fn generate_body_continuing(
+        &self,
+        toolpath: &Toolpath,
+        start_line_number: u32,
+        initial_z: f64,
+    ) -> (String, f64) {
         let mut gcode = String::new();
         let mut line_number = start_line_number;
-        let mut current_z = self.safe_z;
+        let mut current_z = initial_z;
 
         for segment in &toolpath.segments {
             match segment.segment_type {
@@ -282,7 +294,7 @@ impl ToolpathToGcode {
 
             line_number += 10;
         }
-        gcode
+        (gcode, current_z)
     }
 
     /// Generates the G-code footer.
@@ -290,7 +302,7 @@ impl ToolpathToGcode {
         let mut gcode = String::new();
         gcode.push('\n');
         gcode.push_str("M5          ; Spindle off\n");
-        gcode.push_str("G00 Z10     ; Raise tool\n");
+        gcode.push_str(&format!("G00 Z{:.3}   ; Raise tool to safe height\n", self.safe_z));
         gcode.push_str("G00 X0 Y0   ; Return to origin\n");
         gcode.push_str("M30         ; End program\n");
         gcode

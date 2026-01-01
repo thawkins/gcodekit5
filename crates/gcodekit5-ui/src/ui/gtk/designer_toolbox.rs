@@ -94,6 +94,8 @@ pub struct DesignerToolbox {
     _state: Rc<RefCell<DesignerState>>,
     _settings_controller: Rc<SettingsController>,
     _current_units: Arc<Mutex<MeasurementSystem>>,
+    /// Callbacks to refresh tool/stock setting UI widgets from state
+    refresh_callbacks: Rc<RefCell<Vec<Rc<dyn Fn()>>>>,
 }
 
 impl DesignerToolbox {
@@ -264,6 +266,9 @@ impl DesignerToolbox {
                 .measurement_system,
         ));
 
+        // Collection of callbacks to refresh all settings UI widgets from state
+        let refresh_callbacks: Rc<RefCell<Vec<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(Vec::new()));
+
         let tool_row = Rc::new(Cell::new(0));
 
         // Helper to create a properties-style row: label | value | units
@@ -272,6 +277,7 @@ impl DesignerToolbox {
             let current_units = current_units.clone();
             let settings_grid = settings_grid.clone();
             let tool_row = tool_row.clone();
+            let refresh_callbacks = refresh_callbacks.clone();
 
             move |label_text: String,
                   getter: Rc<dyn Fn() -> f64>,
@@ -324,6 +330,9 @@ impl DesignerToolbox {
                         entry.set_text(&format!("{:.3}", val_display));
                     })
                 };
+
+                // Register for external refresh (e.g., after file load)
+                refresh_callbacks.borrow_mut().push(update_display.clone());
 
                 update_display();
 
@@ -521,6 +530,7 @@ impl DesignerToolbox {
             let current_units = current_units.clone();
             let stock_grid = stock_grid.clone();
             let stock_row = stock_row.clone();
+            let refresh_callbacks = refresh_callbacks.clone();
 
             move |label_text: String,
                   getter: Rc<dyn Fn() -> f32>,
@@ -564,6 +574,9 @@ impl DesignerToolbox {
                         entry.set_text(&format!("{:.3}", val_display));
                     })
                 };
+
+                // Register for external refresh (e.g., after file load)
+                refresh_callbacks.borrow_mut().push(update_display.clone());
 
                 update_display();
 
@@ -686,6 +699,32 @@ impl DesignerToolbox {
             );
         }
 
+        // Safe Z Height
+        {
+            let state_getter = state.clone();
+            let getter = Rc::new(move || {
+                state_getter
+                    .borrow()
+                    .stock_material
+                    .as_ref()
+                    .map(|s| s.safe_z)
+                    .unwrap_or(10.0)
+            });
+            let state_setter = state.clone();
+            let setter = Rc::new(move |val: f32| {
+                let mut s = state_setter.borrow_mut();
+                if let Some(ref mut stock) = s.stock_material {
+                    stock.safe_z = val;
+                }
+            });
+            create_stock_setting(
+                t!("Safe Z Height"),
+                getter,
+                setter,
+                t!("Safe height for rapid moves"),
+            );
+        }
+
         // Resolution
         {
             let state_getter = state.clone();
@@ -791,6 +830,7 @@ impl DesignerToolbox {
             _state: state,
             _settings_controller: settings_controller,
             _current_units: current_units,
+            refresh_callbacks,
         })
     }
 
@@ -822,6 +862,14 @@ impl DesignerToolbox {
             } else {
                 btn.remove_css_class("selected-tool");
             }
+        }
+    }
+
+    /// Refresh all tool and stock settings UI widgets from current state.
+    /// Call this after loading a design file to update displayed values.
+    pub fn refresh_settings(&self) {
+        for callback in self.refresh_callbacks.borrow().iter() {
+            callback();
         }
     }
 }

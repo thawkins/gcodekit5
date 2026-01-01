@@ -1,10 +1,12 @@
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Align, Box, Button, Dialog, Entry, FileChooserAction, FileChooserNative, Label, Notebook,
+    glib, Align, Button, Dialog, Entry, FileChooserAction, FileChooserNative, Label, Notebook,
     Orientation, PolicyType, PositionType, ResponseType, ScrolledWindow, StringList, Switch,
+    Box as GtkBox,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow};
+use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::error;
 
@@ -15,10 +17,15 @@ pub struct SettingsWindow {
     dialog: Dialog,
     notebook: Notebook,
     controller: Rc<SettingsController>,
+    on_save: Rc<RefCell<Option<Box<dyn Fn()>>>>,
 }
 
 impl SettingsWindow {
     pub fn new(controller: Rc<SettingsController>) -> Self {
+        Self::new_with_callback(controller, None)
+    }
+
+    pub fn new_with_callback(controller: Rc<SettingsController>, on_save: Option<Box<dyn Fn()>>) -> Self {
         let dialog = Dialog::builder()
             .title("Preferences")
             .modal(true)
@@ -35,10 +42,13 @@ impl SettingsWindow {
 
         dialog.content_area().append(&notebook);
 
+        let on_save_cell = Rc::new(RefCell::new(on_save));
+
         let settings_window = Self {
             dialog: dialog.clone(),
             notebook: notebook.clone(),
             controller: controller.clone(),
+            on_save: on_save_cell.clone(),
         };
         settings_window.setup_pages();
 
@@ -52,12 +62,17 @@ impl SettingsWindow {
 
         {
             let controller = controller.clone();
+            let on_save_callback = on_save_cell.clone();
             dialog.connect_response(move |d, response| {
                 match response {
                     ResponseType::Accept => {
                         if let Err(e) = controller.save() {
                             error!("Failed to save settings: {}", e);
                             return;
+                        }
+                        // Call on_save callback if provided
+                        if let Some(ref callback) = *on_save_callback.borrow() {
+                            callback();
                         }
                     }
                     _ => {
@@ -212,7 +227,7 @@ impl SettingsWindow {
                     controller_clone.update_setting(&id_clone, &e.text());
                 });
 
-                let box_container = Box::new(Orientation::Horizontal, 6);
+                let box_container = GtkBox::new(Orientation::Horizontal, 6);
                 box_container.append(&entry);
                 box_container.append(&browse_btn);
 

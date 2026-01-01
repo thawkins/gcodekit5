@@ -15,6 +15,8 @@ pub struct StockMaterial {
     pub thickness: f32,
     /// Origin point (bottom-left corner) in world coordinates
     pub origin: (f32, f32, f32),
+    /// Safe Z height for rapid moves (mm)
+    pub safe_z: f32,
 }
 
 impl StockMaterial {
@@ -25,6 +27,24 @@ impl StockMaterial {
             height,
             thickness,
             origin,
+            safe_z: 10.0,
+        }
+    }
+
+    /// Create a new stock material definition with custom safe Z height
+    pub fn with_safe_z(
+        width: f32,
+        height: f32,
+        thickness: f32,
+        origin: (f32, f32, f32),
+        safe_z: f32,
+    ) -> Self {
+        Self {
+            width,
+            height,
+            thickness,
+            origin,
+            safe_z,
         }
     }
 

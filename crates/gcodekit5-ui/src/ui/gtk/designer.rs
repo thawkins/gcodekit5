@@ -15,6 +15,7 @@ use gcodekit5_designer::model::{
 };
 use gcodekit5_designer::serialization::DesignFile;
 use gcodekit5_designer::shapes::OperationType;
+use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
 use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_settings::controller::SettingsController;
@@ -168,6 +169,7 @@ impl DesignerCanvas {
         toolbox: Option<Rc<DesignerToolbox>>,
         device_manager: Option<Arc<DeviceManager>>,
         status_bar: Option<crate::ui::gtk::status_bar::StatusBar>,
+        settings_controller: Option<Rc<SettingsController>>,
     ) -> Rc<Self> {
         let widget = DrawingArea::builder()
             .hexpand(true)
@@ -192,6 +194,7 @@ impl DesignerCanvas {
         let preview_shapes_clone = preview_shapes.clone();
         let preview_toolpaths_clone = preview_toolpaths.clone();
         let device_manager_draw = device_manager.clone();
+        let settings_draw = settings_controller.clone();
 
         let state_draw = state_clone.clone();
         widget.set_draw_func(move |drawing_area, cr, width, height| {
@@ -209,6 +212,14 @@ impl DesignerCanvas {
             let toolpaths = preview_toolpaths_clone.borrow();
             let bounds = compute_device_bbox(&device_manager_draw);
 
+            // Get grid line widths from settings (defaults if not available)
+            let (grid_major_width, grid_minor_width) = if let Some(ref settings) = settings_draw {
+                let config = settings.persistence.borrow();
+                (config.config().ui.grid_major_line_width, config.config().ui.grid_minor_line_width)
+            } else {
+                (2.0, 1.0)
+            };
+
             let style_context = drawing_area.style_context();
 
             Self::draw(
@@ -224,6 +235,8 @@ impl DesignerCanvas {
                 &toolpaths,
                 bounds,
                 &style_context,
+                grid_major_width,
+                grid_minor_width,
             );
         });
 
@@ -2865,6 +2878,8 @@ impl DesignerCanvas {
         toolpaths: &[Toolpath],
         device_bounds: (f64, f64, f64, f64),
         style_context: &gtk4::StyleContext,
+        grid_major_line_width: f64,
+        grid_minor_line_width: f64,
     ) {
         // Background handled by CSS
 
@@ -2902,7 +2917,16 @@ impl DesignerCanvas {
 
         // Draw Grid
         if state.show_grid {
-            Self::draw_grid(cr, width, height, state.grid_spacing_mm.max(0.1), &fg_color);
+            Self::draw_grid(
+                cr,
+                width,
+                height,
+                state.grid_spacing_mm.max(0.1),
+                &fg_color,
+                zoom,
+                grid_major_line_width,
+                grid_minor_line_width,
+            );
         }
 
         // Draw Device Bounds
@@ -3155,6 +3179,9 @@ impl DesignerCanvas {
         height: f64,
         grid_spacing: f64,
         fg_color: &gtk4::gdk::RGBA,
+        zoom: f64,
+        major_line_width: f64,
+        minor_line_width: f64,
     ) {
         cr.save().unwrap();
 
@@ -3167,14 +3194,14 @@ impl DesignerCanvas {
         let y0 = -matrix.y0() / matrix.yy();
         let y1 = (height - matrix.y0()) / matrix.yy();
 
-        // Minor grid lines (lighter)
+        // Minor grid lines (lighter) - configurable constant width
         cr.set_source_rgba(
             fg_color.red() as f64,
             fg_color.green() as f64,
             fg_color.blue() as f64,
             0.2,
         );
-        cr.set_line_width(0.5);
+        cr.set_line_width(minor_line_width / zoom);
 
         // Vertical minor grid lines
         let start_x = (x0 / minor_spacing).floor() * minor_spacing;
@@ -3200,14 +3227,14 @@ impl DesignerCanvas {
             y += minor_spacing;
         }
 
-        // Major grid lines (darker)
+        // Major grid lines (darker) - configurable constant width
         cr.set_source_rgba(
             fg_color.red() as f64,
             fg_color.green() as f64,
             fg_color.blue() as f64,
             0.4,
         );
-        cr.set_line_width(1.0);
+        cr.set_line_width(major_line_width / zoom);
 
         // Vertical major grid lines
         x = (x0 / grid_spacing).floor() * grid_spacing;
@@ -3227,14 +3254,14 @@ impl DesignerCanvas {
             y += grid_spacing;
         }
 
-        // Draw axes (thicker, darker) - only if they're visible
+        // Draw axes (thicker, darker) - only if they're visible - uses major line width
         cr.set_source_rgba(
             fg_color.red() as f64,
             fg_color.green() as f64,
             fg_color.blue() as f64,
             0.8,
         );
-        cr.set_line_width(2.0);
+        cr.set_line_width(major_line_width / zoom);
 
         // X-axis (y=0)
         if y1 <= 0.0 && y0 >= 0.0 {
@@ -3963,6 +3990,7 @@ impl DesignerView {
             Some(toolbox.clone()),
             device_manager.clone(),
             status_bar.clone(),
+            Some(settings_controller.clone()),
         );
 
         // Create Grid for Canvas + Scrollbars
@@ -4933,6 +4961,11 @@ impl DesignerView {
         self.canvas.delete_selected();
     }
 
+    /// Queue a redraw of the designer canvas
+    pub fn queue_draw(&self) {
+        self.canvas.widget.queue_draw();
+    }
+
     pub fn new_file(&self) {
         let mut state = self.canvas.state.borrow_mut();
         state.canvas.clear();
@@ -4984,6 +5017,7 @@ impl DesignerView {
         let current_file = self.current_file.clone();
         let layers = self.layers.clone();
         let status_label = self.status_label.clone();
+        let toolbox = self.toolbox.clone();
 
         dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
@@ -5012,6 +5046,27 @@ impl DesignerView {
 
                                 state.canvas.set_next_id(max_id + 1);
 
+                                // Restore tool settings from design file
+                                state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
+                                state.tool_settings.spindle_speed = design.toolpath_params.spindle_speed as u32;
+                                state.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
+                                state.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+
+                                // Also update the toolpath generator to match
+                                state.toolpath_generator.set_feed_rate(design.toolpath_params.feed_rate);
+                                state.toolpath_generator.set_spindle_speed(design.toolpath_params.spindle_speed as u32);
+                                state.toolpath_generator.set_tool_diameter(design.toolpath_params.tool_diameter);
+                                state.toolpath_generator.set_cut_depth(design.toolpath_params.cut_depth);
+
+                                // Restore stock parameters from design file (create if needed)
+                                state.stock_material = Some(StockMaterial {
+                                    width: design.toolpath_params.stock_width,
+                                    height: design.toolpath_params.stock_height,
+                                    thickness: design.toolpath_params.stock_thickness,
+                                    origin: (0.0, 0.0, 0.0),
+                                    safe_z: design.toolpath_params.safe_z_height,
+                                });
+
                                 // Update viewport (fallback to fit if invalid)
                                 let zoom = design.viewport.zoom;
                                 let pan_x = design.viewport.pan_x;
@@ -5034,6 +5089,8 @@ impl DesignerView {
                                 }
 
                                 layers.refresh(&canvas.state);
+                                // Refresh tool/stock settings UI to show loaded values
+                                toolbox.refresh_settings();
                                 canvas.widget.queue_draw();
                                 status_label.set_text(&format!(
                                     "{} {}",
@@ -5341,6 +5398,20 @@ impl DesignerView {
                         design.viewport.pan_x = state.canvas.pan_x();
                         design.viewport.pan_y = state.canvas.pan_y();
 
+                        // Tool settings
+                        design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
+                        design.toolpath_params.spindle_speed = state.tool_settings.spindle_speed as f64;
+                        design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
+                        design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
+
+                        // Stock and toolpath parameters
+                        if let Some(ref stock) = state.stock_material {
+                            design.toolpath_params.stock_width = stock.width;
+                            design.toolpath_params.stock_height = stock.height;
+                            design.toolpath_params.stock_thickness = stock.thickness;
+                            design.toolpath_params.safe_z_height = stock.safe_z;
+                        }
+
                         // Shapes
                         for obj in state.canvas.shapes() {
                             let shape_data = DesignFile::from_drawing_object(obj);
@@ -5382,6 +5453,20 @@ impl DesignerView {
         design.viewport.zoom = state.canvas.zoom();
         design.viewport.pan_x = state.canvas.pan_x();
         design.viewport.pan_y = state.canvas.pan_y();
+
+        // Tool settings
+        design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
+        design.toolpath_params.spindle_speed = state.tool_settings.spindle_speed as f64;
+        design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
+        design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
+
+        // Stock and toolpath parameters
+        if let Some(ref stock) = state.stock_material {
+            design.toolpath_params.stock_width = stock.width;
+            design.toolpath_params.stock_height = stock.height;
+            design.toolpath_params.stock_thickness = stock.thickness;
+            design.toolpath_params.safe_z_height = stock.safe_z;
+        }
 
         // Shapes
         for obj in state.canvas.shapes() {

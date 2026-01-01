@@ -75,3 +75,5 @@ Builds can take a long time so allow up to 600 seconds for a rebuild
 2. Create a directory called "temp" in the target folder
 3. Ensure that the target/temp folder is in the .gitignore file
 4. Use target/temp for all temporary files, scripts and other ephemeral items that are normally placed in /tmp
+
+Use the LSP MCP Bridge tools to find code instead of performing 

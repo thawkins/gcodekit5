@@ -100,6 +100,37 @@
   - Explicitly set the drag gesture to button 1 only (`drag_gesture.set_button(1)`) to prevent it from triggering on right-click (button 3).
 - **Benefit**: This resolves context menu failures, especially with multi-selection scenarios where users expect reliable menu display.
 
+### UI Refresh Patterns After File Load
+- **Issue**: UI widgets (Entry, SpinButton, etc.) may not reflect loaded state values after file operations like "Open File".
+- **Root Cause**: Widgets are typically populated at creation time using closures that read from shared state. These closures are called once during UI setup but not again after the state is mutated by file loading.
+- **Pattern**: Store "update_display" closures in a collection and provide a `refresh_*()` method to invoke them all.
+- **Implementation**:
+  ```rust
+  // In the UI component struct:
+  refresh_callbacks: Rc<RefCell<Vec<Rc<dyn Fn()>>>>,
+  
+  // When creating Entry widgets with state-bound displays:
+  let update_display: Rc<dyn Fn()> = Rc::new({
+      let entry = entry.clone();
+      let state = state.clone();
+      move || {
+          let value = state.borrow().some_property;
+          entry.set_text(&format!("{:.2}", value));
+      }
+  });
+  update_display();  // Initial population
+  refresh_callbacks.borrow_mut().push(update_display.clone());
+  
+  // Public method to refresh all UI:
+  pub fn refresh_settings(&self) {
+      for callback in self.refresh_callbacks.borrow().iter() {
+          callback();
+      }
+  }
+  ```
+- **Usage**: After loading a file, call `component.refresh_settings()` to update all bound widgets.
+- **Benefit**: Centralizes UI refresh logic and ensures consistency between state and display after any state-mutating operation.
+
 ### Inspector Properties
 - **Extensibility**: When adding new shape types (e.g., `Shape::Path`), ensure they are handled in `PropertiesPanel::update_from_selection` (to display values) and `PropertiesPanel::update_shape_position_and_size` (to apply changes).
 - **Path Handling**: For complex shapes like paths, use bounding box center for position (X/Y) and bounding box dimensions for size (Width/Height). Implement scaling and translation relative to the bounding box center to support parametric-like editing.
@@ -368,3 +399,57 @@ if can_group {
 - **Rapid Moves Issue**: When generating raster pockets for polygons, the tool was performing a rapid move to (0,0) between scanlines. This was due to a hardcoded `Point::new(0.0, 0.0)` in the `generate_raster_pocket` function that should have been the last point of the toolpath.
 - **Fix**: Changed line 843 in `pocket_operations.rs` from using a hardcoded origin to using the last point from the toolpath (`toolpath.segments.last().map(|s| s.end).unwrap_or(Point::new(0.0, 0.0))`). This ensures continuous tool movement without unnecessary rapid returns to origin between passes.
 
+## Step-Down Pass Optimization
+- **Issue**: When pocket/profile operations generated G-code with step-down passes, the tool was unnecessarily retracting to safe Z height between each depth pass, significantly slowing job execution.
+- **Root Cause**: Each Z pass was represented as a separate `Toolpath` object. The `generate_body()` method in `gcode_gen.rs` reset `current_z = self.safe_z` at the start of each toolpath, and `RapidMove` segments always retracted to safe Z before XY movement. No Z position was tracked between consecutive toolpath generations.
+- **Fix**: Added `generate_body_continuing()` method to `ToolpathToGcode` that accepts an initial Z position and returns `(String, f64)` tuple with the G-code and final Z position. Modified `designer_state.rs` to track Z position across consecutive toolpaths within the same shape, passing the final Z of one toolpath as the initial Z of the next.
+- **Implementation Details**:
+  - `gcode_gen.rs`: Added `pub safe_z` field and `generate_body_continuing(toolpath, line_number, initial_z) -> (String, f64)` method
+  - `designer_state.rs`: Changed toolpath loop to track `current_z` and use `generate_body_continuing()`
+- **Result**: Tool now maintains position between step-down passes, only retracting to safe Z when moving between different shapes.
+
+## Step-In Pass Optimization
+- **Issue**: Within a single pocket Z pass, the tool was retracting to safe Z between each step-in contour (e.g., between offset rings in contour-parallel strategy or between scanlines in raster strategy).
+- **Root Cause**: All pocket generation strategies were using `RapidMove` segments to position the tool at the start of each new contour. Since `RapidMove` in `gcode_gen.rs` always retracts to safe Z before XY movement, this caused unnecessary retracts within the same Z level.
+- **Fix**: Modified pocket generation to track whether it's the first step-in pass at a Z level:
+  - **First step-in**: Use `RapidMove` (need to position from safe Z)
+  - **Subsequent step-ins**: Use `LinearMove` to traverse directly at cutting depth
+- **Implementation Details**:
+  - `generate_circular_pocket`: Added `is_first_pass` flag; use LinearMove for subsequent passes
+  - `generate_contour_parallel_pocket`: Added `is_first_pass` flag; use LinearMove for subsequent passes  
+  - `generate_adaptive_pocket`: Changed `needs_rapid` to `needs_traverse`; use LinearMove instead of RapidMove
+  - `generate_raster_pocket`: Added `is_first_segment` check; use LinearMove for all non-first segments
+- **Result**: Tool stays at cutting depth throughout all step-in passes within a Z level, only retracting when moving to a new shape or new Z level.
+
+## Step-Down Optimization (December 2025)
+- **Issue**: When transitioning between Z passes (step-down), the tool was retracting to safe Z even though it was already at cutting depth from the previous Z pass.
+- **Root Cause**: Each Z pass started with a `RapidMove` segment, regardless of whether it was the first Z pass or a subsequent one. This caused unnecessary retract-reposition-plunge cycles between Z levels.
+- **Fix**: Added `is_first_z_pass` tracking to all pocket generation strategies:
+  - **First Z pass**: Use `RapidMove` for the first step-in (approach from safe Z)
+  - **Subsequent Z passes**: Use `LinearMove` for the first step-in (the G-code generator's `generate_body_continuing()` handles the plunge to new Z via `toolpath.depth`)
+- **Implementation Details**:
+  - `generate_rectangular_pocket`: Added `is_first_z_pass` flag; only RapidMove on first Z pass
+  - `generate_circular_pocket`: Added `is_first_z_pass` flag; only RapidMove on first Z pass
+  - `generate_contour_parallel_pocket`: Added `is_first_z_pass` flag; only RapidMove on first Z pass
+  - `generate_adaptive_pocket`: Added `is_first_z_pass` flag; only RapidMove on first Z pass
+  - `generate_raster_pocket`: Added `is_first_z_pass` flag; only RapidMove on first Z pass
+  - `generate_raster_cleanup`: Changed from `RapidMove` to `LinearMove` for all repositioning within cleanup passes
+- **Ordering Fix**: Raster cleanup toolpaths are now pushed AFTER the main contour toolpath at each Z level (was incorrectly pushed before)
+- **Result**: Tool only retracts to safe Z once at the start of the pocket, then maintains contact for all step-down and step-in passes within that pocket.
+## Design File Save/Load Fix (December 2025)
+- **Issue**: Tool settings (feed rate, spindle speed, tool diameter, cut depth) and stock settings (width, height, thickness, safe_z) were not being saved to or loaded from design files (.gckd).
+- **Root Causes**:
+  1. `designer_state.rs`: `save_to_file()` didn't populate `toolpath_params` with tool/stock settings
+  2. `designer_state.rs`: `load_from_file()` didn't restore tool/stock settings from `toolpath_params`
+  3. `designer_state.rs`: `load_from_file()` used `canvas.add_shape(obj.shape)` which only added the shape geometry, losing all per-shape properties (operation_type, pocket_depth, step_down, etc.)
+  4. `designer.rs` (UI): Separate save/load logic also missing tool settings population/restoration
+- **Fixes Applied**:
+  - `designer_state.rs` `save_to_file()`: Added tool settings (feed_rate, spindle_speed, tool_diameter, cut_depth) and stock settings (width, height, thickness, safe_z) to `design.toolpath_params`
+  - `designer_state.rs` `load_from_file()`: Added restoration of `tool_settings` and `toolpath_generator` from `design.toolpath_params`, plus `stock_material` from stock params
+  - `designer_state.rs` `load_from_file()`: Changed from `canvas.add_shape(obj.shape)` to `canvas.restore_shape(obj)` to preserve full DrawingObject with all properties
+  - `designer.rs` (UI) `save_as_file()` and `save_to_path()`: Added tool settings population to `design.toolpath_params`
+  - `designer.rs` (UI) load dialog: Added tool settings restoration to `state.tool_settings` and `state.toolpath_generator`
+- **Serialization Structure**: The `ToolpathParameters` struct in `serialization.rs` already had the correct fields:
+  - `feed_rate`, `spindle_speed`, `tool_diameter`, `cut_depth` for tool settings
+  - `stock_width`, `stock_height`, `stock_thickness`, `safe_z_height` for stock settings
+- **Result**: Design files now properly persist and restore all tool settings, stock settings, and per-shape properties (operation type, pocket depth, step down, step in, etc.)

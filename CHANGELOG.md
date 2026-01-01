@@ -29,6 +29,15 @@
 - `bytemuck = "1.14"` for efficient OpenGL data marshaling
 
 ### Fixed
+- **Designer**: Fixed tool settings and stock settings not being saved/loaded to/from design files (.gckd)
+  - Save now properly stores feed rate, spindle speed, tool diameter, and cut depth to design files
+  - Save now properly stores stock width, height, thickness, and safe Z height to design files
+  - Load now properly restores tool settings and updates the toolpath generator
+  - Load now properly restores stock material settings
+  - Load now uses `restore_shape()` instead of `add_shape()` to preserve per-shape properties (operation type, pocket depth, step down, step in, etc.)
+  - Fixed UI not displaying loaded tool/stock settings (values were loaded into state but Entry widgets showed defaults)
+  - Added `refresh_settings()` method to DesignerToolbox to refresh all settings UI widgets after file load
+  - Fixed stock_material creation to always create a new StockMaterial when loading (instead of conditional update)
 - **Designer**: Fixed right-click context menu reliability issues with multi-selections and groups.
 - **Designer**: Fixed rectangle width/height editing in inspector causing shape to move and have wrong size
   - When editing width or height in the Properties Panel, shapes' centers are now preserved correctly

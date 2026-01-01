@@ -296,6 +296,28 @@ impl SettingsPersistence {
             .with_description("Show the About dialog for 15 seconds when the application starts")
             .with_category(SettingsCategory::UserInterface),
         );
+
+        // Grid Major Line Width
+        dialog.add_setting(
+            Setting::new(
+                "grid_major_line_width",
+                "Grid Major Line Width (px)",
+                SettingValue::String(ui.grid_major_line_width.to_string()),
+            )
+            .with_description("Thickness in pixels for coarse grid lines (default: 2)")
+            .with_category(SettingsCategory::UserInterface),
+        );
+
+        // Grid Minor Line Width
+        dialog.add_setting(
+            Setting::new(
+                "grid_minor_line_width",
+                "Grid Minor Line Width (px)",
+                SettingValue::String(ui.grid_minor_line_width.to_string()),
+            )
+            .with_description("Thickness in pixels for fine grid lines (default: 1)")
+            .with_category(SettingsCategory::UserInterface),
+        );
     }
 
     /// Add file processing settings to dialog
@@ -495,6 +517,18 @@ impl SettingsPersistence {
         if let Some(setting) = dialog.get_setting("show_about_on_startup") {
             if let Ok(value) = setting.value.as_str().parse::<bool>() {
                 self.config.ui.show_about_on_startup = value;
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("grid_major_line_width") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.ui.grid_major_line_width = value.max(0.5).min(10.0);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("grid_minor_line_width") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.ui.grid_minor_line_width = value.max(0.5).min(10.0);
             }
         }
 

@@ -217,6 +217,14 @@ pub struct UiSettings {
     /// Tools tab last selected tool id
     #[serde(default)]
     pub tools_manager_selected_tool: Option<String>,
+
+    /// Grid major line width in pixels (coarse grid lines)
+    #[serde(default = "default_grid_major_line_width")]
+    pub grid_major_line_width: f64,
+
+    /// Grid minor line width in pixels (fine grid lines)
+    #[serde(default = "default_grid_minor_line_width")]
+    pub grid_minor_line_width: f64,
 }
 
 impl Default for UiSettings {
@@ -252,8 +260,20 @@ impl Default for UiSettings {
             tools_manager_dia_min: None,
             tools_manager_dia_max: None,
             tools_manager_selected_tool: None,
+            grid_major_line_width: 2.0,
+            grid_minor_line_width: 1.0,
         }
     }
+}
+
+/// Default value for grid major line width
+fn default_grid_major_line_width() -> f64 {
+    2.0
+}
+
+/// Default value for grid minor line width
+fn default_grid_minor_line_width() -> f64 {
+    1.0
 }
 
 /// File processing settings

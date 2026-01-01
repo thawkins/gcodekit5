@@ -102,6 +102,7 @@ impl DesignerState {
                 height: 200.0,
                 thickness: 10.0,
                 origin: (0.0, 0.0, 0.0),
+                safe_z: 10.0,
             }),
             show_stock_removal: false,
             simulation_resolution: 0.1,
@@ -774,12 +775,25 @@ impl DesignerState {
     /// Generates G-code from the current design.
     pub fn generate_gcode(&mut self) -> String {
         let mut gcode = String::new();
-        let gcode_gen = ToolpathToGcode::new(Units::MM, 10.0);
+        // Get safe_z from stock_material, default to 10.0 if not set
+        let safe_z = self
+            .stock_material
+            .as_ref()
+            .map(|s| s.safe_z as f64)
+            .unwrap_or(10.0);
+        let gcode_gen = ToolpathToGcode::new(Units::MM, safe_z);
 
         // Store shape-to-toolpath mapping (plus whether we had to fall back from pocket->profile)
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
-        for shape_obj in self.canvas.shapes() {
+        // Collect shape IDs in reverse draw order (front to back) for G-code generation
+        // This allows user control over generation order via the layers panel
+        let shape_ids: Vec<u64> = self.canvas.shape_store.draw_order_iter().rev().collect();
+
+        for shape_id in shape_ids {
+            let Some(shape_obj) = self.canvas.shape_store.get(shape_id) else {
+                continue;
+            };
             // Set strategy for this shape
             self.toolpath_generator
                 .set_pocket_strategy(shape_obj.pocket_strategy);
@@ -1000,8 +1014,21 @@ impl DesignerState {
         ));
 
         let mut line_number = 10;
+        let mut is_first_shape = true;
 
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
+            // SAFETY: Before moving to a new shape, retract to safe Z to avoid
+            // passing through the side of a pocket/profile and damaging the tool/job.
+            // Skip for the first shape since we're already at safe Z from header.
+            if !is_first_shape {
+                gcode.push_str(&format!(
+                    "G00 Z{:.3}   ; Retract to safe Z before next shape\n",
+                    safe_z
+                ));
+                line_number += 10;
+            }
+            is_first_shape = false;
+
             // Add shape metadata as comments
             gcode.push_str(&format!(
                 "\n; Shape ID={}, Type={:?}\n",
@@ -1097,9 +1124,14 @@ impl DesignerState {
             }
 
             // Generate G-code for all toolpaths associated with this shape
+            // Track Z position between toolpaths to avoid unnecessary retracts during step-down passes
+            let mut current_z = gcode_gen.safe_z;
             for toolpath in toolpaths {
-                gcode.push_str(&gcode_gen.generate_body(toolpath, line_number));
+                let (body_gcode, final_z) =
+                    gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
+                gcode.push_str(&body_gcode);
                 line_number += (toolpath.segments.len() as u32) * 10;
+                current_z = final_z;
             }
         }
 
@@ -1606,6 +1638,20 @@ impl DesignerState {
             &self.default_properties_shape,
         ));
 
+        // Save tool settings
+        design.toolpath_params.feed_rate = self.tool_settings.feed_rate;
+        design.toolpath_params.spindle_speed = self.tool_settings.spindle_speed as f64;
+        design.toolpath_params.tool_diameter = self.tool_settings.tool_diameter;
+        design.toolpath_params.cut_depth = self.tool_settings.cut_depth;
+
+        // Save stock settings
+        if let Some(stock) = &self.stock_material {
+            design.toolpath_params.stock_width = stock.width;
+            design.toolpath_params.stock_height = stock.height;
+            design.toolpath_params.stock_thickness = stock.thickness;
+            design.toolpath_params.safe_z_height = stock.safe_z;
+        }
+
         // Save to file
         design.save_to_file(&path)?;
 
@@ -1619,6 +1665,7 @@ impl DesignerState {
     /// Load design from file
     pub fn load_from_file(&mut self, path: impl AsRef<std::path::Path>) -> anyhow::Result<()> {
         use crate::serialization::DesignFile;
+        use crate::stock_removal::StockMaterial;
 
         let design = DesignFile::load_from_file(&path)?;
 
@@ -1630,12 +1677,10 @@ impl DesignerState {
         self.canvas
             .set_pan(design.viewport.pan_x, design.viewport.pan_y);
 
-        // Restore shapes
-        let mut next_id = 1;
+        // Restore shapes with full DrawingObject (preserves all properties)
         for shape_data in &design.shapes {
-            if let Ok(obj) = DesignFile::to_drawing_object(shape_data, next_id) {
-                self.canvas.add_shape(obj.shape);
-                next_id += 1;
+            if let Ok(obj) = DesignFile::to_drawing_object(shape_data, shape_data.id as i32) {
+                self.canvas.restore_shape(obj);
             }
         }
 
@@ -1645,6 +1690,27 @@ impl DesignerState {
                 self.default_properties_shape = obj;
             }
         }
+
+        // Restore tool settings
+        self.tool_settings.feed_rate = design.toolpath_params.feed_rate;
+        self.tool_settings.spindle_speed = design.toolpath_params.spindle_speed as u32;
+        self.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
+        self.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+
+        // Also update the toolpath generator to match
+        self.toolpath_generator.set_feed_rate(design.toolpath_params.feed_rate);
+        self.toolpath_generator.set_spindle_speed(design.toolpath_params.spindle_speed as u32);
+        self.toolpath_generator.set_tool_diameter(design.toolpath_params.tool_diameter);
+        self.toolpath_generator.set_cut_depth(design.toolpath_params.cut_depth);
+
+        // Restore stock settings
+        self.stock_material = Some(StockMaterial {
+            width: design.toolpath_params.stock_width,
+            height: design.toolpath_params.stock_height,
+            thickness: design.toolpath_params.stock_thickness,
+            origin: (0.0, 0.0, 0.0),
+            safe_z: design.toolpath_params.safe_z_height,
+        });
 
         // Update state
         self.design_name = design.metadata.name.clone();

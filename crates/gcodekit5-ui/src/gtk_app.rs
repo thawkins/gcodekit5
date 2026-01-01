@@ -19,7 +19,7 @@ use gcodekit5_settings::config::{StartupTab, Theme};
 use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Application, ApplicationWindow, Box, CssProvider, Orientation, PopoverMenuBar, Stack,
+    glib, Application, ApplicationWindow, Box as GtkBox, CssProvider, Orientation, PopoverMenuBar, Stack,
     StackSwitcher,
 };
 use std::cell::RefCell;
@@ -123,7 +123,7 @@ pub fn main() {
         let header_bar = gtk4::HeaderBar::new();
         window.set_titlebar(Some(&header_bar));
 
-        let main_box = Box::new(Orientation::Vertical, 0);
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
 
         // Menu Bar
         let menu_bar_model = gio::Menu::new();
@@ -165,7 +165,7 @@ pub fn main() {
         main_box.append(&menu_bar);
 
         // Content Area
-        let content_box = Box::new(Orientation::Vertical, 0);
+        let content_box = GtkBox::new(Orientation::Vertical, 0);
         content_box.set_vexpand(true);
         let stack_switcher = StackSwitcher::new();
         let stack = Stack::new();
@@ -407,8 +407,17 @@ pub fn main() {
         // Actions
         let settings_action = gio::SimpleAction::new("preferences", None);
         let settings_controller_clone = settings_controller.clone();
+        let visualizer_settings = visualizer.clone();
+        let designer_settings = designer.clone();
         settings_action.connect_activate(move |_, _| {
-            let win = SettingsWindow::new(settings_controller_clone.clone());
+            let visualizer_redraw = visualizer_settings.clone();
+            let designer_redraw = designer_settings.clone();
+            let on_save = Box::new(move || {
+                // Queue redraws for visualizer and designer when settings are saved
+                visualizer_redraw.queue_draw();
+                designer_redraw.queue_draw();
+            });
+            let win = SettingsWindow::new_with_callback(settings_controller_clone.clone(), Some(on_save));
             win.present();
         });
         app.add_action(&settings_action);
