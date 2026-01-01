@@ -1,3 +1,8 @@
+## [0.45.0-alpha.8] - 2026-01-01
+
+### Changed
+- **CI/CD**: Updated macOS x86_64 runner from `macos-13` to `macos-15-large` for newer Intel runner
+
 ## [0.45.0-alpha.7] - 2026-01-01
 
 ### Fixed

@@ -1,12 +1,9 @@
-Version: 0.45.0-alpha.7
+Version: 0.45.0-alpha.8
 
-## [0.45.0-alpha.7] - 2026-01-01
+## [0.45.0-alpha.8] - 2026-01-01
 
-### Fixed
-- **CI/CD**: Fixed macOS x86_64 build failing due to ARM64 library linking
-  - Changed macOS-x86_64 runner from `macos-latest` to `macos-13` (Intel runner)
-  - Changed macOS-ARM64 runner from `macos-latest` to `macos-14` (Apple Silicon runner)
-  - Fixes linker errors where ARM64 Homebrew libraries were being found for x86_64 builds
+### Changed
+- **CI/CD**: Updated macOS x86_64 runner from `macos-13` to `macos-15-large` for newer Intel runner
 
 ## [0.42.0-alpha.1] - TBD
 
