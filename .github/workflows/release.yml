@@ -284,14 +284,13 @@ jobs:
         Copy-Item -Path "dist\gcodekit5\*" -Destination "target\release\" -Recurse -Force
         
         # Generate component groups using heat.exe
-        # Note: Using absolute paths (no -var flag) to avoid preprocessor variable issues
+        # Note: Not using -srd to preserve directory paths in Source attributes
         
         # Generate GTK Runtime Files (bin/*.dll)
         .\wix-tools\heat.exe dir "target\release\bin" `
           -cg GtkRuntimeFiles `
           -gg `
           -sfrag `
-          -srd `
           -dr Bin `
           -out "wix\gtk-runtime.wxs"
         
@@ -301,7 +300,6 @@ jobs:
             -cg GtkShareFiles `
             -gg `
             -sfrag `
-            -srd `
             -dr Share `
             -out "wix\gtk-share.wxs"
         }
@@ -312,7 +310,6 @@ jobs:
             -cg GtkLibFiles `
             -gg `
             -sfrag `
-            -srd `
             -dr Lib `
             -out "wix\gtk-lib.wxs"
         }
