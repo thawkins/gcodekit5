@@ -76,7 +76,29 @@ $DllsToCopy = @(
     # Windows-specific
     "libwinpthread-1.dll",
     "libgcc_s_seh-1.dll",
-    "libstdc++-6.dll"
+    "libstdc++-6.dll",
+    
+    # Additional graphics and system libraries
+    "libdatrie-1.dll",
+    "libthai-0.dll",
+    "libcroco-0.6-3.dll",
+    "liblzo2-2.dll",
+    "libgraphite2.dll",
+    "libunistring-5.dll",
+    "libidn2-0.dll",
+    "libffi-7.dll",
+    "libssp-0.dll",
+    
+    # GObject Introspection (if needed)
+    "libgirepository-1.0-1.dll",
+    
+    # Additional image format support
+    "libjasper-4.dll",
+    "libgif-7.dll",
+    
+    # SSL/Crypto (may be needed for some operations)
+    "libcrypto-3-x64.dll",
+    "libssl-3-x64.dll"
 )
 
 Write-Host "Copying DLLs from $MsysPath\bin..."

@@ -1,3 +1,31 @@
+## [0.45.0-alpha.15] - 2026-01-02
+
+### Fixed
+- **Windows**: Fixed missing DLL errors on Windows 11 installation
+  - Added 14 missing GTK4/Libadwaita DLL dependencies to bundling script
+  - Updated WiX installer to properly package all bundled DLLs and data files
+  - DLLs now installed to `bin/` subdirectory alongside executable
+
+### Added
+- **Windows**: Created automated build script `build-windows-release.ps1` for one-command Windows releases
+  - Automates building, bundling GTK runtime, testing, and MSI creation
+  - Uses WiX `heat.exe` to automatically harvest all runtime files
+  - Provides validation and progress feedback at each stage
+- **Windows**: Created DLL dependency checker script `check-dll-dependencies.ps1`
+- **Documentation**: Added comprehensive Windows build documentation
+  - `docs/WINDOWS_BUILD.md` - Complete build and troubleshooting guide
+  - `docs/WINDOWS_QUICK_START.md` - Quick reference
+  - `docs/bugfixes/WINDOWS_MISSING_DLLS_FIX.md` - Detailed fix explanation
+  - `scripts/README.md` - Build scripts overview
+
+### Changed
+- **Windows**: Enhanced GTK4 bundling script with additional required DLLs
+  - Added Thai text support (libdatrie-1.dll, libthai-0.dll)
+  - Added advanced font rendering (libgraphite2.dll)
+  - Added Unicode operations (libunistring-5.dll, libidn2-0.dll)
+  - Added SSL/Crypto support
+  - Added additional image format support
+
 ## [0.45.0-alpha.14] - 2026-01-01
 
 ### Fixed
