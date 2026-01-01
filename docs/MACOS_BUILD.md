@@ -13,7 +13,7 @@ The workflow in `.github/workflows/release.yml` includes automated macOS builds 
    - `aarch64-apple-darwin` (Apple Silicon Macs)
 
 2. **Automatic dependency management:**
-   - Installs GTK4, SourceView, and all required libraries via Homebrew
+   - Installs GTK4 and SourceView5 via Homebrew
    - Bundles frameworks and libraries into the app bundle
    - Creates distributable DMG files
 
@@ -27,7 +27,7 @@ The workflow in `.github/workflows/release.yml` includes automated macOS builds 
 
 ```bash
 # Install Homebrew dependencies
-brew install gtk4 libgtksourceview5 adwaita-icon-theme librsvg libpng jpeg webp
+brew install gtk4 gtksourceview5 adwaita-icon-theme librsvg libpng jpeg webp
 
 # Install Rust (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh

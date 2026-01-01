@@ -26,10 +26,10 @@ Resulting DMG files are uploaded to GitHub Releases:
 
 ```bash
 # Install dependencies
-brew install gtk4 libgtksourceview5 adwaita-icon-theme librsvg libpng jpeg webp
+brew install gtk4 gtksourceview5 adwaita-icon-theme librsvg libpng jpeg webp
 
 # Set environment variables
-export PKG_CONFIG_PATH="$(brew --prefix gtk4)/lib/pkgconfig:$(brew --prefix libgtksourceview5)/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$(brew --prefix gtk4)/lib/pkgconfig:$(brew --prefix gtksourceview5)/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
 
 ### Build & Package

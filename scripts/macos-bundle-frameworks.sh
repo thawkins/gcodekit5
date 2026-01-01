@@ -79,7 +79,7 @@ cp -r "${BREW_PREFIX}/opt/gtk4/lib/pkgconfig" "$RESOURCES_DIR/" || true
 
 # Copy key libraries
 copy_dylib "gtk4"
-copy_dylib "libgtksourceview5"
+copy_dylib "gtksourceview5"
 copy_dylib "adwaita-icon-theme"
 copy_dylib "glib"
 copy_dylib "gdk-pixbuf"
