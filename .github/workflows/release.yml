@@ -27,7 +27,7 @@ jobs:
             name_suffix: macos-arm64
           - os_name: Windows-x86_64
             os: windows-latest
-            target: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-gnu
             bin: gcodekit5.exe
             name_suffix: windows-x86_64
         
@@ -84,6 +84,7 @@ jobs:
       with:
         msystem: UCRT64
         update: true
+        path-type: inherit
         install: >-
           mingw-w64-ucrt-x86_64-gtk4
           mingw-w64-ucrt-x86_64-gtksourceview5
@@ -91,6 +92,7 @@ jobs:
           mingw-w64-ucrt-x86_64-librsvg
           mingw-w64-ucrt-x86_64-pkg-config
           mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-rust
           mingw-w64-ucrt-x86_64-adwaita-icon-theme
 
     - name: Set Windows Environment
@@ -205,10 +207,10 @@ jobs:
 
     - name: Build (Windows)
       if: matrix.platform.os == 'windows-latest'
-      shell: bash
+      shell: msys2 {0}
       run: |
-        # Build the application
-        cargo build --release --target ${{ matrix.platform.target }}
+        # Build the application using MSYS2's Rust
+        cargo build --release
         
         # Create distribution directory
         mkdir -p dist/gcodekit5/bin
@@ -218,10 +220,10 @@ jobs:
         mkdir -p dist/gcodekit5/lib/gdk-pixbuf-2.0/2.10.0/loaders
         
         # Copy executable
-        cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} dist/gcodekit5/bin/
+        cp target/release/${{ matrix.platform.bin }} dist/gcodekit5/bin/
         
         # Copy GTK4 and related DLLs
-        MSYS_PATH="/c/msys64/ucrt64"
+        MSYS_PATH="/ucrt64"
         
         # Copy required DLLs
         for dll in libgtk-4-1.dll libgdk_pixbuf-2.0-0.dll libgio-2.0-0.dll libglib-2.0-0.dll \
@@ -256,7 +258,7 @@ jobs:
         cp $MSYS_PATH/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache dist/gcodekit5/lib/gdk-pixbuf-2.0/2.10.0/ || true
         
         # Copy license
-        cp wix/License.rtf dist/gcodekit5/
+        cp wix/License.rtf dist/gcodekit5/ || true
         
         echo "Distribution prepared in dist/gcodekit5"
         ls -la dist/gcodekit5/bin/
@@ -265,12 +267,11 @@ jobs:
       if: matrix.platform.os == 'windows-latest'
       shell: pwsh
       run: |
-        # Install cargo-wix
+        # Install cargo-wix using Windows cargo (not MSYS2)
+        $env:PATH = "C:\Users\runneradmin\.cargo\bin;$env:PATH"
         cargo install cargo-wix
         
-        # Copy the built executable to where WiX expects it
-        New-Item -ItemType Directory -Force -Path "target\release" | Out-Null
-        Copy-Item "target\${{ matrix.platform.target }}\release\${{ matrix.platform.bin }}" -Destination "target\release\" -Force
+        # The executable is already in target\release from MSYS2 build
         
         # Build the MSI
         cargo wix --no-build --nocapture -o gcodekit5-${{ github.ref_name }}-windows-x86_64.msi

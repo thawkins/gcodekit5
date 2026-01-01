@@ -1,3 +1,12 @@
+## [0.45.0-alpha.12] - 2026-01-01
+
+### Fixed
+- **CI/CD**: Fixed Windows build by switching to GNU toolchain and MSYS2 shell
+  - Changed target from `x86_64-pc-windows-msvc` to `x86_64-pc-windows-gnu`
+  - Use MSYS2's Rust toolchain for native pkg-config integration
+  - Build runs entirely within MSYS2 UCRT64 environment
+  - Fixes pkg-config not finding GTK4 libraries
+
 ## [0.45.0-alpha.11] - 2026-01-01
 
 ### Added
