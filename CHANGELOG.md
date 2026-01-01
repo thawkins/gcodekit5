@@ -1,3 +1,9 @@
+## [0.45.0-alpha.14] - 2026-01-01
+
+### Fixed
+- **CI/CD**: Fixed Windows MSI build error "Workspace detected"
+  - Added `--package gcodekit5` flag to cargo-wix command
+
 ## [0.45.0-alpha.13] - 2026-01-01
 
 ### Fixed

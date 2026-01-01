@@ -1,12 +1,10 @@
-Version: 0.45.0-alpha.13
+Version: 0.45.0-alpha.14
 
-## [0.45.0-alpha.13] - 2026-01-01
+## [0.45.0-alpha.14] - 2026-01-01
 
 ### Fixed
-- **CI/CD**: Fixed macOS DMG creation "Resource busy" error
-  - Added cleanup of any existing mounted volumes before DMG creation
-  - Simplified volume name to avoid conflicts
-  - Added forced detach of stale mounts
+- **CI/CD**: Fixed Windows MSI build error "Workspace detected"
+  - Added `--package gcodekit5` flag to cargo-wix command
 
 ## [0.42.0-alpha.1] - TBD
 
