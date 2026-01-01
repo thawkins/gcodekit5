@@ -30,22 +30,14 @@ ln -s /Applications "$MOUNT_POINT/Applications" || true
 osascript << EOF
 tell application "Finder"
     activate
-    set theWindow to (open (the POSIX file "${MOUNT_POINT}"))
+    set theFolder to POSIX file "${MOUNT_POINT}"
+    set theWindow to (open theFolder)
+    delay 1
     tell theWindow
         set current view to icon view
         set bounds to {0, 0, 640, 480}
         set icon size to 100
         set arrangement to not arranged
-    end tell
-    
-    -- Position the app icon
-    tell theWindow
-        tell item 1 of theWindow
-            set position to {100, 100}
-        end tell
-        tell item 2 of theWindow
-            set position to {400, 100}
-        end tell
     end tell
 end tell
 EOF
