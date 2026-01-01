@@ -1,3 +1,8 @@
+## [0.45.0-alpha.9] - 2026-01-01
+
+### Removed
+- **CI/CD**: Removed legacy macOS x86_64 (Intel) build target - only ARM64 (Apple Silicon) is now supported
+
 ## [0.45.0-alpha.8] - 2026-01-01
 
 ### Changed

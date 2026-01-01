@@ -1,9 +1,9 @@
-Version: 0.45.0-alpha.8
+Version: 0.45.0-alpha.9
 
-## [0.45.0-alpha.8] - 2026-01-01
+## [0.45.0-alpha.9] - 2026-01-01
 
-### Changed
-- **CI/CD**: Updated macOS x86_64 runner from `macos-13` to `macos-15-large` for newer Intel runner
+### Removed
+- **CI/CD**: Removed legacy macOS x86_64 (Intel) build target - only ARM64 (Apple Silicon) is now supported
 
 ## [0.42.0-alpha.1] - TBD
 
