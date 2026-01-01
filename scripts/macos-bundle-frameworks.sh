@@ -129,7 +129,7 @@ done
 # Fix cross-library dependencies
 echo "Fixing inter-library dependencies..."
 find "$LIB_DIR" -name "*.dylib" | while read lib; do
-    local deps=$(otool -L "$lib" 2>/dev/null | grep -v ":" | awk '{print $1}' | grep "$(echo $BREW_PREFIX | sed 's/\//\\\//g')" | head -20)
+    deps=$(otool -L "$lib" 2>/dev/null | grep -v ":" | awk '{print $1}' | grep "$(echo $BREW_PREFIX | sed 's/\//\\\//g')" | head -20)
     echo "$deps" | while read dep; do
         if [ -n "$dep" ] && [ "$dep" != "@rpath" ]; then
             base_name=$(basename "$dep")
