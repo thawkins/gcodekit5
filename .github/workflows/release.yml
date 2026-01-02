@@ -304,16 +304,8 @@ jobs:
           -dr Bin `
           -out "wix\gtk-runtime.wxs"
         
-        # Generate only glib-2.0\schemas directory (essential for GTK)
-        if (Test-Path "wix-staging\share\glib-2.0\schemas") {
-          .\wix-tools\heat.exe dir "wix-staging\share\glib-2.0\schemas" `
-            -cg GtkSchemaFiles `
-            -gg `
-            -sfrag `
-            -srd `
-            -dr SchemasDir `
-            -out "wix\gtk-schemas.wxs"
-        }
+        Write-Host "Generated WiX component groups successfully"
+        Get-ChildItem wix\*.wxs
         
         # Skip GTK Share Files - many optional icons/files are missing
         # Only essential glib schemas are included manually in main.wxs
