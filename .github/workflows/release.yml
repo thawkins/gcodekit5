@@ -281,7 +281,7 @@ jobs:
         Write-Host "Found $($dllFiles.Count) DLL files"
         
         # Generate gtk-runtime.wxs manually with PowerShell instead of heat.exe
-        # This avoids the SourceDir placeholder issue
+        # For per-user installs (LocalAppDataFolder), each component needs a registry key as KeyPath
         $nl = [Environment]::NewLine
         $wxsLines = New-Object System.Collections.ArrayList
         [void]$wxsLines.Add('<?xml version="1.0" encoding="utf-8"?>')
@@ -295,6 +295,7 @@ jobs:
           $guid = [guid]::NewGuid().ToString().ToUpper()
           [void]$wxsLines.Add("      <Component Id=`"cmp_$safeId`" Directory=`"Bin`" Guid=`"$guid`">")
           [void]$wxsLines.Add("        <File Id=`"fil_$safeId`" Name=`"$fileName`" Source=`"target\release\$fileName`" />")
+          [void]$wxsLines.Add("        <RegistryValue Root=`"HKCU`" Key=`"Software\GCodeKit Contributors\GCodeKit5\Components`" Name=`"$safeId`" Type=`"integer`" Value=`"1`" KeyPath=`"yes`" />")
           [void]$wxsLines.Add('      </Component>')
         }
         

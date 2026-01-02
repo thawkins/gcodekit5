@@ -73,6 +73,9 @@
                             <Directory Id='SchemasDir' Name='schemas'>
                                 <Component Id='GtkSchemasData' Guid='5E6F7080-9012-3456-EF12-345678901234' Win64='$(var.Win64)'>
                                     <File Id='GschemasCompiled' Name='gschemas.compiled' Source='dist\gcodekit5\share\glib-2.0\schemas\gschemas.compiled' />
+                                    <RemoveFolder Id='RemoveSchemasDir' Directory='SchemasDir' On='uninstall' />
+                                    <RemoveFolder Id='RemoveGlibDir' Directory='GlibDir' On='uninstall' />
+                                    <RemoveFolder Id='RemoveShareDir' Directory='Share' On='uninstall' />
                                     <RegistryValue Root='HKCU' Key='Software\GCodeKit Contributors\GCodeKit5' Name='Schemas' Type='integer' Value='1' KeyPath='yes' />
                                 </Component>
                             </Directory>
