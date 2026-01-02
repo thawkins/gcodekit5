@@ -130,50 +130,71 @@ impl ToolpathCache {
                         let _ = write!(self.cached_path, "M {:.2} {:.2} ", from.x, -from.y);
                     }
 
-                    let sweep = if *clockwise { 0 } else { 1 };
+                    // Skip invalid arcs (radius is zero, NaN, or Infinity)
+                    // Treat them as line segments instead
+                    if radius.is_finite() && radius > 0.001 {
+                        let sweep = if *clockwise { 0 } else { 1 };
 
-                    use std::f32::consts::PI;
-                    let start_angle = (from.y - center.y).atan2(from.x - center.x);
-                    let end_angle = (to.y - center.y).atan2(to.x - center.x);
-                    let mut angle_diff = if *clockwise {
-                        start_angle - end_angle
+                        use std::f32::consts::PI;
+                        let start_angle = (from.y - center.y).atan2(from.x - center.x);
+                        let end_angle = (to.y - center.y).atan2(to.x - center.x);
+                        let mut angle_diff = if *clockwise {
+                            start_angle - end_angle
+                        } else {
+                            end_angle - start_angle
+                        };
+
+                        while angle_diff < 0.0 {
+                            angle_diff += 2.0 * PI;
+                        }
+                        while angle_diff >= 2.0 * PI {
+                            angle_diff -= 2.0 * PI;
+                        }
+
+                        let large_arc = if angle_diff > PI { 1 } else { 0 };
+
+                        let _ = write!(
+                            self.cached_path,
+                            "A {:.2} {:.2} 0 {} {} {:.2} {:.2} ",
+                            radius, radius, large_arc, sweep, to.x, -to.y
+                        );
+                        last_pos = Some(*to);
+
+                        // Update G2/G3 path
+                        let (target_path, last_target_pos) = if *clockwise {
+                            (&mut self.cached_g2_path, &mut last_g2_pos)
+                        } else {
+                            (&mut self.cached_g3_path, &mut last_g3_pos)
+                        };
+
+                        if last_target_pos.is_none() || *last_target_pos != Some(*from) {
+                            let _ = write!(target_path, "M {:.2} {:.2} ", from.x, -from.y);
+                        }
+
+                        let _ = write!(
+                            target_path,
+                            "A {:.2} {:.2} 0 {} {} {:.2} {:.2} ",
+                            radius, radius, large_arc, sweep, to.x, -to.y
+                        );
+                        *last_target_pos = Some(*to);
                     } else {
-                        end_angle - start_angle
-                    };
+                        // Invalid arc - treat as a line segment
+                        let _ = write!(self.cached_path, "L {:.2} {:.2} ", to.x, -to.y);
+                        last_pos = Some(*to);
 
-                    while angle_diff < 0.0 {
-                        angle_diff += 2.0 * PI;
+                        // Update G2/G3 path
+                        let (target_path, last_target_pos) = if *clockwise {
+                            (&mut self.cached_g2_path, &mut last_g2_pos)
+                        } else {
+                            (&mut self.cached_g3_path, &mut last_g3_pos)
+                        };
+
+                        if last_target_pos.is_none() || *last_target_pos != Some(*from) {
+                            let _ = write!(target_path, "M {:.2} {:.2} ", from.x, -from.y);
+                        }
+                        let _ = write!(target_path, "L {:.2} {:.2} ", to.x, -to.y);
+                        *last_target_pos = Some(*to);
                     }
-                    while angle_diff >= 2.0 * PI {
-                        angle_diff -= 2.0 * PI;
-                    }
-
-                    let large_arc = if angle_diff > PI { 1 } else { 0 };
-
-                    let _ = write!(
-                        self.cached_path,
-                        "A {:.2} {:.2} 0 {} {} {:.2} {:.2} ",
-                        radius, radius, large_arc, sweep, to.x, -to.y
-                    );
-                    last_pos = Some(*to);
-
-                    // Update G2/G3 path
-                    let (target_path, last_target_pos) = if *clockwise {
-                        (&mut self.cached_g2_path, &mut last_g2_pos)
-                    } else {
-                        (&mut self.cached_g3_path, &mut last_g3_pos)
-                    };
-
-                    if last_target_pos.is_none() || *last_target_pos != Some(*from) {
-                        let _ = write!(target_path, "M {:.2} {:.2} ", from.x, -from.y);
-                    }
-
-                    let _ = write!(
-                        target_path,
-                        "A {:.2} {:.2} 0 {} {} {:.2} {:.2} ",
-                        radius, radius, large_arc, sweep, to.x, -to.y
-                    );
-                    *last_target_pos = Some(*to);
                 }
                 GCodeCommand::Dwell { pos, duration: _ } => {
                     // Draw a small circle (radius 0.5mm) at dwell position
