@@ -237,7 +237,9 @@ jobs:
                    libadwaita-1-0.dll librsvg-2-2.dll libxml2-2.dll libwinpthread-1.dll \
                    libgcc_s_seh-1.dll libstdc++-6.dll libLerc.dll libjbig-0.dll \
                    libsharpyuv-0.dll libwebpdemux-2.dll libwebpmux-3.dll libpangoft2-1.0-0.dll \
-                   libcairo-script-interpreter-2.dll; do
+                   libcairo-script-interpreter-2.dll libappstream-5.dll libyaml-0-2.dll \
+                   libcurl-4.dll libnghttp2-14.dll libpsl-5.dll libidn2-0.dll libssh2-1.dll \
+                   libunistring-5.dll libnghttp3-9.dll; do
           if [ -f "$MSYS_PATH/bin/$dll" ]; then
             cp "$MSYS_PATH/bin/$dll" dist/gcodekit5/bin/
           fi
