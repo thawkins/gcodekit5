@@ -267,72 +267,58 @@ jobs:
       if: matrix.platform.os == 'windows-latest'
       shell: pwsh
       run: |
-        # Download WiX toolset
-        $wixVersion = "3.14.1.8722"
-        $wixUrl = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
-        Invoke-WebRequest -Uri $wixUrl -OutFile wix-binaries.zip
-        Expand-Archive -Path wix-binaries.zip -DestinationPath wix-tools
-        
         # Ensure the distribution directory exists and has content
         if (!(Test-Path "dist\gcodekit5\bin\gcodekit5.exe")) {
           Write-Error "Distribution not found! Expected dist\gcodekit5\bin\gcodekit5.exe"
           exit 1
         }
         
-        # Create staging directory for WiX that matches installer structure
-        New-Item -ItemType Directory -Force -Path "wix-staging\bin" | Out-Null
-        New-Item -ItemType Directory -Force -Path "wix-staging\share\glib-2.0\schemas" | Out-Null
-        
-        # Copy files to staging directory
-        Copy-Item -Path "dist\gcodekit5\bin\*" -Destination "wix-staging\bin\" -Recurse -Force
-        if (Test-Path "dist\gcodekit5\share\glib-2.0\schemas") {
-          Copy-Item -Path "dist\gcodekit5\share\glib-2.0\schemas\*" -Destination "wix-staging\share\glib-2.0\schemas\" -Recurse -Force
-        }
-        
-        # Also copy GTK DLLs to target\release for cargo-wix/WiX to find them
-        # This makes SourceDir references work correctly
+        # Copy GTK DLLs to target\release for cargo-wix/WiX to find them
         Copy-Item -Path "dist\gcodekit5\bin\*.dll" -Destination "target\release\" -Force
         
-        Write-Host "Files in wix-staging/bin:"
-        Get-ChildItem "wix-staging\bin" | Select-Object -First 10 | ForEach-Object { Write-Host "  $_" }
+        Write-Host "DLLs copied to target\release:"
+        $dllFiles = Get-ChildItem "target\release\*.dll"
+        Write-Host "Found $($dllFiles.Count) DLL files"
         
-        # Generate GTK Runtime Files (bin/*.dll)
-        # Use absolute path to target\release so heat embeds full paths
-        $binPath = Resolve-Path "target\release" | Select-Object -ExpandProperty Path
-        Write-Host "Harvesting from: $binPath"
-        .\wix-tools\heat.exe dir "$binPath" `
-          -cg GtkRuntimeFiles `
-          -gg `
-          -sfrag `
-          -srd `
-          -dr Bin `
-          -out "wix\gtk-runtime.wxs"
+        # Generate gtk-runtime.wxs manually with PowerShell instead of heat.exe
+        # This avoids the SourceDir placeholder issue
+        $wxsContent = @"
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <ComponentGroup Id="GtkRuntimeFiles">
+"@
         
-        Write-Host "Generated WiX component groups successfully"
-        Get-ChildItem wix\*.wxs
+        $counter = 1
+        foreach ($dll in $dllFiles) {
+          $fileName = $dll.Name
+          # Create a safe ID by replacing special characters
+          $safeId = $fileName -replace '[^a-zA-Z0-9]', '_'
+          $guid = [guid]::NewGuid().ToString().ToUpper()
+          
+          $wxsContent += @"
+
+      <Component Id="cmp_$safeId" Directory="Bin" Guid="$guid">
+        <File Id="fil_$safeId" Name="$fileName" Source="target\release\$fileName" />
+      </Component>
+"@
+          $counter++
+        }
         
-        # Skip GTK Share Files - many optional icons/files are missing
-        # Only essential glib schemas are included manually in main.wxs
-        # if (Test-Path "target\release\share") {
-        #   .\wix-tools\heat.exe dir "target\release\share" `
-        #     -cg GtkShareFiles `
-        #     -gg `
-        #     -sfrag `
-        #     -dr Share `
-        #     -out "wix\gtk-share.wxs"
-        # }
+        $wxsContent += @"
+
+    </ComponentGroup>
+  </Fragment>
+</Wix>
+"@
         
-        # Skip GTK Lib Files - optional pixbuf loaders have missing dependencies
-        # if (Test-Path "target\release\lib") {
-        #   .\wix-tools\heat.exe dir "target\release\lib" `
-        #     -cg GtkLibFiles `
-        #     -gg `
-        #     -sfrag `
-        #     -dr Lib `
-        #     -out "wix\gtk-lib.wxs"
-        # }
+        # Write the generated WiX file
+        $wxsContent | Out-File -FilePath "wix\gtk-runtime.wxs" -Encoding UTF8
         
-        Write-Host "Generated WiX component groups successfully"
+        Write-Host "Generated gtk-runtime.wxs with $($dllFiles.Count) DLL components"
+        Write-Host "First 50 lines of gtk-runtime.wxs:"
+        Get-Content "wix\gtk-runtime.wxs" | Select-Object -First 50
+        
         Get-ChildItem wix\*.wxs
 
     - name: Create Windows MSI Installer
