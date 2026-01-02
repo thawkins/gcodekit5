@@ -244,11 +244,22 @@ jobs:
                    libgstallocators-1.0-0.dll libgstvideo-1.0-0.dll libgstaudio-1.0-0.dll \
                    libgstpbutils-1.0-0.dll libgstgl-1.0-0.dll libgstplay-1.0-0.dll \
                    libgstplayer-1.0-0.dll libgsttag-1.0-0.dll libgstfft-1.0-0.dll \
-                   libthai-0.dll libdatrie-1.dll libharfbuzz-subset-0.dll libharfbuzz-icu-0.dll \
-                   libicuuc76.dll libicudata76.dll libicuin76.dll liborc-0.4-0.dll; do
+                   libharfbuzz-subset-0.dll libharfbuzz-icu-0.dll \
+                   libicuuc76.dll libicudata76.dll libicuin76.dll liborc-0.4-0.dll \
+                   libthai-0.dll libdatrie-1.dll; do
           if [ -f "$MSYS_PATH/bin/$dll" ]; then
             cp "$MSYS_PATH/bin/$dll" dist/gcodekit5/bin/
           fi
+        done
+        
+        # Copy all available language/script support DLLs (Pango modules)
+        # These provide rendering support for various scripts and languages
+        for pattern in libpango*.dll; do
+          for dll in $MSYS_PATH/bin/$pattern; do
+            if [ -f "$dll" ]; then
+              cp "$dll" dist/gcodekit5/bin/ 2>/dev/null || true
+            fi
+          done
         done
         
         # Copy GLib schemas
