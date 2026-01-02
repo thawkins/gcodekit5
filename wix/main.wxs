@@ -29,6 +29,12 @@
   <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
 <?endif ?>
 
+<!-- Define the source directory for GTK runtime files -->
+<!-- This will be set to target\release where cargo build places files -->
+<?ifndef GtkBinDir ?>
+  <?define GtkBinDir = "target\release" ?>
+<?endif ?>
+
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
 
     <!-- GTK component groups are generated in separate .wxs files (gtk-runtime.wxs, gtk-share.wxs, gtk-lib.wxs) -->
