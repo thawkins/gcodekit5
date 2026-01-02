@@ -240,13 +240,13 @@ jobs:
                    libcairo-script-interpreter-2.dll libappstream-5.dll libyaml-0-2.dll \
                    libcurl-4.dll libnghttp2-14.dll libpsl-5.dll libidn2-0.dll libssh2-1.dll \
                    libunistring-5.dll libnghttp3-9.dll libxmlb-2.dll libngtcp2-16.dll \
-                   libngtcp2_crypto_ossl-0.dll libcrypto-3-x64.dll \
+                   libngtcp2_crypto_ossl-0.dll libcrypto-3-x64.dll libssl-3-x64.dll \
                    libgstreamer-1.0-0.dll libgstbase-1.0-0.dll libgstd3d12-1.0-0.dll \
                    libgstallocators-1.0-0.dll libgstvideo-1.0-0.dll libgstaudio-1.0-0.dll \
                    libgstpbutils-1.0-0.dll libgstgl-1.0-0.dll libgstplay-1.0-0.dll \
-                   libgstplayer-1.0-0.dll libgsttag-1.0-0.dll libgstfft-1.0-0.dll \
-                   libharfbuzz-subset-0.dll libharfbuzz-icu-0.dll \
-                   libicuuc76.dll libicudata76.dll libicuin76.dll liborc-0.4-0.dll \
+                   libgstplayer-1.0-0.dll libgsttag-1.0-0.dll libgstfft-1.0-0.dll libgstd3dshader-1.0-0.dll \
+                   libharfbuzz-subset-0.dll libharfbuzz-icu-0.dll libgraphite2.dll \
+                   libicuuc76.dll libicudata76.dll libicuin76.dll liborc-0.4-0.dll liblzo2-2.dll \
                    libthai-0.dll libdatrie-1.dll; do
           if [ -f "$MSYS_PATH/bin/$dll" ]; then
             cp "$MSYS_PATH/bin/$dll" dist/gcodekit5/bin/
