@@ -297,17 +297,16 @@ jobs:
         Get-ChildItem "wix-staging\bin" | Select-Object -First 10 | ForEach-Object { Write-Host "  $_" }
         
         # Generate GTK Runtime Files (bin/*.dll)
-        # Use -var to create a preprocessor variable instead of SourceDir
-        Push-Location "wix-staging\bin"
-        ..\..\wix-tools\heat.exe dir . `
+        # Use absolute path to target\release so heat embeds full paths
+        $binPath = Resolve-Path "target\release" | Select-Object -ExpandProperty Path
+        Write-Host "Harvesting from: $binPath"
+        .\wix-tools\heat.exe dir "$binPath" `
           -cg GtkRuntimeFiles `
           -gg `
           -sfrag `
           -srd `
           -dr Bin `
-          -var var.GtkBinDir `
-          -out "..\..\wix\gtk-runtime.wxs"
-        Pop-Location
+          -out "wix\gtk-runtime.wxs"
         
         Write-Host "Generated WiX component groups successfully"
         Get-ChildItem wix\*.wxs
@@ -347,8 +346,6 @@ jobs:
         # The executable is already in target\release from previous step
         
         # Build the MSI - specify package name since this is a workspace
-        # Define the GtkBinDir variable for heat-generated wxs files
-        $env:GtkBinDir = "$(Get-Location)\target\release"
         cargo wix --package gcodekit5 --no-build --nocapture -o gcodekit5-${{ github.ref_name }}-windows-x86_64.msi
         
         # Also create a ZIP of the portable distribution
