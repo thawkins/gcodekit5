@@ -23,6 +23,8 @@ pub struct FluidNCCapabilities {
     pub supports_filesystem: bool,
     /// Supports web interface
     pub supports_web_interface: bool,
+    /// Settings are read-only (FluidNC uses YAML config files)
+    pub settings_read_only: bool,
 }
 
 impl Default for FluidNCCapabilities {
@@ -38,6 +40,7 @@ impl Default for FluidNCCapabilities {
             supports_wifi: true,
             supports_filesystem: true,
             supports_web_interface: true,
+            settings_read_only: true, // FluidNC uses YAML config, $$ is read-only
         }
     }
 }
@@ -67,5 +70,10 @@ impl FluidNCCapabilities {
     /// Check if file system is available
     pub fn has_filesystem(&self) -> bool {
         self.supports_filesystem
+    }
+
+    /// Check if settings are writable (false for FluidNC)
+    pub fn are_settings_writable(&self) -> bool {
+        !self.settings_read_only
     }
 }

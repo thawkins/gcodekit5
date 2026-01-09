@@ -224,6 +224,157 @@ impl FirmwareSettingsIntegration {
         Ok(())
     }
 
+    /// Load grblHAL firmware settings (compatible with GRBL but with extensions)
+    pub fn load_grblhal_defaults(&mut self) -> Result<()> {
+        // grblHAL is GRBL-compatible, so start with GRBL settings
+        self.load_grbl_defaults()?;
+        
+        // Update firmware type
+        self.firmware_panel.firmware_type = "grblHAL".to_string();
+        self.firmware_panel.firmware_version = "1.1f".to_string();
+
+        // grblHAL has all GRBL settings writable
+        Ok(())
+    }
+
+    /// Load FluidNC firmware settings (read-only)
+    pub fn load_fluidnc_defaults(&mut self) -> Result<()> {
+        self.firmware_panel = FirmwareSettingsPanel::new("FluidNC", "3.0");
+
+        // FluidNC settings are read-only (configured via YAML files)
+        // We still display them but mark as read-only
+        let fluidnc_settings = vec![
+            // Note: All FluidNC parameters are read-only
+            FirmwareParameter::new("$0", "Step Pulse Microseconds", "4")
+                .with_type(ParameterType::Integer)
+                .with_unit("μs")
+                .with_description("Length of step pulse in microseconds")
+                .read_only(),
+            FirmwareParameter::new("$1", "Stepper Idle Lock Time", "250")
+                .with_type(ParameterType::Integer)
+                .with_unit("ms")
+                .with_description("Delay for motor idle detection")
+                .read_only(),
+            FirmwareParameter::new("$2", "Step Port Invert", "0")
+                .with_type(ParameterType::Integer)
+                .with_description("Step port polarity mask")
+                .read_only(),
+            FirmwareParameter::new("$3", "Direction Port Invert", "0")
+                .with_type(ParameterType::Integer)
+                .with_description("Direction port polarity mask")
+                .read_only(),
+            FirmwareParameter::new("$4", "Invert Step Enable Pin", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Invert stepper enable pin")
+                .read_only(),
+            FirmwareParameter::new("$5", "Invert Limit Pins", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Invert limit pins")
+                .read_only(),
+            FirmwareParameter::new("$6", "Invert Probe Pin", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Invert probe pin")
+                .read_only(),
+            FirmwareParameter::new("$10", "Status Report Options", "1")
+                .with_type(ParameterType::Integer)
+                .with_description("Status report option mask")
+                .read_only(),
+            FirmwareParameter::new("$11", "Junction Deviation", "0.01")
+                .with_type(ParameterType::Float)
+                .with_unit("mm")
+                .with_description("Arc tolerance for corner deviation")
+                .read_only(),
+            FirmwareParameter::new("$12", "Arc Tolerance", "0.002")
+                .with_type(ParameterType::Float)
+                .with_unit("mm")
+                .with_description("Maximum arc segment deviation")
+                .read_only(),
+            FirmwareParameter::new("$13", "Report in Inches", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Report position in inches (true) or mm (false)")
+                .read_only(),
+            FirmwareParameter::new("$20", "Soft Limits Enable", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Enable soft limits")
+                .read_only(),
+            FirmwareParameter::new("$21", "Hard Limits Enable", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Enable hard limits")
+                .read_only(),
+            FirmwareParameter::new("$22", "Homing Cycle Enable", "0")
+                .with_type(ParameterType::Boolean)
+                .with_description("Enable homing cycle")
+                .read_only(),
+            FirmwareParameter::new("$100", "X-axis Steps per mm", "250.0")
+                .with_type(ParameterType::Float)
+                .with_unit("steps/mm")
+                .with_description("X-axis steps per millimeter")
+                .read_only(),
+            FirmwareParameter::new("$101", "Y-axis Steps per mm", "250.0")
+                .with_type(ParameterType::Float)
+                .with_unit("steps/mm")
+                .with_description("Y-axis steps per millimeter")
+                .read_only(),
+            FirmwareParameter::new("$102", "Z-axis Steps per mm", "250.0")
+                .with_type(ParameterType::Float)
+                .with_unit("steps/mm")
+                .with_description("Z-axis steps per millimeter")
+                .read_only(),
+            FirmwareParameter::new("$110", "X-axis Max Rate", "1000.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm/min")
+                .with_description("X-axis maximum rate")
+                .read_only(),
+            FirmwareParameter::new("$111", "Y-axis Max Rate", "1000.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm/min")
+                .with_description("Y-axis maximum rate")
+                .read_only(),
+            FirmwareParameter::new("$112", "Z-axis Max Rate", "1000.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm/min")
+                .with_description("Z-axis maximum rate")
+                .read_only(),
+            FirmwareParameter::new("$120", "X-axis Acceleration", "10.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm/s²")
+                .with_description("X-axis acceleration")
+                .read_only(),
+            FirmwareParameter::new("$121", "Y-axis Acceleration", "10.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm/s²")
+                .with_description("Y-axis acceleration")
+                .read_only(),
+            FirmwareParameter::new("$122", "Z-axis Acceleration", "10.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm/s²")
+                .with_description("Z-axis acceleration")
+                .read_only(),
+            FirmwareParameter::new("$130", "X-axis Max Travel", "200.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm")
+                .with_description("X-axis maximum travel distance")
+                .read_only(),
+            FirmwareParameter::new("$131", "Y-axis Max Travel", "200.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm")
+                .with_description("Y-axis maximum travel distance")
+                .read_only(),
+            FirmwareParameter::new("$132", "Z-axis Max Travel", "200.0")
+                .with_type(ParameterType::Float)
+                .with_unit("mm")
+                .with_description("Z-axis maximum travel distance")
+                .read_only(),
+        ];
+
+        for param in fluidnc_settings {
+            self.firmware_panel.add_parameter(param);
+        }
+
+        self.is_loaded = true;
+        Ok(())
+    }
+
     /// Populate SettingsDialog with firmware parameters
     pub fn populate_dialog(&mut self, dialog: &mut SettingsDialog) {
         if !self.is_loaded {

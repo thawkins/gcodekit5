@@ -3982,7 +3982,11 @@ impl DesignerView {
             });
         }
 
-        main_box.append(&left_sidebar);
+        // Paned layout: left sidebar is resizable
+        let left_paned = Paned::new(Orientation::Horizontal);
+        left_paned.set_start_child(Some(&left_sidebar));
+        left_paned.set_resize_start_child(true);
+        left_paned.set_shrink_start_child(false);
 
         // Create canvas
         let canvas = DesignerCanvas::new(
@@ -4190,7 +4194,15 @@ impl DesignerView {
         canvas_grid.attach(&v_scrollbar, 1, 0, 1, 1);
         canvas_grid.attach(&h_scrollbar, 0, 1, 1, 1);
 
-        main_box.append(&canvas_grid);
+        // Set center area placeholder to be replaced later
+        // We'll update this after creating the center paned
+        left_paned.set_resize_end_child(true);
+        left_paned.set_shrink_end_child(false);
+        left_paned.set_hexpand(true);
+        left_paned.set_vexpand(true);
+        left_paned.set_position(180); // Initial position for left sidebar
+
+        main_box.append(&left_paned);
 
         // Connect scrollbars to canvas pan
         let canvas_h = canvas.clone();
@@ -4439,7 +4451,42 @@ impl DesignerView {
         canvas.set_properties_panel(properties.clone());
         canvas.set_layers_panel(layers.clone());
 
-        main_box.append(&right_sidebar);
+        // Paned layout: right sidebar is resizable from the center paned
+        let center_paned = Paned::new(Orientation::Horizontal);
+        center_paned.set_start_child(Some(&canvas_grid));
+        center_paned.set_end_child(Some(&right_sidebar));
+        center_paned.set_resize_start_child(true);
+        center_paned.set_resize_end_child(true);
+        center_paned.set_shrink_start_child(false);
+        center_paned.set_shrink_end_child(false);
+        center_paned.set_hexpand(true);
+        center_paned.set_vexpand(true);
+        center_paned.set_position(600); // Will be adjusted on map
+
+        // Now set the center paned as the end child of the left paned
+        left_paned.set_end_child(Some(&center_paned));
+
+        // Auto-size the center paned position when window is mapped
+        let center_paned_size = center_paned.clone();
+        let right_sidebar_width = right_sidebar.clone();
+        container.connect_map(move |_cont| {
+            let center_paned = center_paned_size.clone();
+            let right_sidebar = right_sidebar_width.clone();
+            gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                let total_width = center_paned.width();
+                if total_width > 0 {
+                    // Get the right sidebar preferred width (should be set by now)
+                    let right_w = right_sidebar.width_request();
+                    let right_w = if right_w > 0 { right_w } else { 300 };
+                    // Position center_paned divider to give most space to canvas
+                    let canvas_width = total_width - right_w;
+                    if canvas_width > 100 {
+                        center_paned.set_position(canvas_width);
+                    }
+                }
+                gtk4::glib::ControlFlow::Break
+            });
+        });
 
         container.append(&main_box);
 

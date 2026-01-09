@@ -19,6 +19,7 @@ pub mod firmware_version;
 pub mod fluidnc;
 pub mod g2core;
 pub mod grbl;
+pub mod grblhal;
 pub mod override_manager;
 pub mod settings;
 pub mod smoothieware;
@@ -32,6 +33,7 @@ pub use firmware_detector::{FirmwareDetectionResult, FirmwareDetector};
 pub use fluidnc::{FluidNCCapabilities, FluidNCController, FluidNCVersion};
 pub use g2core::{G2CoreCapabilities, G2CoreController, G2CoreVersion as G2CoreVer};
 pub use grbl::GrblCapabilities;
+pub use grblhal::{GrblHalCapabilities, GrblHalVersion};
 pub use override_manager::{
     DefaultOverrideManager, OverrideManagerTrait, OverrideState, RapidOverrideLevel,
 };
@@ -44,6 +46,8 @@ pub use tinyg::{TinyGCapabilities, TinyGController, TinyGVersion as TinyGVer};
 pub enum ControllerType {
     /// GRBL (default, most common)
     Grbl,
+    /// grblHAL (enhanced GRBL with additional features)
+    GrblHal,
     /// TinyG
     TinyG,
     /// g2core (TinyG variant)
@@ -60,6 +64,7 @@ impl std::fmt::Display for ControllerType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Grbl => write!(f, "GRBL"),
+            Self::GrblHal => write!(f, "grblHAL"),
             Self::TinyG => write!(f, "TinyG"),
             Self::G2Core => write!(f, "g2core"),
             Self::Smoothieware => write!(f, "Smoothieware"),
@@ -111,6 +116,21 @@ impl FirmwareCapabilities {
             supports_tool_change: false,
             supports_auto_home: true,
             buffer_size: 128,
+        }
+    }
+
+    /// Create capabilities for grblHAL
+    pub fn grblhal() -> Self {
+        Self {
+            controller_type: ControllerType::GrblHal,
+            max_axes: 6,
+            max_feed_rate: 24000.0,
+            max_rapid_rate: 3000.0,
+            max_spindle_speed: 30000,
+            supports_probing: true,
+            supports_tool_change: true,
+            supports_auto_home: true,
+            buffer_size: 256,
         }
     }
 

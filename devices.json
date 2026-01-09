@@ -22,6 +22,7 @@
       "max_feed_rate": 1000.0,
       "name": "LunYee 3018 Pro Ultra (CNC Mode)",
       "port": "Auto",
+      "tcp_host": "192.168.1.100",
       "tcp_port": 23,
       "timeout_ms": 5000,
       "x_axis": {
@@ -61,6 +62,7 @@
       "max_feed_rate": 1000.0,
       "name": "Dimifun D9",
       "port": "Auto",
+      "tcp_host": "192.168.1.100",
       "tcp_port": 23,
       "timeout_ms": 5000,
       "x_axis": {

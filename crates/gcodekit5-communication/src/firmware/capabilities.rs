@@ -35,6 +35,10 @@ pub enum Capability {
     StatusReports,
     /// Supports E-stop
     EStop,
+    /// Settings are writable (false for FluidNC which has read-only settings)
+    SettingsWritable,
+    /// Supports network/WiFi connectivity
+    NetworkConnectivity,
 }
 
 impl std::fmt::Display for Capability {
@@ -54,6 +58,8 @@ impl std::fmt::Display for Capability {
             Self::Overrides => write!(f, "Overrides"),
             Self::StatusReports => write!(f, "Status Reports"),
             Self::EStop => write!(f, "E-Stop"),
+            Self::SettingsWritable => write!(f, "Settings Writable"),
+            Self::NetworkConnectivity => write!(f, "Network Connectivity"),
         }
     }
 }
@@ -127,6 +133,8 @@ impl Default for DefaultCapabilities {
         capabilities.insert(Capability::Overrides, true);
         capabilities.insert(Capability::StatusReports, true);
         capabilities.insert(Capability::EStop, true);
+        capabilities.insert(Capability::SettingsWritable, true);
+        capabilities.insert(Capability::NetworkConnectivity, false);
 
         Self {
             capabilities,

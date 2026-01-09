@@ -31,6 +31,7 @@ impl std::fmt::Display for DeviceType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ControllerType {
     Grbl,
+    GrblHal,
     TinyG,
     G2Core,
     Smoothieware,
@@ -48,6 +49,7 @@ impl std::fmt::Display for ControllerType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Grbl => write!(f, "GRBL"),
+            Self::GrblHal => write!(f, "grblHAL"),
             Self::TinyG => write!(f, "TinyG"),
             Self::G2Core => write!(f, "g2core"),
             Self::Smoothieware => write!(f, "Smoothieware"),
@@ -105,6 +107,7 @@ pub struct DeviceProfile {
     pub connection_type: String,
     pub baud_rate: u32,
     pub port: String,
+    pub tcp_host: String,
     pub tcp_port: u16,
     pub timeout_ms: u64,
     pub auto_reconnect: bool,
@@ -145,6 +148,7 @@ impl Default for DeviceProfile {
             connection_type: "Serial".to_string(),
             baud_rate: 115200,
             port: "Auto".to_string(),
+            tcp_host: "192.168.1.100".to_string(),
             tcp_port: 23,
             timeout_ms: 5000,
             auto_reconnect: false,

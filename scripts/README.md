@@ -99,6 +99,44 @@ Creates a DMG installer for macOS.
 
 ## Linux/Unix Scripts
 
+### `start-grblhal-sim.sh`
+
+Starts the grblHAL simulator with a virtual TTY device for testing CNC communication.
+
+```bash
+./scripts/start-grblhal-sim.sh
+```
+
+**What it does:**
+- Creates a virtual serial port at `target/temp/ttyGRBL`
+- Starts the grblHAL simulator connected to the virtual port
+- Logs step and block output to `target/temp/`
+- Allows your application to connect as if to real hardware
+
+**To stop:**
+```bash
+./scripts/stop-grblhal-sim.sh
+# or
+killall socat
+```
+
+**To connect from your application:**
+- Use the path: `~/Projects/gcodekit5/target/temp/ttyGRBL`
+- Baud rate: Any (virtual serial, speed doesn't matter)
+- The simulator responds to standard GRBL/grblHAL commands
+
+---
+
+### `stop-grblhal-sim.sh`
+
+Stops the grblHAL simulator virtual TTY device.
+
+```bash
+./scripts/stop-grblhal-sim.sh
+```
+
+---
+
 ### `update-po.sh`
 
 Updates translation files (.po) from source code.

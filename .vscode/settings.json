@@ -1,0 +1,18 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "gcc": true,
+        "git submodule": true,
+        "cmake": true,
+        "/^sudo dnf install -y cmake make$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "./grblHAL_sim": true,
+        "ln": true,
+        "grblHAL_sim": true,
+        "/^sudo dnf install -y socat$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

@@ -1,3 +1,62 @@
+## [0.47.0-alpha.0] - 2026-01-10
+
+### Added
+- **grblHAL Support**: Added full support for grblHAL CNC controller
+  - Added GrblHal controller type to device database
+  - Created grblHAL firmware module with capabilities and version detection
+  - grblHAL is GRBL 1.1 compatible with enhanced features (up to 6 axes, plugins, network support)
+  - Settings are writable via `$nn=value` commands (same as GRBL)
+  - Supports both serial/USB and network (TCP/telnet) connections
+  
+- **FluidNC Enhancements**: Enhanced FluidNC support with proper settings handling
+  - Added settings_read_only flag to FluidNC capabilities
+  - FluidNC settings are now properly marked as read-only (configured via YAML files)
+  - Added are_settings_writable() method to FluidNC capabilities
+  - UI will display FluidNC settings but disable editing
+  
+- **Network Connectivity**: Enhanced network connection support
+  - Added tcp_host field to device profiles (separate from port for clarity)
+  - Added NetworkConnectivity capability flag
+  - Both grblHAL and FluidNC support network connections (default port 23)
+  - TCP communicator already implemented and functional
+  
+- **Settings Capabilities**: Added new capability system for firmware settings
+  - Added SettingsWritable capability flag (false for FluidNC, true for GRBL/grblHAL)
+  - UI firmware integration can check if settings are writable before allowing edits
+  - Added load_grblhal_defaults() method to firmware integration
+  - Added load_fluidnc_defaults() method with all parameters marked read-only
+  
+- **grblHAL Simulator**: Installed and configured grblHAL simulator for testing
+  - Simulator available at `~/.local/bin/grblHAL_sim`
+  - Created virtual TTY setup scripts (start-grblhal-sim.sh, stop-grblhal-sim.sh, test-grblhal-sim.sh)
+  - Virtual serial port at `~/Projects/gcodekit5/target/temp/ttyGRBL`
+  - Simulator responds to standard GRBL/grblHAL commands
+  - Supports network mode with `-p <port>` flag
+  
+- **Documentation**: Added comprehensive documentation for new features
+  - Created docs/GRBLHAL_FLUIDNC_SUPPORT.md with usage guide
+  - Documented controller differences (GRBL vs grblHAL vs FluidNC)
+  - Documented settings management differences (writable vs read-only)
+  - Documented network connection setup
+  - Added code examples for detecting controller types and checking capabilities
+  - Added migration guide for existing GRBL devices
+
+### Changed
+- **Controller Types**: Enhanced ControllerType enum in both devicedb and communication modules
+  - Added GrblHal variant to ControllerType
+  - Updated Display trait implementations to show "grblHAL"
+  
+- **Device Profiles**: Enhanced device profile structure
+  - Added tcp_host field for network connections
+  - Existing devices.json updated with tcp_host field
+
+### Technical Details
+- No changes made to existing GRBL protocol implementation
+- All existing GRBL devices continue to work unchanged
+- grblHAL uses same communication protocol as GRBL with extensions
+- FluidNC settings marked read-only at parameter level using .read_only() method
+- Capability system allows UI to adapt based on controller features
+
 ## [0.45.0-alpha.17] - 2026-01-09
 
 ### Fixed
