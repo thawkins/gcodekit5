@@ -19,7 +19,7 @@ tracing = "0.1"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
-glam = "0.29"
+glam = "0.32"
 glow = "0.14"
 bytemuck = "1.14"
 lyon = "1.0"
