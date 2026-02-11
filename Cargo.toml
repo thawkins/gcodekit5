@@ -21,7 +21,7 @@ authors = ["GCodeKit Contributors"]
 repository = "https://github.com/thawkins/gcodekit5"
 
 [workspace.dependencies]
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
@@ -29,15 +29,15 @@ tracing-subscriber = { version = "0.3", features = [
     "json",
 ] }
 anyhow = "1.0"
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 rfd = "0.15.4"
 arboard = "3.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.20", features = ["v4", "serde"] }
 image = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
-tempfile = "3.8"
+tempfile = "3.25"
 
 [package]
 name = "gcodekit5"
