@@ -1,0 +1,48 @@
+{
+    "name": "GCodeKit5 Development",
+    "build": {
+        "dockerfile": "Containerfile",
+        "context": ".."
+    },
+    
+    "containerUser": "developer",
+    "remoteUser": "developer",
+    
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+    "workspaceFolder": "/workspace",
+    
+    "runArgs": [
+        "--userns=keep-id",
+        "--security-opt", "label=disable"
+    ],
+    
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "vadimcn.vscode-lldb",
+                "serayuzgur.crates",
+                "tamasfe.even-better-toml",
+                "usernamehw.errorlens",
+                "eamodio.gitlens",
+                "gruntfuggly.todo-tree"
+            ],
+            "settings": {
+                "rust-analyzer.check.command": "clippy",
+                "rust-analyzer.cargo.features": "all",
+                "editor.formatOnSave": true,
+                "[rust]": {
+                    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+                }
+            }
+        }
+    },
+    
+    "postCreateCommand": "cargo --version && rustc --version && echo 'Development container ready!'",
+    
+    "forwardPorts": [],
+    
+    "containerEnv": {
+        "RUST_BACKTRACE": "1"
+    }
+}

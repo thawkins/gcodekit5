@@ -467,3 +467,20 @@ When extracting a struct to a separate module:
 - Use `Rc<T>` fields and `self.clone()` pattern to share state with closures
 - The `Clone` trait on the outer struct clones all `Rc` fields (cheap)
 - Pattern: `let canvas = self.clone(); btn.connect_clicked(move |_| canvas.method());`
+
+## Module Splitting Strategy (Task 2.2)
+
+### Pattern: Directory Module Split
+- Convert `foo.rs` → `foo/mod.rs` + sub-files
+- Change private struct fields to `pub(crate)` for sub-module access
+- Sub-modules use `use super::*;` for parent imports
+- Each sub-module contains `impl StructName { ... }` blocks for its methods
+- Private methods moved to sub-modules become `pub(crate) fn`
+- Parent `mod.rs` adds `mod sub_module;` declarations (no `pub use` needed for internal impl blocks)
+- Rust resolves `mod foo;` to `foo.rs` OR `foo/mod.rs` — no parent changes needed
+
+### GTK4 Constructor Limitation
+- GTK4 widget `new()` constructors often span 1,000-2,000+ lines (building widget trees + connecting signals)
+- These constructors capture many local variables in closures, making them very difficult to split
+- **Strategy**: Extract non-constructor methods (event handlers, operations, UI builders) into sub-modules, keep `new()` in `mod.rs`
+- For truly massive constructors (2,000+ lines), extract UI builder helper functions that return widgets without closures

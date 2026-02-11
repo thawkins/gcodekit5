@@ -25,6 +25,7 @@ fn test_tab_protrusion_equals_thickness_no_kerf() {
         dividers_y: 0,
         optimize_layout: false,
         key_divider_type: KeyDividerType::WallsAndFloor,
+        num_axes: 3,
     };
 
     let mut maker = TabbedBoxMaker::new(params).expect("Failed to create TabbedBoxMaker");
@@ -90,6 +91,7 @@ fn test_tab_protrusion_with_kerf() {
         dividers_y: 0,
         optimize_layout: false,
         key_divider_type: KeyDividerType::WallsAndFloor,
+        num_axes: 3,
     };
 
     let mut maker = TabbedBoxMaker::new(params).expect("Failed to create TabbedBoxMaker");
@@ -201,6 +203,7 @@ fn test_slots_containment_with_optimization() {
         dividers_y: 0,
         optimize_layout: true, // Enable optimization
         key_divider_type: KeyDividerType::WallsAndFloor,
+        num_axes: 3,
     };
 
     let mut maker = TabbedBoxMaker::new(params).expect("Failed to create TabbedBoxMaker");

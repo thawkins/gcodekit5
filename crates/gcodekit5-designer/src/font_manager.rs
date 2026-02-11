@@ -17,7 +17,8 @@ fn default_font() -> &'static Font<'static> {
     static FONT: OnceLock<Font<'static>> = OnceLock::new();
     FONT.get_or_init(|| {
         let font_data = include_bytes!("../../../assets/fonts/fira-code/FiraCode-Regular.ttf");
-        Font::try_from_bytes(font_data as &[u8]).expect("Error constructing Font")
+        Font::try_from_bytes(font_data as &[u8])
+            .unwrap_or_else(|| panic!("bundled FiraCode font is invalid"))
     })
 }
 
@@ -53,7 +54,7 @@ pub fn get_font_for(family: &str, bold: bool, italic: bool) -> &'static Font<'st
     };
 
     if let Some(font) = cache.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
-        return *font;
+        return font;
     }
 
     let loaded = load_font_from_system(family, bold, italic);

@@ -188,55 +188,53 @@ pub fn render_intensity_overlay(
                 to,
                 center,
                 clockwise,
-                intensity,
+                intensity: Some(s),
             } => {
-                if let Some(s) = intensity {
-                    if *s <= 0.0 {
-                        continue;
-                    }
-
-                    let ratio = (*s / max_intensity).clamp(0.0, 1.0);
-                    if ratio <= 0.0 {
-                        continue;
-                    }
-
-                    let bucket = ((ratio * 10.0).floor() as usize).min(9);
-
-                    let layer = &mut layers[bucket];
-                    let last = &mut last_pos[bucket];
-
-                    let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
-                    let sweep = if *clockwise { 0 } else { 1 };
-
-                    use std::f32::consts::PI;
-                    let start_angle = (from.y - center.y).atan2(from.x - center.x);
-                    let end_angle = (to.y - center.y).atan2(to.x - center.x);
-                    let mut angle_diff = if *clockwise {
-                        start_angle - end_angle
-                    } else {
-                        end_angle - start_angle
-                    };
-
-                    while angle_diff < 0.0 {
-                        angle_diff += 2.0 * PI;
-                    }
-                    while angle_diff >= 2.0 * PI {
-                        angle_diff -= 2.0 * PI;
-                    }
-
-                    let large_arc = if angle_diff > PI { 1 } else { 0 };
-
-                    if last.is_none() || *last != Some(*from) {
-                        let _ = write!(layer, "M {:.2} {:.2} ", from.x, -from.y);
-                    }
-
-                    let _ = write!(
-                        layer,
-                        "A {:.2} {:.2} 0 {} {} {:.2} {:.2} ",
-                        radius, radius, large_arc, sweep, to.x, -to.y
-                    );
-                    *last = Some(*to);
+                if *s <= 0.0 {
+                    continue;
                 }
+
+                let ratio = (*s / max_intensity).clamp(0.0, 1.0);
+                if ratio <= 0.0 {
+                    continue;
+                }
+
+                let bucket = ((ratio * 10.0).floor() as usize).min(9);
+
+                let layer = &mut layers[bucket];
+                let last = &mut last_pos[bucket];
+
+                let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
+                let sweep = if *clockwise { 0 } else { 1 };
+
+                use std::f32::consts::PI;
+                let start_angle = (from.y - center.y).atan2(from.x - center.x);
+                let end_angle = (to.y - center.y).atan2(to.x - center.x);
+                let mut angle_diff = if *clockwise {
+                    start_angle - end_angle
+                } else {
+                    end_angle - start_angle
+                };
+
+                while angle_diff < 0.0 {
+                    angle_diff += 2.0 * PI;
+                }
+                while angle_diff >= 2.0 * PI {
+                    angle_diff -= 2.0 * PI;
+                }
+
+                let large_arc = if angle_diff > PI { 1 } else { 0 };
+
+                if last.is_none() || *last != Some(*from) {
+                    let _ = write!(layer, "M {:.2} {:.2} ", from.x, -from.y);
+                }
+
+                let _ = write!(
+                    layer,
+                    "A {:.2} {:.2} 0 {} {} {:.2} {:.2} ",
+                    radius, radius, large_arc, sweep, to.x, -to.y
+                );
+                *last = Some(*to);
             }
             _ => {}
         }

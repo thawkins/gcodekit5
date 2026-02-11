@@ -41,9 +41,21 @@ pub struct MultiPassConfig {
 impl MultiPassConfig {
     /// Creates a new multi-pass configuration.
     pub fn new(total_depth: f64, max_depth_per_pass: f64) -> Self {
+        debug_assert!(
+            max_depth_per_pass.is_finite() && max_depth_per_pass > 0.0,
+            "max_depth_per_pass must be positive and finite, got {max_depth_per_pass}"
+        );
+        debug_assert!(
+            total_depth.is_finite(),
+            "total_depth must be finite, got {total_depth}"
+        );
         Self {
             total_depth,
-            max_depth_per_pass,
+            max_depth_per_pass: if max_depth_per_pass > 0.0 {
+                max_depth_per_pass
+            } else {
+                0.5
+            },
             strategy: DepthStrategy::Constant,
             minimum_depth: 0.5,
             ramp_start_depth: 2.0,
@@ -57,17 +69,28 @@ impl MultiPassConfig {
 
     /// Sets the minimum depth per pass (for ramped strategy).
     pub fn set_minimum_depth(&mut self, depth: f64) {
-        self.minimum_depth = depth;
+        debug_assert!(
+            depth.is_finite() && depth > 0.0,
+            "minimum_depth must be positive and finite"
+        );
+        self.minimum_depth = if depth > 0.0 { depth } else { 0.1 };
     }
 
     /// Sets the depth at which ramping starts.
     pub fn set_ramp_start_depth(&mut self, depth: f64) {
-        self.ramp_start_depth = depth;
+        debug_assert!(
+            depth.is_finite() && depth >= 0.0,
+            "ramp_start_depth must be non-negative and finite"
+        );
+        self.ramp_start_depth = if depth >= 0.0 { depth } else { 0.0 };
     }
 
     /// Calculates the number of passes needed.
     pub fn calculate_passes(&self) -> u32 {
-        ((self.total_depth.abs() / self.max_depth_per_pass).ceil()) as u32
+        if self.max_depth_per_pass <= 0.0 {
+            return 1;
+        }
+        ((self.total_depth.abs() / self.max_depth_per_pass).ceil()).max(1.0) as u32
     }
 
     /// Calculates the depth for a specific pass.

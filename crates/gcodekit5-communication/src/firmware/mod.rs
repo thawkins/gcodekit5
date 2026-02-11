@@ -42,9 +42,10 @@ pub use smoothieware::{SmoothiewareCapabilities, SmoothiewareController, Smoothi
 pub use tinyg::{TinyGCapabilities, TinyGController, TinyGVersion as TinyGVer};
 
 /// Supported CNC controller types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ControllerType {
     /// GRBL (default, most common)
+    #[default]
     Grbl,
     /// grblHAL (enhanced GRBL with additional features)
     GrblHal,
@@ -71,12 +72,6 @@ impl std::fmt::Display for ControllerType {
             Self::FluidNC => write!(f, "FluidNC"),
             Self::Unknown => write!(f, "Unknown"),
         }
-    }
-}
-
-impl Default for ControllerType {
-    fn default() -> Self {
-        Self::Grbl
     }
 }
 

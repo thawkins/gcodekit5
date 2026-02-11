@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Setup gear module entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_gear_module_handler(
     gear_module_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -62,6 +63,7 @@ pub fn setup_gear_module_handler(
 }
 
 /// Setup gear teeth entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_gear_teeth_handler(
     gear_teeth_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -116,6 +118,7 @@ pub fn setup_gear_teeth_handler(
 }
 
 /// Setup gear pressure angle entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_gear_pressure_angle_handler(
     gear_pressure_angle_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -166,6 +169,7 @@ pub fn setup_gear_pressure_angle_handler(
 }
 
 /// Setup sprocket pitch entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_sprocket_pitch_handler(
     sprocket_pitch_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -220,6 +224,7 @@ pub fn setup_sprocket_pitch_handler(
 }
 
 /// Setup sprocket teeth entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_sprocket_teeth_handler(
     sprocket_teeth_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -274,6 +279,7 @@ pub fn setup_sprocket_teeth_handler(
 }
 
 /// Setup sprocket roller diameter entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_sprocket_roller_diameter_handler(
     sprocket_roller_diameter_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,

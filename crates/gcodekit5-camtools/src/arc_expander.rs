@@ -35,6 +35,7 @@ impl ArcExpander {
     }
 
     /// Expand an arc into line segments
+    #[allow(clippy::too_many_arguments)]
     pub fn expand_arc(
         &self,
         start_x: f64,

@@ -35,8 +35,8 @@ impl GCodeOptimizer {
 
         for line in lines {
             let trimmed = line.trim();
-            if trimmed.starts_with('T') {
-                if let Ok(tool) = trimmed[1..].parse::<u32>() {
+            if let Some(rest) = trimmed.strip_prefix('T') {
+                if let Ok(tool) = rest.parse::<u32>() {
                     if last_tool != Some(tool) {
                         result.push(line.clone());
                         last_tool = Some(tool);

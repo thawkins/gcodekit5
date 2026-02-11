@@ -238,11 +238,13 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
         }",
     );
 
-    gtk4::style_context_add_provider_for_display(
-        &gtk4::gdk::Display::default().expect("no display"),
-        &provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-    );
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
 
     content_label.add_css_class("help-text");
 
@@ -398,9 +400,9 @@ pub fn present_for_parent(topic: &str, parent: Option<&gtk4::Window>) {
 
             // Non-help links: open using default handler.
             if let Some(parent) = parent.as_ref().and_then(|w| w.upgrade()) {
-                let _ = gtk4::show_uri(Some(&parent), href, gtk4::gdk::CURRENT_TIME);
+                gtk4::show_uri(Some(&parent), href, gtk4::gdk::CURRENT_TIME);
             } else {
-                let _ = gtk4::show_uri(None::<&gtk4::Window>, href, gtk4::gdk::CURRENT_TIME);
+                gtk4::show_uri(None::<&gtk4::Window>, href, gtk4::gdk::CURRENT_TIME);
             }
 
             glib::Propagation::Stop

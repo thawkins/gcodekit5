@@ -73,6 +73,8 @@ pub struct DesignerState {
     pub show_stock_removal: bool,
     pub simulation_resolution: f32,
     pub simulation_result: Option<SimulationResult>,
+    /// Number of axes on the active device (default 3).
+    pub num_axes: u8,
 }
 
 impl DesignerState {
@@ -111,6 +113,7 @@ impl DesignerState {
             show_stock_removal: false,
             simulation_resolution: 0.1,
             simulation_result: None,
+            num_axes: 3,
         }
     }
 
@@ -130,13 +133,20 @@ impl DesignerState {
             9 => DrawingMode::Gear,
             10 => DrawingMode::Sprocket,
             11 => DrawingMode::Pan,
-            _ => DrawingMode::Select,
+            unknown => {
+                tracing::warn!("Unknown drawing mode {}, defaulting to Select", unknown);
+                DrawingMode::Select
+            }
         };
         self.canvas.set_mode(drawing_mode);
     }
 
     /// Sets the feed rate for toolpath generation.
     pub fn set_feed_rate(&mut self, rate: f64) {
+        debug_assert!(
+            rate.is_finite() && rate > 0.0,
+            "feed_rate must be positive and finite, got {rate}"
+        );
         self.tool_settings.feed_rate = rate;
         self.toolpath_generator.set_feed_rate(rate);
         self.gcode_generated = false;
@@ -151,6 +161,10 @@ impl DesignerState {
 
     /// Sets the tool diameter for toolpath generation.
     pub fn set_tool_diameter(&mut self, diameter: f64) {
+        debug_assert!(
+            diameter.is_finite() && diameter > 0.0,
+            "tool_diameter must be positive and finite, got {diameter}"
+        );
         self.tool_settings.tool_diameter = diameter;
         self.toolpath_generator.set_tool_diameter(diameter);
         self.gcode_generated = false;
@@ -158,6 +172,7 @@ impl DesignerState {
 
     /// Sets the cut depth for toolpath generation.
     pub fn set_cut_depth(&mut self, depth: f64) {
+        debug_assert!(depth.is_finite(), "cut_depth must be finite, got {depth}");
         self.tool_settings.cut_depth = depth;
         self.toolpath_generator.set_cut_depth(depth);
         self.gcode_generated = false;
@@ -165,6 +180,10 @@ impl DesignerState {
 
     /// Sets the step-down for toolpath generation.
     pub fn set_step_down(&mut self, step: f64) {
+        debug_assert!(
+            step.is_finite() && step > 0.0,
+            "step_down must be positive and finite, got {step}"
+        );
         self.tool_settings.step_down = step;
         self.gcode_generated = false;
     }

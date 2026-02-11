@@ -110,12 +110,13 @@ pub fn generate_spur_gear(
         points.extend(right_points);
 
         if root_radius < base_radius {
-            let p_last = points.last().expect("empty collection");
-            let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
-            points.push(Point::new(
-                center.x + root_radius * angle_last.cos(),
-                center.y + root_radius * angle_last.sin(),
-            ));
+            if let Some(p_last) = points.last() {
+                let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
+                points.push(Point::new(
+                    center.x + root_radius * angle_last.cos(),
+                    center.y + root_radius * angle_last.sin(),
+                ));
+            }
         }
     }
 
@@ -229,7 +230,7 @@ pub fn generate_tabbed_box(
 
         // Top edge (0 to w, y=0)
         let num_tabs_w = (w / tab_width).floor() as usize;
-        if num_tabs_w % 2 == 0 { /* ensure odd for symmetry? */ }
+        if num_tabs_w.is_multiple_of(2) { /* ensure odd for symmetry? */ }
         let actual_tab_w = w / num_tabs_w as f64;
 
         for i in 0..num_tabs_w {
@@ -430,12 +431,13 @@ pub fn generate_helical_gear(
         points.extend(right_points);
 
         if root_radius < base_radius {
-            let p_last = points.last().expect("empty collection");
-            let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
-            points.push(Point::new(
-                center.x + root_radius * angle_last.cos(),
-                center.y + root_radius * angle_last.sin(),
-            ));
+            if let Some(p_last) = points.last() {
+                let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
+                points.push(Point::new(
+                    center.x + root_radius * angle_last.cos(),
+                    center.y + root_radius * angle_last.sin(),
+                ));
+            }
         }
     }
 
@@ -587,7 +589,7 @@ pub fn generate_l_bracket(
     let half_height = height / 2.0;
 
     // Create L-shape
-    let points = vec![
+    let points = [
         Point::new(center.x - half_width, center.y - half_height),
         Point::new(center.x + half_width, center.y - half_height),
         Point::new(center.x + half_width, center.y - half_height + thickness),
@@ -648,7 +650,7 @@ pub fn generate_u_bracket(
     let half_width = width / 2.0;
 
     // Create U-shape
-    let points = vec![
+    let points = [
         Point::new(center.x - half_length, center.y - half_width),
         Point::new(center.x + half_length, center.y - half_width),
         Point::new(center.x + half_length, center.y + half_width),

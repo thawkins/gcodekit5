@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Setup offset entry handler with preview
+#[allow(clippy::type_complexity)]
 pub fn setup_offset_handler(
     offset_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -102,6 +103,7 @@ pub fn setup_offset_handler(
 }
 
 /// Setup fillet entry handler with preview
+#[allow(clippy::type_complexity)]
 pub fn setup_fillet_handler(
     fillet_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -196,6 +198,7 @@ pub fn setup_fillet_handler(
 }
 
 /// Setup chamfer entry handler with preview
+#[allow(clippy::type_complexity)]
 pub fn setup_chamfer_handler(
     chamfer_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,

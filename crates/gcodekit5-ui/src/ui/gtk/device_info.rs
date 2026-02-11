@@ -18,6 +18,7 @@ pub struct CapabilityItem {
     pub notes: String,
 }
 
+#[allow(clippy::type_complexity)]
 pub struct DeviceInfoView {
     pub container: Box,
     status_icon: Image,

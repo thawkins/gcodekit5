@@ -23,6 +23,15 @@ pub struct DrillOperation {
 impl DrillOperation {
     /// Creates a new drill operation with default parameters.
     pub fn new(id: String, hole_diameter: f64, drill_diameter: f64, depth: f64) -> Self {
+        debug_assert!(
+            hole_diameter.is_finite() && hole_diameter > 0.0,
+            "hole_diameter must be positive and finite, got {hole_diameter}"
+        );
+        debug_assert!(
+            drill_diameter.is_finite() && drill_diameter > 0.0,
+            "drill_diameter must be positive and finite, got {drill_diameter}"
+        );
+        debug_assert!(depth.is_finite(), "depth must be finite, got {depth}");
         Self {
             id,
             hole_diameter,
@@ -37,6 +46,14 @@ impl DrillOperation {
 
     /// Sets the cutting parameters for this drill operation.
     pub fn set_parameters(&mut self, feed_rate: f64, plunge_rate: f64, spindle_speed: u32) {
+        debug_assert!(
+            feed_rate.is_finite() && feed_rate > 0.0,
+            "feed_rate must be positive and finite, got {feed_rate}"
+        );
+        debug_assert!(
+            plunge_rate.is_finite() && plunge_rate > 0.0,
+            "plunge_rate must be positive and finite, got {plunge_rate}"
+        );
         self.feed_rate = feed_rate;
         self.plunge_rate = plunge_rate;
         self.spindle_speed = spindle_speed;
@@ -44,7 +61,11 @@ impl DrillOperation {
 
     /// Enables peck drilling with the specified depth per peck.
     pub fn set_peck_drilling(&mut self, peck_depth: f64) {
-        self.peck_depth = Some(peck_depth);
+        debug_assert!(
+            peck_depth.is_finite() && peck_depth > 0.0,
+            "peck_depth must be positive and finite, got {peck_depth}"
+        );
+        self.peck_depth = Some(if peck_depth > 0.0 { peck_depth } else { 0.1 });
     }
 
     /// Disables peck drilling.

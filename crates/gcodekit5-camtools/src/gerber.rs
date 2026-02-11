@@ -79,6 +79,13 @@ pub struct GerberParameters {
     pub rubout: bool,
     pub use_board_outline: bool,
     pub directory: Option<String>,
+    /// Number of axes on the target device (default 3).
+    #[serde(default = "default_gerber_num_axes")]
+    pub num_axes: u8,
+}
+
+fn default_gerber_num_axes() -> u8 {
+    3
 }
 
 impl Default for GerberParameters {
@@ -101,6 +108,7 @@ impl Default for GerberParameters {
             rubout: false,
             use_board_outline: false,
             directory: None,
+            num_axes: 3,
         }
     }
 }
@@ -116,7 +124,7 @@ impl GerberConverter {
         writeln!(gcode, "G21 ; Set units to millimeters")?;
         writeln!(gcode, "G90 ; Absolute positioning")?;
         writeln!(gcode, "G17 ; XY plane selection")?;
-        writeln!(gcode, "")?;
+        writeln!(gcode)?;
 
         writeln!(gcode, "; Home and set work coordinate system")?;
         writeln!(gcode, " ; Home all axes (bottom-left corner)")?;
@@ -131,7 +139,9 @@ impl GerberConverter {
             gcode,
             "G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero"
         )?;
-        writeln!(gcode, "G0 Z{:.3} F500 ; Move to safe height", params.safe_z)?;
+        if params.num_axes >= 3 {
+            writeln!(gcode, "G0 Z{:.3} F500 ; Move to safe height", params.safe_z)?;
+        }
 
         writeln!(gcode, "M3 S{:.1}", params.spindle_speed)?;
 
@@ -894,6 +904,7 @@ impl GerberConverter {
         warn!("Generated {} hatch lines", hatch_lines.len());
 
         // 6. G-Code
+        let has_z = params.num_axes >= 3;
         for (i, path) in hatch_lines.iter().enumerate() {
             if i < 5 {
                 warn!("Hatch line {}: {:?}", i, path.iter().collect::<Vec<_>>());
@@ -903,13 +914,17 @@ impl GerberConverter {
                     lyon::path::Event::Begin { at } => {
                         let sx = at.x + params.offset_x;
                         let sy = at.y + params.offset_y;
-                        writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+                        if has_z {
+                            writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+                        }
                         writeln!(gcode, "G0 X{:.3} Y{:.3}", sx, sy)?;
-                        writeln!(
-                            gcode,
-                            "G1 Z{:.3} F{:.1}",
-                            params.cut_depth, params.feed_rate
-                        )?;
+                        if has_z {
+                            writeln!(
+                                gcode,
+                                "G1 Z{:.3} F{:.1}",
+                                params.cut_depth, params.feed_rate
+                            )?;
+                        }
                     }
                     lyon::path::Event::Line { to, .. } => {
                         let tx = to.x + params.offset_x;
@@ -919,7 +934,9 @@ impl GerberConverter {
                     _ => {}
                 }
             }
-            writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+            if has_z {
+                writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+            }
         }
 
         Ok(())
@@ -930,6 +947,7 @@ impl GerberConverter {
         paths: Vec<Polyline<f64>>,
         gcode: &mut String,
     ) -> Result<()> {
+        let has_z = params.num_axes >= 3;
         for path in paths {
             if path.vertex_count() < 2 {
                 continue;
@@ -939,13 +957,17 @@ impl GerberConverter {
             let sx = start.x as f32 + params.offset_x;
             let sy = start.y as f32 + params.offset_y;
 
-            writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+            if has_z {
+                writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+            }
             writeln!(gcode, "G0 X{:.3} Y{:.3}", sx, sy)?;
-            writeln!(
-                gcode,
-                "G1 Z{:.3} F{:.1}",
-                params.cut_depth, params.feed_rate
-            )?;
+            if has_z {
+                writeln!(
+                    gcode,
+                    "G1 Z{:.3} F{:.1}",
+                    params.cut_depth, params.feed_rate
+                )?;
+            }
 
             let emit_segment =
                 |gcode: &mut String, p1: PlineVertex<f64>, p2: PlineVertex<f64>| -> Result<()> {
@@ -1023,13 +1045,16 @@ impl GerberConverter {
                 let p2 = path.at(0);
                 emit_segment(gcode, p1, p2)?;
             }
-            writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+            if has_z {
+                writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+            }
         }
         Ok(())
     }
 
     fn append_alignment_holes(params: &GerberParameters, gcode: &mut String) -> Result<()> {
         if params.generate_alignment_holes {
+            let has_z = params.num_axes >= 3;
             writeln!(gcode, "; Alignment Holes")?;
             let margin = params.alignment_hole_margin;
             let width = params.board_width;
@@ -1046,14 +1071,18 @@ impl GerberConverter {
                 let tx = hx + params.offset_x;
                 let ty = hy + params.offset_y;
 
-                writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+                if has_z {
+                    writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+                }
                 writeln!(gcode, "G0 X{:.3} Y{:.3}", tx, ty)?;
-                writeln!(
-                    gcode,
-                    "G1 Z{:.3} F{:.1}",
-                    params.cut_depth, params.feed_rate
-                )?;
-                writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+                if has_z {
+                    writeln!(
+                        gcode,
+                        "G1 Z{:.3} F{:.1}",
+                        params.cut_depth, params.feed_rate
+                    )?;
+                    writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
+                }
             }
         }
         Ok(())

@@ -35,6 +35,7 @@ fn test_various_configurations() {
             dividers_y: 0,
             optimize_layout: false,
             key_divider_type: KeyDividerType::WallsAndFloor,
+            num_axes: 3,
         };
 
         let mut maker = TabbedBoxMaker::new(params).expect("Failed to create TabbedBoxMaker");

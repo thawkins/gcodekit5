@@ -26,47 +26,84 @@ pub enum ControllerError {
 
     /// Controller operation timed out
     #[error("Controller operation timed out after {timeout_ms}ms")]
-    Timeout { timeout_ms: u64 },
+    Timeout {
+        /// The timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
 
     /// Invalid state transition
     #[error("Invalid state transition from {current:?} to {requested:?}")]
-    InvalidStateTransition { current: String, requested: String },
+    InvalidStateTransition {
+        /// The current state name.
+        current: String,
+        /// The requested state name.
+        requested: String,
+    },
 
     /// Command was rejected by controller
     #[error("Command rejected: {reason}")]
-    CommandRejected { reason: String },
+    CommandRejected {
+        /// The reason the command was rejected.
+        reason: String,
+    },
 
     /// Buffer overflow - too many commands queued
     #[error("Buffer overflow: {message}")]
-    BufferOverflow { message: String },
+    BufferOverflow {
+        /// A message describing the buffer overflow.
+        message: String,
+    },
 
     /// Alarm condition detected
     #[error("Alarm: {code} - {message}")]
-    Alarm { code: u32, message: String },
+    Alarm {
+        /// The alarm code.
+        code: u32,
+        /// The alarm message.
+        message: String,
+    },
 
     /// Machine hard limit triggered
     #[error("Hard limit triggered on {axis}")]
-    HardLimit { axis: String },
+    HardLimit {
+        /// The axis that triggered the hard limit.
+        axis: String,
+    },
 
     /// Machine soft limit exceeded
     #[error("Soft limit exceeded on {axis}")]
-    SoftLimit { axis: String },
+    SoftLimit {
+        /// The axis that exceeded the soft limit.
+        axis: String,
+    },
 
     /// Probe operation failed
     #[error("Probe failed: {reason}")]
-    ProbeFailed { reason: String },
+    ProbeFailed {
+        /// The reason the probe operation failed.
+        reason: String,
+    },
 
     /// Homing cycle failed
     #[error("Homing failed: {reason}")]
-    HomingFailed { reason: String },
+    HomingFailed {
+        /// The reason the homing cycle failed.
+        reason: String,
+    },
 
     /// Unknown controller state
     #[error("Unknown controller state: {state}")]
-    UnknownState { state: String },
+    UnknownState {
+        /// The unknown state identifier.
+        state: String,
+    },
 
     /// Generic controller error
     #[error("Controller error: {message}")]
-    Other { message: String },
+    Other {
+        /// The error message.
+        message: String,
+    },
 }
 
 /// G-Code error type
@@ -76,39 +113,66 @@ pub enum ControllerError {
 pub enum GcodeError {
     /// Invalid G-Code syntax
     #[error("Invalid syntax at line {line_number}: {reason}")]
-    InvalidSyntax { line_number: u32, reason: String },
+    InvalidSyntax {
+        /// The line number where the syntax error occurred.
+        line_number: u32,
+        /// The reason for the syntax error.
+        reason: String,
+    },
 
     /// Unknown G-Code command
     #[error("Unknown G-Code at line {line_number}: {code}")]
-    UnknownCode { line_number: u32, code: String },
+    UnknownCode {
+        /// The line number where the unknown code was found.
+        line_number: u32,
+        /// The unknown G-Code command.
+        code: String,
+    },
 
     /// Invalid parameter value
     #[error("Invalid parameter '{param}' at line {line_number}: {reason}")]
     InvalidParameter {
+        /// The line number where the invalid parameter was found.
         line_number: u32,
+        /// The parameter name.
         param: String,
+        /// The reason the parameter is invalid.
         reason: String,
     },
 
     /// Missing required parameter
     #[error("Missing required parameter '{param}' at line {line_number}")]
-    MissingParameter { line_number: u32, param: String },
+    MissingParameter {
+        /// The line number where the parameter was missing.
+        line_number: u32,
+        /// The name of the missing parameter.
+        param: String,
+    },
 
     /// Coordinate out of machine limits
     #[error("Coordinate {coordinate} out of limits at line {line_number}: {bounds}")]
     CoordinateOutOfBounds {
+        /// The line number where the out-of-bounds coordinate was found.
         line_number: u32,
+        /// The coordinate value that is out of bounds.
         coordinate: String,
+        /// The valid bounds for the coordinate.
         bounds: String,
     },
 
     /// Invalid modal state
     #[error("Invalid modal state: {reason}")]
-    InvalidModalState { reason: String },
+    InvalidModalState {
+        /// The reason for the invalid modal state.
+        reason: String,
+    },
 
     /// Tool not found
     #[error("Tool {tool_number} not found")]
-    ToolNotFound { tool_number: u32 },
+    ToolNotFound {
+        /// The tool number that was not found.
+        tool_number: u32,
+    },
 
     /// Probe not present when required
     #[error("Probe required but not available")]
@@ -116,19 +180,31 @@ pub enum GcodeError {
 
     /// Spindle error
     #[error("Spindle error: {reason}")]
-    SpindleError { reason: String },
+    SpindleError {
+        /// The reason for the spindle error.
+        reason: String,
+    },
 
     /// Coolant system error
     #[error("Coolant error: {reason}")]
-    CoolantError { reason: String },
+    CoolantError {
+        /// The reason for the coolant error.
+        reason: String,
+    },
 
     /// File parsing error
     #[error("File error: {reason}")]
-    FileError { reason: String },
+    FileError {
+        /// The reason for the file error.
+        reason: String,
+    },
 
     /// Generic G-Code error
     #[error("G-Code error: {message}")]
-    Other { message: String },
+    Other {
+        /// The error message.
+        message: String,
+    },
 }
 
 /// Connection error type
@@ -139,59 +215,103 @@ pub enum GcodeError {
 pub enum ConnectionError {
     /// Port not found
     #[error("Port not found: {port}")]
-    PortNotFound { port: String },
+    PortNotFound {
+        /// The name of the port that was not found.
+        port: String,
+    },
 
     /// Port is already in use
     #[error("Port already in use: {port}")]
-    PortInUse { port: String },
+    PortInUse {
+        /// The name of the port that is in use.
+        port: String,
+    },
 
     /// Failed to open port
     #[error("Failed to open port {port}: {reason}")]
-    FailedToOpen { port: String, reason: String },
+    FailedToOpen {
+        /// The name of the port that failed to open.
+        port: String,
+        /// The reason the port failed to open.
+        reason: String,
+    },
 
     /// Connection timeout
     #[error("Connection timeout after {timeout_ms}ms")]
-    ConnectionTimeout { timeout_ms: u64 },
+    ConnectionTimeout {
+        /// The timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
 
     /// Connection lost
     #[error("Connection lost: {reason}")]
-    ConnectionLost { reason: String },
+    ConnectionLost {
+        /// The reason the connection was lost.
+        reason: String,
+    },
 
     /// Invalid hostname/IP
     #[error("Invalid hostname: {hostname}")]
-    InvalidHostname { hostname: String },
+    InvalidHostname {
+        /// The invalid hostname or IP address.
+        hostname: String,
+    },
 
     /// Failed to resolve hostname
     #[error("Failed to resolve hostname {hostname}")]
-    HostnameResolution { hostname: String },
+    HostnameResolution {
+        /// The hostname that failed to resolve.
+        hostname: String,
+    },
 
     /// TCP connection error
     #[error("TCP connection error: {reason}")]
-    TcpError { reason: String },
+    TcpError {
+        /// The reason for the TCP error.
+        reason: String,
+    },
 
     /// WebSocket error
     #[error("WebSocket error: {reason}")]
-    WebSocketError { reason: String },
+    WebSocketError {
+        /// The reason for the WebSocket error.
+        reason: String,
+    },
 
     /// Serial port error
     #[error("Serial port error: {reason}")]
-    SerialError { reason: String },
+    SerialError {
+        /// The reason for the serial port error.
+        reason: String,
+    },
 
     /// Baud rate not supported
     #[error("Baud rate {baud} not supported")]
-    UnsupportedBaudRate { baud: u32 },
+    UnsupportedBaudRate {
+        /// The unsupported baud rate.
+        baud: u32,
+    },
 
     /// I/O error
     #[error("I/O error: {reason}")]
-    IoError { reason: String },
+    IoError {
+        /// The reason for the I/O error.
+        reason: String,
+    },
 
     /// Invalid connection parameters
     #[error("Invalid connection parameters: {reason}")]
-    InvalidParameters { reason: String },
+    InvalidParameters {
+        /// The reason the parameters are invalid.
+        reason: String,
+    },
 
     /// Generic connection error
     #[error("Connection error: {message}")]
-    Other { message: String },
+    Other {
+        /// The error message.
+        message: String,
+    },
 }
 
 /// Firmware error type
@@ -201,47 +321,86 @@ pub enum ConnectionError {
 pub enum FirmwareError {
     /// Unknown firmware type
     #[error("Unknown firmware type: {firmware_type}")]
-    UnknownFirmware { firmware_type: String },
+    UnknownFirmware {
+        /// The unknown firmware type identifier.
+        firmware_type: String,
+    },
 
     /// Firmware version not supported
     #[error("Firmware version {version} not supported")]
-    UnsupportedVersion { version: String },
+    UnsupportedVersion {
+        /// The unsupported firmware version.
+        version: String,
+    },
 
     /// Protocol mismatch
     #[error("Protocol mismatch: expected {expected}, got {actual}")]
-    ProtocolMismatch { expected: String, actual: String },
+    ProtocolMismatch {
+        /// The expected protocol version.
+        expected: String,
+        /// The actual protocol version received.
+        actual: String,
+    },
 
     /// Unsupported feature
     #[error("Feature not supported by {firmware}: {feature}")]
-    UnsupportedFeature { firmware: String, feature: String },
+    UnsupportedFeature {
+        /// The firmware that does not support the feature.
+        firmware: String,
+        /// The unsupported feature name.
+        feature: String,
+    },
 
     /// Settings not available
     #[error("Setting {setting} not available")]
-    SettingNotAvailable { setting: String },
+    SettingNotAvailable {
+        /// The setting that is not available.
+        setting: String,
+    },
 
     /// Invalid setting value
     #[error("Invalid setting value for {setting}: {reason}")]
-    InvalidSettingValue { setting: String, reason: String },
+    InvalidSettingValue {
+        /// The setting with the invalid value.
+        setting: String,
+        /// The reason the value is invalid.
+        reason: String,
+    },
 
     /// Capability not available
     #[error("Capability not available: {capability}")]
-    CapabilityNotAvailable { capability: String },
+    CapabilityNotAvailable {
+        /// The capability that is not available.
+        capability: String,
+    },
 
     /// Response parsing error
     #[error("Failed to parse firmware response: {reason}")]
-    ResponseParseError { reason: String },
+    ResponseParseError {
+        /// The reason the response parsing failed.
+        reason: String,
+    },
 
     /// Command not supported by firmware
     #[error("Command not supported by {firmware}")]
-    CommandNotSupported { firmware: String },
+    CommandNotSupported {
+        /// The firmware that does not support the command.
+        firmware: String,
+    },
 
     /// Configuration error
     #[error("Firmware configuration error: {reason}")]
-    ConfigurationError { reason: String },
+    ConfigurationError {
+        /// The reason for the configuration error.
+        reason: String,
+    },
 
     /// Generic firmware error
     #[error("Firmware error: {message}")]
-    Other { message: String },
+    Other {
+        /// The error message.
+        message: String,
+    },
 }
 
 /// Main error type for GCodeKit4

@@ -81,6 +81,12 @@ impl MeshMaterial {
     }
 }
 
+impl Default for RenderableMesh {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RenderableMesh {
     /// Create a new empty mesh
     pub fn new() -> Self {

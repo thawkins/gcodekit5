@@ -91,10 +91,10 @@ impl std::fmt::Display for Theme {
     }
 }
 
-/// Measurement system selection
+// Measurement system selection
 // Removed local definition, imported from gcodekit5_core::units
 
-/// Feed rate units selection
+// Feed rate units selection
 // Removed local definition, imported from gcodekit5_core::units
 
 /// Startup tab selection

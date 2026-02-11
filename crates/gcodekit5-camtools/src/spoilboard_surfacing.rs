@@ -54,33 +54,20 @@ impl SpoilboardSurfacingGenerator {
         gcode.push_str("G0 X0 Y0\n");
 
         // Plunge to Cut Depth
-        // Note: Cut depth is usually positive in UI (amount to remove), so Z is negative
         let target_z = -p.cut_depth.abs();
-        gcode.push_str(&format!("G1 Z{:.3} F{:.1}\n", target_z, p.feed_rate / 2.0)); // Plunge at half feed
+        gcode.push_str(&format!("G1 Z{:.3} F{:.1}\n", target_z, p.feed_rate / 2.0));
 
-        // Calculate stepover distance
-        // Stepover is percentage of tool diameter
-        // e.g. 40% stepover means we move 40% of diameter for each pass
-        // Wait, usually stepover is overlap? Or step distance?
-        // "Stepover" usually means how much we move over.
-        // If stepover is 40%, we move 0.4 * D.
-        // If stepover is overlap, usually it's called "Overlap".
-        // Let's assume "Stepover" means the step distance percentage.
-        // Standard is often 40-80% of diameter.
         let step_dist = p.tool_diameter * (p.stepover_percent / 100.0);
 
         let mut current_y = 0.0;
         let mut going_right = true;
 
         while current_y <= p.height {
-            // Cut current line
             let target_x = if going_right { p.width } else { 0.0 };
             gcode.push_str(&format!("G1 X{:.3} F{:.1}\n", target_x, p.feed_rate));
 
-            // Move to next line if not finished
             if current_y < p.height {
                 current_y += step_dist;
-                // Clamp to height
                 if current_y > p.height {
                     current_y = p.height;
                 }
@@ -91,7 +78,6 @@ impl SpoilboardSurfacingGenerator {
             }
         }
 
-        // Retract to Safe Z
         gcode.push_str(&format!("G0 Z{:.3}\n", p.safe_z));
 
         // Stop spindle and end program

@@ -357,6 +357,15 @@ impl DrillPressTool {
                 .ui
                 .measurement_system;
 
+            // Drill press requires Z axis
+            if device_status::get_active_num_axes() < 3 {
+                CamToolsView::show_error_dialog(
+                    "Insufficient Axes",
+                    "The Drill Press tool requires at least 3 axes (X, Y, Z). The active device has fewer than 3 axes configured.",
+                );
+                return;
+            }
+
             let params = DrillPressParameters {
                 hole_diameter: units::parse_length(&w_run.hole_diameter.text(), system)
                     .unwrap_or(10.0) as f64,

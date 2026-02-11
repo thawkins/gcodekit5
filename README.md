@@ -248,7 +248,7 @@ This modular structure enables:
 ## Installation
 
 ### Prerequisites
-- **Rust** 1.70 or later
+- **Rust** 1.88 or later (MSRV - Minimum Supported Rust Version)
 - **Operating System**: Linux, macOS, or Windows
 - **Memory**: 512MB minimum (2GB recommended)
 - **Display**: 1024x768 minimum resolution
@@ -347,6 +347,37 @@ Settings files are stored in platform-specific locations:
 
 ## Development
 
+### Development Container (Podman)
+
+GCodeKit5 provides a development container for a one-click development environment with all dependencies pre-installed.
+
+**Prerequisites**: [Podman](https://podman.io/) and VS Code with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
+
+**Setup**:
+1. Configure VS Code to use Podman: Set `"dev.containers.dockerPath": "podman"` in VS Code settings
+2. Open the project folder in VS Code
+3. Click "Reopen in Container" when prompted (or use Command Palette: "Dev Containers: Reopen in Container")
+4. Wait for the container to build (first time takes ~5-10 minutes)
+
+The container includes:
+- Rust toolchain with clippy, rustfmt, and rust-analyzer
+- GTK4 and libadwaita development libraries
+- Flatpak build tools
+- Helpful VS Code extensions pre-installed
+
+**Manual build** (without VS Code):
+```bash
+# Build the container
+podman build -t gcodekit5-dev .devcontainer/
+
+# Run with workspace mounted
+podman run -it --rm \
+  --userns=keep-id \
+  --security-opt label=disable \
+  -v "$(pwd):/workspace:Z" \
+  gcodekit5-dev
+```
+
 ### Building
 ```bash
 # Debug build (fast compilation, includes debug info)
@@ -406,42 +437,35 @@ RUST_LOG=gcodekit5::communication=debug cargo run
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
+Contributions are welcome! Please see **[CONTRIBUTING.md](CONTRIBUTING.md)** for detailed guidelines on:
 
-### Pre-commit Hooks
+- Code style and formatting requirements
+- Branch naming conventions
+- Commit message format
+- Pull request process
+- Testing requirements
+- Documentation expectations
 
-GCodeKit5 uses pre-commit hooks to ensure code quality. To enable them:
+### Quick Start
 
 ```bash
-# Configure git to use the project hooks
+# 1. Fork and clone the repository
+git clone https://github.com/YOUR_USERNAME/gcodekit5.git
+cd gcodekit5
+
+# 2. Enable pre-commit hooks
 git config core.hooksPath .githooks
 
-# The hook will automatically run before each commit:
-# 1. cargo fmt --check (formatting)
-# 2. cargo clippy (linting - warnings don't block)
-# 3. cargo test --lib (unit tests)
+# 3. Create a feature branch
+git checkout -b feature/amazing-feature
 
-# To skip hooks for a quick commit (not recommended):
-git commit --no-verify
+# 4. Make changes, then run checks
+cargo fmt && cargo clippy && cargo test
+
+# 5. Commit and push
+git commit -m "feat: add amazing feature"
+git push origin feature/amazing-feature
 ```
-
-### Code Standards
-- Follow Rust standard naming conventions (snake_case, PascalCase)
-- Use 4 spaces for indentation
-- Maximum line width: 100 characters
-- Add DOCBLOCK comments to all public functions and modules
-- Include unit tests for new features
-- Run `cargo fmt` and `cargo clippy` before committing
-
-### Process
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes following code standards
-4. Add tests for new functionality
-5. Update documentation (README, CHANGELOG, inline docs)
-6. Commit changes (`git commit -m 'Add amazing feature'`)
-7. Push to branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request with clear description
 
 ### Areas for Contribution
 - 🐛 **Bug Fixes**: Fix existing issues
@@ -459,7 +483,12 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history and [GitHub Issues
 
 ## Documentation
 
-- **[docs/USER.md](docs/USER.md)** - **Comprehensive User Manual** (start here!)
+- **[docs/user/](docs/user/)** - **Comprehensive User Guide** (start here!)
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer setup guide
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture overview
+- **[docs/adr/](docs/adr/)** - Architecture Decision Records (ADRs)
+- **[docs/COORDINATE_SYSTEM.md](docs/COORDINATE_SYSTEM.md)** - Coordinate system and Y-flip explanation
 - **[SPEC.md](SPEC.md)** - Complete technical specification
 - **[PLAN.md](PLAN.md)** - Implementation roadmap
 - **[AGENTS.md](AGENTS.md)** - Development guidelines

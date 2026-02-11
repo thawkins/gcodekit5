@@ -1,5 +1,5 @@
-/// GRBL Error and Alarm Code Decoder
-/// Converts numeric error and alarm codes to human-readable messages
+//! GRBL Error and Alarm Code Decoder
+//! Converts numeric error and alarm codes to human-readable messages
 
 /// Decode GRBL error code to human-readable message
 pub fn decode_error(code: u8) -> String {

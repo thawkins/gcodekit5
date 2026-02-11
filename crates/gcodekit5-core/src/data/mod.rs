@@ -97,6 +97,15 @@ impl CNCPoint {
 
     /// Create a CNC point with specified 6-axis coordinates
     pub fn with_axes(x: f64, y: f64, z: f64, a: f64, b: f64, c: f64, unit: Units) -> Self {
+        debug_assert!(
+            x.is_finite()
+                && y.is_finite()
+                && z.is_finite()
+                && a.is_finite()
+                && b.is_finite()
+                && c.is_finite(),
+            "CNCPoint axes must be finite: x={x}, y={y}, z={z}, a={a}, b={b}, c={c}"
+        );
         Self {
             x,
             y,
@@ -115,6 +124,15 @@ impl CNCPoint {
 
     /// Set all axes from a tuple
     pub fn set_axes(&mut self, x: f64, y: f64, z: f64, a: f64, b: f64, c: f64) {
+        debug_assert!(
+            x.is_finite()
+                && y.is_finite()
+                && z.is_finite()
+                && a.is_finite()
+                && b.is_finite()
+                && c.is_finite(),
+            "CNCPoint axes must be finite: x={x}, y={y}, z={z}, a={a}, b={b}, c={c}"
+        );
         self.x = x;
         self.y = y;
         self.z = z;
@@ -448,6 +466,50 @@ impl ControllerState {
             ControllerState::Run | ControllerState::Jog | ControllerState::Home
         )
     }
+
+    /// Check if a transition from this state to `target` is valid.
+    ///
+    /// Returns `true` for valid transitions according to the CNC state machine:
+    /// - Disconnected can only go to Connecting
+    /// - Connecting can go to Idle, Alarm, or back to Disconnected
+    /// - Alarm requires explicit reset to Idle (or disconnect)
+    /// - Any connected state can go to Disconnected (connection loss)
+    pub fn can_transition_to(&self, target: ControllerState) -> bool {
+        use ControllerState::*;
+        if *self == target {
+            return true;
+        }
+        match (self, target) {
+            // Connection lifecycle
+            (Disconnected, Connecting) => true,
+            (Connecting, Idle | Alarm | Disconnected) => true,
+            // Any connected state can disconnect
+            (_, Disconnected) => true,
+            // Cannot transition from Disconnected/Connecting to active states directly
+            (Disconnected | Connecting, _) => false,
+            // Alarm can only go to Idle (reset) or Disconnected
+            (Alarm, Idle) => true,
+            (Alarm, _) => false,
+            // Idle can go to any active state
+            (Idle, _) => true,
+            // Run can hold, alarm, complete to idle, or door
+            (Run, Hold | Alarm | Idle | Door | Check) => true,
+            // Hold can resume to run, go idle, or alarm
+            (Hold, Run | Idle | Alarm) => true,
+            // Home completes to idle or alarm
+            (Home, Idle | Alarm) => true,
+            // Jog completes to idle or alarm
+            (Jog, Idle | Alarm) => true,
+            // Door can go back to hold or idle when cleared
+            (Door, Hold | Idle | Alarm) => true,
+            // Check can return to idle
+            (Check, Idle | Alarm) => true,
+            // Sleep wakes to idle
+            (Sleep, Idle | Alarm) => true,
+            // All other transitions are invalid
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for ControllerState {
@@ -484,6 +546,31 @@ pub enum CommunicatorState {
     Stalled,
     /// Connection in error state
     Error,
+}
+
+impl CommunicatorState {
+    /// Check if a transition from this state to `target` is valid.
+    ///
+    /// Returns `true` for valid transitions:
+    /// - Disconnected → Connecting
+    /// - Connecting → Connected, Error, Disconnected
+    /// - Connected → Stalled, Error, Disconnected
+    /// - Stalled → Connected, Error, Disconnected
+    /// - Error → Disconnected, Connecting
+    pub fn can_transition_to(&self, target: CommunicatorState) -> bool {
+        use CommunicatorState::*;
+        if *self == target {
+            return true;
+        }
+        matches!(
+            (self, target),
+            (Disconnected, Connecting)
+                | (Connecting, Connected | Error | Disconnected)
+                | (Connected, Stalled | Error | Disconnected)
+                | (Stalled, Connected | Error | Disconnected)
+                | (Error, Disconnected | Connecting)
+        )
+    }
 }
 
 impl fmt::Display for CommunicatorState {

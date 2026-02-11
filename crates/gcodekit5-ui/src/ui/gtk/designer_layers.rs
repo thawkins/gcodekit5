@@ -55,7 +55,7 @@ impl LayersPanel {
 
         // Group button
         let group_btn = Button::builder()
-            .label(&t!("Group"))
+            .label(t!("Group"))
             .icon_name("object-group-symbolic")
             .build();
         group_btn.set_tooltip_text(Some(&t!("Group (Ctrl+G)")));
@@ -63,7 +63,7 @@ impl LayersPanel {
 
         // Ungroup button
         let ungroup_btn = Button::builder()
-            .label(&t!("Ungroup"))
+            .label(t!("Ungroup"))
             .icon_name("object-ungroup-symbolic")
             .build();
         ungroup_btn.set_tooltip_text(Some(&t!("Ungroup (Ctrl+Shift+G)")));

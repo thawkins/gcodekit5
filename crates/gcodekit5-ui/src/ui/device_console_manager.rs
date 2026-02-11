@@ -41,6 +41,7 @@ pub enum ConsoleEvent {
 }
 
 /// Device Console Manager
+#[allow(clippy::type_complexity)]
 pub struct DeviceConsoleManager {
     /// Console panel
     console: Arc<Mutex<ConsolePanel>>,
@@ -115,8 +116,8 @@ impl DeviceConsoleManager {
             .console
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let messages = console.get_displayed_strings(1000);
-        messages
+
+        console.get_displayed_strings(1000)
     }
 
     /// Get console output as string
@@ -486,7 +487,6 @@ impl CommunicatorListener for ConsoleListener {
             // Suppress status polling queries (just '?')
             if trimmed == "?" {
                 // Status query - don't log to console
-                return;
             }
 
             // Suppress streamed G-code commands here as they are logged by the machine callback
@@ -528,7 +528,6 @@ impl CommunicatorListener for ConsoleListener {
             // But most things are tracked.
 
             // Let's just return for now to reduce noise as requested.
-            return;
 
             /*
             if !trimmed.is_empty() {

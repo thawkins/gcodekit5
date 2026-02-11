@@ -1,6 +1,103 @@
-## [0.50.2-alpha.0] - 2026-01-26
+## [0.50.2-alpha.0] - 2026-01-30
 
 ### Added
+- **Dependabot Configuration**: Automated dependency update management
+  - Created `.github/dependabot.yml` for Cargo, GitHub Actions, and npm
+  - Weekly schedule (Monday 09:00 UTC) for dependency checks
+  - Groups minor/patch updates to reduce PR noise
+  - Proper labeling for easy PR filtering
+  - REMEDIATION_PLAN.md Task 7.2.1 completed
+
+- **Monthly Dependency Review Process**: Documented dependency maintenance workflow
+  - Created `scripts/monthly-dependency-review.sh` for automated review
+  - Created `docs/dependency_management.md` with full process documentation
+  - Includes security vulnerability response guidelines
+  - Dependency best practices and preferred crates documented
+  - REMEDIATION_PLAN.md Task 7.2.2 completed
+
+- **MSRV (Minimum Supported Rust Version)**: Set and enforced Rust 1.88
+  - Added `rust-version = "1.88"` to workspace Cargo.toml
+  - All 9 crates inherit MSRV from workspace
+  - Created `.github/workflows/msrv.yml` CI workflow
+  - Updated README with MSRV requirement
+  - REMEDIATION_PLAN.md Task 7.3.1 completed
+
+- **Event Bus System Design**: Architecture design for unified event handling
+  - Created `docs/adr/ADR-006-event-bus-system.md` with comprehensive design
+  - 7 event categories: Connection, Machine, File, Communication, Ui, Settings, Error
+  - EventBus API with typed events, filters, and optional history
+  - 5 usage patterns including GTK4 integration
+  - Migration strategy for coexistence with existing listeners
+  - REMEDIATION_PLAN.md Task 6.1.1 completed
+
+- **Core Event Bus Implementation**: Unified event system in gcodekit5-core
+  - Created `event_bus/` module with events.rs and bus.rs
+  - EventBus with publish/subscribe, filters, optional history
+  - Global singleton via `event_bus()` function
+  - Convenience macros: `emit!()` and `on_event!()`
+  - Async support via tokio broadcast receiver
+  - 12 unit tests covering all functionality
+  - REMEDIATION_PLAN.md Task 6.1.2 completed
+
+- **File Format Documentation**: Documented .gck4 design file format
+  - Created `docs/file_format.md` with complete format specification
+  - Documents all shape types, properties, and toolpath parameters
+  - Includes example file and error handling details
+  - Added 5 additional round-trip tests for complete coverage
+  - REMEDIATION_PLAN.md Task 2.4.4 completed
+
+- **Type Aliases for Complex Types**: Improved code readability
+  - Created `gcodekit5-core/src/types/aliases.rs` with 22 type aliases
+  - Single-threaded: `Shared<T>`, `SharedOption<T>`, `SharedVec<T>`, etc.
+  - Thread-safe: `ThreadSafe<T>`, `ThreadSafeVec<T>`, `ThreadSafeRw<T>`, etc.
+  - Callbacks: `Callback`, `DataCallback<T>`, `ProgressCallback`, `UiCallback`
+  - 11 constructor helper functions for ergonomic creation
+  - 8 unit tests covering all functionality
+  - REMEDIATION_PLAN.md Task 3.1.1 completed
+
+- **Box<dyn T> Audit and Type Aliases**: Comprehensive trait object analysis
+  - Audited 47 `Box<dyn>` usages across 4 crates
+  - Added `BoxedIterator<T>`, `BoxedError`, `BoxedResult<T>` type aliases
+  - Updated `laser_engraver.rs` to use `BoxedIterator<u32>`
+  - Documented all patterns with justifications for dynamic dispatch
+  - Added 2 new tests (10 total in aliases module)
+  - REMEDIATION_PLAN.md Task 3.1.2 completed
+
+- **Core Crate API Documentation**: 100% documentation coverage for gcodekit5-core
+  - Documented 264 public items across 18 source files
+  - Added documentation to all struct fields, enum variants, and functions
+  - Fixed rustdoc HTML tag and bare URL warnings
+  - `cargo doc` builds with 0 warnings
+  - Passes `RUSTDOCFLAGS="-D missing_docs"` verification
+  - REMEDIATION_PLAN.md Task 3.2.1 completed
+
+## [0.50.2-alpha.0] - 2026-01-29
+
+### Added
+- **Dependency Audit**: Comprehensive audit of all 557 project dependencies
+  - Created `docs/dependency_audit.md` with full analysis
+  - Identified 4 security warnings (unmaintained/unsound crates)
+  - Found 34 duplicate dependency versions across the project
+  - 2 potentially unused dependencies flagged (`rfd`, `tempfile`) - verified as false positives
+  - Prioritized recommendations for security fixes, consolidation, and optimization
+  - REMEDIATION_PLAN.md Task 7.1.1 completed
+
+### Changed
+- **Dependency Security Fixes**: Applied audit recommendations
+  - Upgraded `dxf` from 0.4.0 to 0.6.0 in gcodekit5-camtools
+    - Fixes RUSTSEC-2020-0073 (image 0.22.5 unsound mutable reference)
+    - Fixes RUSTSEC-2020-0144 (lzw 0.10.0 unmaintained)
+  - Downgraded `glib-build-tools` from 0.21.0 to 0.20.0 in gcodekit5-ui
+    - Consolidates glib/gio bindings to single 0.20.x version
+  - Upgraded `thiserror` from 1.x to 2.x in gcodekit5-designer and gcodekit5-communication
+    - Consolidates thiserror to single version across workspace
+  - Upgraded `stl_io` from 0.7 to 0.8 in gcodekit5-designer
+    - Matches version used by csgrs dependency
+  - Updated `vector_engraver.rs` for dxf 0.6 API changes
+  - Fixed unused import warning in `slice_toolpath.rs`
+  - Reduced duplicate dependency count from 34 to ~23
+  - REMEDIATION_PLAN.md Tasks 7.1.2 and 7.1.3 completed
+
 - **Unwrap Audit Documentation**: Comprehensive audit of all unwrap() calls
   - Created `docs/audits/unwrap_audit.csv` with 585 categorized unwraps
   - Created `docs/audits/UNWRAP_AUDIT_REPORT.md` with executive summary

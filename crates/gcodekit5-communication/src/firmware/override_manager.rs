@@ -61,33 +61,25 @@ pub trait OverrideManagerTrait: Send + Sync {
 
     /// Increase feed rate override by increment
     fn increase_feed_rate(&mut self, increment: f64) -> anyhow::Result<()> {
-        let new_value = (self.get_feed_rate_override() + increment)
-            .min(200.0)
-            .max(0.0);
+        let new_value = (self.get_feed_rate_override() + increment).clamp(0.0, 200.0);
         self.set_feed_rate_override(new_value)
     }
 
     /// Decrease feed rate override by decrement
     fn decrease_feed_rate(&mut self, decrement: f64) -> anyhow::Result<()> {
-        let new_value = (self.get_feed_rate_override() - decrement)
-            .min(200.0)
-            .max(0.0);
+        let new_value = (self.get_feed_rate_override() - decrement).clamp(0.0, 200.0);
         self.set_feed_rate_override(new_value)
     }
 
     /// Increase spindle override by increment
     fn increase_spindle(&mut self, increment: f64) -> anyhow::Result<()> {
-        let new_value = (self.get_spindle_override() + increment)
-            .min(200.0)
-            .max(0.0);
+        let new_value = (self.get_spindle_override() + increment).clamp(0.0, 200.0);
         self.set_spindle_override(new_value)
     }
 
     /// Decrease spindle override by decrement
     fn decrease_spindle(&mut self, decrement: f64) -> anyhow::Result<()> {
-        let new_value = (self.get_spindle_override() - decrement)
-            .min(200.0)
-            .max(0.0);
+        let new_value = (self.get_spindle_override() - decrement).clamp(0.0, 200.0);
         self.set_spindle_override(new_value)
     }
 }

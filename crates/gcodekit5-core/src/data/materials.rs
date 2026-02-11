@@ -177,7 +177,10 @@ impl Default for CuttingParameters {
 
 /// Material identifier
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub struct MaterialId(pub String);
+pub struct MaterialId(
+    /// The unique string identifier for the material.
+    pub String,
+);
 
 impl std::fmt::Display for MaterialId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -454,7 +457,6 @@ pub fn init_standard_library() -> MaterialLibrary {
         chip_load_mm: Some(0.05),
         coolant_type: CoolantType::WaterSoluble,
         notes: "12k spindle baseline (assumes ~6mm, 2-flute carbide endmill); adjust by tool diameter using surface speed + chip load. Sources: https://www.machiningdoctor.com/mds/?matId=3850 ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-        ..Default::default()
     };
     aluminum_6061.set_cutting_params("endmill_flat".to_string(), aluminum_params);
 

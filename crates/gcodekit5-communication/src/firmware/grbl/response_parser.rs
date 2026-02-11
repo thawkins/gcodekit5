@@ -116,15 +116,15 @@ impl GrblResponseParser {
         }
 
         // Check for error: prefix
-        if line.starts_with("error:") {
-            if let Ok(code) = line[6..].parse::<u8>() {
+        if let Some(stripped) = line.strip_prefix("error:") {
+            if let Ok(code) = stripped.parse::<u8>() {
                 return Some(GrblResponse::Error(code));
             }
         }
 
         // Check for alarm: prefix
-        if line.starts_with("alarm:") {
-            if let Ok(code) = line[6..].parse::<u8>() {
+        if let Some(stripped) = line.strip_prefix("alarm:") {
+            if let Ok(code) = stripped.parse::<u8>() {
                 return Some(GrblResponse::Alarm(code));
             }
         }

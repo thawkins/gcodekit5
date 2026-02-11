@@ -115,14 +115,14 @@ impl MeshRenderer {
             let vao = self
                 .gl
                 .create_vertex_array()
-                .map_err(|e| MeshRenderError::BufferError(e))?;
+                .map_err(MeshRenderError::BufferError)?;
             self.gl.bind_vertex_array(Some(vao));
 
             // Create VBO
             let vbo = self
                 .gl
                 .create_buffer()
-                .map_err(|e| MeshRenderError::BufferError(e))?;
+                .map_err(MeshRenderError::BufferError)?;
             self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             self.gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
@@ -134,7 +134,7 @@ impl MeshRenderer {
             let ebo = self
                 .gl
                 .create_buffer()
-                .map_err(|e| MeshRenderError::BufferError(e))?;
+                .map_err(MeshRenderError::BufferError)?;
             self.gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
             self.gl.buffer_data_u8_slice(
                 glow::ELEMENT_ARRAY_BUFFER,
@@ -347,7 +347,7 @@ impl MeshRenderer {
         unsafe {
             let vs = gl
                 .create_shader(glow::VERTEX_SHADER)
-                .map_err(|e| MeshRenderError::ShaderError(e))?;
+                .map_err(MeshRenderError::ShaderError)?;
             gl.shader_source(vs, vs_source);
             gl.compile_shader(vs);
 
@@ -362,7 +362,7 @@ impl MeshRenderer {
 
             let fs = gl
                 .create_shader(glow::FRAGMENT_SHADER)
-                .map_err(|e| MeshRenderError::ShaderError(e))?;
+                .map_err(MeshRenderError::ShaderError)?;
             gl.shader_source(fs, fs_source);
             gl.compile_shader(fs);
 
@@ -376,9 +376,7 @@ impl MeshRenderer {
                 )));
             }
 
-            let program = gl
-                .create_program()
-                .map_err(|e| MeshRenderError::ShaderError(e))?;
+            let program = gl.create_program().map_err(MeshRenderError::ShaderError)?;
             gl.attach_shader(program, vs);
             gl.attach_shader(program, fs);
             gl.link_program(program);

@@ -59,11 +59,13 @@
 //! ```
 
 mod editor_bridge;
+pub mod error;
 mod text_buffer;
 mod undo_manager;
 mod viewport;
 
 pub use editor_bridge::EditorBridgeBackend;
+pub use error::{BufferError, BufferResult, EditorError, EditorResult};
 pub use text_buffer::TextBuffer;
 pub use undo_manager::{TextChange, UndoManager};
 pub use viewport::Viewport;
@@ -105,7 +107,7 @@ impl EditorState {
 
     /// Load text from string
     pub fn load_text(&mut self, text: &str) {
-        self.buffer = TextBuffer::from_str(text);
+        self.buffer = TextBuffer::from(text);
         self.viewport.set_total_lines(self.buffer.len_lines());
         self.cursor_pos = 0;
         self.selection = None;

@@ -30,6 +30,7 @@ pub mod arc_expander;
 pub mod comment_processor;
 pub mod core_infrastructure;
 pub mod drill_press;
+pub mod error;
 pub mod gerber;
 pub mod hatch_generator;
 mod hatch_test;
@@ -55,6 +56,9 @@ pub use arc_expander::ArcExpander;
 pub use comment_processor::CommentProcessor;
 pub use core_infrastructure::{AppConfig, ApplicationState, Logger, TelemetryData};
 pub use drill_press::{DrillPressGenerator, DrillPressParameters};
+pub use error::{
+    CamToolError, CamToolResult, FileFormatError, FileFormatResult, ParameterError, ParameterResult,
+};
 pub use gerber::{GerberConverter, GerberLayerType, GerberParameters};
 pub use jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 pub use laser_engraver::{

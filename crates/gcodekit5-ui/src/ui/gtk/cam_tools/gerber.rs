@@ -543,6 +543,7 @@ impl GerberTool {
                     .next()
                     .and_then(|p| p.parent().map(|d| d.to_string_lossy().to_string()))
             },
+            num_axes: crate::device_status::get_active_num_axes(),
         }
     }
 

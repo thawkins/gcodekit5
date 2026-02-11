@@ -20,6 +20,7 @@ pub mod stock_removal_3d;
 pub mod toolpath_cache;
 pub mod toolpath_rendering;
 pub mod viewport;
+#[allow(clippy::module_inception)]
 pub mod visualizer;
 
 pub use camera::Camera as Camera3D;

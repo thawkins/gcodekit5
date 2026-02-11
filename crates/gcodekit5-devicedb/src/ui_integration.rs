@@ -16,6 +16,7 @@ pub struct DeviceProfileUiModel {
     pub y_max: String,
     pub z_min: String,
     pub z_max: String,
+    pub num_axes: String,
     pub has_spindle: bool,
     pub has_laser: bool,
     pub has_coolant: bool,
@@ -47,6 +48,7 @@ impl From<DeviceProfile> for DeviceProfileUiModel {
             y_max: format!("{:.2}", p.y_axis.max),
             z_min: format!("{:.2}", p.z_axis.min),
             z_max: format!("{:.2}", p.z_axis.max),
+            num_axes: p.num_axes.to_string(),
             has_spindle: p.has_spindle,
             has_laser: p.has_laser,
             has_coolant: p.has_coolant,
@@ -170,6 +172,13 @@ impl DeviceUiController {
         profile.has_spindle = ui_model.has_spindle;
         profile.has_laser = ui_model.has_laser;
         profile.has_coolant = ui_model.has_coolant;
+
+        profile.num_axes = ui_model.num_axes.trim().parse().with_context(|| {
+            format!(
+                "Number of axes must be an integer (got {})",
+                ui_model.num_axes
+            )
+        })?;
 
         profile.max_feed_rate = ui_model.max_feed_rate.trim().parse().with_context(|| {
             format!(

@@ -260,6 +260,7 @@ impl SelectionManager {
     /// # Note
     ///
     /// The rectangle is automatically normalized (negative width/height are handled).
+    #[allow(clippy::too_many_arguments)]
     pub fn select_in_rect(
         &mut self,
         store: &mut ShapeStore,

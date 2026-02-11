@@ -22,6 +22,13 @@ pub struct PuzzleParameters {
     pub corner_radius: f32,
     pub offset_x: f32,
     pub offset_y: f32,
+    /// Number of axes on the target device (default 3).
+    #[serde(default = "default_num_axes")]
+    pub num_axes: u8,
+}
+
+fn default_num_axes() -> u8 {
+    3
 }
 
 impl Default for PuzzleParameters {
@@ -42,6 +49,7 @@ impl Default for PuzzleParameters {
             corner_radius: 2.0,
             offset_x: 10.0,
             offset_y: 10.0,
+            num_axes: 3,
         }
     }
 }
@@ -482,13 +490,13 @@ impl JigsawPuzzleMaker {
             ";   Piece size: {:.1}x{:.1} mm\n",
             piece_w, piece_h
         ));
-        gcode.push_str("\n");
+        gcode.push('\n');
 
         gcode.push_str("; Initialization sequence\n");
         gcode.push_str("G21 ; Set units to millimeters\n");
         gcode.push_str("G90 ; Absolute positioning\n");
         gcode.push_str("G17 ; XY plane selection\n");
-        gcode.push_str("\n");
+        gcode.push('\n');
 
         gcode.push_str("; Home and set work coordinate system\n");
         gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
@@ -499,11 +507,13 @@ impl JigsawPuzzleMaker {
             self.params.offset_x, self.params.offset_y
         ));
         gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
-        gcode.push_str(&format!(
-            "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-            5.0, self.params.feed_rate
-        ));
-        gcode.push_str("\n");
+        if self.params.num_axes >= 3 {
+            gcode.push_str(&format!(
+                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
+                5.0, self.params.feed_rate
+            ));
+        }
+        gcode.push('\n');
 
         for (i, path) in self.paths.iter().enumerate() {
             if i == 0 {
@@ -522,10 +532,12 @@ impl JigsawPuzzleMaker {
                     "G0 X{:.2} Y{:.2} ; Rapid to start\n",
                     first_point.x, first_point.y
                 ));
-                gcode.push_str(&format!(
-                    "G1 Z{:.2} F{:.0} ; Plunge\n",
-                    -cut_depth, plunge_rate
-                ));
+                if self.params.num_axes >= 3 {
+                    gcode.push_str(&format!(
+                        "G1 Z{:.2} F{:.0} ; Plunge\n",
+                        -cut_depth, plunge_rate
+                    ));
+                }
 
                 for pass_num in 1..=self.params.laser_passes {
                     let z_depth = -(pass_num as f32 - 1.0) * self.params.z_step_down;
@@ -534,13 +546,12 @@ impl JigsawPuzzleMaker {
                         pass_num, self.params.laser_passes, z_depth
                     ));
 
-                    if pass_num > 1 {
+                    if pass_num > 1 && self.params.num_axes >= 3 {
                         gcode.push_str(&format!("G0 Z{:.2} ; Move to pass depth\n", z_depth));
                     }
 
                     gcode.push_str(&format!("M3 S{} ; Laser on\n", self.params.laser_power));
 
-                    // Add feed rate to every G1 command for GRBL compatibility
                     for point in path.iter().skip(1) {
                         gcode.push_str(&format!(
                             "G1 X{:.2} Y{:.2} F{:.0}\n",
@@ -559,11 +570,15 @@ impl JigsawPuzzleMaker {
                 }
             }
 
-            gcode.push_str(&format!("G0 Z{:.2} ; Retract\n\n", 5.0));
+            if self.params.num_axes >= 3 {
+                gcode.push_str(&format!("G0 Z{:.2} ; Retract\n\n", 5.0));
+            }
         }
 
         gcode.push_str("M5 ; Ensure laser off\n");
-        gcode.push_str("G0 Z10.0 ; Move to safe height\n");
+        if self.params.num_axes >= 3 {
+            gcode.push_str("G0 Z10.0 ; Move to safe height\n");
+        }
         gcode.push_str("G0 X0 Y0 ; Return to origin\n");
         gcode.push_str("M2 ; Program end\n");
 

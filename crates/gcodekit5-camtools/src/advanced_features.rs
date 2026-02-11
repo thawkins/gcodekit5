@@ -87,10 +87,10 @@ impl ProbingSystem {
         let mut mesh = vec![vec![0.0; grid_x]; grid_y];
         let mut idx = 0;
 
-        for y in 0..grid_y {
-            for x in 0..grid_x {
+        for row in mesh.iter_mut() {
+            for cell in row.iter_mut() {
                 if idx < self.results.len() && self.results[idx].success {
-                    mesh[y][x] = self.results[idx].z_position;
+                    *cell = self.results[idx].z_position;
                 }
                 idx += 1;
             }
@@ -265,9 +265,12 @@ impl WorkCoordinateManager {
 
     /// Get current offset
     pub fn current_offset(&self) -> &CoordinateOffset {
-        self.offsets
-            .get(&self.current_wcs)
-            .expect("missing WCS offset")
+        static DEFAULT: CoordinateOffset = CoordinateOffset {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        self.offsets.get(&self.current_wcs).unwrap_or(&DEFAULT)
     }
 
     /// Select WCS

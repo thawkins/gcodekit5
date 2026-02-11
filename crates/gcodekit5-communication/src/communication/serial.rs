@@ -302,14 +302,14 @@ impl SerialPort for RealSerialPort {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         match self.port.lock() {
             Ok(mut port) => port.write(data),
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string())),
+            Err(e) => Err(io::Error::other(e.to_string())),
         }
     }
 
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.port.lock() {
             Ok(mut port) => port.read(buf),
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string())),
+            Err(e) => Err(io::Error::other(e.to_string())),
         }
     }
 

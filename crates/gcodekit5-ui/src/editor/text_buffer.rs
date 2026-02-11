@@ -11,6 +11,23 @@ pub struct TextBuffer {
     dirty_lines: Vec<usize>,
 }
 
+impl std::fmt::Display for TextBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.rope)
+    }
+}
+
+impl std::str::FromStr for TextBuffer {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self {
+            rope: Rope::from(s),
+            dirty_lines: Vec::new(),
+        })
+    }
+}
+
 impl TextBuffer {
     /// Create a new empty text buffer
     pub fn new() -> Self {
@@ -21,6 +38,7 @@ impl TextBuffer {
     }
 
     /// Create text buffer from string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Self {
         Self {
             rope: Rope::from_str(text),
@@ -107,11 +125,6 @@ impl TextBuffer {
     pub fn clear(&mut self) {
         self.rope = Rope::new();
         self.dirty_lines.clear();
-    }
-
-    /// Get all text as String (expensive for large files)
-    pub fn to_string(&self) -> String {
-        self.rope.to_string()
     }
 
     /// Convert char index to line/column

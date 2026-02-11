@@ -25,6 +25,7 @@ fn test_user_reported_bug_thickness_1_5mm() {
         dividers_y: 0,
         optimize_layout: false,
         key_divider_type: KeyDividerType::WallsAndFloor,
+        num_axes: 3,
     };
 
     let mut maker = TabbedBoxMaker::new(params).expect("Failed to create TabbedBoxMaker");

@@ -45,13 +45,11 @@ M02*
         let result = GerberConverter::generate(&params, gerber_content);
         match result {
             Ok(gcode) => {
-                println!("Generated G-Code:\n{}", gcode);
                 assert!(gcode.contains("; Rubout"));
                 assert!(gcode.contains("G1 Z-0.1")); // Cutting move
             }
             Err(e) => {
-                println!("Error: {:?}", e);
-                panic!("Failed to generate G-code");
+                panic!("Failed to generate G-code: {:?}", e);
             }
         }
     }

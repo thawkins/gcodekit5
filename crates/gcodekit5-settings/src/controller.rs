@@ -26,6 +26,7 @@ pub struct SettingUiModel {
 pub struct SettingsController {
     pub dialog: Rc<RefCell<SettingsDialog>>,
     pub persistence: Rc<RefCell<SettingsPersistence>>,
+    #[allow(clippy::type_complexity)]
     listeners: Rc<RefCell<Vec<Box<dyn Fn(&str, &str)>>>>,
 }
 

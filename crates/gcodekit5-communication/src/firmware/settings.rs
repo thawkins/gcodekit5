@@ -2,10 +2,11 @@
 //!
 //! Provides traits and implementations for managing firmware-specific settings.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A firmware setting parameter
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FirmwareSetting {
     /// Setting ID or code
     pub id: String,
@@ -22,7 +23,7 @@ pub struct FirmwareSetting {
 }
 
 /// Setting data types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SettingType {
     /// Numeric value
     Numeric,
@@ -132,13 +133,19 @@ impl FirmwareSettingsTrait for DefaultFirmwareSettings {
         }
     }
 
-    fn load_from_file(&mut self, _path: &str) -> anyhow::Result<()> {
-        // TODO(#13): Implement file loading
+    fn load_from_file(&mut self, path: &str) -> anyhow::Result<()> {
+        let content = std::fs::read_to_string(path)?;
+        let settings: Vec<FirmwareSetting> = serde_json::from_str(&content)?;
+        for setting in settings {
+            self.settings.insert(setting.id.clone(), setting);
+        }
         Ok(())
     }
 
-    fn save_to_file(&self, _path: &str) -> anyhow::Result<()> {
-        // TODO(#13): Implement file saving
+    fn save_to_file(&self, path: &str) -> anyhow::Result<()> {
+        let settings: Vec<&FirmwareSetting> = self.settings.values().collect();
+        let content = serde_json::to_string_pretty(&settings)?;
+        std::fs::write(path, content)?;
         Ok(())
     }
 }

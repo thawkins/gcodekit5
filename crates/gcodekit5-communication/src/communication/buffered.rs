@@ -282,8 +282,10 @@ impl BufferedCommunicatorWrapper {
                 })?;
                 queue.push_front(retry_command);
 
-                let command_size = queue.front().expect("queue not empty").command.len() + 1;
-                self.sent_buffer_size = self.sent_buffer_size.saturating_sub(command_size);
+                if let Some(front) = queue.front() {
+                    let command_size = front.command.len() + 1;
+                    self.sent_buffer_size = self.sent_buffer_size.saturating_sub(command_size);
+                }
             } else {
                 tracing::error!("Command failed after {} retries", command.max_retries);
                 let command_size = command.command.len() + 1;

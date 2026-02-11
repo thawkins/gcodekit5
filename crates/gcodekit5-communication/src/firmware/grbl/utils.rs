@@ -20,14 +20,14 @@ pub fn is_valid_response(line: &str) -> bool {
     }
 
     // Error responses
-    if trimmed.starts_with("error:") {
-        let error_code = trimmed[6..].trim();
+    if let Some(stripped) = trimmed.strip_prefix("error:") {
+        let error_code = stripped.trim();
         return error_code.parse::<u8>().is_ok();
     }
 
     // Alarm responses
-    if trimmed.starts_with("alarm:") {
-        let alarm_code = trimmed[6..].trim();
+    if let Some(stripped) = trimmed.strip_prefix("alarm:") {
+        let alarm_code = stripped.trim();
         return alarm_code.parse::<u8>().is_ok();
     }
 

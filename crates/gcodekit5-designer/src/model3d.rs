@@ -148,9 +148,9 @@ impl Mesh3D {
 
         // Convert indexed mesh to triangles
         for face in &stl_mesh.faces {
-            let v1_idx = face.vertices[0] as usize;
-            let v2_idx = face.vertices[1] as usize;
-            let v3_idx = face.vertices[2] as usize;
+            let v1_idx = face.vertices[0];
+            let v2_idx = face.vertices[1];
+            let v3_idx = face.vertices[2];
 
             if v1_idx < stl_mesh.vertices.len()
                 && v2_idx < stl_mesh.vertices.len()
@@ -279,7 +279,7 @@ impl Mesh3D {
 
         debug!("Built {} contour paths", contours.len());
 
-        let shapes: Vec<Shape> = contours.into_iter().map(|path| Shape::Path(path)).collect();
+        let shapes: Vec<Shape> = contours.into_iter().map(Shape::Path).collect();
 
         Ok(shapes)
     }
@@ -311,7 +311,7 @@ impl Mesh3D {
 
         debug!("Built {} contour paths from slice", contours.len());
 
-        let shapes: Vec<Shape> = contours.into_iter().map(|path| Shape::Path(path)).collect();
+        let shapes: Vec<Shape> = contours.into_iter().map(Shape::Path).collect();
 
         Ok(shapes)
     }

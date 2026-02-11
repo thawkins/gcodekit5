@@ -77,6 +77,7 @@ impl CommandHistory {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<String> {
         match self.current_index {
             None => None,

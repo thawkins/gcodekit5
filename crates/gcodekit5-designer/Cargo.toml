@@ -2,6 +2,7 @@
 name = "gcodekit5-designer"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Design and CAM layout tools for GCodeKit4 - Create complex toolpaths visually"
 license.workspace = true
 authors.workspace = true
@@ -15,7 +16,7 @@ serde_json = "1.0"
 image = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 tracing = "0.1"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 lyon = { version = "1.0", features = ["serialization"] }
@@ -24,7 +25,7 @@ fontdb = "0.16"
 cavalier_contours = "0.6.0"
 tiny-skia = "0.11.4"
 csgrs = { version = "0.20.1", features = ["svg-io", "stl-io"] }
-stl_io = "0.7"
+stl_io = "0.8"
 nalgebra = "0.33"
 
 [dev-dependencies]

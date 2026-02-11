@@ -66,7 +66,7 @@ impl Scene3D {
 
         // Generate shadow projection for toolpath planning
         let projector = ShadowProjector::orthographic_z();
-        if let Ok(shapes) = projector.project_shadow(&mesh_3d) {
+        if let Ok(shapes) = projector.project_shadow(mesh_3d) {
             // Convert to lyon paths for toolpath generation
             let paths = self.projection_to_lyon_paths(&[shapes]);
             self.shadow_projections.insert(name, paths);

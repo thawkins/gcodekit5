@@ -36,6 +36,7 @@ impl FastShapeTemplate {
 }
 
 /// Fast shape gallery dialog
+#[allow(clippy::type_complexity)]
 pub struct FastShapeGallery {
     dialog: Dialog,
     templates: Vec<FastShapeTemplate>,
@@ -129,6 +130,7 @@ impl FastShapeGallery {
 
             let template_clone = template.clone();
             let dialog_clone = dialog.clone();
+            #[allow(clippy::type_complexity)]
             let on_shape_selected: std::rc::Weak<
                 RefCell<Option<std::boxed::Box<dyn Fn(Shape) + 'static>>>,
             > = Rc::downgrade(&gallery.on_shape_selected);

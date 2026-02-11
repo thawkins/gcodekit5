@@ -114,7 +114,7 @@ impl ToolsManagerBackend {
 
     fn get_storage_path() -> PathBuf {
         let mut path = dirs::config_dir()
-            .or_else(|| dirs::home_dir())
+            .or_else(dirs::home_dir)
             .unwrap_or_else(|| PathBuf::from("."));
         path.push("gcodekit5");
         std::fs::create_dir_all(&path).ok();

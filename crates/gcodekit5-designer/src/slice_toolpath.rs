@@ -10,7 +10,7 @@
 //! - Layer height optimization
 //! - Material and tool considerations
 
-use crate::model::{DesignerShape, Point, Shape};
+use crate::model::{DesignerShape, Shape};
 use crate::model3d::Mesh3D;
 use crate::shadow_projection::{ShadowProjector, SliceLayer, SlicingParams};
 use crate::tool_library::{Tool, ToolType};
@@ -125,14 +125,15 @@ pub struct SliceToToolpath {
     params: SliceToolpathParams,
 }
 
+impl Default for SliceToToolpath {
+    fn default() -> Self {
+        Self::new(SliceToolpathParams::default())
+    }
+}
+
 impl SliceToToolpath {
     pub fn new(params: SliceToolpathParams) -> Self {
         Self { params }
-    }
-
-    /// Create with default parameters
-    pub fn default() -> Self {
-        Self::new(SliceToolpathParams::default())
     }
 
     /// Create for contour cutting

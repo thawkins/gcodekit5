@@ -702,6 +702,7 @@ impl BitmapEngravingTool {
             },
             offset_x: w.offset_x.text().parse().unwrap_or(10.0),
             offset_y: w.offset_y.text().parse().unwrap_or(10.0),
+            num_axes: crate::device_status::get_active_num_axes(),
         }
     }
 

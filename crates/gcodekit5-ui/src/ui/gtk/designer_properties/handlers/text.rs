@@ -48,6 +48,7 @@ where
 }
 
 /// Setup text content entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_text_content_handler(
     text_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -75,6 +76,7 @@ pub fn setup_text_content_handler(
 }
 
 /// Setup font size entry handler (entered in points, stored in mm)
+#[allow(clippy::type_complexity)]
 pub fn setup_font_size_handler(
     font_size_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -106,6 +108,7 @@ pub fn setup_font_size_handler(
 }
 
 /// Setup font family dropdown handler
+#[allow(clippy::type_complexity)]
 pub fn setup_font_family_handler(
     font_family_combo: &DropDown,
     font_bold_check: &CheckButton,
@@ -147,6 +150,7 @@ pub fn setup_font_family_handler(
 }
 
 /// Setup font bold checkbox handler
+#[allow(clippy::type_complexity)]
 pub fn setup_font_bold_handler(
     font_bold_check: &CheckButton,
     font_family_combo: &DropDown,
@@ -188,6 +192,7 @@ pub fn setup_font_bold_handler(
 }
 
 /// Setup font italic checkbox handler
+#[allow(clippy::type_complexity)]
 pub fn setup_font_italic_handler(
     font_italic_check: &CheckButton,
     font_family_combo: &DropDown,

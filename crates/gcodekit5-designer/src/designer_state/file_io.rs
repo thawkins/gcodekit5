@@ -65,7 +65,7 @@ impl DesignerState {
 
         // Restore shapes with full DrawingObject (preserves all properties)
         for shape_data in &design.shapes {
-            if let Ok(obj) = DesignFile::to_drawing_object(shape_data, shape_data.id as i32) {
+            if let Ok(obj) = DesignFile::to_drawing_object(shape_data, shape_data.id) {
                 self.canvas.restore_shape(obj);
             }
         }

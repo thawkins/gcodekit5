@@ -37,7 +37,9 @@ pub fn render_canvas(
     _pan_x: f32,
     _pan_y: f32,
 ) -> RgbImage {
-    let mut pixmap = Pixmap::new(width, height).expect("failed to create pixmap");
+    let Some(mut pixmap) = Pixmap::new(width, height) else {
+        return RgbImage::new(width, height);
+    };
     pixmap.fill(bg_color());
 
     let viewport = canvas.viewport();
@@ -151,13 +153,13 @@ pub fn render_canvas(
                 for event in path_shape.render().iter() {
                     match event {
                         lyon::path::Event::Begin { at } => {
-                            pb.move_to(at.x as f32, at.y as f32);
+                            pb.move_to(at.x, at.y);
                         }
                         lyon::path::Event::Line { from: _, to } => {
-                            pb.line_to(to.x as f32, to.y as f32);
+                            pb.line_to(to.x, to.y);
                         }
                         lyon::path::Event::Quadratic { from: _, ctrl, to } => {
-                            pb.quad_to(ctrl.x as f32, ctrl.y as f32, to.x as f32, to.y as f32);
+                            pb.quad_to(ctrl.x, ctrl.y, to.x, to.y);
                         }
                         lyon::path::Event::Cubic {
                             from: _,
@@ -165,14 +167,7 @@ pub fn render_canvas(
                             ctrl2,
                             to,
                         } => {
-                            pb.cubic_to(
-                                ctrl1.x as f32,
-                                ctrl1.y as f32,
-                                ctrl2.x as f32,
-                                ctrl2.y as f32,
-                                to.x as f32,
-                                to.y as f32,
-                            );
+                            pb.cubic_to(ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y);
                         }
                         lyon::path::Event::End {
                             last: _,
@@ -198,8 +193,8 @@ pub fn render_canvas(
                 let mut pb = PathBuilder::new();
                 for event in path.iter() {
                     match event {
-                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
-                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x, at.y),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x, to.y),
                         lyon::path::Event::End { close, .. } => {
                             if close {
                                 pb.close();
@@ -217,8 +212,8 @@ pub fn render_canvas(
                 let mut pb = PathBuilder::new();
                 for event in path.iter() {
                     match event {
-                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
-                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x, at.y),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x, to.y),
                         lyon::path::Event::End { close, .. } => {
                             if close {
                                 pb.close();
@@ -236,21 +231,14 @@ pub fn render_canvas(
                 let mut pb = PathBuilder::new();
                 for event in path.iter() {
                     match event {
-                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
-                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x, at.y),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x, to.y),
                         lyon::path::Event::Quadratic { ctrl, to, .. } => {
-                            pb.quad_to(ctrl.x as f32, ctrl.y as f32, to.x as f32, to.y as f32)
+                            pb.quad_to(ctrl.x, ctrl.y, to.x, to.y)
                         }
                         lyon::path::Event::Cubic {
                             ctrl1, ctrl2, to, ..
-                        } => pb.cubic_to(
-                            ctrl1.x as f32,
-                            ctrl1.y as f32,
-                            ctrl2.x as f32,
-                            ctrl2.y as f32,
-                            to.x as f32,
-                            to.y as f32,
-                        ),
+                        } => pb.cubic_to(ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y),
                         lyon::path::Event::End { close, .. } => {
                             if close {
                                 pb.close();
@@ -267,21 +255,14 @@ pub fn render_canvas(
                 let mut pb = PathBuilder::new();
                 for event in path.iter() {
                     match event {
-                        lyon::path::Event::Begin { at } => pb.move_to(at.x as f32, at.y as f32),
-                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x as f32, to.y as f32),
+                        lyon::path::Event::Begin { at } => pb.move_to(at.x, at.y),
+                        lyon::path::Event::Line { to, .. } => pb.line_to(to.x, to.y),
                         lyon::path::Event::Quadratic { ctrl, to, .. } => {
-                            pb.quad_to(ctrl.x as f32, ctrl.y as f32, to.x as f32, to.y as f32)
+                            pb.quad_to(ctrl.x, ctrl.y, to.x, to.y)
                         }
                         lyon::path::Event::Cubic {
                             ctrl1, ctrl2, to, ..
-                        } => pb.cubic_to(
-                            ctrl1.x as f32,
-                            ctrl1.y as f32,
-                            ctrl2.x as f32,
-                            ctrl2.y as f32,
-                            to.x as f32,
-                            to.y as f32,
-                        ),
+                        } => pb.cubic_to(ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y),
                         lyon::path::Event::End { close, .. } => {
                             if close {
                                 pb.close();

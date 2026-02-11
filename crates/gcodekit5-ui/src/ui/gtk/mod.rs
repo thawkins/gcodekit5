@@ -9,6 +9,7 @@ pub mod device_console;
 pub mod device_manager;
 pub mod editor;
 pub mod fast_shape_gallery;
+pub mod file_dialog;
 pub mod help_browser;
 pub mod machine_control;
 pub mod nav_cube;

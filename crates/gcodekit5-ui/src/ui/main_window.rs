@@ -325,6 +325,7 @@ impl Default for StatusBar {
 }
 
 /// Main application window
+#[allow(clippy::type_complexity)]
 pub struct MainWindow {
     /// Window title
     pub title: String,

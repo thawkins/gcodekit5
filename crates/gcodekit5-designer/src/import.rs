@@ -298,7 +298,7 @@ impl SvgImporter {
 
                 if let Some(points_str) = Self::extract_attr_str(tag_content, "points") {
                     let points: Vec<Point> = points_str
-                        .split(|c| c == ' ' || c == ',')
+                        .split([' ', ','])
                         .filter(|s| !s.is_empty())
                         .collect::<Vec<&str>>()
                         .chunks(2)
@@ -333,7 +333,7 @@ impl SvgImporter {
 
                 if let Some(points_str) = Self::extract_attr_str(tag_content, "points") {
                     let points: Vec<Point> = points_str
-                        .split(|c| c == ' ' || c == ',')
+                        .split([' ', ','])
                         .filter(|s| !s.is_empty())
                         .collect::<Vec<&str>>()
                         .chunks(2)

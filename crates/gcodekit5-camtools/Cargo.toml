@@ -2,6 +2,7 @@
 name = "gcodekit5-camtools"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "CAM (Computer-Aided Manufacturing) tools and special processing for GCodeKit4"
 license.workspace = true
 authors.workspace = true
@@ -15,8 +16,9 @@ serde = { version = "1.0", features = ["derive"] }
 image = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
+thiserror = { workspace = true }
 regex = "1.10"
-dxf = "0.4"
+dxf = "0.6"
 lyon = "1.0"
 gerber-types = "0.6.0"
 cavalier_contours = "0.6.0"

@@ -1,8 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Align, Box as GtkBox, Button, Dialog, Entry, FileChooserAction, FileChooserNative, Label,
-    Notebook, Orientation, PolicyType, PositionType, ResponseType, ScrolledWindow, StringList,
-    Switch,
+    glib, Align, Box as GtkBox, Button, Dialog, Entry, Label, Notebook, Orientation, PolicyType,
+    PositionType, ResponseType, ScrolledWindow, StringList, Switch,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow};
@@ -13,6 +12,7 @@ use tracing::error;
 use gcodekit5_settings::controller::{SettingUiModel, SettingsController};
 use gcodekit5_settings::view_model::SettingsCategory;
 
+#[allow(clippy::type_complexity)]
 pub struct SettingsWindow {
     dialog: Dialog,
     notebook: Notebook,
@@ -201,14 +201,8 @@ impl SettingsWindow {
                 let entry_clone = entry.clone();
 
                 browse_btn.connect_clicked(move |_| {
-                    let file_chooser = FileChooserNative::builder()
-                        .title("Select Directory")
-                        .transient_for(&parent_window)
-                        .action(FileChooserAction::SelectFolder)
-                        .accept_label("Select")
-                        .cancel_label("Cancel")
-                        .modal(true)
-                        .build();
+                    let file_chooser =
+                        super::file_dialog::folder_dialog("Select Directory", Some(&parent_window));
 
                     let entry = entry_clone.clone();
                     file_chooser.connect_response(move |dialog, response| {

@@ -656,6 +656,7 @@ impl VectorEngravingTool {
             enable_dwell: w.enable_dwell.is_active(),
             dwell_time: w.dwell_time.text().parse().unwrap_or(0.1),
             cross_hatch: w.cross_hatch.is_active(),
+            num_axes: crate::device_status::get_active_num_axes(),
         }
     }
 

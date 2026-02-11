@@ -89,16 +89,16 @@ impl SmoothiewareResponseParser {
         let mut found_all = false;
 
         for part in line.split_whitespace() {
-            if part.starts_with("X:") {
-                if let Ok(val) = part[2..].parse::<f64>() {
+            if let Some(stripped) = part.strip_prefix("X:") {
+                if let Ok(val) = stripped.parse::<f64>() {
                     x = val;
                 }
-            } else if part.starts_with("Y:") {
-                if let Ok(val) = part[2..].parse::<f64>() {
+            } else if let Some(stripped) = part.strip_prefix("Y:") {
+                if let Ok(val) = stripped.parse::<f64>() {
                     y = val;
                 }
-            } else if part.starts_with("Z:") {
-                if let Ok(val) = part[2..].parse::<f64>() {
+            } else if let Some(stripped) = part.strip_prefix("Z:") {
+                if let Ok(val) = stripped.parse::<f64>() {
                     z = val;
                     found_all = true;
                 }

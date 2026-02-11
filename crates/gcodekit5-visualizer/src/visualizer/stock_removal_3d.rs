@@ -358,12 +358,10 @@ impl StockSimulator3D {
             } else {
                 end_angle - start_angle
             }
+        } else if end_angle < start_angle {
+            end_angle - start_angle + 2.0 * std::f32::consts::PI
         } else {
-            if end_angle < start_angle {
-                end_angle - start_angle + 2.0 * std::f32::consts::PI
-            } else {
-                end_angle - start_angle
-            }
+            end_angle - start_angle
         };
         let arc_length = radius * angle_span.abs();
         let resolution = self.grid.resolution;
@@ -401,12 +399,10 @@ impl StockSimulator3D {
             } else {
                 end_angle - start_angle
             }
+        } else if end_angle < start_angle {
+            end_angle - start_angle + 2.0 * std::f32::consts::PI
         } else {
-            if end_angle < start_angle {
-                end_angle - start_angle + 2.0 * std::f32::consts::PI
-            } else {
-                end_angle - start_angle
-            }
+            end_angle - start_angle
         };
         let arc_length = radius * angle_span.abs();
         let resolution = self.grid.resolution;

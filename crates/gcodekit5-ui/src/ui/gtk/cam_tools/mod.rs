@@ -29,8 +29,7 @@ use common::set_paned_initial_fraction;
 
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, ButtonsType, ComboBoxText, Image, Label, MessageDialog, MessageType,
-    Orientation, Paned, ScrolledWindow, Stack,
+    Align, Box, Button, ComboBoxText, Image, Label, Orientation, Paned, ScrolledWindow, Stack,
 };
 use std::rc::Rc;
 
@@ -43,14 +42,7 @@ pub struct CamToolsView {
 
 impl CamToolsView {
     fn show_error_dialog(title: &str, message: &str) {
-        let dialog = MessageDialog::builder()
-            .message_type(MessageType::Error)
-            .buttons(ButtonsType::Ok)
-            .text(title)
-            .secondary_text(message)
-            .build();
-        dialog.connect_response(|d, _| d.close());
-        dialog.show();
+        crate::ui::gtk::file_dialog::show_error_dialog(title, message, None);
     }
 
     pub fn new<F: Fn(String) + 'static>(

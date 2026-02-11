@@ -400,10 +400,10 @@ impl DesignerState {
 
         let mut result_shape = selected[0].shape.clone();
 
-        for i in 1..selected.len() {
+        for item in &selected[1..] {
             result_shape = perform_boolean(
                 &result_shape,
-                &selected[i].shape,
+                &item.shape,
                 match op {
                     BooleanOp::Union => BooleanOp::Union,
                     BooleanOp::Difference => BooleanOp::Difference,

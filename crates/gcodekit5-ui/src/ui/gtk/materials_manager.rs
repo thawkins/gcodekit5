@@ -310,18 +310,8 @@ impl MaterialsManagerView {
     }
 
     fn show_error_dialog(title: &str, message: &str) {
-        let dialog = MessageDialog::builder()
-            .message_type(MessageType::Error)
-            .buttons(ButtonsType::Ok)
-            .text(title)
-            .secondary_text(message)
-            .build();
-        if let Some(win) = gtk4::Application::default().active_window() {
-            dialog.set_transient_for(Some(&win));
-            dialog.set_modal(true);
-        }
-        dialog.connect_response(|d, _| d.close());
-        dialog.show();
+        let parent = gtk4::Application::default().active_window();
+        crate::ui::gtk::file_dialog::show_error_dialog(title, message, parent.as_ref());
     }
 
     fn create_general_tab() -> (
@@ -1088,14 +1078,12 @@ impl MaterialsManagerView {
         };
 
         // Creating: enforce unique ID
-        if is_creating {
-            if self.backend.borrow().get_material(&material.id).is_some() {
-                Self::show_error_dialog(
-                    "Cannot Save Material",
-                    "A material with this ID already exists.",
-                );
-                return;
-            }
+        if is_creating && self.backend.borrow().get_material(&material.id).is_some() {
+            Self::show_error_dialog(
+                "Cannot Save Material",
+                "A material with this ID already exists.",
+            );
+            return;
         }
 
         let id = material.id.0.clone();
@@ -1131,7 +1119,7 @@ impl MaterialsManagerView {
                     .message_type(MessageType::Warning)
                     .buttons(ButtonsType::YesNo)
                     .text("Delete Material?")
-                    .secondary_text(&format!(
+                    .secondary_text(format!(
                         "Are you sure you want to delete '{}' ({} )?\n\nThis action cannot be undone.",
                         mat_name, mat_id.0
                     ))

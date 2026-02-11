@@ -478,12 +478,12 @@ pub fn sync_capabilities_to_ui(window: &MainWindow, capability_manager: &Capabil
         notes: "Dynamic laser power control for engraving/cutting".into(),
     });
     capabilities.push(CapabilityItem {
-        name: format!("{} Axes Support", state.max_axes).into(),
+        name: format!("{} Axes Support", state.max_axes),
         enabled: state.max_axes > 0,
-        notes: format!("Maximum {} axes (X,Y,Z,A,B,C)", state.max_axes).into(),
+        notes: format!("Maximum {} axes (X,Y,Z,A,B,C)", state.max_axes),
     });
     capabilities.push(CapabilityItem {
-        name: format!("{} Coordinate Systems", state.coordinate_systems).into(),
+        name: format!("{} Coordinate Systems", state.coordinate_systems),
         enabled: state.coordinate_systems > 0,
         notes: "Work coordinate systems (G54-G59)".into(),
     });
@@ -500,7 +500,7 @@ pub fn update_device_info_panel(
     capability_manager: &CapabilityManager,
 ) {
     // Update capability manager with detected firmware
-    capability_manager.update_firmware(firmware_type, version.clone());
+    capability_manager.update_firmware(firmware_type, version);
 
     window.set_device_firmware_type(format!("{:?}", firmware_type));
     window.set_device_firmware_version(version.to_string());
@@ -547,13 +547,13 @@ pub fn update_device_info_panel(
     });
 
     capabilities.push(CapabilityItem {
-        name: format!("{} Axes Support", state.max_axes).into(),
+        name: format!("{} Axes Support", state.max_axes),
         enabled: state.max_axes > 0,
-        notes: format!("Maximum {} axes (X,Y,Z,A,B,C)", state.max_axes).into(),
+        notes: format!("Maximum {} axes (X,Y,Z,A,B,C)", state.max_axes),
     });
 
     capabilities.push(CapabilityItem {
-        name: format!("{} Coordinate Systems", state.coordinate_systems).into(),
+        name: format!("{} Coordinate Systems", state.coordinate_systems),
         enabled: state.coordinate_systems > 0,
         notes: "Work coordinate systems (G54-G59)".into(),
     });

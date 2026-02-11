@@ -2,8 +2,7 @@ use crate::ui::gtk::status_bar::StatusBar;
 use glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, FileChooserAction, FileChooserNative, Label, Orientation, Overlay,
-    PolicyType, ResponseType, ScrolledWindow,
+    Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ResponseType, ScrolledWindow,
 };
 use sourceview5::prelude::*;
 use sourceview5::{
@@ -403,7 +402,10 @@ impl GcodeEditor {
                     // But context.replace() requires us to pass the match iterators.
                     // If we just want to replace the current match and move to next:
 
-                    if let Ok(_) = context_clone.replace(&mut start, &mut end, &replace_text) {
+                    if context_clone
+                        .replace(&mut start, &mut end, &replace_text)
+                        .is_ok()
+                    {
                         // Move to next match
                         let iter = end; // Continue from end of replacement
                         if let Some((next_start, next_end, _wrapped)) = context_clone.forward(&iter)
@@ -589,17 +591,8 @@ impl GcodeEditor {
     }
 
     pub fn open_file(&self) {
-        let dialog = FileChooserNative::builder()
-            .title("Open G-Code File")
-            .action(FileChooserAction::Open)
-            .modal(true)
-            .build();
-
-        if let Some(root) = self.widget.root() {
-            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
-                dialog.set_transient_for(Some(window));
-            }
-        }
+        let parent = super::file_dialog::parent_window(&self.widget);
+        let dialog = super::file_dialog::open_dialog("Open G-Code File", parent.as_ref());
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -630,8 +623,13 @@ impl GcodeEditor {
                                 buffer.place_cursor(&start_iter);
                             }
                             Err(e) => {
-                                error!("Error reading file: {}", e);
-                                // TODO(#15): Show error dialog
+                                error!("Error reading file {}: {}", path.display(), e);
+                                let parent = super::file_dialog::parent_window(dialog);
+                                super::file_dialog::show_error_dialog(
+                                    "Error Reading File",
+                                    &format!("Could not open '{}'.\n\n{}", path.display(), e),
+                                    parent.as_ref(),
+                                );
                             }
                         }
                     }
@@ -652,8 +650,13 @@ impl GcodeEditor {
             let content = self.buffer.text(&start, &end, true);
 
             if let Err(e) = fs::write(&path, content.as_str()) {
-                error!("Error saving file: {}", e);
-                // TODO(#15): Show error dialog
+                error!("Error saving file {}: {}", path.display(), e);
+                let parent = super::file_dialog::parent_window(&self.widget);
+                super::file_dialog::show_error_dialog(
+                    "Error Saving File",
+                    &format!("Could not save '{}'.\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
             }
         } else {
             self.save_as_file();
@@ -661,17 +664,8 @@ impl GcodeEditor {
     }
 
     pub fn save_as_file(&self) {
-        let dialog = FileChooserNative::builder()
-            .title("Save G-Code File")
-            .action(FileChooserAction::Save)
-            .modal(true)
-            .build();
-
-        if let Some(root) = self.widget.root() {
-            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
-                dialog.set_transient_for(Some(window));
-            }
-        }
+        let parent = super::file_dialog::parent_window(&self.widget);
+        let dialog = super::file_dialog::save_dialog("Save G-Code File", parent.as_ref());
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -702,8 +696,13 @@ impl GcodeEditor {
                                 *current_file.borrow_mut() = Some(path);
                             }
                             Err(e) => {
-                                error!("Error saving file: {}", e);
-                                // TODO(#15): Show error dialog
+                                error!("Error saving file {}: {}", path.display(), e);
+                                let parent = super::file_dialog::parent_window(dialog);
+                                super::file_dialog::show_error_dialog(
+                                    "Error Saving File",
+                                    &format!("Could not save '{}'.\n\n{}", path.display(), e),
+                                    parent.as_ref(),
+                                );
                             }
                         }
                     }

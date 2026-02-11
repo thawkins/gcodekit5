@@ -52,6 +52,8 @@ pub struct VectorEngravingParameters {
     pub dwell_time: f32,
     /// Enable cross hatching (second pass at 90 degrees offset)
     pub cross_hatch: bool,
+    /// Number of axes on the target device (default 3).
+    pub num_axes: u8,
 }
 
 impl Default for VectorEngravingParameters {
@@ -76,6 +78,7 @@ impl Default for VectorEngravingParameters {
             enable_dwell: false,
             dwell_time: 0.1,
             cross_hatch: false,
+            num_axes: 3,
         }
     }
 }
@@ -326,14 +329,11 @@ impl VectorEngraver {
                         builder.line_to(point(current_x, current_y));
                         j += 2;
 
-                        if j < commands.len() {
-                            let next = &commands[j];
-                            if next.len() == 1 && next.chars().all(|c| c.is_alphabetic()) {
-                                break;
-                            } else if next.parse::<f32>().is_err() {
-                                break;
-                            }
-                        } else {
+                        if j >= commands.len()
+                            || (commands[j].len() == 1
+                                && commands[j].chars().all(|c| c.is_alphabetic()))
+                            || commands[j].parse::<f32>().is_err()
+                        {
                             break;
                         }
                     }
@@ -415,14 +415,11 @@ impl VectorEngraver {
                         current_y = end_y;
                         j += 6;
 
-                        if j < commands.len() {
-                            let next = &commands[j];
-                            if next.len() == 1 && next.chars().all(|c| c.is_alphabetic()) {
-                                break;
-                            } else if next.parse::<f32>().is_err() {
-                                break;
-                            }
-                        } else {
+                        if j >= commands.len()
+                            || (commands[j].len() == 1
+                                && commands[j].chars().all(|c| c.is_alphabetic()))
+                            || commands[j].parse::<f32>().is_err()
+                        {
                             break;
                         }
                     }
@@ -458,14 +455,11 @@ impl VectorEngraver {
                         current_y = end_y;
                         j += 4;
 
-                        if j < commands.len() {
-                            let next = &commands[j];
-                            if next.len() == 1 && next.chars().all(|c| c.is_alphabetic()) {
-                                break;
-                            } else if next.parse::<f32>().is_err() {
-                                break;
-                            }
-                        } else {
+                        if j >= commands.len()
+                            || (commands[j].len() == 1
+                                && commands[j].chars().all(|c| c.is_alphabetic()))
+                            || commands[j].parse::<f32>().is_err()
+                        {
                             break;
                         }
                     }
@@ -601,12 +595,13 @@ impl VectorEngraver {
                     Some(builder.build())
                 }
                 EntityType::Polyline(polyline) => {
-                    if polyline.vertices.is_empty() {
+                    let vertices: Vec<_> = polyline.vertices().collect();
+                    if vertices.is_empty() {
                         return None;
                     }
-                    let start = &polyline.vertices[0].location;
+                    let start = &vertices[0].location;
                     builder.begin(point(start.x as f32, start.y as f32));
-                    for v in polyline.vertices.iter().skip(1) {
+                    for v in vertices.iter().skip(1) {
                         let loc = &v.location;
                         builder.line_to(point(loc.x as f32, loc.y as f32));
                     }
@@ -623,14 +618,14 @@ impl VectorEngraver {
         }
 
         // Extract entities from ENTITIES section
-        for entity in &drawing.entities {
+        for entity in drawing.entities() {
             if let Some(path) = entity_to_path(&entity.specific) {
                 all_paths.push(path);
             }
         }
 
         // Extract entities from blocks as well
-        for block in &drawing.blocks {
+        for block in drawing.blocks() {
             for entity in &block.entities {
                 if let Some(path) = entity_to_path(&entity.specific) {
                     all_paths.push(path);
@@ -663,11 +658,8 @@ impl VectorEngraver {
             .map(|path| {
                 let mut dist = 0.0;
                 for event in path.iter().flattened(0.1) {
-                    match event {
-                        lyon::path::Event::Line { from, to } => {
-                            dist += (to - from).length();
-                        }
-                        _ => {}
+                    if let lyon::path::Event::Line { from, to } = event {
+                        dist += (to - from).length();
                     }
                 }
                 dist
@@ -711,8 +703,7 @@ impl VectorEngraver {
 
         let current_width = max_x - min_x;
         if current_width > 0.0001 {
-            let scale = self.params.desired_width / current_width;
-            scale
+            self.params.desired_width / current_width
         } else {
             1.0
         }
@@ -921,7 +912,7 @@ impl VectorEngraver {
         gcode.push_str("G21 ; Set units to millimeters\n");
         gcode.push_str("G90 ; Absolute positioning\n");
         gcode.push_str("G17 ; XY plane selection\n");
-        gcode.push_str("\n");
+        gcode.push('\n');
 
         gcode.push_str("; Home and set work coordinate system\n");
         gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
@@ -932,14 +923,16 @@ impl VectorEngraver {
             self.params.offset_x, self.params.offset_y
         ));
         gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
-        gcode.push_str(&format!(
-            "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-            5.0, self.params.travel_rate
-        ));
-        gcode.push_str("\n");
+        if self.params.num_axes >= 3 {
+            gcode.push_str(&format!(
+                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
+                5.0, self.params.travel_rate
+            ));
+        }
+        gcode.push('\n');
 
         gcode.push_str("M5 ; Laser off\n");
-        gcode.push_str("\n");
+        gcode.push('\n');
 
         progress_callback(0.1);
 
@@ -1015,16 +1008,18 @@ impl VectorEngraver {
                 0.0
             };
 
-            if pass == 0 && self.params.multi_pass {
-                gcode.push_str(&format!("G0 Z{:.2} ; Move to first pass depth\n", z_depth));
-            } else if self.params.multi_pass && pass > 0 {
-                gcode.push_str(&format!("\n; Pass {} of {}\n", pass + 1, num_passes));
-                gcode.push_str(&format!(
-                    "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-                    5.0, self.params.travel_rate
-                ));
-                gcode.push_str("; Lower Z for next pass\n");
-                gcode.push_str(&format!("G0 Z{:.2} ; Move to pass depth\n", z_depth));
+            if self.params.num_axes >= 3 {
+                if pass == 0 && self.params.multi_pass {
+                    gcode.push_str(&format!("G0 Z{:.2} ; Move to first pass depth\n", z_depth));
+                } else if self.params.multi_pass && pass > 0 {
+                    gcode.push_str(&format!("\n; Pass {} of {}\n", pass + 1, num_passes));
+                    gcode.push_str(&format!(
+                        "G0 Z{:.2} F{:.0} ; Move to safe height\n",
+                        5.0, self.params.travel_rate
+                    ));
+                    gcode.push_str("; Lower Z for next pass\n");
+                    gcode.push_str(&format!("G0 Z{:.2} ; Move to pass depth\n", z_depth));
+                }
             }
 
             for (idx, item) in processed_paths.iter().enumerate() {

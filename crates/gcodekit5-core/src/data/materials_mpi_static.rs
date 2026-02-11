@@ -2,12 +2,16 @@
 //! "material-properties-interchange" project.
 //!
 //! We vendor the *data* into Rust structs (rather than shipping the upstream YAML).
-//! Upstream: https://github.com/mvernacc/material-properties-interchange
+//! Upstream: <https://github.com/mvernacc/material-properties-interchange>
 
 use crate::data::materials::{
     CoolantType, CuttingParameters, Material, MaterialCategory, MaterialId,
 };
 
+/// Load the built-in material database derived from MPI data.
+///
+/// Returns a vector of common engineering materials with pre-defined
+/// cutting parameters for typical CNC operations.
 pub fn load_mpi_derived_materials() -> Vec<Material> {
     let mut out = Vec::new();
 
@@ -37,7 +41,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.015),
             coolant_type: CoolantType::WaterSoluble,
             notes: "304 stainless starter values; adjust by tool diameter using surface speed + chip load. Sources: https://www.easyspeedsandfeeds.com/304-ss ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -70,7 +73,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.015),
             coolant_type: CoolantType::WaterSoluble,
             notes: "316L stainless starter values; adjust by tool diameter using surface speed + chip load. Sources: https://www.easyspeedsandfeeds.com/304-ss ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -103,7 +105,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.03),
             coolant_type: CoolantType::WaterSoluble,
             notes: "4130 steel starter values; adjust by tool diameter using surface speed + chip load. Sources: https://www.machiningdoctor.com/mds/?matId=400 ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -136,7 +137,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.04),
             coolant_type: CoolantType::AirOnly,
             notes: "AlSi10Mg (aluminum alloy) starter values; prioritize chip evacuation (air blast/MQL). Sources: https://www.machiningdoctor.com/calculators/chip-load-calculator/ ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -170,7 +170,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.05),
             coolant_type: CoolantType::AirOnly,
             notes: "6061 aluminum starter values for carbide endmills; adjust by tool diameter using surface speed + chip load. Sources: https://www.machiningdoctor.com/mds/?matId=3850 ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -203,7 +202,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.02),
             coolant_type: CoolantType::WaterSoluble,
             notes: "High-strength alloy steel starter values; start conservative and increase only if rigidity allows. Sources: https://www.harveytool.com/resources/general-machining-guidelines ; https://www.lakeshorecarbide.com/lakeshorecarbidecomspeedandfeedcharts.aspx".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -236,7 +234,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.01),
             coolant_type: CoolantType::Synthetic,
             notes: "Inconel 718 starter values; very heat-sensitive/work-hardening—prefer coolant and avoid dwelling. Sources: https://www.machiningdoctor.com/mds/?matId=5700 ; https://fmcarbide.com/pages/material-inconel-718".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -269,7 +266,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.03),
             coolant_type: CoolantType::WaterSoluble,
             notes: "Ti-6Al-4V starter values; keep tool engaged (avoid rubbing) and use coolant. Sources: https://www.machiningdoctor.com/mds/?matId=6670 ; https://www.tru-edge.com/wp-content/uploads/2019/09/Feeds-and-Speeds-Endmills.pdf".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 
@@ -302,7 +298,6 @@ pub fn load_mpi_derived_materials() -> Vec<Material> {
             chip_load_mm: Some(0.04),
             coolant_type: CoolantType::WaterSoluble,
             notes: "Copper starter values; use lubricant/coolant to reduce built-up edge. Sources: https://internaltool.com/docs/reference/speeds-and-feeds.pdf ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
-            ..Default::default()
         };
         m.set_cutting_params("endmill_flat".to_string(), p);
 

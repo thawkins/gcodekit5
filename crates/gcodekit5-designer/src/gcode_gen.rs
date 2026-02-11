@@ -9,6 +9,8 @@ pub struct ToolpathToGcode {
     /// Safe Z height for rapid moves between shapes
     pub safe_z: f64,
     line_numbers_enabled: bool,
+    /// Number of axes on the target device (default 3).
+    pub num_axes: u8,
 }
 
 impl ToolpathToGcode {
@@ -18,6 +20,7 @@ impl ToolpathToGcode {
             _units: units,
             safe_z,
             line_numbers_enabled: false,
+            num_axes: 3,
         }
     }
 
@@ -27,6 +30,7 @@ impl ToolpathToGcode {
             _units: units,
             safe_z,
             line_numbers_enabled: enabled,
+            num_axes: 3,
         }
     }
 
@@ -106,12 +110,13 @@ impl ToolpathToGcode {
         let mut gcode = String::new();
         let mut line_number = start_line_number;
         let mut current_z = initial_z;
+        let has_z = self.num_axes >= 3;
 
         for segment in &toolpath.segments {
             match segment.segment_type {
                 ToolpathSegmentType::RapidMove => {
                     // Retract to safe Z before changing XY to avoid diagonal plunges
-                    if (current_z - self.safe_z).abs() > 0.001 {
+                    if has_z && (current_z - self.safe_z).abs() > 0.001 {
                         let line_prefix = if self.line_numbers_enabled {
                             format!("N{} ", line_number)
                         } else {
@@ -126,42 +131,51 @@ impl ToolpathToGcode {
                     } else {
                         String::new()
                     };
-                    gcode.push_str(&format!(
-                        "{}G00 X{:.3} Y{:.3} Z{:.3}\n",
-                        line_prefix, segment.end.x, segment.end.y, self.safe_z
-                    ));
+                    if has_z {
+                        gcode.push_str(&format!(
+                            "{}G00 X{:.3} Y{:.3} Z{:.3}\n",
+                            line_prefix, segment.end.x, segment.end.y, self.safe_z
+                        ));
+                    } else {
+                        gcode.push_str(&format!(
+                            "{}G00 X{:.3} Y{:.3}\n",
+                            line_prefix, segment.end.x, segment.end.y
+                        ));
+                    }
                     current_z = self.safe_z;
                 }
                 ToolpathSegmentType::LinearMove => {
                     // Handle start Z plunge if needed
-                    if let Some(sz) = segment.start_z {
-                        if (current_z - sz).abs() > 0.01 {
-                            let line_prefix = if self.line_numbers_enabled {
-                                format!("N{} ", line_number)
-                            } else {
-                                String::new()
-                            };
-                            gcode.push_str(&format!(
-                                "{}G01 Z{:.3} F{:.0}\n",
-                                line_prefix, sz, segment.feed_rate
-                            ));
-                            line_number += 10;
-                            current_z = sz;
-                        }
-                    } else if segment.z_depth.is_none() {
-                        // Plunge to cutting depth once per cutting section.
-                        if (current_z - toolpath.depth).abs() > 0.01 {
-                            let line_prefix = if self.line_numbers_enabled {
-                                format!("N{} ", line_number)
-                            } else {
-                                String::new()
-                            };
-                            gcode.push_str(&format!(
-                                "{}G01 Z{:.3} F{:.0}\n",
-                                line_prefix, toolpath.depth, segment.feed_rate
-                            ));
-                            line_number += 10;
-                            current_z = toolpath.depth;
+                    if has_z {
+                        if let Some(sz) = segment.start_z {
+                            if (current_z - sz).abs() > 0.01 {
+                                let line_prefix = if self.line_numbers_enabled {
+                                    format!("N{} ", line_number)
+                                } else {
+                                    String::new()
+                                };
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{:.3} F{:.0}\n",
+                                    line_prefix, sz, segment.feed_rate
+                                ));
+                                line_number += 10;
+                                current_z = sz;
+                            }
+                        } else if segment.z_depth.is_none() {
+                            // Plunge to cutting depth once per cutting section.
+                            if (current_z - toolpath.depth).abs() > 0.01 {
+                                let line_prefix = if self.line_numbers_enabled {
+                                    format!("N{} ", line_number)
+                                } else {
+                                    String::new()
+                                };
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{:.3} F{:.0}\n",
+                                    line_prefix, toolpath.depth, segment.feed_rate
+                                ));
+                                line_number += 10;
+                                current_z = toolpath.depth;
+                            }
                         }
                     }
 
@@ -178,7 +192,7 @@ impl ToolpathToGcode {
                         String::new()
                     };
 
-                    if (target_z - current_z).abs() > 0.001 {
+                    if has_z && (target_z - current_z).abs() > 0.001 {
                         gcode.push_str(&format!(
                             "{}G01 X{:.3} Y{:.3} Z{:.3} F{:.0}\n",
                             line_prefix, segment.end.x, segment.end.y, target_z, segment.feed_rate
@@ -193,34 +207,36 @@ impl ToolpathToGcode {
                 }
                 ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
                     // Handle start Z plunge if needed
-                    if let Some(sz) = segment.start_z {
-                        if (current_z - sz).abs() > 0.01 {
-                            let line_prefix = if self.line_numbers_enabled {
-                                format!("N{} ", line_number)
-                            } else {
-                                String::new()
-                            };
-                            gcode.push_str(&format!(
-                                "{}G01 Z{:.3} F{:.0}\n",
-                                line_prefix, sz, segment.feed_rate
-                            ));
-                            line_number += 10;
-                            current_z = sz;
-                        }
-                    } else if segment.z_depth.is_none() {
-                        // Plunge to cutting depth once per cutting section.
-                        if (current_z - toolpath.depth).abs() > 0.01 {
-                            let line_prefix = if self.line_numbers_enabled {
-                                format!("N{} ", line_number)
-                            } else {
-                                String::new()
-                            };
-                            gcode.push_str(&format!(
-                                "{}G01 Z{:.3} F{:.0}\n",
-                                line_prefix, toolpath.depth, segment.feed_rate
-                            ));
-                            line_number += 10;
-                            current_z = toolpath.depth;
+                    if has_z {
+                        if let Some(sz) = segment.start_z {
+                            if (current_z - sz).abs() > 0.01 {
+                                let line_prefix = if self.line_numbers_enabled {
+                                    format!("N{} ", line_number)
+                                } else {
+                                    String::new()
+                                };
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{:.3} F{:.0}\n",
+                                    line_prefix, sz, segment.feed_rate
+                                ));
+                                line_number += 10;
+                                current_z = sz;
+                            }
+                        } else if segment.z_depth.is_none() {
+                            // Plunge to cutting depth once per cutting section.
+                            if (current_z - toolpath.depth).abs() > 0.01 {
+                                let line_prefix = if self.line_numbers_enabled {
+                                    format!("N{} ", line_number)
+                                } else {
+                                    String::new()
+                                };
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{:.3} F{:.0}\n",
+                                    line_prefix, toolpath.depth, segment.feed_rate
+                                ));
+                                line_number += 10;
+                                current_z = toolpath.depth;
+                            }
                         }
                     }
 
@@ -246,7 +262,7 @@ impl ToolpathToGcode {
                         let i = center.x - segment.start.x;
                         let j = center.y - segment.start.y;
 
-                        if (target_z - current_z).abs() > 0.001 {
+                        if has_z && (target_z - current_z).abs() > 0.001 {
                             gcode.push_str(&format!(
                                 "{}{} X{:.3} Y{:.3} Z{:.3} I{:.3} J{:.3} F{:.0}\n",
                                 line_prefix,
@@ -272,8 +288,8 @@ impl ToolpathToGcode {
                             ));
                         }
                     } else {
-                        // Fallback to linear if no center provided (should not happen for arcs)
-                        if (target_z - current_z).abs() > 0.001 {
+                        // Fallback to linear if no center provided
+                        if has_z && (target_z - current_z).abs() > 0.001 {
                             gcode.push_str(&format!(
                                 "{}G01 X{:.3} Y{:.3} Z{:.3} F{:.0}\n",
                                 line_prefix,
@@ -303,10 +319,12 @@ impl ToolpathToGcode {
         let mut gcode = String::new();
         gcode.push('\n');
         gcode.push_str("M5          ; Spindle off\n");
-        gcode.push_str(&format!(
-            "G00 Z{:.3}   ; Raise tool to safe height\n",
-            self.safe_z
-        ));
+        if self.num_axes >= 3 {
+            gcode.push_str(&format!(
+                "G00 Z{:.3}   ; Raise tool to safe height\n",
+                self.safe_z
+            ));
+        }
         gcode.push_str("G00 X0 Y0   ; Return to origin\n");
         gcode.push_str("M30         ; End program\n");
         gcode

@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod controller;
+pub mod error;
 pub mod manager;
 pub mod persistence;
 pub mod view_model;
@@ -13,6 +14,9 @@ pub use config::{
     MachineSettings, Theme, UiSettings,
 };
 pub use controller::{SettingUiModel, SettingsController};
+pub use error::{
+    ConfigError, ConfigResult, PersistenceError, PersistenceResult, SettingsError, SettingsResult,
+};
 pub use manager::SettingsManager;
 pub use persistence::SettingsPersistence;
 pub use view_model::{KeyboardShortcut, Setting, SettingValue, SettingsCategory, SettingsDialog};

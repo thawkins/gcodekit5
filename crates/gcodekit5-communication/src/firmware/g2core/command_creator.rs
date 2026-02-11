@@ -107,6 +107,7 @@ impl CommandCreator {
     }
 
     /// Create a motion command with 6-axis support
+    #[allow(clippy::too_many_arguments)]
     pub fn create_motion_command(
         &mut self,
         motion: MotionType,

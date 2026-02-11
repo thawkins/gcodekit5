@@ -35,6 +35,7 @@ where
 }
 
 /// Setup rotation entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_rotation_handler(
     rotation_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -60,6 +61,7 @@ pub fn setup_rotation_handler(
 }
 
 /// Setup corner radius entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_corner_radius_handler(
     corner_radius_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,
@@ -87,6 +89,7 @@ pub fn setup_corner_radius_handler(
 }
 
 /// Setup is-slot checkbox handler
+#[allow(clippy::type_complexity)]
 pub fn setup_is_slot_handler(
     is_slot_check: &CheckButton,
     state: Rc<RefCell<DesignerState>>,
@@ -107,6 +110,7 @@ pub fn setup_is_slot_handler(
 }
 
 /// Setup polygon sides entry handler
+#[allow(clippy::type_complexity)]
 pub fn setup_sides_handler(
     sides_entry: &Entry,
     state: Rc<RefCell<DesignerState>>,

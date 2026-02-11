@@ -16,42 +16,55 @@ use zip::ZipArchive;
 /// GTC Tool definition from catalog
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GtcTool {
+    /// Unique identifier for this tool in the catalog.
     #[serde(rename = "ID")]
     pub id: String,
 
+    /// Human-readable description of the tool.
     #[serde(rename = "Description")]
     pub description: String,
 
+    /// Tool type classification (e.g., "End Mill", "Drill").
     #[serde(rename = "Type")]
     pub tool_type: String,
 
+    /// Cutting diameter of the tool in millimeters.
     #[serde(rename = "Diameter")]
     pub diameter: f32,
 
+    /// Overall length of the tool in millimeters.
     #[serde(rename = "Length")]
     pub length: f32,
 
+    /// Length of the fluted cutting portion in millimeters.
     #[serde(rename = "FluteLength")]
     pub flute_length: Option<f32>,
 
+    /// Diameter of the tool shank in millimeters.
     #[serde(rename = "ShankDiameter")]
     pub shank_diameter: Option<f32>,
 
+    /// Number of cutting flutes on the tool.
     #[serde(rename = "NumberOfFlutes")]
     pub number_of_flutes: Option<u32>,
 
+    /// Tool substrate material (e.g., "Carbide", "HSS").
     #[serde(rename = "Material")]
     pub material: Option<String>,
 
+    /// Surface coating applied to the tool (e.g., "TiAlN").
     #[serde(rename = "Coating")]
     pub coating: Option<String>,
 
+    /// Name of the tool manufacturer.
     #[serde(rename = "Manufacturer")]
     pub manufacturer: Option<String>,
 
+    /// Manufacturer's part number for the tool.
     #[serde(rename = "PartNumber")]
     pub part_number: Option<String>,
 
+    /// Recommended cutting parameters for this tool.
     #[serde(rename = "CuttingParameters")]
     pub cutting_parameters: Option<GtcCuttingParams>,
 }
@@ -59,15 +72,19 @@ pub struct GtcTool {
 /// Cutting parameters from GTC
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GtcCuttingParams {
+    /// Recommended spindle speed in revolutions per minute.
     #[serde(rename = "RPM")]
     pub rpm: Option<u32>,
 
+    /// Recommended feed rate in millimeters per minute.
     #[serde(rename = "FeedRate")]
     pub feed_rate: Option<f32>,
 
+    /// Recommended plunge rate in millimeters per minute.
     #[serde(rename = "PlungeRate")]
     pub plunge_rate: Option<f32>,
 
+    /// Target workpiece material these parameters are optimized for.
     #[serde(rename = "Material")]
     pub material: Option<String>,
 }
@@ -75,12 +92,15 @@ pub struct GtcCuttingParams {
 /// GTC Catalog structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GtcCatalog {
+    /// Version string of the GTC catalog format.
     #[serde(rename = "Version")]
     pub version: String,
 
+    /// Name of the catalog manufacturer or supplier.
     #[serde(rename = "Manufacturer")]
     pub manufacturer: String,
 
+    /// Collection of tools defined in this catalog.
     #[serde(rename = "Tools")]
     pub tools: Vec<GtcTool>,
 }
@@ -88,18 +108,26 @@ pub struct GtcCatalog {
 /// GTC Import result
 #[derive(Debug)]
 pub struct GtcImportResult {
+    /// Total number of tools found in the catalog.
     pub total_tools: usize,
+    /// Successfully imported tools converted to the application format.
     pub imported_tools: Vec<Tool>,
+    /// Count of tools that were skipped due to errors.
     pub skipped_tools: usize,
+    /// Error messages describing why specific tools failed to import.
     pub errors: Vec<String>,
 }
 
 /// GTC Importer
 pub struct GtcImporter {
+    /// Next tool number to assign during import.
     next_tool_number: u32,
 }
 
 impl GtcImporter {
+    /// Create a new GTC importer with a starting tool number.
+    ///
+    /// Imported tools will be numbered starting from this value.
     pub fn new(starting_tool_number: u32) -> Self {
         Self {
             next_tool_number: starting_tool_number,
@@ -193,6 +221,9 @@ impl GtcImporter {
         Err("No catalog file found in GTC package".into())
     }
 
+    /// Convert a GTC tool definition to an internal Tool type.
+    ///
+    /// Maps GTC-specific values to internal types and assigns a tool number.
     pub fn convert_gtc_tool(
         &mut self,
         gtc_tool: GtcTool,
@@ -258,6 +289,9 @@ impl GtcImporter {
         Ok(tool)
     }
 
+    /// Map a GTC tool type string to an internal ToolType.
+    ///
+    /// Parses common GTC type names like "End Mill", "Drill", "V-Bit", etc.
     pub fn map_tool_type(&self, gtc_type: &str) -> Result<ToolType, Box<dyn std::error::Error>> {
         let gtc_type_lower = gtc_type.to_lowercase();
 
@@ -270,9 +304,7 @@ impl GtcImporter {
                 Ok(ToolType::EndMillFlat)
             }
         } else if gtc_type_lower.contains("drill") {
-            if gtc_type_lower.contains("center") {
-                Ok(ToolType::SpotDrill)
-            } else if gtc_type_lower.contains("spot") {
+            if gtc_type_lower.contains("center") || gtc_type_lower.contains("spot") {
                 Ok(ToolType::SpotDrill)
             } else {
                 Ok(ToolType::DrillBit)
@@ -288,6 +320,9 @@ impl GtcImporter {
         }
     }
 
+    /// Map a GTC material string to an internal ToolMaterial.
+    ///
+    /// Parses common material names like "Carbide", "HSS", "Diamond", etc.
     pub fn map_tool_material(&self, material: &str) -> ToolMaterial {
         let material_lower = material.to_lowercase();
 
@@ -306,6 +341,9 @@ impl GtcImporter {
         }
     }
 
+    /// Map a GTC coating string to an internal ToolCoating.
+    ///
+    /// Parses common coating names like "TiAlN", "TiN", "DLC", etc.
     pub fn map_coating(&self, coating: &str) -> ToolCoating {
         let coating_lower = coating.to_lowercase();
 

@@ -3,6 +3,8 @@
 //! Handles conversion between pixel coordinates (screen space) and world coordinates
 //! (design space). Manages zoom and pan operations with proper coordinate mapping.
 
+use std::fmt;
+
 use crate::model::Point;
 
 /// Represents the viewport transformation state (zoom and pan).
@@ -249,10 +251,12 @@ impl Viewport {
         self.pan_x = 5.0;
         self.pan_y = 5.0;
     }
+}
 
-    /// Gets viewport info as a string (for debugging or display).
-    pub fn to_string(&self) -> String {
-        format!(
+impl fmt::Display for Viewport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "Zoom: {:.2}x | Pan: ({:.1}, {:.1})",
             self.zoom, self.pan_x, self.pan_y
         )

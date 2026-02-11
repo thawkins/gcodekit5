@@ -17,7 +17,8 @@ impl DesignerState {
             .as_ref()
             .map(|s| s.safe_z as f64)
             .unwrap_or(10.0);
-        let gcode_gen = ToolpathToGcode::new(Units::MM, safe_z);
+        let mut gcode_gen = ToolpathToGcode::new(Units::MM, safe_z);
+        gcode_gen.num_axes = self.num_axes;
 
         // Store shape-to-toolpath mapping (plus whether we had to fall back from pocket->profile)
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
@@ -242,7 +243,7 @@ impl DesignerState {
         let mut is_first_shape = true;
 
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
-            if !is_first_shape {
+            if !is_first_shape && self.num_axes >= 3 {
                 gcode.push_str(&format!(
                     "G00 Z{:.3}   ; Retract to safe Z before next shape\n",
                     safe_z

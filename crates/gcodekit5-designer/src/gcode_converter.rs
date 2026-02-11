@@ -16,6 +16,7 @@ pub fn point_to_2d(x: f32, y: f32) -> Point {
 }
 
 /// Create a linear toolpath segment
+#[allow(clippy::too_many_arguments)]
 pub fn create_linear_segment(
     from_x: f32,
     from_y: f32,
@@ -42,6 +43,7 @@ pub fn create_linear_segment(
 }
 
 /// Create an arc toolpath segment
+#[allow(clippy::too_many_arguments)]
 pub fn create_arc_segment(
     from_x: f32,
     from_y: f32,

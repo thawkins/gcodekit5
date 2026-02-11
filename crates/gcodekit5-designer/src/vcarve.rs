@@ -30,6 +30,18 @@ pub struct VBitTool {
 impl VBitTool {
     /// Create a new V-bit tool
     pub fn new(tip_angle: f64, diameter: f64, cutting_length: f64) -> Self {
+        debug_assert!(
+            tip_angle.is_finite(),
+            "tip_angle must be finite, got {tip_angle}"
+        );
+        debug_assert!(
+            diameter.is_finite(),
+            "diameter must be finite, got {diameter}"
+        );
+        debug_assert!(
+            cutting_length.is_finite(),
+            "cutting_length must be finite, got {cutting_length}"
+        );
         Self {
             tip_angle,
             diameter,

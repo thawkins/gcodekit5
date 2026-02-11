@@ -134,6 +134,8 @@ pub struct Visualizer {
     pub scale_factor: f32,
     toolpath_cache: ToolpathCache,
     viewport: ViewportTransform,
+    /// Dirty flag — set when vertex data needs regeneration
+    dirty: bool,
 }
 
 impl Visualizer {
@@ -155,7 +157,18 @@ impl Visualizer {
             scale_factor: DEFAULT_SCALE_FACTOR,
             toolpath_cache: ToolpathCache::new(),
             viewport: ViewportTransform::new(CANVAS_PADDING),
+            dirty: true,
         }
+    }
+
+    /// Returns true if vertex data needs regeneration
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// Clear the dirty flag after vertex data has been regenerated
+    pub fn clear_dirty(&mut self) {
+        self.dirty = false;
     }
 
     /// Calculate and set offsets to position origin (0,0) at bottom-left of canvas
@@ -319,6 +332,7 @@ impl Visualizer {
         self.current_pos = current_pos;
 
         self.toolpath_cache.update(new_hash, commands);
+        self.dirty = true;
         debug!(
             "Bounds: x=[{:.2}, {:.2}], y=[{:.2}, {:.2}], z=[{:.2}, {:.2}]",
             self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z

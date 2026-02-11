@@ -1,6 +1,58 @@
-## [0.50.2-alpha.0] - 2026-01-26
+## [0.50.2-alpha.0] - 2026-01-30
 
 ### Added
+- **Dependabot Configuration**: Automated dependency update management
+  - Created `.github/dependabot.yml` for Cargo, GitHub Actions, and npm
+  - Weekly schedule (Monday 09:00 UTC) for dependency checks
+  - Groups minor/patch updates to reduce PR noise
+  - Proper labeling for easy PR filtering
+  - REMEDIATION_PLAN.md Task 7.2.1 completed
+
+- **Monthly Dependency Review Process**: Documented dependency maintenance workflow
+  - Created `scripts/monthly-dependency-review.sh` for automated review
+  - Created `docs/dependency_management.md` with full process documentation
+  - Includes security vulnerability response guidelines
+  - REMEDIATION_PLAN.md Task 7.2.2 completed
+
+- **MSRV (Minimum Supported Rust Version)**: Set and enforced Rust 1.88
+  - Added `rust-version = "1.88"` to workspace Cargo.toml
+  - All 9 crates inherit MSRV from workspace
+  - Created `.github/workflows/msrv.yml` CI workflow
+  - REMEDIATION_PLAN.md Task 7.3.1 completed
+
+- **Event Bus System Design**: Architecture design for unified event handling
+  - Created `docs/adr/ADR-006-event-bus-system.md` with comprehensive design
+  - 7 event categories with typed events and compile-time safety
+  - EventBus API with publish/subscribe, filters, and optional history
+  - REMEDIATION_PLAN.md Task 6.1.1 completed
+
+- **Core Event Bus Implementation**: Unified event system in gcodekit5-core
+  - EventBus with publish/subscribe, filters, optional history
+  - Global singleton, convenience macros, async support
+  - 12 unit tests covering all functionality
+  - REMEDIATION_PLAN.md Task 6.1.2 completed
+
+- **File Format Documentation**: Documented .gck4 design file format
+  - Created `docs/file_format.md` with complete format specification
+  - Added 5 additional round-trip tests
+  - REMEDIATION_PLAN.md Task 2.4.4 completed
+
+- **Type Aliases for Complex Types**: Improved code readability
+  - Created `types/aliases.rs` with 22 type aliases + 11 helper functions
+  - Covers Rc<RefCell>, Arc<Mutex>, Arc<RwLock>, callbacks
+  - REMEDIATION_PLAN.md Task 3.1.1 completed
+
+- **Box<dyn T> Audit and Type Aliases**: Comprehensive trait object analysis
+  - Audited 47 `Box<dyn>` usages across 4 crates
+  - Added `BoxedIterator<T>`, `BoxedError`, `BoxedResult<T>` type aliases
+  - All patterns documented with justifications for dynamic dispatch
+  - REMEDIATION_PLAN.md Task 3.1.2 completed
+
+- **Core Crate API Documentation**: 100% documentation coverage
+  - Documented 264 public items across 18 source files
+  - `cargo doc` builds with 0 warnings
+  - REMEDIATION_PLAN.md Task 3.2.1 completed
+
 - **Unwrap Audit Documentation**: Comprehensive audit of all unwrap() calls
   - Created `docs/audits/unwrap_audit.csv` with 585 categorized unwraps
   - Created `docs/audits/UNWRAP_AUDIT_REPORT.md` with executive summary

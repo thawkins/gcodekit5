@@ -183,15 +183,16 @@ impl G2CoreResponseParser {
 
         // Check for settings
         if json_obj.len() == 1 {
-            let key = json_obj.keys().next().expect("json has key");
-            if key.starts_with('f') || key.starts_with('m') || key.starts_with('$') {
-                return Ok(G2CoreResponse {
-                    response_type: G2CoreResponseType::Settings,
-                    line_number: None,
-                    value: Some(json.clone()),
-                    error_code: None,
-                    error_message: None,
-                });
+            if let Some(key) = json_obj.keys().next() {
+                if key.starts_with('f') || key.starts_with('m') || key.starts_with('$') {
+                    return Ok(G2CoreResponse {
+                        response_type: G2CoreResponseType::Settings,
+                        line_number: None,
+                        value: Some(json.clone()),
+                        error_code: None,
+                        error_message: None,
+                    });
+                }
             }
         }
 

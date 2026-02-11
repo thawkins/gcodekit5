@@ -39,6 +39,14 @@ pub struct LinearArrayParams {
 impl LinearArrayParams {
     /// Create new linear array parameters
     pub fn new(count_x: u32, count_y: u32, spacing_x: f64, spacing_y: f64) -> Self {
+        debug_assert!(
+            spacing_x.is_finite(),
+            "spacing_x must be finite, got {spacing_x}"
+        );
+        debug_assert!(
+            spacing_y.is_finite(),
+            "spacing_y must be finite, got {spacing_y}"
+        );
         Self {
             count_x,
             count_y,
@@ -88,6 +96,11 @@ pub struct CircularArrayParams {
 impl CircularArrayParams {
     /// Create new circular array parameters
     pub fn new(count: u32, center: Point, radius: f64, start_angle: f64, clockwise: bool) -> Self {
+        debug_assert!(radius.is_finite(), "radius must be finite, got {radius}");
+        debug_assert!(
+            start_angle.is_finite(),
+            "start_angle must be finite, got {start_angle}"
+        );
         Self {
             count,
             center,
@@ -141,6 +154,14 @@ pub struct GridArrayParams {
 impl GridArrayParams {
     /// Create new grid array parameters
     pub fn new(columns: u32, rows: u32, column_spacing: f64, row_spacing: f64) -> Self {
+        debug_assert!(
+            column_spacing.is_finite(),
+            "column_spacing must be finite, got {column_spacing}"
+        );
+        debug_assert!(
+            row_spacing.is_finite(),
+            "row_spacing must be finite, got {row_spacing}"
+        );
         Self {
             columns,
             rows,

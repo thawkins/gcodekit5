@@ -82,6 +82,7 @@ pub struct DeviceProfile {
     pub a_axis: AxisLimits, // Rotary/Aux
 
     // Capabilities
+    pub num_axes: u8,
     pub has_spindle: bool,
     pub has_laser: bool,
     pub has_coolant: bool,
@@ -127,6 +128,7 @@ impl Default for DeviceProfile {
                 max: 360.0,
                 enabled: false,
             },
+            num_axes: 3,
             has_spindle: true,
             has_laser: false,
             has_coolant: false,

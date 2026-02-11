@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Setup position X entry handler
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_position_x_handler(
     pos_x_entry: &Entry,
     pos_y_entry: &Entry,
@@ -52,6 +53,7 @@ pub fn setup_position_x_handler(
 }
 
 /// Setup position Y entry handler
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_position_y_handler(
     pos_y_entry: &Entry,
     pos_x_entry: &Entry,
@@ -95,6 +97,7 @@ pub fn setup_position_y_handler(
 }
 
 /// Setup width entry activate handler
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_width_activate_handler(
     width_entry: &Entry,
     height_entry: &Entry,
@@ -153,6 +156,7 @@ pub fn setup_width_activate_handler(
 }
 
 /// Setup height entry activate handler
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_height_activate_handler(
     height_entry: &Entry,
     width_entry: &Entry,
@@ -256,6 +260,7 @@ pub fn setup_lock_aspect_handler(
 }
 
 /// Setup width focus-out handler to apply changes when tabbing away
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_width_focus_out_handler(
     width_entry: &Entry,
     height_entry: &Entry,
@@ -324,6 +329,7 @@ pub fn setup_width_focus_out_handler(
 }
 
 /// Setup height focus-out handler to apply changes when tabbing away
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_height_focus_out_handler(
     height_entry: &Entry,
     width_entry: &Entry,

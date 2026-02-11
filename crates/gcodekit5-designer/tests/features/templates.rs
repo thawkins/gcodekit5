@@ -4,10 +4,10 @@ use gcodekit5_designer::templates::{DesignTemplate, DesignTemplateLibrary, Templ
 fn test_template_category_conversion() {
     assert_eq!(TemplateCategory::Mechanical.as_str(), "mechanical");
     assert_eq!(
-        TemplateCategory::from_str("mechanical"),
+        TemplateCategory::parse("mechanical"),
         Some(TemplateCategory::Mechanical)
     );
-    assert_eq!(TemplateCategory::from_str("invalid"), None);
+    assert_eq!(TemplateCategory::parse("invalid"), None);
 }
 
 #[test]

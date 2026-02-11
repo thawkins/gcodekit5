@@ -37,6 +37,10 @@ impl ToolpathCache {
         self.commands.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_empty()
+    }
+
     pub fn toolpath_svg(&self) -> &str {
         &self.cached_path
     }

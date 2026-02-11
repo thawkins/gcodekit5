@@ -5,6 +5,7 @@ use gcodekit5_communication::firmware::grbl::status_parser::{
 };
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 
 /// Global GRBL device status
@@ -66,6 +67,19 @@ impl Default for GrblDeviceStatus {
 /// Global device status instance
 pub static DEVICE_STATUS: Lazy<Arc<RwLock<GrblDeviceStatus>>> =
     Lazy::new(|| Arc::new(RwLock::new(GrblDeviceStatus::default())));
+
+/// Number of axes on the active device (default 3).
+static ACTIVE_NUM_AXES: AtomicU8 = AtomicU8::new(3);
+
+/// Returns the number of axes configured on the active device (defaults to 3).
+pub fn get_active_num_axes() -> u8 {
+    ACTIVE_NUM_AXES.load(Ordering::Relaxed)
+}
+
+/// Sets the number of axes for the active device.
+pub fn set_active_num_axes(n: u8) {
+    ACTIVE_NUM_AXES.store(n, Ordering::Relaxed);
+}
 
 /// Update the machine state
 pub fn update_state(state: String) {

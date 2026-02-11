@@ -2,6 +2,7 @@
 name = "gcodekit5-gcodeeditor"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "G-Code editor and text buffer control for GCodeKit4"
 license.workspace = true
 authors.workspace = true
@@ -9,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 ropey = "1.6"
+thiserror = { workspace = true }
 
 [features]
 slint_legacy_tests = []

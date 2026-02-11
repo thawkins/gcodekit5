@@ -45,7 +45,10 @@ pub fn main() {
         };
 
         i18n::init(Some(language));
-        libadwaita::init().expect("Failed to initialize LibAdwaita");
+        if let Err(e) = libadwaita::init() {
+            tracing::error!("Failed to initialize LibAdwaita: {}", e);
+            std::process::exit(1);
+        }
         load_resources();
         load_css();
     });
@@ -107,6 +110,10 @@ pub fn main() {
         let device_manager =
             std::sync::Arc::new(gcodekit5_devicedb::DeviceManager::new(device_config_path));
         device_manager.load().ok();
+        // Sync active device num_axes to global state
+        if let Some(profile) = device_manager.get_active_profile() {
+            crate::device_status::set_active_num_axes(profile.num_axes);
+        }
         let device_controller = Rc::new(gcodekit5_devicedb::DeviceUiController::new(
             device_manager.clone(),
         ));
@@ -543,9 +550,8 @@ pub fn main() {
         let import_action = gio::SimpleAction::new("file_import", None);
         import_action.connect_activate(move |_, _| {
             if let Some(name) = stack_clone.visible_child_name() {
-                match name.as_str() {
-                    "designer" => designer_clone.import_file(),
-                    _ => {}
+                if name.as_str() == "designer" {
+                    designer_clone.import_file()
                 }
             }
         });
@@ -556,9 +562,8 @@ pub fn main() {
         let stack_clone_gcode = stack.clone();
         export_gcode_action.connect_activate(move |_, _| {
             if let Some(name) = stack_clone_gcode.visible_child_name() {
-                match name.as_str() {
-                    "designer" => designer_clone_gcode.export_gcode(),
-                    _ => {}
+                if name.as_str() == "designer" {
+                    designer_clone_gcode.export_gcode()
                 }
             }
         });
@@ -569,9 +574,8 @@ pub fn main() {
         let stack_clone_svg = stack.clone();
         export_svg_action.connect_activate(move |_, _| {
             if let Some(name) = stack_clone_svg.visible_child_name() {
-                match name.as_str() {
-                    "designer" => designer_clone_svg.export_svg(),
-                    _ => {}
+                if name.as_str() == "designer" {
+                    designer_clone_svg.export_svg()
                 }
             }
         });
@@ -906,16 +910,25 @@ pub fn main() {
 fn load_resources() {
     let resources = include_bytes!(concat!(env!("OUT_DIR"), "/gcodekit5.gresource"));
     let resource_data = glib::Bytes::from_static(resources);
-    let resource = gio::Resource::from_data(&resource_data).expect("Failed to load resources");
-    gio::resources_register(&resource);
+    match gio::Resource::from_data(&resource_data) {
+        Ok(resource) => gio::resources_register(&resource),
+        Err(e) => {
+            tracing::error!("Failed to load resources: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn load_css() {
     let provider = CssProvider::new();
     provider.load_from_data(include_str!("ui/gtk/style.css"));
 
+    let Some(display) = gtk4::gdk::Display::default() else {
+        tracing::error!("Could not connect to a display");
+        return;
+    };
     gtk4::style_context_add_provider_for_display(
-        &gtk4::gdk::Display::default().expect("Could not connect to a display."),
+        &display,
         &provider,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );

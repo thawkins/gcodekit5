@@ -49,7 +49,6 @@ fn test_boolean_transition() {
 
     // 4. Verify bounds of result (should be roughly 0,0 to 150,100)
     let (x1, y1, x2, y2) = result.bounds();
-    println!("Bounds: {}, {}, {}, {}", x1, y1, x2, y2);
 
     assert!((x1 - 0.0).abs() < 1.0, "x1 was {}", x1);
     assert!((y1 - 0.0).abs() < 1.0, "y1 was {}", y1);

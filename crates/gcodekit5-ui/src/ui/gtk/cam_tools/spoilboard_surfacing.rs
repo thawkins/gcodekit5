@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::device_status;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::spoilboard_surfacing::{
     SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters,
@@ -248,6 +249,15 @@ impl SpoilboardSurfacingTool {
                 .config()
                 .ui
                 .measurement_system;
+
+            // Spoilboard surfacing requires Z axis
+            if device_status::get_active_num_axes() < 3 {
+                CamToolsView::show_error_dialog(
+                    "Insufficient Axes",
+                    "Spoilboard Surfacing requires at least 3 axes (X, Y, Z). The active device has fewer than 3 axes configured.",
+                );
+                return;
+            }
 
             let params = SpoilboardSurfacingParameters {
                 width: units::parse_length(&w_gen.width.text(), system).unwrap_or(400.0) as f64,

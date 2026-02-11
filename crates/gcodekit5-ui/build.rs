@@ -21,7 +21,7 @@ fn main() {
         for entry in fs::read_dir(po_dir).expect("Failed to read po dir") {
             let entry = entry.expect("Failed to read entry");
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "po") {
+            if path.extension().is_some_and(|ext| ext == "po") {
                 let lang = path.file_stem().expect("file stem").to_string_lossy();
                 let lang_dir = locale_dir.join(&*lang).join("LC_MESSAGES");
                 fs::create_dir_all(&lang_dir).expect("Failed to create locale dir");

@@ -676,6 +676,7 @@ impl TabbedBoxMaker {
 
         params.offset_x = units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0);
         params.offset_y = units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0);
+        params.num_axes = crate::device_status::get_active_num_axes();
 
         params
     }
@@ -745,25 +746,22 @@ impl TabbedBoxMaker {
 
     fn apply_params(w: &TabbedBoxWidgets, p: &BoxParameters, settings: &Rc<SettingsController>) {
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        w.width.set_text(&units::format_length(p.x as f32, system));
-        w.depth.set_text(&units::format_length(p.y as f32, system));
-        w.height.set_text(&units::format_length(p.h as f32, system));
+        w.width.set_text(&units::format_length(p.x, system));
+        w.depth.set_text(&units::format_length(p.y, system));
+        w.height.set_text(&units::format_length(p.h, system));
         w.outside.set_active(p.outside);
         w.thickness
-            .set_text(&units::format_length(p.thickness as f32, system));
-        w.burn
-            .set_text(&units::format_length(p.burn as f32, system));
+            .set_text(&units::format_length(p.thickness, system));
+        w.burn.set_text(&units::format_length(p.burn, system));
 
         w.finger_width.set_text(&p.finger_joint.finger.to_string());
         w.space_width.set_text(&p.finger_joint.space.to_string());
         w.surrounding_spaces
             .set_text(&p.finger_joint.surrounding_spaces.to_string());
         w.play
-            .set_text(&units::format_length(p.finger_joint.play as f32, system));
-        w.extra_length.set_text(&units::format_length(
-            p.finger_joint.extra_length as f32,
-            system,
-        ));
+            .set_text(&units::format_length(p.finger_joint.play, system));
+        w.extra_length
+            .set_text(&units::format_length(p.finger_joint.extra_length, system));
 
         // New params
         w.box_type
@@ -778,12 +776,12 @@ impl TabbedBoxMaker {
         w.power.set_text(&p.laser_power.to_string());
         w.feed_rate.set_text(&p.feed_rate.to_string());
         w.z_step_down
-            .set_text(&units::format_length(p.z_step_down as f32, system));
+            .set_text(&units::format_length(p.z_step_down, system));
 
         w.offset_x
-            .set_text(&units::format_length(p.offset_x as f32, system));
+            .set_text(&units::format_length(p.offset_x, system));
         w.offset_y
-            .set_text(&units::format_length(p.offset_y as f32, system));
+            .set_text(&units::format_length(p.offset_y, system));
     }
 }
 

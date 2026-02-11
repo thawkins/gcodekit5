@@ -164,6 +164,11 @@ pub struct PocketOperation {
 impl PocketOperation {
     /// Creates a new pocket operation with default parameters.
     pub fn new(id: String, depth: f64, tool_diameter: f64) -> Self {
+        debug_assert!(depth.is_finite(), "depth must be finite, got {depth}");
+        debug_assert!(
+            tool_diameter.is_finite() && tool_diameter > 0.0,
+            "tool_diameter must be positive and finite, got {tool_diameter}"
+        );
         Self {
             id,
             depth,
@@ -186,6 +191,14 @@ impl PocketOperation {
 
     /// Sets the cutting parameters for this pocket operation.
     pub fn set_parameters(&mut self, stepover: f64, feed_rate: f64, spindle_speed: u32) {
+        debug_assert!(
+            stepover.is_finite() && stepover > 0.0,
+            "stepover must be positive and finite, got {stepover}"
+        );
+        debug_assert!(
+            feed_rate.is_finite() && feed_rate > 0.0,
+            "feed_rate must be positive and finite, got {feed_rate}"
+        );
         self.stepover = stepover;
         self.feed_rate = feed_rate;
         self.spindle_speed = spindle_speed;
@@ -203,7 +216,11 @@ impl PocketOperation {
 
     /// Sets the ramp angle in degrees.
     pub fn set_ramp_angle(&mut self, angle: f64) {
-        self.ramp_angle = angle;
+        debug_assert!(
+            angle.is_finite() && (0.0..=90.0).contains(&angle),
+            "ramp_angle must be 0..90 degrees, got {angle}"
+        );
+        self.ramp_angle = angle.clamp(0.0, 90.0);
     }
 
     /// Sets raster fill percentage where 100 keeps full strokes and 0 removes them.
@@ -489,8 +506,7 @@ impl PocketGenerator {
             let drop_per_quad = actual_drop_per_rev / 4.0;
 
             let points = [p1, p2, p3, p4];
-            for i in 0..4 {
-                let target = points[i];
+            for (i, &target) in points.iter().enumerate() {
                 let target_z = current_z - drop_per_quad * (i as f64 + 1.0);
 
                 let mut arc = ToolpathSegment::new_arc(
@@ -793,20 +809,21 @@ impl PocketGenerator {
         if let Some(first) = vertices.first() {
             clean_vertices.push(*first);
             for p in vertices.iter().skip(1) {
-                let last = clean_vertices.last().expect("empty collection");
-                let dist = ((p.x - last.x).powi(2) + (p.y - last.y).powi(2)).sqrt();
-                if dist > tolerance {
-                    clean_vertices.push(*p);
+                if let Some(last) = clean_vertices.last() {
+                    let dist = ((p.x - last.x).powi(2) + (p.y - last.y).powi(2)).sqrt();
+                    if dist > tolerance {
+                        clean_vertices.push(*p);
+                    }
                 }
             }
 
             // Remove closing vertex if it's the same as the first
             if clean_vertices.len() > 1 {
-                let first = clean_vertices.first().expect("empty collection");
-                let last = clean_vertices.last().expect("empty collection");
-                let dist = ((last.x - first.x).powi(2) + (last.y - first.y).powi(2)).sqrt();
-                if dist < tolerance {
-                    clean_vertices.pop();
+                if let (Some(first), Some(last)) = (clean_vertices.first(), clean_vertices.last()) {
+                    let dist = ((last.x - first.x).powi(2) + (last.y - first.y).powi(2)).sqrt();
+                    if dist < tolerance {
+                        clean_vertices.pop();
+                    }
                 }
             }
         }
@@ -861,11 +878,10 @@ impl PocketGenerator {
             let mut toolpath = Toolpath::new(self.operation.tool_diameter, current_z);
 
             let mut current_offset = tool_radius;
-            let has_paths = true;
             let mut last_loop_centroid: Option<Point> = None;
             let mut is_first_stepin = true;
 
-            while has_paths {
+            loop {
                 // Offset inwards
                 let polyline = clean_polyline(polyline.clone());
                 let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
@@ -877,7 +893,7 @@ impl PocketGenerator {
                     break;
                 }
 
-                for (_path_idx, offset_path) in offsets.iter().enumerate() {
+                for offset_path in offsets.iter() {
                     let mut points = Vec::new();
                     for v in &offset_path.vertex_data {
                         points.push(Point::new(v.x, v.y));
@@ -1271,13 +1287,15 @@ impl PocketGenerator {
 
                         if is_connected {
                             // Close enough - traverse directly at cutting depth
-                            toolpath.add_segment(ToolpathSegment::new(
-                                ToolpathSegmentType::LinearMove,
-                                toolpath.segments.last().expect("empty collection").end,
-                                start_pt,
-                                self.operation.feed_rate,
-                                self.operation.spindle_speed,
-                            ));
+                            if let Some(last_seg) = toolpath.segments.last() {
+                                toolpath.add_segment(ToolpathSegment::new(
+                                    ToolpathSegmentType::LinearMove,
+                                    last_seg.end,
+                                    start_pt,
+                                    self.operation.feed_rate,
+                                    self.operation.spindle_speed,
+                                ));
+                            }
                         } else if is_first_segment {
                             // First segment of this Z pass - check if it's the very first Z pass
                             if self.operation.ramp_angle > 0.0 {

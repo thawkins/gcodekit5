@@ -130,9 +130,8 @@ impl UndoManager {
 
     /// Redo last undone change
     pub fn redo(&mut self) -> Option<TextChange> {
-        self.redo_stack.pop().map(|change| {
+        self.redo_stack.pop().inspect(|change| {
             self.undo_stack.push(change.clone());
-            change
         })
     }
 

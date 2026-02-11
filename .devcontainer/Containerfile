@@ -1,0 +1,67 @@
+# GCodeKit5 Development Container
+# Uses Podman-compatible Containerfile (also works with Docker)
+
+FROM fedora:40
+
+LABEL maintainer="GCodeKit5 Development Team"
+LABEL description="Development environment for GCodeKit5 - Rust + GTK4"
+
+# Install system dependencies
+RUN dnf update -y && dnf install -y \
+    # Build essentials
+    gcc \
+    gcc-c++ \
+    make \
+    cmake \
+    pkg-config \
+    # Rust dependencies
+    curl \
+    # GTK4 and related libraries
+    gtk4-devel \
+    libadwaita-devel \
+    glib2-devel \
+    cairo-devel \
+    pango-devel \
+    gdk-pixbuf2-devel \
+    graphene-devel \
+    # Additional dependencies
+    openssl-devel \
+    sqlite-devel \
+    # Development tools
+    git \
+    ripgrep \
+    fd-find \
+    # Flatpak build dependencies
+    flatpak \
+    flatpak-builder \
+    # Clean up
+    && dnf clean all
+
+# Create non-root user for development
+ARG USERNAME=developer
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && dnf install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME
+
+# Switch to non-root user
+USER $USERNAME
+WORKDIR /home/$USERNAME
+
+# Install Rust via rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && . "$HOME/.cargo/env" \
+    && rustup component add clippy rustfmt rust-analyzer
+
+# Add cargo to PATH
+ENV PATH="/home/$USERNAME/.cargo/bin:${PATH}"
+
+# Set working directory for the project
+WORKDIR /workspace
+
+# Default command
+CMD ["/bin/bash"]

@@ -6,6 +6,7 @@
 //! Images are rendered from bottom to top to match device coordinate space where Y increases upward.
 
 use anyhow::{Context, Result};
+use gcodekit5_core::types::BoxedIterator;
 use image::{DynamicImage, GrayImage};
 use std::path::Path;
 
@@ -110,6 +111,8 @@ pub struct EngravingParameters {
     pub offset_x: f32,
     /// Y offset from machine origin
     pub offset_y: f32,
+    /// Number of axes on the target device (default 3).
+    pub num_axes: u8,
 }
 
 impl Default for EngravingParameters {
@@ -129,6 +132,7 @@ impl Default for EngravingParameters {
             transformations: ImageTransformations::default(),
             offset_x: 10.0,
             offset_y: 10.0,
+            num_axes: 3,
         }
     }
 }
@@ -336,7 +340,7 @@ impl BitmapImageEngraver {
                 }
                 if x + 1 < width && y + 1 < height {
                     let neighbor_idx = ((y + 1) * width + (x + 1)) as usize;
-                    buffer[neighbor_idx] = buffer[neighbor_idx].saturating_add(error * 1 / 16);
+                    buffer[neighbor_idx] = buffer[neighbor_idx].saturating_add(error / 16);
                 }
             }
         }
@@ -456,7 +460,7 @@ impl BitmapImageEngraver {
         gcode.push_str("G21 ; Set units to millimeters\n");
         gcode.push_str("G90 ; Absolute positioning\n");
         gcode.push_str("G17 ; XY plane selection\n");
-        gcode.push_str("\n");
+        gcode.push('\n');
 
         gcode.push_str("; Home and set work coordinate system\n");
         gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
@@ -467,14 +471,16 @@ impl BitmapImageEngraver {
             self.params.offset_x, self.params.offset_y
         ));
         gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
-        gcode.push_str(&format!(
-            "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-            5.0, self.params.travel_rate
-        ));
-        gcode.push_str("\n");
+        if self.params.num_axes >= 3 {
+            gcode.push_str(&format!(
+                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
+                5.0, self.params.travel_rate
+            ));
+        }
+        gcode.push('\n');
 
         gcode.push_str("M5 ; Laser off\n");
-        gcode.push_str("\n");
+        gcode.push('\n');
 
         progress_callback(0.0);
 
@@ -554,12 +560,11 @@ impl BitmapImageEngraver {
             let mut in_burn = false;
             let mut last_power = 0;
 
-            let x_range: Box<dyn Iterator<Item = u32>> =
-                if left_to_right || !self.params.bidirectional {
-                    Box::new(0..width)
-                } else {
-                    Box::new((0..width).rev())
-                };
+            let x_range: BoxedIterator<u32> = if left_to_right || !self.params.bidirectional {
+                Box::new(0..width)
+            } else {
+                Box::new((0..width).rev())
+            };
 
             for x in x_range {
                 let intensity = image.get_pixel(x, y).0[0];
@@ -631,12 +636,11 @@ impl BitmapImageEngraver {
             let mut in_burn = false;
             let mut last_power = 0;
 
-            let y_range: Box<dyn Iterator<Item = u32>> =
-                if top_to_bottom || !self.params.bidirectional {
-                    Box::new(0..height)
-                } else {
-                    Box::new((0..height).rev())
-                };
+            let y_range: BoxedIterator<u32> = if top_to_bottom || !self.params.bidirectional {
+                Box::new(0..height)
+            } else {
+                Box::new((0..height).rev())
+            };
 
             for y_reversed in y_range {
                 let y = height - 1 - y_reversed;

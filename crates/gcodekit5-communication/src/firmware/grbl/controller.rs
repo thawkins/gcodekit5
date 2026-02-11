@@ -94,7 +94,7 @@ impl GrblController {
         })
     }
 
-    /// Initialize the controller and query its capabilities
+    // Initialize the controller and query its capabilities
     // fn initialize(&self) -> anyhow::Result<()> { ... } - Removed as we use async send_command in connect
 
     /// Start the IO loop task
@@ -172,7 +172,13 @@ impl GrblController {
                                             s if s.starts_with("Door") => ControllerState::Door,
                                             s if s.starts_with("Check") => ControllerState::Check,
                                             s if s.starts_with("Sleep") => ControllerState::Sleep,
-                                            _ => ControllerState::Idle,
+                                            unknown => {
+                                                tracing::warn!(
+                                                    "Unknown GRBL state '{}', defaulting to Idle",
+                                                    unknown
+                                                );
+                                                ControllerState::Idle
+                                            }
                                         };
 
                                         // Update ControllerStatus (simplified)
@@ -192,7 +198,8 @@ impl GrblController {
                                         // Drop write guard before notifying
                                         drop(state_guard);
                                         let listeners_clone = listeners.clone();
-                                        for listener in listeners_clone.read().values().cloned() {
+                                        for listener in listeners_clone.read().values() {
+                                            let listener = listener.clone();
                                             let s_copy = new_status;
                                             let st_copy = new_state;
                                             tokio::spawn(async move {
@@ -233,7 +240,7 @@ impl GrblController {
                     let cmd_len = cmd.len() + 1; // +1 for newline
                     if communicator.is_ready_to_send(cmd_len) {
                         // Send it
-                        if let Ok(_) = communicator.send_command(cmd) {
+                        if communicator.send_command(cmd).is_ok() {
                             // Move to sent queue
                             sent_queue.push_back(cmd_len);
                             local_cmd_queue.pop_front();

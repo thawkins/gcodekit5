@@ -11,6 +11,12 @@ pub struct Bounds {
     pub max_z: f32,
 }
 
+impl Default for Bounds {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Bounds {
     pub fn new() -> Self {
         Self {
@@ -90,6 +96,7 @@ impl ViewportTransform {
     }
 
     /// Compute the SVG viewbox tuple for the provided view configuration.
+    #[allow(clippy::too_many_arguments)]
     pub fn viewbox(
         &self,
         min_x: f32,
@@ -106,7 +113,7 @@ impl ViewportTransform {
         let left = (0.0 - self.padding - x_offset) / scale + min_x;
         let right = (width - self.padding - x_offset) / scale + min_x;
 
-        let bottom = (height - height - self.padding + y_offset) / scale + min_y;
+        let bottom = (0.0 - self.padding + y_offset) / scale + min_y;
         let top = (height - 0.0 - self.padding + y_offset) / scale + min_y;
 
         let svg_min_x = left;
@@ -118,6 +125,7 @@ impl ViewportTransform {
     }
 
     /// Determine pan offsets that place a world coordinate at a specific screen target.
+    #[allow(clippy::too_many_arguments)]
     pub fn offsets_to_place_world_point(
         &self,
         min_x: f32,

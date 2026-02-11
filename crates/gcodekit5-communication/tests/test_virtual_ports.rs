@@ -9,11 +9,6 @@ fn test_virtual_port_detection() {
 
     match list_ports() {
         Ok(ports) => {
-            println!("Found {} port(s):", ports.len());
-            for port in &ports {
-                println!("  - {} ({})", port.port_name, port.description);
-            }
-
             // Check if /dev/ttyGRBL exists on the system
             #[cfg(target_os = "linux")]
             {
@@ -25,9 +20,6 @@ fn test_virtual_port_detection() {
                         found,
                         "/dev/ttyGRBL exists but was not detected in port listing"
                     );
-                    println!("✓ /dev/ttyGRBL correctly detected");
-                } else {
-                    println!("ℹ /dev/ttyGRBL does not exist (simulator not running)");
                 }
             }
         }

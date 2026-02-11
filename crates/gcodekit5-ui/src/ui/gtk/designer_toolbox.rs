@@ -83,6 +83,7 @@ impl DesignerTool {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct DesignerToolbox {
     pub widget: Box,
     current_tool: Rc<RefCell<DesignerTool>>,
@@ -267,6 +268,7 @@ impl DesignerToolbox {
         ));
 
         // Collection of callbacks to refresh all settings UI widgets from state
+        #[allow(clippy::type_complexity)]
         let refresh_callbacks: Rc<RefCell<Vec<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(Vec::new()));
 
         let tool_row = Rc::new(Cell::new(0));
@@ -308,7 +310,6 @@ impl DesignerToolbox {
                     let units_label = units_label.clone();
                     let getter = getter.clone();
                     let current_units = current_units.clone();
-                    let units_kind = units_kind;
 
                     Rc::new(move || {
                         let val_mm = getter();
@@ -340,7 +341,6 @@ impl DesignerToolbox {
                 {
                     let current_units = current_units.clone();
                     let setter = setter.clone();
-                    let units_kind = units_kind;
                     entry.connect_changed(move |e| {
                         if let Ok(val) = e.text().parse::<f64>() {
                             e.remove_css_class("entry-invalid");

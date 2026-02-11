@@ -27,7 +27,9 @@ pub enum ControllerEvent {
     CommandComplete(String),
     /// Position changed
     PositionChanged {
+        /// Machine position as (X, Y, Z) coordinates in mm.
         machine_pos: (f64, f64, f64),
+        /// Work position as (X, Y, Z) coordinates in mm.
         work_pos: (f64, f64, f64),
     },
     /// Spindle speed changed
@@ -65,6 +67,7 @@ impl std::fmt::Display for ControllerEvent {
 /// Event dispatcher for publishing events to subscribers
 #[derive(Clone)]
 pub struct EventDispatcher {
+    /// Broadcast sender channel for controller events.
     tx: broadcast::Sender<ControllerEvent>,
 }
 

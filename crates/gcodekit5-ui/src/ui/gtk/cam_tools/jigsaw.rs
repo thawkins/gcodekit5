@@ -459,6 +459,7 @@ impl JigsawTool {
             z_step_down: units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.5),
             offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
             offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
+            num_axes: crate::device_status::get_active_num_axes(),
         }
     }
 
@@ -527,28 +528,25 @@ impl JigsawTool {
 
     fn apply_params(w: &JigsawWidgets, p: &PuzzleParameters, settings: &Rc<SettingsController>) {
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        w.width
-            .set_text(&units::format_length(p.width as f32, system));
-        w.height
-            .set_text(&units::format_length(p.height as f32, system));
+        w.width.set_text(&units::format_length(p.width, system));
+        w.height.set_text(&units::format_length(p.height, system));
         w.pieces_across.set_text(&p.pieces_across.to_string());
         w.pieces_down.set_text(&p.pieces_down.to_string());
-        w.kerf
-            .set_text(&units::format_length(p.kerf as f32, system));
+        w.kerf.set_text(&units::format_length(p.kerf, system));
         w.seed.set_text(&p.seed.to_string());
         w.tab_size.set_text(&p.tab_size_percent.to_string());
         w.jitter.set_text(&p.jitter_percent.to_string());
         w.corner_radius
-            .set_text(&units::format_length(p.corner_radius as f32, system));
+            .set_text(&units::format_length(p.corner_radius, system));
         w.passes.set_text(&p.laser_passes.to_string());
         w.power.set_text(&p.laser_power.to_string());
         w.feed_rate.set_text(&p.feed_rate.to_string());
         w.z_step_down
-            .set_text(&units::format_length(p.z_step_down as f32, system));
+            .set_text(&units::format_length(p.z_step_down, system));
         w.offset_x
-            .set_text(&units::format_length(p.offset_x as f32, system));
+            .set_text(&units::format_length(p.offset_x, system));
         w.offset_y
-            .set_text(&units::format_length(p.offset_y as f32, system));
+            .set_text(&units::format_length(p.offset_y, system));
     }
 }
 

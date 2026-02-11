@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
+#[allow(clippy::type_complexity)]
 pub struct StatusBar {
     pub widget: Box,
     pub estop_btn: Button,
@@ -25,6 +26,12 @@ pub struct StatusBar {
     progress_bar: ProgressBar,
     cancel_btn: Button,
     cancel_action: Rc<RefCell<Option<std::boxed::Box<dyn Fn() + 'static>>>>,
+}
+
+impl Default for StatusBar {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StatusBar {
@@ -128,6 +135,7 @@ impl StatusBar {
         right_box.append(&progress_bar);
 
         // Cancel (for long-running, cancellable UI tasks)
+        #[allow(clippy::type_complexity)]
         let cancel_action: Rc<RefCell<Option<std::boxed::Box<dyn Fn() + 'static>>>> =
             Rc::new(RefCell::new(None));
 
@@ -223,6 +231,7 @@ impl StatusBar {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn set_position(
         &self,
         x: f32,

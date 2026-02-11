@@ -38,7 +38,7 @@ impl RenderBuffers {
             // Upload data
             let u8_slice = std::slice::from_raw_parts(
                 vertices.as_ptr() as *const u8,
-                vertices.len() * std::mem::size_of::<f32>(),
+                std::mem::size_of_val(vertices),
             );
             self.gl
                 .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
@@ -78,7 +78,7 @@ impl RenderBuffers {
             // Upload data
             let u8_slice = std::slice::from_raw_parts(
                 vertices.as_ptr() as *const u8,
-                vertices.len() * std::mem::size_of::<f32>(),
+                std::mem::size_of_val(vertices),
             );
             self.gl
                 .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
@@ -117,7 +117,7 @@ impl RenderBuffers {
 
             let u8_slice = std::slice::from_raw_parts(
                 vertices.as_ptr() as *const u8,
-                vertices.len() * std::mem::size_of::<f32>(),
+                std::mem::size_of_val(vertices),
             );
             self.gl
                 .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
@@ -348,10 +348,8 @@ fn push_arc(
         if angle_diff > 0.0 {
             angle_diff -= 2.0 * PI;
         }
-    } else {
-        if angle_diff < 0.0 {
-            angle_diff += 2.0 * PI;
-        }
+    } else if angle_diff < 0.0 {
+        angle_diff += 2.0 * PI;
     }
 
     let segments = (angle_diff.abs() * radius * 2.0).ceil() as i32; // Adaptive segments

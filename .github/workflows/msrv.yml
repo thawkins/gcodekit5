@@ -1,0 +1,98 @@
+name: MSRV Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Minimum Supported Rust Version
+  MSRV: "1.88"
+
+jobs:
+  msrv-check:
+    name: Check MSRV (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust ${{ env.MSRV }}
+        uses: dtolnay/rust-action@master
+        with:
+          toolchain: ${{ env.MSRV }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-msrv-${{ env.MSRV }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-msrv-${{ env.MSRV }}-
+
+      - name: Verify Rust version
+        run: |
+          rustc --version
+          cargo --version
+          echo "Expected MSRV: ${{ env.MSRV }}"
+
+      - name: Check workspace compiles on MSRV
+        run: cargo check --workspace --all-targets
+
+      - name: Run tests on MSRV
+        run: cargo test --workspace
+
+  msrv-verify:
+    name: Verify MSRV in Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check rust-version is set
+        run: |
+          if grep -q 'rust-version = "' Cargo.toml; then
+            VERSION=$(grep 'rust-version = "' Cargo.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+            echo "✅ MSRV is set to: $VERSION"
+            
+            # Verify it matches our expected MSRV
+            if [ "$VERSION" != "${{ env.MSRV }}" ]; then
+              echo "⚠️  Warning: Cargo.toml MSRV ($VERSION) differs from CI MSRV (${{ env.MSRV }})"
+              echo "Consider updating one to match the other."
+            fi
+          else
+            echo "❌ rust-version not found in Cargo.toml"
+            exit 1
+          fi
+
+      - name: Verify all crates inherit MSRV
+        run: |
+          FAILED=0
+          for cargo_toml in crates/*/Cargo.toml; do
+            if ! grep -q 'rust-version.workspace = true' "$cargo_toml"; then
+              echo "❌ $cargo_toml does not inherit rust-version from workspace"
+              FAILED=1
+            fi
+          done
+          
+          if [ $FAILED -eq 1 ]; then
+            echo ""
+            echo "All crates should have: rust-version.workspace = true"
+            exit 1
+          fi
+          
+          echo "✅ All crates inherit MSRV from workspace"

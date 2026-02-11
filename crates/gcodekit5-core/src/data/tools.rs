@@ -117,8 +117,8 @@ impl std::fmt::Display for ToolCoating {
 /// Shank type for tool holder compatibility
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ShankType {
-    /// Straight shank (various diameters)
-    Straight(u32), // diameter in 1/10mm units (e.g., 60 = 6.0mm)
+    /// Straight shank with specified diameter in 1/10mm units (e.g., 60 = 6.0mm).
+    Straight(u32),
     /// Tapered shank
     Tapered,
     /// Collet size (e.g., ER-20, ER-25)
@@ -127,7 +127,10 @@ pub enum ShankType {
 
 /// Tool identifier
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub struct ToolId(pub String);
+pub struct ToolId(
+    /// The unique string identifier for the tool.
+    pub String,
+);
 
 impl std::fmt::Display for ToolId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

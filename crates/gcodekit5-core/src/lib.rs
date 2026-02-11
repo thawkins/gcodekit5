@@ -8,6 +8,8 @@ pub mod constants;
 pub mod core;
 pub mod data;
 pub mod error;
+pub mod event_bus;
+pub mod types;
 pub mod units;
 
 pub use core::{
@@ -22,3 +24,17 @@ pub use data::{
 };
 
 pub use error::{ConnectionError, ControllerError, Error, FirmwareError, GcodeError, Result};
+
+// Re-export event bus for convenience
+pub use event_bus::{
+    event_bus, AppEvent, EventBus, EventBusConfig, EventCategory, EventFilter, SubscriptionId,
+};
+
+// Re-export type aliases for convenience
+pub use types::{
+    shared, shared_none, shared_some, thread_safe, thread_safe_deque, thread_safe_map,
+    thread_safe_none, thread_safe_rw, thread_safe_some, thread_safe_vec, Callback, DataCallback,
+    ProgressCallback, ResultCallback, Shared, SharedHashMap, SharedOption, SharedVec, ThreadSafe,
+    ThreadSafeDeque, ThreadSafeMap, ThreadSafeOption, ThreadSafeRw, ThreadSafeRwMap, ThreadSafeVec,
+    UiCallback, UiDataCallback,
+};

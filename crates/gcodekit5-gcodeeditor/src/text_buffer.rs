@@ -1,6 +1,7 @@
 //! Text buffer implementation using rope data structure for efficient text manipulation
 
 use ropey::Rope;
+use std::fmt;
 use std::ops::Range;
 
 /// Efficient text buffer using rope data structure
@@ -16,14 +17,6 @@ impl TextBuffer {
     pub fn new() -> Self {
         Self {
             rope: Rope::new(),
-            dirty_lines: Vec::new(),
-        }
-    }
-
-    /// Create text buffer from string
-    pub fn from_str(text: &str) -> Self {
-        Self {
-            rope: Rope::from_str(text),
             dirty_lines: Vec::new(),
         }
     }
@@ -109,11 +102,6 @@ impl TextBuffer {
         self.dirty_lines.clear();
     }
 
-    /// Get all text as String (expensive for large files)
-    pub fn to_string(&self) -> String {
-        self.rope.to_string()
-    }
-
     /// Convert char index to line/column
     pub fn char_to_line_col(&self, char_idx: usize) -> (usize, usize) {
         let char_idx = char_idx.min(self.len_chars());
@@ -155,5 +143,20 @@ impl TextBuffer {
 impl Default for TextBuffer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl From<&str> for TextBuffer {
+    fn from(text: &str) -> Self {
+        Self {
+            rope: Rope::from_str(text),
+            dirty_lines: Vec::new(),
+        }
+    }
+}
+
+impl fmt::Display for TextBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.rope)
     }
 }
