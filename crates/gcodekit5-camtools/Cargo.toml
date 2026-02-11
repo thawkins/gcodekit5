@@ -20,7 +20,7 @@ thiserror = { workspace = true }
 regex = "1.10"
 dxf = "0.6"
 lyon = "1.0"
-gerber-types = "0.6.0"
+gerber-types = "0.7.0"
 cavalier_contours = "0.6.0"
 tracing.workspace = true
 gerber_parser = "0.3.1"
