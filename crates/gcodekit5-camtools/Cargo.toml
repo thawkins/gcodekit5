@@ -17,7 +17,7 @@ image = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 thiserror = { workspace = true }
-regex = "1.10"
+regex = "1.12"
 dxf = "0.6"
 lyon = "1.0"
 gerber-types = "0.6.0"

@@ -18,7 +18,7 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.20", features = ["v4", "serde"] }
 lyon = { version = "1.0", features = ["serialization"] }
 rusttype = "0.9.3"
 fontdb = "0.16"
@@ -29,4 +29,4 @@ stl_io = "0.8"
 nalgebra = "0.33"
 
 [dev-dependencies]
-tempfile = "3.10"
+tempfile = "3.25"
