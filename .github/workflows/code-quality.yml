@@ -14,7 +14,7 @@ jobs:
     name: Check for unwrap() usage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-action@stable
@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -61,7 +61,7 @@ jobs:
     name: Unwrap Audit Report
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Count unwraps in source code
         run: |
@@ -94,7 +94,7 @@ jobs:
     name: Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-action@stable
