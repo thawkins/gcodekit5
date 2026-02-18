@@ -11,9 +11,9 @@ description = "Communication protocols (Serial, TCP, WebSocket) for GCodeKit4"
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
 gcodekit5-visualizer = { path = "../gcodekit5-visualizer" }
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 async-trait = "0.1"
-serialport = "4.3"
+serialport = "4.8"
 tracing = "0.1"
 anyhow = "1.0"
 thiserror = "2.0"
