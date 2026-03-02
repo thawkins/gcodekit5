@@ -37,7 +37,7 @@ serde_json = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 image = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
-tempfile = "3.8"
+tempfile = "3.26"
 
 [package]
 name = "gcodekit5"
