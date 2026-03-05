@@ -35,7 +35,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 arboard = "3.4"
-glam = "0.29"
+glam = "0.32"
 glow = "0.14"
 libloading = "0.8"
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
