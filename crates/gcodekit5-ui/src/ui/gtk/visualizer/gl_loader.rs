@@ -11,6 +11,11 @@ pub(crate) static mut GL_LIB: Option<Library> = None;
 pub(crate) static EPOXY_INIT: Once = Once::new();
 
 pub(crate) fn load_gl_func(name: &str) -> *const std::ffi::c_void {
+    // SAFETY: Accesses mutable statics EPOXY_LIB and GL_LIB. This is safe
+    // because initialization is guarded by Once (single-threaded init) and
+    // subsequent reads are immutable. The FFI calls to epoxy_get_proc_addr
+    // and libloading::Library::get are safe because the libraries are valid
+    // shared objects loaded by the OS dynamic linker.
     unsafe {
         EPOXY_INIT.call_once(|| {
             let lib = Library::new("libepoxy.so.0")

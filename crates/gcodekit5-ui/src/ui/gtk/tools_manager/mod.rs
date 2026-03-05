@@ -420,6 +420,8 @@ impl ToolsManagerView {
             let next = w.next_sibling();
             if let Ok(row) = w.downcast::<ListBoxRow>() {
                 let stored = unsafe {
+                    // SAFETY: row.data() retrieves a String previously stored
+                    // via set_data() with the same key. Type and key match.
                     row.data::<String>(ROW_TOOL_ID_KEY)
                         .map(|p| p.as_ref().clone())
                 };
@@ -503,6 +505,8 @@ impl ToolsManagerView {
 
         for tool in tools {
             let row = ListBoxRow::new();
+            // SAFETY: set_data stores a String keyed by ROW_TOOL_ID_KEY. The
+            // data is valid while the row widget exists in the list.
             unsafe {
                 row.set_data(ROW_TOOL_ID_KEY, tool.id.0.clone());
             }

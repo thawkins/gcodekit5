@@ -210,6 +210,8 @@ impl CamToolsView {
                     continue;
                 };
                 let idx = unsafe {
+                    // SAFETY: row.data() retrieves a u32 previously stored via
+                    // set_data("camtool-index", ...). Type and key match.
                     row.data::<u32>("camtool-index")
                         .map(|p| *p.as_ref() as usize)
                 };
@@ -277,6 +279,8 @@ impl CamToolsView {
         for (idx, tool) in TOOLS.iter().enumerate() {
             let row = gtk4::ListBoxRow::new();
             row.set_selectable(true);
+            // SAFETY: set_data stores a u32 keyed by "camtool-index". The data
+            // is valid while the row widget exists in the list.
             unsafe {
                 row.set_data("camtool-index", idx as u32);
             }
@@ -355,6 +359,8 @@ impl CamToolsView {
             let open_btn = open_btn.clone();
             list.connect_row_selected(move |_, row| {
                 if let Some(row) = row {
+                    // SAFETY: row.data() retrieves a u32 previously stored via
+                    // set_data("camtool-index", ...). Type and key match.
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
@@ -380,6 +386,8 @@ impl CamToolsView {
             let list_for_click = list.clone();
             open_btn.connect_clicked(move |_| {
                 if let Some(row) = list_for_click.selected_row() {
+                    // SAFETY: row.data() retrieves a u32 previously stored via
+                    // set_data("camtool-index", ...). Type and key match.
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
@@ -394,6 +402,8 @@ impl CamToolsView {
 
             let stack_for_activate = stack.clone();
             list.connect_row_activated(move |_, row| {
+                // SAFETY: row.data() retrieves a u32 previously stored via
+                // set_data("camtool-index", ...). Type and key match.
                 let idx = unsafe {
                     row.data::<u32>("camtool-index")
                         .map(|p| *p.as_ref() as usize)

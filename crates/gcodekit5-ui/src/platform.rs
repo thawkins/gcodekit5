@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct Win32ParentHandle(pub std::num::NonZeroIsize);
 
 #[cfg(target_os = "windows")]
+// SAFETY: Win32ParentHandle wraps a valid non-zero HWND obtained from
+// GetForegroundWindow. The handle is valid for the lifetime of the window.
 unsafe impl HasRawWindowHandle for Win32ParentHandle {
     fn raw_window_handle(&self) -> Result<RawWindowHandle, raw_window_handle::HandleError> {
         let handle = Win32WindowHandle::new(self.0);
@@ -13,10 +15,14 @@ unsafe impl HasRawWindowHandle for Win32ParentHandle {
     }
 }
 
+// SAFETY: Win32ParentHandle provides a valid display handle via GetModuleHandleW.
+// The module handle is valid for the lifetime of the process.
 unsafe impl HasDisplayHandle for Win32ParentHandle {
     fn raw_display_handle(&self) -> Result<RawDisplayHandle, raw_window_handle::HandleError> {
         // Get module handle for the current process as hinstance
         use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+        // SAFETY: GetModuleHandleW(null) returns the module handle of the
+        // current process, which is always valid.
         let hinst = unsafe { GetModuleHandleW(std::ptr::null()) } as isize;
         if let Some(nz) = std::num::NonZeroIsize::new(hinst) {
             let dh = Win32DisplayHandle::new(nz);
@@ -30,6 +36,8 @@ unsafe impl HasDisplayHandle for Win32ParentHandle {
 #[cfg(target_os = "windows")]
 fn get_foreground_hwnd() -> Option<Win32ParentHandle> {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    // SAFETY: GetForegroundWindow returns the HWND of the current foreground
+    // window, or null if none. We check for null via NonZeroIsize.
     let hwnd_val = unsafe { GetForegroundWindow() } as isize;
     std::num::NonZeroIsize::new(hwnd_val).map(Win32ParentHandle)
 }

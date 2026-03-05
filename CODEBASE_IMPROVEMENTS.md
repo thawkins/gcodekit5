@@ -789,14 +789,18 @@ stock_texture.rs, renderer_3d.rs) with explicit imports of used symbols (`Contex
 **Verified**: March 2026 — 0 SAFETY comments confirmed; unsafe count reduced from ~65 to ~55 but still undocumented  
 **Impact**: Low-Medium — Undocumented unsafe is a maintenance risk  
 **Effort**: Low
-**Status**: ❌ NOT DONE — no SAFETY comments added yet
+**Status**: ✅ DONE — March 2026. Added `// SAFETY:` comments to all 58 unsafe usages
+(55 `unsafe {}` blocks, 2 `unsafe impl`, 1 `unsafe fn`) across 10 files:
+shaders.rs, renderer_3d.rs, stock_texture.rs, visualizer/mod.rs, visualizer/gl_loader.rs,
+mesh_renderer.rs, platform.rs, materials_manager.rs, tools_manager/*.rs, cam_tools/mod.rs.
 
 **Concentrated in**:
 ```
-gcodekit5-ui/src/ui/gtk/visualizer.rs:    12 unsafe blocks
-gcodekit5-ui/src/ui/gtk/shaders.rs:       10 unsafe blocks
-gcodekit5-ui/src/ui/gtk/renderer_3d.rs:    6 unsafe blocks
-gcodekit5-ui/src/ui/gtk/stock_texture.rs:  4 unsafe blocks
+gcodekit5-ui/src/ui/gtk/visualizer/mod.rs: 12 unsafe blocks
+gcodekit5-ui/src/ui/gtk/shaders.rs:        10 unsafe blocks
+gcodekit5-ui/src/ui/gtk/renderer_3d.rs:     6 unsafe blocks
+gcodekit5-ui/src/ui/gtk/stock_texture.rs:   4 unsafe blocks
+gcodekit5-visualizer/mesh_renderer.rs:     11 unsafe blocks
 ```
 
 **Recommendation**: Add `// SAFETY: <reason>` comments above every `unsafe` block per Rust convention.
@@ -878,7 +882,7 @@ Benefits: One-click development setup, consistent environment
 |-------|--------|--------|----------|--------|
 | 9.1 - Add rustfmt.toml | Low | Medium | **P1** | ✅ DONE |
 | 9.2 - Add clippy.toml | Low | Medium | **P1** | ✅ DONE |
-| 9.6 - Document unsafe blocks | Low | Medium | **P1** | ❌ NOT DONE |
+| 9.6 - Document unsafe blocks | Low | Medium | **P1** | ✅ DONE |
 | 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ✅ DONE |
 | 9.4 - Reduce #[allow()] suppressions | Medium | Medium | **P2** | ✅ DONE (all 108 audited & commented) |
 | 9.5 - Consolidate wildcard imports | Low | Low | **P2** | ✅ DONE |

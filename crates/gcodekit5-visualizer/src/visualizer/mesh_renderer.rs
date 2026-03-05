@@ -111,6 +111,9 @@ impl MeshRenderer {
             return Ok(());
         }
 
+        // SAFETY: GL context is valid. Creates VAO, VBO, EBO, uploads vertex
+        // and index data via bytemuck::cast_slice, and configures vertex attrib
+        // pointers. All GL handles are stored for later cleanup.
         unsafe {
             // Create VAO
             let vao = self
@@ -197,6 +200,9 @@ impl MeshRenderer {
             return Ok(());
         }
 
+        // SAFETY: GL context is valid. Selects shader program, sets uniforms
+        // (matrices, lighting, material), binds VAO, and issues draw call.
+        // All GL handles were created in upload_mesh() and are still valid.
         unsafe {
             // Choose shader program
             let shader_program = if self.wireframe_mode || mesh.material.wireframe {
@@ -345,6 +351,9 @@ impl MeshRenderer {
         vs_source: &str,
         fs_source: &str,
     ) -> Result<glow::Program> {
+        // SAFETY: GL context is valid. Compiles vertex and fragment shaders,
+        // links them into a program, then deletes the individual shader objects.
+        // On failure, all allocated resources are cleaned up before returning.
         unsafe {
             let vs = gl
                 .create_shader(glow::VERTEX_SHADER)
@@ -401,6 +410,8 @@ impl MeshRenderer {
     }
 
     fn cleanup_mesh_resources(&self, resources: &MeshGLResources) {
+        // SAFETY: GL context is valid; deleting owned GL handles that will not
+        // be used after this call.
         unsafe {
             self.gl.delete_vertex_array(resources.vao);
             self.gl.delete_buffer(resources.vbo);
@@ -409,6 +420,8 @@ impl MeshRenderer {
     }
 
     fn set_uniform_mat4(&self, program: &glow::Program, name: &str, matrix: &Mat4) -> Result<()> {
+        // SAFETY: GL context is valid; querying and setting uniforms on the
+        // currently bound shader program.
         unsafe {
             let location = self.gl.get_uniform_location(*program, name);
             if let Some(loc) = location {
@@ -425,6 +438,8 @@ impl MeshRenderer {
         name: &str,
         matrix: &[f32; 9],
     ) -> Result<()> {
+        // SAFETY: GL context is valid; querying and setting uniforms on the
+        // currently bound shader program.
         unsafe {
             let location = self.gl.get_uniform_location(*program, name);
             if let Some(loc) = location {
@@ -436,6 +451,8 @@ impl MeshRenderer {
     }
 
     fn set_uniform_vec3(&self, program: &glow::Program, name: &str, vec: &Vec3) -> Result<()> {
+        // SAFETY: GL context is valid; querying and setting uniforms on the
+        // currently bound shader program.
         unsafe {
             let location = self.gl.get_uniform_location(*program, name);
             if let Some(loc) = location {
@@ -446,6 +463,8 @@ impl MeshRenderer {
     }
 
     fn set_uniform_vec4(&self, program: &glow::Program, name: &str, vec: &[f32; 4]) -> Result<()> {
+        // SAFETY: GL context is valid; querying and setting uniforms on the
+        // currently bound shader program.
         unsafe {
             let location = self.gl.get_uniform_location(*program, name);
             if let Some(loc) = location {
@@ -457,6 +476,8 @@ impl MeshRenderer {
     }
 
     fn set_uniform_f32(&self, program: &glow::Program, name: &str, value: f32) -> Result<()> {
+        // SAFETY: GL context is valid; querying and setting uniforms on the
+        // currently bound shader program.
         unsafe {
             let location = self.gl.get_uniform_location(*program, name);
             if let Some(loc) = location {
@@ -467,6 +488,8 @@ impl MeshRenderer {
     }
 
     fn set_uniform_bool(&self, program: &glow::Program, name: &str, value: bool) -> Result<()> {
+        // SAFETY: GL context is valid; querying and setting uniforms on the
+        // currently bound shader program.
         unsafe {
             let location = self.gl.get_uniform_location(*program, name);
             if let Some(loc) = location {
@@ -481,6 +504,8 @@ impl Drop for MeshRenderer {
     fn drop(&mut self) {
         self.clear_all_meshes();
 
+        // SAFETY: GL context is valid; shader program handles are owned by this
+        // struct and will not be used after deletion.
         unsafe {
             self.gl.delete_program(self.mesh_shader_program);
             self.gl.delete_program(self.wireframe_shader_program);
