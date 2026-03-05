@@ -184,7 +184,7 @@ impl ProcessorPipeline {
                 continue;
             }
 
-            let mut next_commands = Vec::new();
+            let mut next_commands = Vec::with_capacity(current_commands.len());
 
             for cmd in current_commands {
                 match processor.process(&cmd, state) {
@@ -227,15 +227,15 @@ impl ProcessorPipeline {
         commands: &[GcodeCommand],
         state: &mut GcodeState,
     ) -> Result<Vec<GcodeCommand>, String> {
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(commands.len());
 
         for command in commands {
             let processed = self.process_command(command, state)?;
 
-            // Update state based on processed commands
-            for cmd in &processed {
-                self.update_state(cmd, state)?;
-                results.push(cmd.clone());
+            // Move processed commands into results instead of cloning
+            for cmd in processed {
+                self.update_state(&cmd, state)?;
+                results.push(cmd);
             }
         }
 

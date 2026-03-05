@@ -14,6 +14,7 @@
 //! - Count commands by type
 //! - Calculate total distance
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -46,8 +47,8 @@ pub struct FileStatistics {
     pub estimated_time: u64,
     /// Bounding box (min/max coordinates)
     pub bounding_box: BoundingBox,
-    /// Command counts by type
-    pub command_counts: HashMap<String, u64>,
+    /// Command counts by type (uses Cow to avoid allocating static G-code strings)
+    pub command_counts: HashMap<Cow<'static, str>, u64>,
     /// Feed rate statistics
     pub feed_rate_stats: FeedRateStats,
     /// Spindle speed statistics
@@ -385,25 +386,25 @@ impl FileProcessingPipeline {
                 statistics.rapid_moves += 1;
                 *statistics
                     .command_counts
-                    .entry("G0".to_string())
+                    .entry(Cow::Borrowed("G0"))
                     .or_insert(0) += 1;
             } else if upper.contains("G01") || upper.starts_with("G1 ") {
                 statistics.linear_moves += 1;
                 *statistics
                     .command_counts
-                    .entry("G1".to_string())
+                    .entry(Cow::Borrowed("G1"))
                     .or_insert(0) += 1;
             } else if upper.contains("G02") || upper.contains("G2 ") {
                 statistics.arc_moves += 1;
                 *statistics
                     .command_counts
-                    .entry("G2".to_string())
+                    .entry(Cow::Borrowed("G2"))
                     .or_insert(0) += 1;
             } else if upper.contains("G03") || upper.contains("G3 ") {
                 statistics.arc_moves += 1;
                 *statistics
                     .command_counts
-                    .entry("G3".to_string())
+                    .entry(Cow::Borrowed("G3"))
                     .or_insert(0) += 1;
             }
 
@@ -415,7 +416,7 @@ impl FileProcessingPipeline {
                         let m_code = &upper[m_pos..m_pos + 3];
                         *statistics
                             .command_counts
-                            .entry(m_code.to_string())
+                            .entry(Cow::Owned(m_code.to_string()))
                             .or_insert(0) += 1;
                     }
                 }

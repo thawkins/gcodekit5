@@ -35,7 +35,7 @@ pub use phase7::{
     SafetyFeaturesManager,
 };
 pub use processing::{
-    FeedRateStats, FileProcessingPipeline, FileStatistics, ProcessedFile, SpindleStats,
+    BoundingBox, FeedRateStats, FileProcessingPipeline, FileStatistics, ProcessedFile, SpindleStats,
 };
 
 /// Format a float to a reasonable number of decimal places

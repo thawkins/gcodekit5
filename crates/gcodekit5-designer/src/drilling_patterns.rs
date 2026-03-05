@@ -229,8 +229,8 @@ impl DrillingPatternGenerator {
 
     /// Generates peck drilling segments for a single hole.
     fn generate_peck_drilling(&self, hole_point: Point, peck_depth: f64) -> Vec<ToolpathSegment> {
-        let mut segments = Vec::new();
         let pecks = self.operation.calculate_pecks();
+        let mut segments = Vec::with_capacity(pecks as usize);
         let mut current_depth = 0.0;
 
         for peck_num in 1..=pecks {

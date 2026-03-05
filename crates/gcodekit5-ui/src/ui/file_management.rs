@@ -3,6 +3,7 @@
 //! File I/O, recent files, processing pipeline, statistics,
 //! export, drag/drop, validation, comparison, backup, templates
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -201,8 +202,8 @@ pub struct FileStatistics {
     pub min_coords: (f32, f32, f32),
     /// Maximum coordinates
     pub max_coords: (f32, f32, f32),
-    /// G-code command count by type
-    pub command_counts: HashMap<String, usize>,
+    /// G-code command count by type (uses Cow to avoid allocating static G-code strings)
+    pub command_counts: HashMap<Cow<'static, str>, usize>,
 }
 
 impl FileStatistics {
@@ -220,7 +221,18 @@ impl FileStatistics {
 
     /// Add G-code command to statistics
     pub fn count_command(&mut self, command: &str) {
-        *self.command_counts.entry(command.to_string()).or_insert(0) += 1;
+        let key = match command {
+            "G0" => Cow::Borrowed("G0"),
+            "G1" => Cow::Borrowed("G1"),
+            "G2" => Cow::Borrowed("G2"),
+            "G3" => Cow::Borrowed("G3"),
+            "M3" => Cow::Borrowed("M3"),
+            "M5" => Cow::Borrowed("M5"),
+            "M8" => Cow::Borrowed("M8"),
+            "M9" => Cow::Borrowed("M9"),
+            other => Cow::Owned(other.to_string()),
+        };
+        *self.command_counts.entry(key).or_insert(0) += 1;
     }
 
     /// Update bounding box

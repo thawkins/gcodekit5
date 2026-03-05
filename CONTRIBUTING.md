@@ -23,9 +23,14 @@ Be respectful, inclusive, and constructive. We welcome contributors of all backg
 1. **Fork** the repository on GitHub
 2. **Clone** your fork locally
 3. **Set up** the development environment (see [DEVELOPMENT.md](DEVELOPMENT.md))
-4. **Create a branch** for your changes
-5. **Make changes** following the guidelines below
-6. **Submit** a pull request
+4. **Install pre-commit hooks**:
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+   This enables automated checks (formatting, clippy, unit tests) before each commit. Skip with `git commit --no-verify` if needed.
+5. **Create a branch** for your changes
+6. **Make changes** following the guidelines below
+7. **Submit** a pull request
 
 ## Code Style
 

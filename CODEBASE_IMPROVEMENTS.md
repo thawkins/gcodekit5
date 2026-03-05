@@ -448,29 +448,41 @@ cargo flamegraph --bin gcodekit5
 ---
 
 ### 5.2 Optimize Memory Usage
-**Current State**: No explicit memory profiling  
+**Current State**: Memory optimizations applied across hot paths  
+**Verified**: March 2026  
 **Impact**: Medium - Improves performance on constrained systems  
 **Effort**: Low-Medium
+**Status**: ✅ DONE — Implemented four optimization areas:
 
-**Opportunities**:
-1. **String Allocations**: Intern frequently-used strings
-2. **Geometry Vectors**: Use `SmallVec<[T; 16]>` for points that rarely exceed 16
-3. **Arc vs Rc**: Audit for unnecessary Arcs (single-threaded context)
-4. **Clone Overhead**: Profile and reduce clones in hot paths
+1. **String Allocations**: Changed `HashMap<String, u64>` to `HashMap<Cow<'static, str>, u64>` for
+   G-code command counting in `processing.rs` and `file_management.rs`. Static commands
+   ("G0", "G1", etc.) use `Cow::Borrowed` (zero allocation), dynamic M-codes use `Cow::Owned`.
+2. **Geometry Vectors**: Added `smallvec` crate to designer. Used `SmallVec<[Point; 4]>` for
+   transformed corner points (stack-allocated). Added `Vec::with_capacity()` hints for
+   `clean_contour`, `contours_from_outline_segments`, and `generate_peck_drilling`.
+3. **Arc vs Rc Audit**: All Arc usage is in genuinely multi-threaded contexts (tokio async,
+   atomics, `Send + Sync` trait bounds). No unnecessary Arcs found — no changes needed.
+4. **Clone Overhead**: Eliminated unnecessary clone in `ProcessorPipeline::process_commands()`
+   by iterating processed commands by value instead of by reference. Added `with_capacity`
+   to `next_commands` in `process_command()`.
 
 ---
 
 ### 5.3 Add Performance Benchmarks
-**Current State**: 1 benchmark file exists (gcodekit5-designer/benches/toolpath_bench.rs with criterion)  
-**Verified**: March 2026 — criterion dependency confirmed in designer Cargo.toml; no benchmarks in other 8 crates  
+**Current State**: Criterion benchmarks across 3 crates with 24 benchmark functions  
+**Verified**: March 2026  
 **Impact**: Low (quality metric) but important for tracking  
 **Effort**: Low
+**Status**: ✅ DONE — Benchmarks added to core, visualizer, and designer:
 
-**Add** `benches/` directory with criterion benchmarks for:
-- Toolpath generation with varying complexity
-- G-code parsing with different file sizes
-- Geometry operation performance
-- State update speed
+- **gcodekit5-designer** (existing): Toolpath generation (rectangle, circle, multipass),
+  G-code generation (20/200/2000 segments), spatial index (insert/query), DXF parsing (10/100/1000 entities)
+- **gcodekit5-core** (new): Command creation/lifecycle, Position operations (new, distance, add/subtract),
+  PartialPosition apply, unit conversions (single, CNCPoint, batch 1000)
+- **gcodekit5-visualizer** (new): ProcessorPipeline (single/15/100/1000 commands), GcodeState modal updates,
+  BoundingBox updates, individual processor benchmarks (whitespace, comment, decimal)
+
+Run with: `cargo bench -p gcodekit5-core`, `cargo bench -p gcodekit5-visualizer`, `cargo bench -p gcodekit5-designer`
 
 ---
 
@@ -817,21 +829,11 @@ gcodekit5-visualizer/mesh_renderer.rs:     11 unsafe blocks
 ## 10. Tooling & Workflow (LOW PRIORITY)
 
 ### 10.1 Pre-Commit Hooks
-**Current State**: Pre-commit hook runs cargo fmt --check, cargo clippy, and cargo test --lib  
+**Current State**: Pre-commit hook in `.githooks/pre-commit` enforces `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib`. Activated via `git config core.hooksPath .githooks`.  
 **Verified**: March 2026  
 **Impact**: Low - Catches issues before commit  
 **Effort**: Low
-**Status**: ⚠️ PARTIAL — hook exists but doesn't enforce code quality
-
-**Create** `.git/hooks/pre-commit`:
-```bash
-#!/bin/bash
-cargo fmt --check || exit 1
-cargo clippy --all -- -D warnings || exit 1
-cargo test --lib || exit 1
-```
-
-**Or use** `pre-commit` framework: `pre-commit install`
+**Status**: ✅ DONE — hook enforces formatting, linting (clippy -D warnings), and unit tests; documented in CONTRIBUTING.md
 
 ---
 
@@ -883,6 +885,9 @@ Benefits: One-click development setup, consistent environment
 | 8.1 - ADRs | ✅ DONE | March 2026 — 10 ADRs verified |
 | 8.3 - Developer guides | ✅ DONE | March 2026 — DEVELOPMENT, CONTRIBUTING, ARCHITECTURE |
 | 10.3 - Dev container | ✅ DONE | March 2026 — Containerfile + devcontainer.json |
+| 10.1 - Pre-commit hooks | ✅ DONE | March 2026 — .githooks/pre-commit enforces fmt, clippy, tests |
+| 5.2 - Optimize memory usage | ✅ DONE | March 2026 — Cow strings, SmallVec, clone reduction, Arc audit |
+| 5.3 - Performance benchmarks | ✅ DONE | March 2026 — 24 benchmarks across core, visualizer, designer |
 
 ### Remaining Items (Prioritized)
 | Issue | Effort | Impact | Priority | Status |
@@ -893,10 +898,10 @@ Benefits: One-click development setup, consistent environment
 | 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ✅ DONE |
 | 9.4 - Reduce #[allow()] suppressions | Medium | Medium | **P2** | ✅ DONE (all 108 audited & commented) |
 | 9.5 - Consolidate wildcard imports | Low | Low | **P2** | ✅ DONE |
-| 10.1 - Pre-commit hooks | Low | Low | **P2** | ⚠️ PARTIAL (bd only, no cargo checks) |
+| 10.1 - Pre-commit hooks | Low | Low | **P2** | ✅ DONE |
 | 5.1 - Profile hot paths | Medium | Medium-High | **P2** | ✅ DONE |
-| 5.2 - Optimize memory usage | Low-Med | Medium | **P2** | ❌ NOT DONE |
-| 5.3 - Performance benchmarks | Low | Low | **P2** | ⚠️ PARTIAL (1 bench in designer only) |
+| 5.2 - Optimize memory usage | Low-Med | Medium | **P2** | ✅ DONE |
+| 5.3 - Performance benchmarks | Low | Low | **P2** | ✅ DONE |
 | 6.1 - Event bus | High | High | **P2** | ❌ NOT DONE |
 | 6.2 - Separate UI/business logic | Medium-High | High | **P2** | ❌ NOT DONE |
 | 6.3 - Plugin system | High | Low-Med | **P3** | ❌ NOT DONE |

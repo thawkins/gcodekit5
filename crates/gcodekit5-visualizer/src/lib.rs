@@ -27,8 +27,8 @@ pub use gcode::{
 
 pub use utils::{
     AdvancedProber, Alarm, AlarmManager, AlarmType, AutoConnectConfig, BackupEntry, BackupManager,
-    BasicProber, Bookmark, BookmarkManager, CommandHistory, CustomAction, CustomMacro, DataLogger,
-    DropEvent, DropFileType, DropIndicatorState, DropTarget, DropZone, ExportOptions,
+    BasicProber, Bookmark, BookmarkManager, BoundingBox, CommandHistory, CustomAction, CustomMacro,
+    DataLogger, DropEvent, DropFileType, DropIndicatorState, DropTarget, DropZone, ExportOptions,
     FeedRateStats, FileComparison, FileEncoding, FileExporter, FileFormat, FileProcessingPipeline,
     FileReadStats, FileStatistics, FileValidation, GcodeFileReader, GcodeTemplate, HeightPoint,
     HistoryEntry, LogEntry, NetworkConfig, PendantButton, PendantConfig, PerformanceMetrics,

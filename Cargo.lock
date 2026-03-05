@@ -1415,7 +1415,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1434,7 +1434,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-camtools"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-communication"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1475,11 +1475,12 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-core"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "criterion",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1492,7 +1493,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-designer"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1508,6 +1509,7 @@ dependencies = [
  "rusttype",
  "serde",
  "serde_json",
+ "smallvec",
  "stl_io",
  "tempfile",
  "thiserror 2.0.18",
@@ -1518,7 +1520,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-devicedb"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "gcodekit5-core",
@@ -1531,7 +1533,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-gcodeeditor"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "ropey",
  "thiserror 2.0.18",
@@ -1539,7 +1541,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-settings"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "dirs",
  "gcodekit5-core",
@@ -1551,7 +1553,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-ui"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1589,11 +1591,12 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-visualizer"
-version = "0.53.1-alpha.0"
+version = "0.54.0-alpha.0"
 dependencies = [
  "anyhow",
  "bytemuck",
  "chrono",
+ "criterion",
  "gcodekit5-core",
  "gcodekit5-designer",
  "glam",
