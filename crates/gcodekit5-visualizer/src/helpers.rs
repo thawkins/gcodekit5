@@ -1,3 +1,8 @@
+//! # Visualizer Helpers
+//!
+//! Utility functions for the visualizer crate, including
+//! coordinate transformations and geometry calculations.
+
 /// Transform screen coordinates to canvas coordinates
 /// Used when the displayed image size doesn't match the rendered image size
 #[allow(dead_code)]

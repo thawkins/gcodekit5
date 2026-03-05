@@ -1,3 +1,8 @@
+//! # Stock Material Texture
+//!
+//! Generates and manages textures for rendering the CNC stock
+//! material block in the 3D visualizer.
+
 use gcodekit5_visualizer::visualizer::stock_removal_3d::VoxelGrid;
 use glow::*;
 use std::rc::Rc;

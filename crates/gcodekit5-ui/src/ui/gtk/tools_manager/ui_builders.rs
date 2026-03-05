@@ -1,3 +1,8 @@
+//! # Tools Manager UI Builders
+//!
+//! Widget construction functions for the tools manager panel,
+//! including tool list, detail forms, and action buttons.
+
 use super::*;
 use gtk4::{Grid, WrapMode};
 

@@ -1,3 +1,9 @@
+//! # Command History Panel
+//!
+//! Displays a scrollable list of previously sent G-code commands
+//! with timestamps and status indicators. Supports command re-send
+//! and history search.
+
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;

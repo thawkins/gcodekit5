@@ -1,3 +1,8 @@
+//! # Line Shape
+//!
+//! A line segment design shape defined by start and end points.
+//! Supports rotation and CSG sketch generation.
+
 use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};

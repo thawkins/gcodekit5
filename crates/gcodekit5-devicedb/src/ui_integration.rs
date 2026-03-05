@@ -1,3 +1,8 @@
+//! # Device Database UI Integration
+//!
+//! Provides helper functions and view models for displaying
+//! device information in the GTK4 user interface.
+
 use crate::manager::DeviceManager;
 use crate::model::{ControllerType, DeviceProfile, DeviceType};
 use anyhow::Context;

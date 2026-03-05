@@ -1,3 +1,8 @@
+//! # On-Screen Display Formatting
+//!
+//! Formats machine status values (coordinates, feed rate, spindle speed)
+//! for on-screen display overlays in the visualizer view.
+
 use gcodekit5_core::units::{format_length, MeasurementSystem};
 
 use crate::t;

@@ -1,3 +1,9 @@
+//! # Settings Operations
+//!
+//! Backend operations for reading, writing, and validating
+//! configuration settings. Handles communication with the
+//! connected CNC device.
+
 use gcodekit5_communication::firmware::grbl::settings::SettingsManager;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
 use gcodekit5_core::{shared, Shared, SharedOption, ThreadSafe};

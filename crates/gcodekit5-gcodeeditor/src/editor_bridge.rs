@@ -1,3 +1,9 @@
+//! # G-code Editor Bridge
+//!
+//! Bridges the G-code editor backend (text buffer, undo manager, viewport)
+//! with the GTK4 UI layer. Handles text editing events, syntax state,
+//! and cursor management.
+
 use crate::EditorState;
 use std::cell::RefCell;
 use std::rc::Rc;

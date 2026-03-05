@@ -1,3 +1,9 @@
+//! # Spoilboard Grid Generator
+//!
+//! Generates G-code for laser-engraved alignment grids on CNC spoilboards.
+//! Produces a rectangular grid pattern at configurable spacing with
+//! laser power and feed rate parameters.
+
 use anyhow::Result;
 
 #[derive(Debug, Clone)]

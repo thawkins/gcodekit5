@@ -1,3 +1,8 @@
+//! # Application Settings Panel
+//!
+//! UI panel for application-level preferences including theme,
+//! default units, startup behavior, and file associations.
+
 use gtk4::prelude::*;
 use gtk4::{
     glib, Align, Box as GtkBox, Button, Dialog, Entry, Label, Notebook, Orientation, PolicyType,

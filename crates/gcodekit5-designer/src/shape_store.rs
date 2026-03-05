@@ -1,3 +1,8 @@
+//! # Shape Store
+//!
+//! Manages the storage and retrieval of drawing objects (shapes) on the canvas.
+//! Uses a HashMap for O(1) lookup by ID and a Vec for maintaining draw order.
+
 use crate::canvas::DrawingObject;
 use std::collections::HashMap;
 

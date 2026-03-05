@@ -1,3 +1,9 @@
+//! # Boolean Operations
+//!
+//! Provides CSG boolean operations (union, difference, intersection)
+//! on designer shapes using the `csgrs` and `cavalier_contours` libraries.
+//! Includes polyline cleaning utilities for robust boolean results.
+
 use crate::model::{DesignPath, DesignerShape, Shape};
 use cavalier_contours::polyline::{PlineSource, PlineSourceMut, PlineVertex, Polyline};
 use csgrs::traits::CSG;

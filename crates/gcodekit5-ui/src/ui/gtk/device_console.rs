@@ -1,3 +1,9 @@
+//! # Device Console Panel
+//!
+//! Provides a terminal-like console for direct G-code communication
+//! with the connected CNC device. Displays sent commands and
+//! received responses with syntax highlighting.
+
 use gtk4::prelude::*;
 use gtk4::{
     gdk, Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow,

@@ -1,3 +1,9 @@
+//! # GRBL Settings Panel
+//!
+//! UI panel for viewing and editing GRBL firmware settings ($0-$132).
+//! Displays setting names, current values, and descriptions with
+//! validation and send-to-device functionality.
+
 use gcodekit5_communication::firmware::grbl::settings::Setting;
 
 use super::ConfigSettingsView;

@@ -1,3 +1,9 @@
+//! # 3D Camera
+//!
+//! Implements an orbital camera for the G-code visualizer with
+//! rotation, panning, zooming, and view matrix calculation.
+//! Supports preset views (top, front, side, isometric).
+
 use glam::{Mat4, Vec3};
 
 #[derive(Debug, Clone, Copy)]

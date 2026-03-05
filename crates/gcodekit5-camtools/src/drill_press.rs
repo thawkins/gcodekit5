@@ -1,3 +1,13 @@
+//! # Drill Press CAM Tool
+//!
+//! Generates G-code for drilling operations, supporting:
+//! - Simple plunge drilling
+//! - Peck drilling with configurable peck depth
+//! - Helical boring for holes larger than the tool diameter
+//!
+//! All dimensional parameters are in millimeters (mm)
+//! and feed rates in mm/min.
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 

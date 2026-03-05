@@ -1,3 +1,9 @@
+//! # Designer Commands (Undo/Redo)
+//!
+//! Implements the Command pattern for undoable canvas operations.
+//! Each command encapsulates a discrete change (add shape, move shape,
+//! delete shape, etc.) and can be executed and undone.
+
 use crate::canvas::{Canvas, DrawingObject};
 use crate::model::DesignerShape;
 use crate::model::Shape;

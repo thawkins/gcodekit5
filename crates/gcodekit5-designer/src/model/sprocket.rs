@@ -1,3 +1,9 @@
+//! # Roller Chain Sprocket Shape
+//!
+//! A parametric roller chain sprocket defined by pitch, tooth count,
+//! and roller diameter. Generates accurate tooth profiles following
+//! standard sprocket geometry.
+
 use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,16 @@
+//! # Designer Shape Model
+//!
+//! Defines the core shape types and traits for the visual designer.
+//! All shapes implement the [`DesignerShape`] trait, which provides:
+//! - Lyon path generation for rendering
+//! - CSG sketch generation for boolean operations
+//! - Bounding box calculation
+//! - Property inspection and editing
+//! - Serialization/deserialization
+//!
+//! ## Shape Types
+//! Rectangle, Circle, Ellipse, Line, Triangle, Polygon, Text, Path, Gear, Sprocket
+
 use lyon::math::Transform;
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};

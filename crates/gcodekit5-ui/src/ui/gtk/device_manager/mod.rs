@@ -1,3 +1,9 @@
+//! # Device Manager UI
+//!
+//! UI panel for managing CNC device profiles. Provides device
+//! selection, creation, editing, and deletion with connection
+//! management controls.
+
 mod operations;
 mod tabs;
 

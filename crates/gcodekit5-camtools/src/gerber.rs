@@ -1,3 +1,9 @@
+//! # Gerber File Converter
+//!
+//! Converts Gerber (RS-274X) PCB layout files to G-code toolpaths.
+//! Supports copper layer isolation routing, rubout/hatch fill,
+//! and edge-cut operations using CSG boolean geometry.
+
 use crate::hatch_generator;
 use anyhow::Result;
 use cavalier_contours::polyline::{PlineSource, PlineSourceMut, PlineVertex, Polyline};

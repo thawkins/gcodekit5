@@ -1,3 +1,9 @@
+//! # Configuration Settings Panel
+//!
+//! Provides the settings UI for configuring machine parameters,
+//! GRBL settings, and operational preferences. Organized into
+//! sub-modules for different setting categories.
+
 mod grbl_settings;
 mod operations;
 

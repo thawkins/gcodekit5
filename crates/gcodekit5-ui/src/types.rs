@@ -1,3 +1,7 @@
+//! # UI Type Definitions
+//!
+//! Shared type aliases and common data structures used across the UI layer.
+
 use serde::{Deserialize, Serialize};
 
 /// Vector engraving parameters used by the UI form layer (string fields where appropriate)

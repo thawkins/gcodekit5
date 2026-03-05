@@ -1,8 +1,8 @@
 # GCodeKit5 - Codebase Improvements and Recommendations
 
-**Document Version**: 2.0  
-**Date**: February 2026  
-**Analysis Scope**: 130,212 lines of Rust code across 9 crates, 430 source files
+**Document Version**: 3.0  
+**Date**: March 2026  
+**Analysis Scope**: 135,887 lines of Rust code across 9 crates, 488 source files
 
 ---
 
@@ -10,18 +10,18 @@
 
 GCodeKit5 is a well-structured, modular Rust project with solid architectural foundations. As the codebase has grown to 130K+ lines across 430 files, there are opportunities to improve code quality, maintainability, and robustness. This document identifies 50+ actionable improvements across 9 categories, prioritized by impact and effort.
 
-### Key Statistics
-- **Total Lines**: 130,212 (Rust)
+### Key Statistics (Verified March 2026)
+- **Total Lines**: 135,887 (Rust)
 - **Crates**: 9 modular crates with clear responsibilities
-- **Source Files**: 430 `.rs` files
-- **Test Functions**: ~791 across all crates (116 core, 205 communication, 274 designer, 56 camtools, 96 visualizer, 44 ui)
-- **Clippy Warnings**: 137+ active warnings (92 in designer alone, 26 in camtools, 13 in core)
-- **Clippy Errors**: 1 hard error in gcodekit5-designer (loop condition mutation)
-- **Largest Files**: 3,907 lines (designer_canvas.rs), 3,836 lines (visualizer.rs), 2,720 lines (machine_control.rs)
-- **Files >1000 LOC**: 20+
-- **`#[allow(...)]` suppressions**: ~156 across 21 files
-- **`unsafe` blocks**: ~65 across 11 files (mostly OpenGL rendering)
-- **Public APIs**: 165+ in core crate alone, ~20-30% undocumented
+- **Source Files**: 488 `.rs` files
+- **Test Functions**: 1,614 across all crates (126 core, 240 communication, 648 designer, 135 visualizer, 64 camtools, 294 ui, 46 gcodeeditor, 43 settings, 18 devicedb)
+- **Clippy Warnings**: 0 (verified March 2026)
+- **Clippy Errors**: 0 (verified March 2026)
+- **Largest Files**: 2,897 lines (visualizer/mod.rs), 2,414 lines (machine_control/mod.rs), 1,659 lines (toolpath/generator.rs)
+- **Files >1000 LOC**: 13
+- **`#[allow(...)]` suppressions**: ~108 across codebase
+- **`unsafe` blocks**: ~55 across codebase (mostly OpenGL rendering)
+- **Public APIs**: 165+ in core crate alone, documented with examples
 
 ---
 
@@ -52,9 +52,13 @@ GCodeKit5 is a well-structured, modular Rust project with solid architectural fo
 
 ### 1.2 Implement Comprehensive Error Types ✅ COMPLETED (Feb 2026)
 **Previous State**: 5 of 9 crates had `thiserror` error types; 4 crates (camtools, devicedb, gcodeeditor, settings) lacked structured errors  
-**Current State**: All 9 crates now have `error.rs` with domain-specific `thiserror` error types  
+**Current State**: 8 of 9 crates now have `error.rs` with domain-specific `thiserror` error types  
 **Impact**: Medium - Enables typed error handling and better error context  
 **Effort**: Medium
+
+**Verification Notes (March 2026)**:
+- ✅ Verified: 8 crates have `error.rs` — core, communication, designer, visualizer, camtools, devicedb, gcodeeditor, settings
+- ⚠️ `gcodekit5-ui` does not have a dedicated `error.rs` — acceptable as it is a GTK4 presentation layer that delegates errors to other crates
 
 **What was done**:
 - Created `error.rs` for 4 crates following established patterns from designer/communication crates
@@ -101,6 +105,7 @@ GCodeKit5 is a well-structured, modular Rust project with solid architectural fo
 ### 2.1 Address Clippy Warnings ✅ COMPLETED
 **Previous State**: 155+ active Clippy warnings across 9 crates, plus 1 hard error in designer  
 **Current State**: **0 warnings, 0 errors** across all crates  
+**Verified**: March 2026 — `cargo clippy --all` confirms 0 warnings, 0 errors  
 **Impact**: Code health, CI readiness  
 
 **What Was Fixed**:
@@ -128,7 +133,8 @@ GCodeKit5 is a well-structured, modular Rust project with solid architectural fo
 
 ### 2.2 Reduce Cognitive Complexity — Split Large Files ✅ COMPLETED
 **Previous State**: 20 files exceeded 1,000 lines; top file was 3,907 lines  
-**Current State**: 13 files exceed 1,000 lines; top file is 2,898 lines  
+**Current State**: 13 files exceed 1,000 lines; top file is 2,897 lines  
+**Verified**: March 2026 — all 13 directory-module splits confirmed  
 **Impact**: High - Improved maintainability  
 
 **Files Split** (13 monolithic files → 40+ focused modules):
@@ -156,10 +162,23 @@ GCodeKit5 is a well-structured, modular Rust project with solid architectural fo
 - `pub use` re-exports to preserve public API
 - No external import changes required
 
-**Remaining large files** (not split — single-purpose or mostly constructor):
-- `visualizer/mod.rs` (2,898) — ~1,145-line `new()` constructor
-- `machine_control/mod.rs` (2,422) — ~2,260-line `new()` constructor
-- These are GTK4 widget constructors that can't be split without restructuring
+**Remaining large files (verified March 2026)**:
+```
+2,897 crates/gcodekit5-ui/src/ui/gtk/visualizer/mod.rs
+2,414 crates/gcodekit5-ui/src/ui/gtk/machine_control/mod.rs
+1,659 crates/gcodekit5-designer/src/toolpath/generator.rs
+1,533 crates/gcodekit5-ui/src/ui/gtk/designer_canvas/input.rs
+1,388 crates/gcodekit5-designer/src/pocket_operations.rs
+1,329 crates/gcodekit5-visualizer/src/utils/phase6_extended.rs
+1,317 crates/gcodekit5-camtools/src/tabbed_box/mod.rs
+1,281 crates/gcodekit5-ui/src/ui/gtk/tools_manager/mod.rs
+1,177 crates/gcodekit5-ui/src/ui/gtk/materials_manager.rs
+1,164 crates/gcodekit5-camtools/src/vector_engraver.rs
+1,101 crates/gcodekit5-camtools/src/gerber.rs
+1,075 crates/gcodekit5-ui/src/ui/gtk/designer_canvas/rendering.rs
+1,022 crates/gcodekit5-visualizer/src/utils/phase7.rs
+```
+- Top 2 are GTK4 widget constructors that can't be split without restructuring
 
 ---
 
@@ -181,6 +200,7 @@ GCodeKit5 is a well-structured, modular Rust project with solid architectural fo
 
 ### 2.4 Complete TODO/FIXME Items ✅ COMPLETED
 **Current State**: Reduced from 15 to 9 TODOs (all remaining are feature work tracked in GitHub issues)  
+**Verified**: March 2026 — exactly 9 TODOs confirmed in codebase, all tagged with GitHub issue numbers  
 **Impact**: Medium - Technical debt  
 **Effort**: Variable
 
@@ -190,9 +210,9 @@ GCodeKit5 is a well-structured, modular Rust project with solid architectural fo
 3. ✅ `visualizer/mod.rs` - **TODO(#18)**: Added dirty flag to `Visualizer` struct; render loop now skips buffer regeneration when data unchanged
 
 **Remaining** (9 TODOs — feature work, properly tracked in GitHub issues):
-- `TODO(#16)` — 3D mesh preview integration (1 item in file_ops.rs)
-- `TODO(#17)` — File operations alignment with shape structures (1 item in file_ops.rs)
-- `TODO(#19)` — 3D rendering features in scene3d.rs (7 items: toolpath bounds, shape types, rendering, shadow projections, mesh IDs, camera positioning, path conversion)
+- `TODO(#16)` — 3D mesh preview integration (1 item in file_ops.rs:311)
+- `TODO(#17)` — File operations alignment with shape structures (1 item in file_ops.rs:781)
+- `TODO(#19)` — 3D rendering features in scene3d.rs (7 items at lines 178, 202, 307, 308, 323, 348, 386: toolpath bounds, shape types, rendering, shadow projections, mesh IDs, camera positioning, path conversion)
 
 ---
 
@@ -289,21 +309,22 @@ See `LEGACY_CODE.md` for the complete inventory with recommendations.
 ## 4. Testing & Coverage (HIGH PRIORITY)
 
 ### 4.1 Establish Testing Strategy ✅ DONE
-**Current State**: 855+ test functions — weak crates strengthened  
+**Current State**: 1,614 test functions — all crates at healthy test coverage  
+**Verified**: March 2026 — test counts independently verified via `grep -r '#[test]'`  
 **Impact**: High - Catch regressions early  
 **Effort**: Medium-High (ongoing)
 
-**Updated Coverage by Crate** (Jul 2025):
+**Updated Coverage by Crate** (March 2026):
 ```
-gcodekit5-designer:       274 tests (strongest)
-gcodekit5-communication:  205 tests (strong)
-gcodekit5-core:           116 tests (good)
-gcodekit5-visualizer:      96 tests (moderate)
-gcodekit5-camtools:        56 tests (needs more)
-gcodekit5-ui:              44 tests (needs more)
-gcodekit5-gcodeeditor:     46 tests (improved from 25 — +21 new)
-gcodekit5-settings:        43 tests (improved from 14 — +29 new)
-gcodekit5-devicedb:        18 tests (improved from 4  — +14 new)
+gcodekit5-designer:       648 tests (strongest — doubled since Feb 2026)
+gcodekit5-ui:             294 tests (strong — 6.7x growth)
+gcodekit5-communication:  240 tests (strong — 17% growth)
+gcodekit5-visualizer:     135 tests (good — 41% growth)
+gcodekit5-core:           126 tests (good — 9% growth)
+gcodekit5-camtools:        64 tests (moderate — 14% growth)
+gcodekit5-gcodeeditor:     46 tests (stable)
+gcodekit5-settings:        43 tests (stable)
+gcodekit5-devicedb:        18 tests (stable)
 ```
 
 **Tests Added**:
@@ -318,9 +339,9 @@ gcodekit5-devicedb:        18 tests (improved from 4  — +14 new)
 
 **Remaining Gaps**:
 ```
-1. No benchmarks in any crate (benches/ directories are empty)
-2. No property-based or fuzz testing
-3. No mutation testing
+1. Benchmarks exist only in designer crate (toolpath_bench.rs); other 8 crates have none
+2. No property-based or fuzz testing beyond proptest (present in communication, designer, visualizer)
+3. No mutation testing results published yet (CI workflow exists but needs baseline run)
 ```
 
 **Recommendations**:
@@ -433,7 +454,8 @@ cargo flamegraph --bin gcodekit5
 ---
 
 ### 5.3 Add Performance Benchmarks
-**Current State**: No benchmarks in repo  
+**Current State**: 1 benchmark file exists (gcodekit5-designer/benches/toolpath_bench.rs with criterion)  
+**Verified**: March 2026 — criterion dependency confirmed in designer Cargo.toml; no benchmarks in other 8 crates  
 **Impact**: Low (quality metric) but important for tracking  
 **Effort**: Low
 
@@ -546,6 +568,7 @@ copy_button.connect_clicked({
 
 ### 7.1 Audit and Minimize Dependencies ✅ DONE
 **Current State**: ~~Cargo.lock likely has 100+ total dependencies~~ Audited and cleaned  
+**Verified**: March 2026 — `deny.toml` confirmed with advisory, license, ban, and source checks; CI workflow `code-quality.yml` runs `cargo-deny` on push/PR  
 **Impact**: Low - But important for security and build times  
 **Effort**: Low
 
@@ -587,6 +610,7 @@ copy_button.connect_clicked({
 
 ### 7.3 MSRV is Already Defined ✅
 **Current State**: `rust-version = "1.88"` is set in workspace Cargo.toml; CI verifies via `msrv.yml` workflow  
+**Verified**: March 2026 — confirmed in Cargo.toml line 18 and `.github/workflows/msrv.yml`  
 **Status**: COMPLETE - No action needed
 
 ---
@@ -595,6 +619,7 @@ copy_button.connect_clicked({
 
 ### 8.1 Create Architecture Decision Records (ADRs) ✅ DONE
 **Current State**: ~~Some design decisions in comments or GTK4.md~~ 10 ADRs documenting key decisions  
+**Verified**: March 2026 — all 10 ADR files confirmed in `docs/adr/`  
 **Impact**: Low-Medium - Reduces future confusion  
 **Effort**: Low
 
@@ -617,6 +642,10 @@ copy_button.connect_clicked({
 **Impact**: Low - Developer experience  
 **Effort**: Low
 
+**Status**: ✅ DONE — March 2026. Added `//!` module-level documentation to 64 source files
+across all crates (camtools, communication, core, designer, devicedb, gcodeeditor, settings, ui, visualizer).
+Each module now has a descriptive header documenting its purpose and key responsibilities.
+
 **Add to each module**:
 ```rust
 //! # Designer State
@@ -635,15 +664,18 @@ copy_button.connect_clicked({
 ---
 
 ### 8.3 Create User & Developer Guides
-**Current State**: README exists but limited developer docs  
+**Current State**: README exists; DEVELOPMENT.md, CONTRIBUTING.md, and ARCHITECTURE.md all exist  
+**Verified**: March 2026 — all three files confirmed present in project root  
 **Impact**: Low - New contributor onboarding  
 **Effort**: Low-Medium
 
-**Create**:
-- `DEVELOPMENT.md` - Setup, build, test guide
-- `CONTRIBUTING.md` - Code style, PR process
-- `ARCHITECTURE.md` - System overview (expand GTK4.md)
-- Example plugins/custom tools guide
+**Status**: ✅ DONE — Core developer guides created:
+- `DEVELOPMENT.md` — Prerequisites, platform setup, build instructions (~450 lines)
+- `CONTRIBUTING.md` — Code style, branching, testing, PR process
+- `ARCHITECTURE.md` — System overview and design patterns
+
+**Remaining**:
+- Example plugins/custom tools guide (deferred to plugin system implementation)
 
 ---
 
@@ -651,8 +683,10 @@ copy_button.connect_clicked({
 
 ### 9.1 Add rustfmt.toml Configuration
 **Current State**: No `.rustfmt.toml` or `rustfmt.toml` found — using rustfmt defaults  
+**Verified**: March 2026 — still missing, NOT YET IMPLEMENTED  
 **Impact**: Medium — AGENTS.md specifies "4 spaces, max 100 width, reorder_imports=true, Unix newlines" but no config enforces it  
 **Effort**: Low
+**Status**: ❌ NOT DONE
 
 **Create `rustfmt.toml`** in project root:
 ```toml
@@ -667,8 +701,10 @@ newline_style = "Unix"
 
 ### 9.2 Add clippy.toml Configuration
 **Current State**: No `.clippy.toml` or `clippy.toml` found — using clippy defaults  
+**Verified**: March 2026 — still missing, NOT YET IMPLEMENTED  
 **Impact**: Low — AGENTS.md specifies "cognitive complexity ≤30, warn on missing docs" but no config enforces it  
 **Effort**: Low
+**Status**: ❌ NOT DONE
 
 **Create `clippy.toml`** in project root:
 ```toml
@@ -680,8 +716,10 @@ too-many-arguments-threshold = 7
 
 ### 9.3 Fix Communication→Visualizer Coupling
 **Current State**: `gcodekit5-communication` depends on `gcodekit5-visualizer`, creating tighter coupling than expected for a protocol/transport crate  
+**Verified**: March 2026 — dependency confirmed in `crates/gcodekit5-communication/Cargo.toml` line 13  
 **Impact**: Medium — Makes the communication layer harder to reuse independently  
 **Effort**: Medium
+**Status**: ❌ NOT DONE
 
 **Dependency Graph**:
 ```
@@ -702,9 +740,11 @@ core ← (foundation, no internal deps)
 ---
 
 ### 9.4 Reduce `#[allow(...)]` Suppressions
-**Current State**: ~156 `#[allow(...)]` attributes across 21 files, heavily concentrated in UI  
+**Current State**: ~108 `#[allow(...)]` attributes across codebase (down from ~156)  
+**Verified**: March 2026 — reduced by ~31% but still concentrated in UI crate  
 **Impact**: Low-Medium — Suppressions mask real issues  
 **Effort**: Medium
+**Status**: ⚠️ IN PROGRESS — partially reduced
 
 **Top offenders**:
 ```
@@ -718,18 +758,22 @@ gcodekit5-ui/src/gtk_app.rs:                   97 allow attributes
 ---
 
 ### 9.5 Consolidate Wildcard Imports
-**Current State**: 65 wildcard imports found. Most are acceptable (`use super::*` in tests, `pub use` re-exports), but `use glow::*` appears 3 times in renderer code  
+**Current State**: ~20 wildcard imports found in production code. Most are `pub use` re-exports or `use super::*` patterns. `use glow::*` appears 2 times (shaders.rs, stock_texture.rs); `use ControllerState::*` and `use CommunicatorState::*` appear in match blocks  
+**Verified**: March 2026 — reduced from 65 total; remaining are mostly acceptable patterns  
 **Impact**: Low — Wildcard imports from external crates pollute the namespace  
 **Effort**: Low
+**Status**: ⚠️ PARTIALLY DONE — 2 `use glow::*` remain
 
 **Recommendation**: Replace `use glow::*` with explicit imports of used symbols.
 
 ---
 
 ### 9.6 Add `unsafe` Block Documentation
-**Current State**: ~65 `unsafe` blocks across 11 files, mostly in OpenGL rendering  
+**Current State**: ~55 `unsafe` blocks across codebase, mostly in OpenGL rendering. **Zero** `// SAFETY:` comments found  
+**Verified**: March 2026 — 0 SAFETY comments confirmed; unsafe count reduced from ~65 to ~55 but still undocumented  
 **Impact**: Low-Medium — Undocumented unsafe is a maintenance risk  
 **Effort**: Low
+**Status**: ❌ NOT DONE — no SAFETY comments added yet
 
 **Concentrated in**:
 ```
@@ -746,9 +790,11 @@ gcodekit5-ui/src/ui/gtk/stock_texture.rs:  4 unsafe blocks
 ## 10. Tooling & Workflow (LOW PRIORITY)
 
 ### 10.1 Pre-Commit Hooks
-**Current State**: Likely no hooks configured  
+**Current State**: Pre-commit hook exists but only runs bd (Beads issue tracking) sync — does NOT run cargo fmt, clippy, or tests  
+**Verified**: March 2026  
 **Impact**: Low - Catches issues before commit  
 **Effort**: Low
+**Status**: ⚠️ PARTIAL — hook exists but doesn't enforce code quality
 
 **Create** `.git/hooks/pre-commit`:
 ```bash
@@ -776,67 +822,58 @@ cargo test --lib || exit 1
 ---
 
 ### 10.3 Create Development Container
-**Current State**: Setup documented but manual  
+**Current State**: ✅ DONE — `.devcontainer/` exists with Containerfile and devcontainer.json  
+**Verified**: March 2026 — full configuration with VS Code extensions (rust-analyzer, lldb, crates, toml, errorlens, gitlens, todo-tree), format-on-save, and clippy-based check  
 **Impact**: Low - Improves onboarding  
 **Effort**: Low
-
-**Add** `.devcontainer/Dockerfile` and `devcontainer.json`:
-```json
-{
-  "image": "mcr.microsoft.com/devcontainers/rust:latest",
-  "customizations": {
-    "vscode": {
-      "extensions": ["rust-lang.rust-analyzer", "tomoki1207.pdf"]
-    }
-  }
-}
-```
 
 Benefits: One-click development setup, consistent environment
 
 ---
 
-## Priority Matrix & Roadmap
+## Priority Matrix & Roadmap (Updated March 2026)
 
-### Immediate (Next 1-2 Releases)
-| Issue | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| 2.1 - Fix Clippy error in designer | Low | High | **✅ DONE** |
-| 1.1 - Reduce unwraps/expects | Medium | High | **P0** |
-| 9.1 - Add rustfmt.toml | Low | Medium | **P1** |
-| 9.2 - Add clippy.toml | Low | Medium | **P1** |
-| 2.1 - Fix remaining Clippy warnings | Low | Low | **✅ DONE** |
-| 2.3 - Remove debug code | Low | Low | **✅ DONE** |
-| 4.1 - Testing strategy | Medium | High | **✅ DONE** |
-| 9.6 - Document unsafe blocks | Low | Medium | **P1** |
+### Completed Items
+| Issue | Status | Verified |
+|-------|--------|----------|
+| 1.1 - Reduce unwraps/expects | ✅ DONE | March 2026 — 0 unsafe unwrap/expect in production |
+| 1.2 - Error types (8/9 crates) | ✅ DONE | March 2026 — UI crate intentionally excluded |
+| 1.3 - Null/invalid state guards | ✅ DONE | March 2026 — 41 debug_assert! + 2 state machines |
+| 2.1 - Fix Clippy warnings | ✅ DONE | March 2026 — 0 warnings, 0 errors |
+| 2.2 - Split large files | ✅ DONE | March 2026 — 13 files split, 13 files >1000 LOC |
+| 2.3 - Remove debug code | ✅ DONE | March 2026 — 0 println/eprintln in production |
+| 2.4 - Complete TODOs | ✅ DONE | March 2026 — 9 remaining are tracked feature work |
+| 3.1 - Type aliases | ✅ DONE | March 2026 — aliases module verified |
+| 3.2 - API documentation | ✅ DONE | March 2026 — doc comments with examples |
+| 3.3 - Builder pattern | ✅ DONE | March 2026 — 6 types with `with_*` methods |
+| 3.4 - Legacy code inventory | ✅ DONE | March 2026 — LEGACY_CODE.md verified |
+| 4.1 - Testing strategy | ✅ DONE | March 2026 — 1,614 tests (2x since Feb 2026) |
+| 4.2 - Integration tests | ✅ DONE | March 2026 — 26 tests in 2 files |
+| 4.3 - Mutation testing | ✅ DONE | March 2026 — CI workflow + config verified |
+| 7.1 - Dependency audit | ✅ DONE | March 2026 — deny.toml + CI verified |
+| 7.2 - Dependencies updated | ✅ DONE | March 2026 — dependabot configured |
+| 7.3 - MSRV defined | ✅ DONE | March 2026 — rust-version = "1.88" |
+| 8.1 - ADRs | ✅ DONE | March 2026 — 10 ADRs verified |
+| 8.3 - Developer guides | ✅ DONE | March 2026 — DEVELOPMENT, CONTRIBUTING, ARCHITECTURE |
+| 10.3 - Dev container | ✅ DONE | March 2026 — Containerfile + devcontainer.json |
 
-### Short-term
-| Issue | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| 2.2 - Split large files (20→13 files >1000 LOC) | Medium | High | **✅ DONE** |
-| 1.2 - Add error types to 4 remaining crates | Medium | Medium | **P1** |
-| 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** |
-| 9.4 - Audit #[allow()] suppressions | Medium | Medium | **P1** |
-| 3.1 - Complex types | Medium | Medium | **✅ DONE** |
-| 6.2 - Separate logic | Medium | High | **P1** |
-| 3.2 - API docs (20-30% missing) | Medium | Medium | ✅ DONE |
-| 3.3 - Builder pattern | Low | Low-Medium | ✅ DONE |
-| 3.4 - Legacy code inventory | Low | Medium | ✅ DONE |
-
-### Medium-term
-| Issue | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| 6.1 - Event bus | High | High | **P1** |
-| 4.3 - Mutation testing | Low | Medium | **P2** |
-| 2.4 - Complete TODOs | Variable | Medium | ✅ COMPLETED |
-| 7.2 - Dependency updates | Low | Low | **P2** |
-
-### Long-term
-| Issue | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| 6.3 - Plugin system | High | Low | **P3** |
-| 8.1 - ADRs | Low | Low | **P2** |
-| 8.3 - Developer guides | Low | Low | **P2** |
+### Remaining Items (Prioritized)
+| Issue | Effort | Impact | Priority | Status |
+|-------|--------|--------|----------|--------|
+| 9.1 - Add rustfmt.toml | Low | Medium | **P1** | ❌ NOT DONE |
+| 9.2 - Add clippy.toml | Low | Medium | **P1** | ❌ NOT DONE |
+| 9.6 - Document unsafe blocks | Low | Medium | **P1** | ❌ NOT DONE |
+| 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ❌ NOT DONE |
+| 9.4 - Reduce #[allow()] suppressions | Medium | Medium | **P2** | ⚠️ IN PROGRESS (108→from 156) |
+| 9.5 - Consolidate wildcard imports | Low | Low | **P2** | ⚠️ PARTIAL (2 glow::* remain) |
+| 10.1 - Pre-commit hooks | Low | Low | **P2** | ⚠️ PARTIAL (bd only, no cargo checks) |
+| 5.1 - Profile hot paths | Medium | Medium-High | **P2** | ❌ NOT DONE |
+| 5.2 - Optimize memory usage | Low-Med | Medium | **P2** | ❌ NOT DONE |
+| 5.3 - Performance benchmarks | Low | Low | **P2** | ⚠️ PARTIAL (1 bench in designer only) |
+| 6.1 - Event bus | High | High | **P2** | ❌ NOT DONE |
+| 6.2 - Separate UI/business logic | Medium-High | High | **P2** | ❌ NOT DONE |
+| 6.3 - Plugin system | High | Low-Med | **P3** | ❌ NOT DONE |
+| 8.2 - Module-level docs | Low | Low | **P3** | ✅ DONE |
 
 ---
 
@@ -871,73 +908,87 @@ Benefits: One-click development setup, consistent environment
 
 ## Conclusion
 
-GCodeKit5 has a solid foundation with modular architecture and good separation of concerns. The recommendations in this document focus on:
+GCodeKit5 has matured significantly since the initial improvement analysis. The codebase has grown to 135K+ lines across 488 files with 1,614 tests — a near-doubling of test coverage. The major improvements (error handling, clippy compliance, file splitting, testing infrastructure) are **all verified complete** as of March 2026.
 
-1. **Short-term stability**: Fix unwraps, complete TODOs, reduce complexity
-2. **Mid-term quality**: Improve testing, error handling, documentation
-3. **Long-term flexibility**: Decouple components, enable extensibility
+### Progress Summary
+- **20 of 35 improvement items are COMPLETE** (57%)
+- **4 items are IN PROGRESS or PARTIAL** (11%)
+- **11 items remain NOT DONE** (31%)
 
-Implementing these changes will make the codebase more robust, maintainable, and welcoming to new contributors.
+### Key Achievements Since Feb 2026
+1. Test count grew from ~791 to 1,614 (+104%)
+2. Source files grew from 430 to 488 (modular structure)
+3. Clippy warnings: 137+ → 0
+4. Files >1000 LOC: 20+ → 13
+5. `#[allow(...)]` suppressions: ~156 → ~108 (-31%)
+6. `unsafe` blocks: ~65 → ~55 (-15%)
+7. Full CI pipeline: code-quality, test-coverage, mutation-testing, MSRV, release
+
+### Top Priorities Remaining
+1. **Quick wins**: `rustfmt.toml`, `clippy.toml`, `// SAFETY:` comments (all Low effort)
+2. **Medium effort**: Decouple communication→visualizer, reduce `#[allow()]` suppressions
+3. **Larger efforts**: Event bus system, UI/business logic separation (architectural)
 
 **Recommended Next Steps**:
-1. Create GitHub issues for all P0 items
-2. Assign to Q1 2026 milestone
-3. Add to pull request checklist immediately
-4. Setup pre-commit hooks this week
-5. Schedule quarterly review of this document
+1. Create `rustfmt.toml` and `clippy.toml` immediately (10 min)
+2. Add `// SAFETY:` comments to all 55 unsafe blocks (2-3 hours)
+3. Plan communication→visualizer decoupling for next sprint
+4. Schedule quarterly review of this document
 
 ---
 
-## Appendix A: Code Metrics (Feb 2026)
+## Appendix A: Code Metrics (March 2026)
 
 ```
-Total Lines of Code:     130,212
+Total Lines of Code:     135,887
 Crates:                  9
-Source Files:            430
-Test Functions:          ~791
-Largest File:            3,907 lines (designer_canvas.rs)
-Files >1000 LOC:         20+
-Average File Size:       303 lines
-Clippy Warnings:         137+ (1 hard error in designer)
-Clippy Auto-fixable:     ~20
-#[allow(..)] Attrs:      ~156 across 21 files
-unsafe blocks:           ~65 across 11 files
-Wildcard Imports:        65 (mostly acceptable)
+Source Files:            488
+Test Functions:          1,614
+Largest File:            2,897 lines (visualizer/mod.rs)
+Files >1000 LOC:         13
+Average File Size:       278 lines
+Clippy Warnings:         0 ✅
+Clippy Errors:           0 ✅
+#[allow(..)] Attrs:      ~108 (down from ~156)
+unsafe blocks:           ~55 (down from ~65)
+Wildcard Imports:        ~20 (mostly acceptable pub use re-exports)
 todo!/unimplemented!:    0 ✅
-println!/eprintln!:      17 files (mostly build scripts/tests)
-#[allow(dead_code)]:     19 instances
-Test to Code Ratio:      ~1:165 (tests/KLOC)
+println!/eprintln!:      2 (i18n.rs only, pre-tracing init — intentional)
+#[allow(dead_code)]:     45
+// SAFETY: comments:     0 ❌ (should be ~55)
+Test to Code Ratio:      ~11.9 tests/KLOC (up from ~6.1)
 ```
 
 ### Error Handling Maturity by Crate
 ```
-✅ thiserror + error.rs:  core, communication, designer, visualizer
-❌ anyhow only:           camtools, devicedb, gcodeeditor, settings, ui
+✅ thiserror + error.rs:  core, communication, designer, visualizer, camtools, devicedb, gcodeeditor, settings
+⚠️ No error.rs (UI layer): ui
 ```
 
 ### CI Pipeline Status
 ```
-✅ code-quality.yml:  Clippy unwrap checking + rustfmt validation
-✅ msrv.yml:          MSRV verification (Rust 1.88)
-✅ release.yml:       Multi-platform builds (Linux, macOS, Windows)
-❌ No benchmark CI
-❌ No coverage CI
+✅ code-quality.yml:       Clippy unwrap checking + rustfmt validation + cargo-deny audit
+✅ msrv.yml:               MSRV verification (Rust 1.88)
+✅ release.yml:            Multi-platform builds (Linux, macOS, Windows)
+✅ test-coverage.yml:      Tarpaulin coverage (x86_64 + aarch64 matrix)
+✅ mutation-testing.yml:   Weekly mutation testing with cargo-mutants
 ```
 
-## Appendix B: Files for Quick Review (Feb 2026)
+## Appendix B: Files for Quick Review (March 2026)
 
-**Start Here** (Largest files, most impactful to split):
-1. `crates/gcodekit5-ui/src/ui/gtk/designer_canvas.rs` (3,907 lines)
-2. `crates/gcodekit5-ui/src/ui/gtk/visualizer.rs` (3,836 lines)
-3. `crates/gcodekit5-ui/src/ui/gtk/machine_control.rs` (2,720 lines)
-4. `crates/gcodekit5-designer/src/model.rs` (2,524 lines)
+**Largest files** (candidates for future splitting):
+1. `crates/gcodekit5-ui/src/ui/gtk/visualizer/mod.rs` (2,897 lines — GTK constructor)
+2. `crates/gcodekit5-ui/src/ui/gtk/machine_control/mod.rs` (2,414 lines — GTK constructor)
+3. `crates/gcodekit5-designer/src/toolpath/generator.rs` (1,659 lines)
+4. `crates/gcodekit5-ui/src/ui/gtk/designer_canvas/input.rs` (1,533 lines)
 
-**Error Handling Review**:
-1. `crates/gcodekit5-core/src/error.rs` (main error types)
-2. `crates/gcodekit5-communication/src/firmware/grbl/controller.rs` (unwrap calls)
-3. `crates/gcodekit5-designer/src/slice_toolpath.rs` (unwrap calls)
+**Remaining Action Items**:
+1. Create `rustfmt.toml` (Section 9.1)
+2. Create `clippy.toml` (Section 9.2)
+3. Add `// SAFETY:` comments to all 55 unsafe blocks (Section 9.6)
+4. Decouple communication→visualizer dependency (Section 9.3)
+5. Replace 2 remaining `use glow::*` with explicit imports (Section 9.5)
 
-**Testing Priority** (weakest coverage):
-1. `crates/gcodekit5-gcodeeditor/` (5 tests)
-2. `crates/gcodekit5-settings/` (2 test files)
-3. `crates/gcodekit5-devicedb/` (1 integration test)
+**Testing Priority** (strongest growth opportunity):
+1. `crates/gcodekit5-devicedb/` (18 tests — smallest crate by test count)
+2. Add benchmarks to more crates (currently only designer has criterion benches)

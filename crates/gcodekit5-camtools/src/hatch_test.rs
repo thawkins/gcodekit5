@@ -1,3 +1,5 @@
+//! Tests for hatch generation and Gerber rubout operations.
+
 #[cfg(test)]
 mod tests {
     use crate::gerber::{GerberConverter, GerberLayerType, GerberParameters};

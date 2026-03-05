@@ -1,3 +1,8 @@
+//! # UI Helper Utilities
+//!
+//! Common utility functions shared across UI modules, including
+//! widget creation helpers and formatting utilities.
+
 use crate::editor::EditorBridge;
 use crate::ui::gtk::device_info::CapabilityItem;
 use crate::ui::main_window::MainWindow;

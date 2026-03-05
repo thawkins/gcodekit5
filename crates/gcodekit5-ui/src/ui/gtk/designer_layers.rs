@@ -1,3 +1,8 @@
+//! # Designer Layers Panel
+//!
+//! UI panel for managing design layers in the visual designer.
+//! Supports layer visibility toggling, ordering, and selection.
+
 use gtk4::gdk::ModifierType;
 use gtk4::prelude::*;
 use gtk4::{Box, Button, DrawingArea, Entry, Image, Label, ListBox, Orientation, ScrolledWindow};

@@ -1,3 +1,8 @@
+//! # Rectangle Shape
+//!
+//! A rectangular design shape with optional corner radius (rounded corners)
+//! and slot mode. Supports rotation and CSG boolean operations.
+
 use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};

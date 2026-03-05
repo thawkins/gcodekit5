@@ -1,3 +1,9 @@
+//! # 3D Renderer
+//!
+//! OpenGL-based 3D rendering pipeline for the G-code visualizer.
+//! Handles shader compilation, buffer management, and draw calls
+//! for toolpath, grid, axis, and stock visualization.
+
 use gcodekit5_visualizer::{GCodeCommand, Point3D, Visualizer};
 use glow::*;
 use std::rc::Rc;

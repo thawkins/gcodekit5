@@ -1,3 +1,9 @@
+//! # Toolpath Rendering Cache
+//!
+//! Caches parsed toolpath data as GPU-ready vertex buffers for
+//! efficient rendering. Invalidates and rebuilds when the
+//! G-code file changes.
+
 use super::visualizer::{GCodeCommand, Point3D};
 use std::fmt::Write;
 use tracing::{debug, trace};

@@ -1,3 +1,9 @@
+//! # Selection Manager
+//!
+//! Manages shape selection state and selection operations in the designer.
+//! Tracks primary and multi-selection, handles point-based and rectangle-based
+//! selection, and maintains selection highlight state.
+
 use crate::shape_store::ShapeStore;
 use crate::spatial_index::{Bounds, SpatialIndex};
 use crate::Point;

@@ -1,3 +1,8 @@
+//! # Internationalization (i18n)
+//!
+//! Provides translation support using gettext.
+//! Loads locale data and exposes the `i18n` macro for translatable strings.
+
 use std::sync::Once;
 
 static INIT: Once = Once::new();

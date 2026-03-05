@@ -1,3 +1,9 @@
+//! # Text Shape
+//!
+//! A text design shape that renders glyphs as Lyon paths for CNC toolpath
+//! generation. Uses the font manager for font loading and supports
+//! bold, italic, font size, and letter spacing.
+
 use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};

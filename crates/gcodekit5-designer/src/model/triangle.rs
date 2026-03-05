@@ -1,3 +1,8 @@
+//! # Triangle Shape
+//!
+//! An isosceles triangle design shape defined by width, height, and center.
+//! Supports rotation and CSG boolean operations.
+
 use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};

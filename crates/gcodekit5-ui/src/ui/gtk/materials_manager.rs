@@ -1,3 +1,9 @@
+//! # Materials Manager Panel
+//!
+//! UI panel for managing the materials database. Provides CRUD
+//! operations for material definitions including feed rates,
+//! spindle speeds, and depth-of-cut parameters per tool type.
+
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, ButtonsType, CheckButton, ComboBoxText, Entry, Frame, Grid, Image, Label,

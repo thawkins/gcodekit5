@@ -1,3 +1,8 @@
+//! # Tools Manager Event Handlers
+//!
+//! Signal handlers and callbacks for the tools manager panel,
+//! including tool selection, editing, and deletion events.
+
 use super::*;
 
 impl ToolsManagerView {

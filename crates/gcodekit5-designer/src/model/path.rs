@@ -1,3 +1,9 @@
+//! # Freeform Path Shape
+//!
+//! A freeform path design shape backed by a CSG `Sketch`.
+//! Used for imported SVG/DXF paths and boolean operation results.
+//! Supports serialization via SVG path data.
+
 use lyon::math::{point, Transform};
 use lyon::path::iterator::*;
 use lyon::path::Path;

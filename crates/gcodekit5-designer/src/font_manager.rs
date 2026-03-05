@@ -1,3 +1,9 @@
+//! # Font Manager
+//!
+//! Manages font loading, caching, and lookup for the designer's text tool.
+//! Uses `fontdb` for system font discovery and `rusttype` for glyph rendering.
+//! Fonts are cached in a global `OnceLock` for thread-safe reuse.
+
 use fontdb::{Database, Family, Query, Stretch, Style, Weight};
 use rusttype::Font;
 use std::{

@@ -1,3 +1,8 @@
+//! # Spatial Manager
+//!
+//! Wraps the spatial index for efficient shape queries by point or bounding box.
+//! Enables O(log n) selection and intersection queries on the canvas.
+
 use crate::model::DesignerShape;
 use crate::model::Shape;
 use crate::spatial_index::{Bounds, SpatialIndex};

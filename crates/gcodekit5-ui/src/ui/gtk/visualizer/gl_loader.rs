@@ -1,3 +1,8 @@
+//! # OpenGL Loader
+//!
+//! Loads OpenGL function pointers from the system's GL library.
+//! Initializes the GL context for the visualizer's GLArea widget.
+
 use libloading::Library;
 use std::sync::Once;
 

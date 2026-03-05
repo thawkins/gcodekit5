@@ -1,3 +1,8 @@
+//! # G-code Editor Panel
+//!
+//! GTK4 text editor widget for G-code files with syntax highlighting,
+//! line numbers, and integration with the editor backend bridge.
+
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
 use glib;

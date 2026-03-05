@@ -1,3 +1,9 @@
+//! # GTK4 UI Module
+//!
+//! Root module for all GTK4 user interface components.
+//! Organizes the UI into sub-modules for each panel, dialog,
+//! and functional area of the application.
+
 pub mod cam_tools;
 pub mod command_history;
 pub mod designer;

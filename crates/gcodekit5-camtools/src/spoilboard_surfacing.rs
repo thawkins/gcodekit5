@@ -1,3 +1,9 @@
+//! # Spoilboard Surfacing Generator
+//!
+//! Generates G-code for flattening/surfacing CNC spoilboards using a
+//! fly cutter or large end mill. Produces a raster pattern with
+//! configurable stepover, depth, and spindle speed.
+
 use anyhow::Result;
 
 #[derive(Debug, Clone)]

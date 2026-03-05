@@ -1,3 +1,9 @@
+//! # Navigation Cube
+//!
+//! A 3D orientation cube widget for the visualizer that shows
+//! the current view direction and allows quick view changes
+//! (top, front, side, isometric) via click interaction.
+
 use gcodekit5_core::Shared;
 use gcodekit5_visualizer::Camera3D;
 use gtk4::prelude::*;

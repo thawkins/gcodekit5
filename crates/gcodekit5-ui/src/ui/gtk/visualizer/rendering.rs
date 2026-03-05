@@ -1,3 +1,9 @@
+//! # Visualizer Rendering
+//!
+//! Implements the OpenGL rendering pipeline for the visualizer,
+//! including toolpath drawing, grid rendering, axis display,
+//! and stock material visualization.
+
 use super::*;
 
 use gcodekit5_core::constants as core_constants;

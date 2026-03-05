@@ -1,3 +1,8 @@
+//! # Status Bar
+//!
+//! The application status bar displaying connection state,
+//! machine status, current position, and progress information.
+
 use gcodekit5_core::units::{
     format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
 };

@@ -1,3 +1,8 @@
+//! # Designer Toolbox Panel
+//!
+//! Toolbar panel for the visual designer providing shape creation tools,
+//! selection tools, and design operation buttons.
+
 use crate::t;
 use crate::ui::gtk::fast_shape_gallery::FastShapeGallery;
 use gcodekit5_core::units::MeasurementSystem;

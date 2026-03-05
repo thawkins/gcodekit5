@@ -1,3 +1,9 @@
+//! # Device Manager
+//!
+//! Handles loading, saving, and managing CNC device profiles.
+//! Supports JSON-based persistence and provides the main API
+//! for device CRUD operations.
+
 use crate::model::DeviceProfile;
 use crate::traits::DeviceProfileProvider;
 use anyhow::{Context, Result};

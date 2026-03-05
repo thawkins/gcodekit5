@@ -1,3 +1,9 @@
+//! # GTK Application Entry Point
+//!
+//! Initializes and runs the main GTK4 application window.
+//! Sets up the application lifecycle, CSS theming, and
+//! top-level window construction.
+
 use crate::ui::gtk::cam_tools::CamToolsView;
 use crate::ui::gtk::config_settings::ConfigSettingsView;
 use crate::ui::gtk::designer::DesignerView;

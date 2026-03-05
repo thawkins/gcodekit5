@@ -1,3 +1,9 @@
+//! # Tools Manager Panel
+//!
+//! UI panel for managing the cutting tool library. Provides CRUD
+//! operations for tool definitions including geometry, flute count,
+//! and recommended speeds and feeds.
+
 mod event_handlers;
 mod ui_builders;
 

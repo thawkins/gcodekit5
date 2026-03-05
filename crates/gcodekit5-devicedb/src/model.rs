@@ -1,3 +1,8 @@
+//! # Device Data Model
+//!
+//! Defines the data structures for CNC device profiles, including
+//! machine dimensions, firmware configuration, and connection settings.
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

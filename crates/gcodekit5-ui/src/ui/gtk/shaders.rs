@@ -1,3 +1,8 @@
+//! # GLSL Shader Sources
+//!
+//! Contains GLSL vertex and fragment shader source code used by
+//! the 3D renderer for toolpath visualization and grid rendering.
+
 use glow::*;
 use std::rc::Rc;
 

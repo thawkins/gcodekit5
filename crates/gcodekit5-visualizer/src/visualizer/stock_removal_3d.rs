@@ -1,3 +1,9 @@
+//! # 3D Stock Removal Simulation
+//!
+//! Simulates material removal from the stock block as the toolpath
+//! is executed. Uses a heightmap or voxel approach to visualize
+//! the workpiece after cutting operations.
+
 use glam::Vec3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

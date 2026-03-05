@@ -1,3 +1,8 @@
+//! # Visualizer Interaction
+//!
+//! Handles mouse and keyboard input for the 3D visualizer including
+//! camera rotation, panning, zooming, and object picking.
+
 use super::*;
 
 use gcodekit5_core::{shared, Shared};

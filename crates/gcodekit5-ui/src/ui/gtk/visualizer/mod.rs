@@ -1,3 +1,13 @@
+//! # G-code Visualizer Widget
+//!
+//! GTK4 GLArea-based widget for 3D visualization of G-code toolpaths.
+//! Handles OpenGL context setup, camera control, and rendering pipeline
+//! coordination.
+//!
+//! ## Thread Safety
+//! The visualizer uses `Rc<RefCell<>>` for state and must be accessed
+//! from the GTK main thread only.
+
 mod gl_loader;
 mod interaction;
 mod rendering;

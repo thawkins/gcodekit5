@@ -1,3 +1,9 @@
+//! # Device Information Panel
+//!
+//! Displays real-time information about the connected CNC device
+//! including firmware version, machine status, position coordinates,
+//! and connection state.
+
 use gtk4::prelude::*;
 use gtk4::{
     accessible::Property as AccessibleProperty, Align, Box, Button, CheckButton, Expander, Image,
