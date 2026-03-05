@@ -810,7 +810,7 @@ gcodekit5-visualizer/mesh_renderer.rs:     11 unsafe blocks
 ## 10. Tooling & Workflow (LOW PRIORITY)
 
 ### 10.1 Pre-Commit Hooks
-**Current State**: Pre-commit hook exists but only runs bd (Beads issue tracking) sync — does NOT run cargo fmt, clippy, or tests  
+**Current State**: Pre-commit hook runs cargo fmt --check, cargo clippy, and cargo test --lib  
 **Verified**: March 2026  
 **Impact**: Low - Catches issues before commit  
 **Effort**: Low
