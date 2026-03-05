@@ -249,16 +249,28 @@ impl SpatialIndex {
     }
 
     /// Query items in given bounds
+    ///
+    /// Returns deduplicated IDs of all items whose bounding boxes intersect
+    /// the query bounds. Uses a sorted + dedup approach since items can appear
+    /// in multiple quadtree nodes.
     pub fn query(&self, query_bounds: &Bounds) -> Vec<u64> {
         let mut results = Vec::new();
         query_node(&self.root, query_bounds, &mut results);
+        results.sort_unstable();
+        results.dedup();
         results
     }
 
     /// Query items containing a point
+    ///
+    /// Returns deduplicated IDs of all items whose bounding boxes contain
+    /// the point. Uses a sorted + dedup approach since items can appear
+    /// in multiple quadtree nodes.
     pub fn query_point(&self, x: f64, y: f64) -> Vec<u64> {
         let mut results = Vec::new();
         query_point_node(&self.root, x, y, &mut results);
+        results.sort_unstable();
+        results.dedup();
         results
     }
 

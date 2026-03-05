@@ -146,7 +146,7 @@ impl SelectionManager {
             point.x + tolerance,
             point.y + tolerance,
         );
-        let candidates = spatial_index.query(&query_bounds);
+        let candidates: HashSet<u64> = spatial_index.query(&query_bounds).into_iter().collect();
 
         // Pre-calculate group bounding boxes
         let mut group_bounds: HashMap<u64, (f64, f64, f64, f64)> = HashMap::new();
@@ -294,8 +294,8 @@ impl SelectionManager {
         };
         let rect_bounds = Bounds::new(rx, ry, rx + rw, ry + rh);
 
-        // Query spatial index for candidates
-        let candidates = spatial_index.query(&rect_bounds);
+        // Query spatial index for candidates — use HashSet for O(1) lookups
+        let candidates: HashSet<u64> = spatial_index.query(&rect_bounds).into_iter().collect();
 
         let mut groups_to_select = Vec::new();
 
