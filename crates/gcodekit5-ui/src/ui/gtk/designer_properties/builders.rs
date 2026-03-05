@@ -398,6 +398,7 @@ impl PropertiesPanel {
         )
     }
 
+    // GTK callback closure type inherently complex.
     #[allow(clippy::type_complexity)]
     pub(crate) fn build_cam_section() -> (
         Frame,

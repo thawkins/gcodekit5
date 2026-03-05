@@ -75,6 +75,7 @@ impl Command for AddShapeCommand {
 // Enum is usually better for performance and serialization.
 
 #[derive(Debug, Clone)]
+// Variant size disparity is acceptable — commands are short-lived and not stored in bulk.
 #[allow(clippy::large_enum_variant)]
 pub enum DesignerCommand {
     AddShape(AddShape),

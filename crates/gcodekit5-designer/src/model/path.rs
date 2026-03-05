@@ -174,6 +174,7 @@ impl DesignPath {
             angle_between((1.0, 0.0), v)
         }
 
+        // SVG path parsing requires all geometric parameters.
         #[allow(clippy::too_many_arguments)]
         fn ellipse_transform_point(
             cx: f32,
@@ -191,6 +192,7 @@ impl DesignPath {
             (x, y)
         }
 
+        // SVG arc parameters are inherently numerous.
         #[allow(clippy::too_many_arguments)]
         #[allow(clippy::type_complexity)]
         fn arc_to_cubics(

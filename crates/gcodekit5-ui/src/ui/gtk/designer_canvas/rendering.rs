@@ -6,6 +6,7 @@ use gcodekit5_designer::model::{DesignerShape, Point, Shape};
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
 
 impl DesignerCanvas {
+    // Canvas rendering requires all transform, theme, and state parameters.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw(
         cr: &gtk4::cairo::Context,
@@ -315,6 +316,7 @@ impl DesignerCanvas {
         }
     }
 
+    // Grid rendering requires all viewport and spacing parameters.
     #[allow(clippy::too_many_arguments)]
     fn draw_grid(
         cr: &gtk4::cairo::Context,

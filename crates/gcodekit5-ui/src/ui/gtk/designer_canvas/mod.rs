@@ -88,6 +88,7 @@ pub enum ResizeHandle {
 }
 
 #[derive(Clone)]
+// Complex type due to GTK widget, signal, and state fields.
 #[allow(clippy::type_complexity)]
 pub struct DesignerCanvas {
     pub widget: DrawingArea,

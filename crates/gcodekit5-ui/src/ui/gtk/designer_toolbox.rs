@@ -88,6 +88,7 @@ impl DesignerTool {
     }
 }
 
+// Complex type due to GTK widget and signal callback fields.
 #[allow(clippy::type_complexity)]
 pub struct DesignerToolbox {
     pub widget: Box,

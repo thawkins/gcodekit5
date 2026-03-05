@@ -29,6 +29,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tracing::error;
 
+// Complex type due to GTK widget and callback fields.
 #[allow(clippy::type_complexity)]
 pub struct DesignerView {
     pub widget: Box,
@@ -484,6 +485,7 @@ impl DesignerView {
         );
 
         let current_file = shared_none();
+        // GTK callback closure type inherently complex.
         #[allow(clippy::type_complexity)]
         let on_gcode_generated: SharedOption<std::boxed::Box<dyn Fn(String)>> = shared_none();
 

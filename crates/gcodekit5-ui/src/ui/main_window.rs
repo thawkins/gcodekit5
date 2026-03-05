@@ -346,7 +346,8 @@ pub struct MainWindow {
     pub fullscreen: bool,
     /// Is maximized
     pub maximized: bool,
-    // Store optional callbacks registered by the application (no-op if not used)
+    // Callback fields stored for future wiring — not yet connected to UI actions.
+    // Kept as part of the MainWindow API surface for event handler registration.
     #[allow(dead_code)]
     on_refresh_ports_cb: CellCallback,
     #[allow(dead_code)]

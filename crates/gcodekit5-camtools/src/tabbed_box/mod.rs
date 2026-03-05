@@ -704,6 +704,7 @@ impl TabbedBoxMaker {
         new_path
     }
 
+    // Box panel generation requires all dimensional parameters.
     #[allow(clippy::too_many_arguments)]
     fn draw_divider(
         &self,

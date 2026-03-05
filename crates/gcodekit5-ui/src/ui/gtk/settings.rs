@@ -17,11 +17,13 @@ use gcodekit5_core::{shared, SharedOption};
 use gcodekit5_settings::controller::{SettingUiModel, SettingsController};
 use gcodekit5_settings::view_model::SettingsCategory;
 
+// Complex type due to GTK widget and settings controller fields.
 #[allow(clippy::type_complexity)]
 pub struct SettingsWindow {
     dialog: Dialog,
     notebook: Notebook,
     controller: Rc<SettingsController>,
+    // Save callback stored for deferred registration by parent window.
     #[allow(dead_code)]
     on_save: SharedOption<Box<dyn Fn()>>,
 }

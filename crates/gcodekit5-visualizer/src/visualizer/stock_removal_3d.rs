@@ -325,6 +325,7 @@ impl StockSimulator3D {
         on_progress(1.0)
     }
 
+    // Linear material removal along toolpath segment.
     #[allow(dead_code)]
     fn remove_linear(&mut self, start: Vec3, end: Vec3) {
         let dist = start.distance(end);
@@ -353,6 +354,7 @@ impl StockSimulator3D {
         true
     }
 
+    // Arc material removal along curved toolpath segment.
     #[allow(dead_code)]
     fn remove_arc(&mut self, start: Vec3, end: Vec3, center: Vec3, clockwise: bool) {
         let radius = (start - center).length();

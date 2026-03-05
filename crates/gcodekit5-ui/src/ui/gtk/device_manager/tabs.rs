@@ -168,6 +168,7 @@ impl DeviceManagerWindow {
         )
     }
 
+    // GTK callback closure type inherently complex.
     #[allow(clippy::type_complexity)]
     pub(crate) fn create_dimensions_tab(
         units: MeasurementSystem,

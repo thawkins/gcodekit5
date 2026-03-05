@@ -1,3 +1,5 @@
+// Crate-wide: many protocol implementations are partial/in-progress (TinyG, g2core, FluidNC).
+// Fields and methods are defined for API completeness but not yet wired to callers.
 #![allow(dead_code)]
 //! # GCodeKit4 Communication
 //!

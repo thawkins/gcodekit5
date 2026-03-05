@@ -23,6 +23,7 @@ pub struct CapabilityItem {
     pub notes: String,
 }
 
+// Complex type due to GTK widget and real-time data fields.
 #[allow(clippy::type_complexity)]
 pub struct DeviceInfoView {
     pub container: Box,

@@ -12,6 +12,7 @@ use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
 use gcodekit5_core::{shared_none, SharedOption};
 
 #[derive(Clone)]
+// Complex type due to GTK widget and machine state fields.
 #[allow(clippy::type_complexity)]
 pub struct StatusBar {
     pub widget: Box,
@@ -139,6 +140,7 @@ impl StatusBar {
         right_box.append(&progress_bar);
 
         // Cancel (for long-running, cancellable UI tasks)
+        // GTK callback closure type inherently complex.
         #[allow(clippy::type_complexity)]
         let cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>> = shared_none();
 
@@ -234,6 +236,7 @@ impl StatusBar {
         }
     }
 
+    // Status bar update requires all machine state fields.
     #[allow(clippy::too_many_arguments)]
     pub fn set_position(
         &self,

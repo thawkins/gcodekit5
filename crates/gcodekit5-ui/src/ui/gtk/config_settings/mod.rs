@@ -75,6 +75,7 @@ use gcodekit5_core::{shared, shared_none, Shared, SharedOption, ThreadSafe};
 pub struct ConfigSettingsView {
     pub container: Box,
     pub device_info_view: Rc<DeviceInfoView>,
+    // Fields used internally for settings sync and persistence tracking.
     #[allow(dead_code)]
     pub(crate) settings_controller: Rc<SettingsController>,
     pub(crate) settings_manager: Shared<SettingsManager>,

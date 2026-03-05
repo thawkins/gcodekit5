@@ -25,6 +25,7 @@ pub struct SettingUiModel {
 pub struct SettingsController {
     pub dialog: Shared<SettingsDialog>,
     pub persistence: Shared<SettingsPersistence>,
+    // Complex type due to nested callback/observer fields.
     #[allow(clippy::type_complexity)]
     listeners: SharedVec<Box<dyn Fn(&str, &str)>>,
 }

@@ -76,6 +76,7 @@ struct CoordTransform {
     y_offset: f32,
 }
 
+// See CoordTransform struct above — methods also unused pending integration.
 #[allow(dead_code)]
 impl CoordTransform {
     fn new(

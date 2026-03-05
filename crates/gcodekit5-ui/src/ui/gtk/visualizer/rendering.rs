@@ -14,6 +14,7 @@ use gcodekit5_visualizer::Visualizer;
 use std::sync::Arc;
 
 impl GcodeVisualizer {
+    // Rendering pipeline requires all GL state and geometry parameters.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         cr: &gtk4::cairo::Context,
@@ -675,6 +676,7 @@ impl GcodeVisualizer {
         }
     }
 
+    // Stock visualization generation prepared for 3D stock removal display.
     #[allow(dead_code)]
     pub(crate) fn generate_stock_visualization(
         result: &SimulationResult,

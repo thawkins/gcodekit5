@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 /// Provides default settings for each supported firmware and manages configuration persistence.
 pub struct SettingsManager {
     config: Config,
+    // Reserved for firmware-specific settings storage (GRBL, TinyG, etc.).
     #[allow(dead_code)]
     firmware_settings: HashMap<String, Box<dyn std::any::Any>>,
 }

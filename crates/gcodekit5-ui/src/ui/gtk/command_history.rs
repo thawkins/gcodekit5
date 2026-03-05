@@ -83,6 +83,7 @@ impl CommandHistory {
         }
     }
 
+    // Custom `new()` does not match Default semantics (requires controller ref).
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<String> {
         match self.current_index {

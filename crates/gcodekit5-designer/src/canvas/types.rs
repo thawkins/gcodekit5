@@ -8,6 +8,7 @@ use crate::spatial_manager::SpatialManager;
 
 /// Snapshot of canvas state for undo/redo
 #[derive(Clone)]
+// Fields used internally via pub(crate) for undo/redo snapshot restoration.
 #[allow(dead_code)]
 pub struct CanvasSnapshot {
     pub(crate) shape_store: ShapeStore,

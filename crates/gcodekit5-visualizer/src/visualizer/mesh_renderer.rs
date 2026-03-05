@@ -30,6 +30,7 @@ struct MeshGLResources {
     vbo: glow::Buffer,
     ebo: glow::Buffer,
     index_count: i32,
+    // Wireframe toggle reserved for mesh rendering mode switching.
     #[allow(dead_code)]
     is_wireframe: bool,
 }

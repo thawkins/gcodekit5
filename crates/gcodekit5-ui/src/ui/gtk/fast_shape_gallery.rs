@@ -131,6 +131,7 @@ impl FastShapeGallery {
 
             let template_clone = template.clone();
             let dialog_clone = dialog.clone();
+            // GTK callback closure type inherently complex.
             #[allow(clippy::type_complexity)]
             let on_shape_selected: std::rc::Weak<
                 RefCell<Option<std::boxed::Box<dyn Fn(Shape) + 'static>>>,

@@ -440,6 +440,7 @@ impl CamToolsView {
         root
     }
 
+    // Helper used by the CAM tools card UI — called from within the module.
     #[allow(dead_code)]
     fn create_tool_card(
         title: &str,

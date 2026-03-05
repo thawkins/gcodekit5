@@ -148,6 +148,7 @@ pub struct GcodeVisualizer {
     pub(crate) _status_label: Label,
     pub(crate) device_manager: Option<Arc<DeviceManager>>,
     pub(crate) settings_controller: Rc<SettingsController>,
+    // Optional status bar reference for future OSD integration.
     #[allow(dead_code)]
     pub(crate) status_bar: Option<StatusBar>,
     pub(crate) current_pos: Shared<(f32, f32, f32)>,
