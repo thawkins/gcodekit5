@@ -686,7 +686,8 @@ Each module now has a descriptive header documenting its purpose and key respons
 **Verified**: March 2026 — still missing, NOT YET IMPLEMENTED  
 **Impact**: Medium — AGENTS.md specifies "4 spaces, max 100 width, reorder_imports=true, Unix newlines" but no config enforces it  
 **Effort**: Low
-**Status**: ❌ NOT DONE
+**Status**: ✅ DONE — March 2026. Created `rustfmt.toml` in project root enforcing
+edition 2021, max_width 100, tab_spaces 4, reorder_imports true, Unix newlines.
 
 **Create `rustfmt.toml`** in project root:
 ```toml
@@ -860,7 +861,7 @@ Benefits: One-click development setup, consistent environment
 ### Remaining Items (Prioritized)
 | Issue | Effort | Impact | Priority | Status |
 |-------|--------|--------|----------|--------|
-| 9.1 - Add rustfmt.toml | Low | Medium | **P1** | ❌ NOT DONE |
+| 9.1 - Add rustfmt.toml | Low | Medium | **P1** | ✅ DONE |
 | 9.2 - Add clippy.toml | Low | Medium | **P1** | ❌ NOT DONE |
 | 9.6 - Document unsafe blocks | Low | Medium | **P1** | ❌ NOT DONE |
 | 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ❌ NOT DONE |
