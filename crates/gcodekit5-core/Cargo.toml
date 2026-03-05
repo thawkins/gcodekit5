@@ -9,7 +9,7 @@ repository.workspace = true
 description = "Core types, traits, and utilities for GCodeKit4"
 
 [dependencies]
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 async-trait = "0.1"
 anyhow = "1.0"
 thiserror = "2.0.17"
