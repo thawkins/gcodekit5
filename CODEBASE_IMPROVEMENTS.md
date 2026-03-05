@@ -721,7 +721,11 @@ too-many-arguments-threshold = 7
 **Verified**: March 2026 — dependency confirmed in `crates/gcodekit5-communication/Cargo.toml` line 13  
 **Impact**: Medium — Makes the communication layer harder to reuse independently  
 **Effort**: Medium
-**Status**: ❌ NOT DONE
+**Status**: ✅ DONE — March 2026. Moved `GcodeCommand` and related types (`CommandState`,
+`CommandResponse`, `CommandId`, `CommandListener`, `CommandNumberGenerator`) from
+`gcodekit5-visualizer` into `gcodekit5-core::gcode`. The visualizer re-exports from core for
+backward compatibility. Removed the `gcodekit5-visualizer` dependency from
+`gcodekit5-communication`.
 
 **Dependency Graph**:
 ```
@@ -865,7 +869,7 @@ Benefits: One-click development setup, consistent environment
 | 9.1 - Add rustfmt.toml | Low | Medium | **P1** | ✅ DONE |
 | 9.2 - Add clippy.toml | Low | Medium | **P1** | ✅ DONE |
 | 9.6 - Document unsafe blocks | Low | Medium | **P1** | ❌ NOT DONE |
-| 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ❌ NOT DONE |
+| 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ✅ DONE |
 | 9.4 - Reduce #[allow()] suppressions | Medium | Medium | **P2** | ⚠️ IN PROGRESS (108→from 156) |
 | 9.5 - Consolidate wildcard imports | Low | Low | **P2** | ⚠️ PARTIAL (2 glow::* remain) |
 | 10.1 - Pre-commit hooks | Low | Low | **P2** | ⚠️ PARTIAL (bd only, no cargo checks) |

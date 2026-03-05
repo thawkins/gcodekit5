@@ -9,6 +9,7 @@ pub mod core;
 pub mod data;
 pub mod error;
 pub mod event_bus;
+pub mod gcode;
 pub mod types;
 pub mod units;
 
@@ -24,6 +25,11 @@ pub use data::{
 };
 
 pub use error::{ConnectionError, ControllerError, Error, FirmwareError, GcodeError, Result};
+
+pub use gcode::{
+    CommandId, CommandListener, CommandListenerHandle, CommandNumberGenerator, CommandResponse,
+    CommandState, GcodeCommand, NoOpCommandListener,
+};
 
 // Re-export event bus for convenience
 pub use event_bus::{

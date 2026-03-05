@@ -3,7 +3,7 @@
 //! This module provides utility functions for working with GRBL including
 //! response validation, command formatting, and state lookups.
 
-use gcodekit5_visualizer::GcodeCommand;
+use gcodekit5_core::GcodeCommand;
 use std::collections::HashMap;
 
 /// Validates a GRBL response line

@@ -1462,7 +1462,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "gcodekit5-core",
- "gcodekit5-visualizer",
  "parking_lot",
  "proptest",
  "serde",
