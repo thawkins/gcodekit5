@@ -3,7 +3,10 @@
 //! Contains GLSL vertex and fragment shader source code used by
 //! the 3D renderer for toolpath visualization and grid rendering.
 
-use glow::*;
+use glow::{
+    Context, HasContext, NativeProgram, NativeShader, NativeUniformLocation, FRAGMENT_SHADER,
+    VERTEX_SHADER,
+};
 use std::rc::Rc;
 
 pub struct ShaderProgram {

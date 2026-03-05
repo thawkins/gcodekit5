@@ -4,7 +4,11 @@
 //! material block in the 3D visualizer.
 
 use gcodekit5_visualizer::visualizer::stock_removal_3d::VoxelGrid;
-use glow::*;
+use glow::{
+    Context, HasContext, NativeTexture, CLAMP_TO_EDGE, LINEAR, R8, RED, TEXTURE_3D,
+    TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
+    UNSIGNED_BYTE,
+};
 use std::rc::Rc;
 
 pub struct StockTexture3D {

@@ -776,7 +776,9 @@ gcodekit5-ui/src/gtk_app.rs:                   97 allow attributes
 **Verified**: March 2026 — reduced from 65 total; remaining are mostly acceptable patterns  
 **Impact**: Low — Wildcard imports from external crates pollute the namespace  
 **Effort**: Low
-**Status**: ⚠️ PARTIALLY DONE — 2 `use glow::*` remain
+**Status**: ✅ DONE — March 2026. Replaced all 3 `use glow::*` wildcard imports (shaders.rs,
+stock_texture.rs, renderer_3d.rs) with explicit imports of used symbols (`Context`, `HasContext`,
+`NativeProgram`, `NativeShader`, GL constants, etc.).
 
 **Recommendation**: Replace `use glow::*` with explicit imports of used symbols.
 
@@ -879,7 +881,7 @@ Benefits: One-click development setup, consistent environment
 | 9.6 - Document unsafe blocks | Low | Medium | **P1** | ❌ NOT DONE |
 | 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ✅ DONE |
 | 9.4 - Reduce #[allow()] suppressions | Medium | Medium | **P2** | ✅ DONE (all 108 audited & commented) |
-| 9.5 - Consolidate wildcard imports | Low | Low | **P2** | ⚠️ PARTIAL (2 glow::* remain) |
+| 9.5 - Consolidate wildcard imports | Low | Low | **P2** | ✅ DONE |
 | 10.1 - Pre-commit hooks | Low | Low | **P2** | ⚠️ PARTIAL (bd only, no cargo checks) |
 | 5.1 - Profile hot paths | Medium | Medium-High | **P2** | ❌ NOT DONE |
 | 5.2 - Optimize memory usage | Low-Med | Medium | **P2** | ❌ NOT DONE |

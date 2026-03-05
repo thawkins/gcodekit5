@@ -5,7 +5,9 @@
 //! for toolpath, grid, axis, and stock visualization.
 
 use gcodekit5_visualizer::{GCodeCommand, Point3D, Visualizer};
-use glow::*;
+use glow::{
+    Context, HasContext, NativeBuffer, NativeVertexArray, ARRAY_BUFFER, FLOAT, STATIC_DRAW,
+};
 use std::rc::Rc;
 
 pub struct RenderBuffers {
