@@ -705,7 +705,8 @@ newline_style = "Unix"
 **Verified**: March 2026 — still missing, NOT YET IMPLEMENTED  
 **Impact**: Low — AGENTS.md specifies "cognitive complexity ≤30, warn on missing docs" but no config enforces it  
 **Effort**: Low
-**Status**: ❌ NOT DONE
+**Status**: ✅ DONE — March 2026. Created `clippy.toml` in project root enforcing
+cognitive-complexity-threshold 30 and too-many-arguments-threshold 7.
 
 **Create `clippy.toml`** in project root:
 ```toml
@@ -862,7 +863,7 @@ Benefits: One-click development setup, consistent environment
 | Issue | Effort | Impact | Priority | Status |
 |-------|--------|--------|----------|--------|
 | 9.1 - Add rustfmt.toml | Low | Medium | **P1** | ✅ DONE |
-| 9.2 - Add clippy.toml | Low | Medium | **P1** | ❌ NOT DONE |
+| 9.2 - Add clippy.toml | Low | Medium | **P1** | ✅ DONE |
 | 9.6 - Document unsafe blocks | Low | Medium | **P1** | ❌ NOT DONE |
 | 9.3 - Decouple communication→visualizer | Medium | Medium | **P1** | ❌ NOT DONE |
 | 9.4 - Reduce #[allow()] suppressions | Medium | Medium | **P2** | ⚠️ IN PROGRESS (108→from 156) |
