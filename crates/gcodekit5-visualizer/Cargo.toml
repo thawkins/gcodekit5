@@ -18,7 +18,7 @@ serde_json = "1.0"
 tracing = "0.1"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.22", features = ["v4", "serde"] }
 glam = "0.29"
 glow = "0.14"
 bytemuck = "1.14"
@@ -26,7 +26,7 @@ lyon = "1.0"
 
 [dev-dependencies]
 proptest = "1.4"
-tempfile = "3.10"
+tempfile = "3.26"
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
