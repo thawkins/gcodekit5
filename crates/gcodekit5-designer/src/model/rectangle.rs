@@ -81,7 +81,7 @@ impl DesignerShape for DesignRectangle {
         let mut transform = Transform::identity();
         if self.rotation.abs() > 1e-6 {
             transform = transform
-                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
+            .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
         }
         transform = transform.then_translate(lyon::math::vector(
             self.center.x as f32,
@@ -102,11 +102,11 @@ impl DesignerShape for DesignRectangle {
         // Sketch::rectangle creates shape from (0,0) to (w,h).
         // We center it at (0,0) first so rotation works around the center.
         let center_fix =
-            Matrix4::new_translation(&Vector3::new(-self.width / 2.0, -self.height / 2.0, 0.0));
+        Matrix4::new_translation(&Vector3::new(-self.width / 2.0, -self.height / 2.0, 0.0));
 
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation =
-            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+        Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
 
         sketch.transform(&(translation * rotation * center_fix))
     }
@@ -120,38 +120,37 @@ impl DesignerShape for DesignRectangle {
         let bb = lyon::algorithms::aabb::bounding_box(path.iter());
         (
             bb.min.x as f64,
-            bb.min.y as f64,
-            bb.max.x as f64,
-            bb.max.y as f64,
+         bb.min.y as f64,
+         bb.max.x as f64,
+         bb.max.y as f64,
         )
     }
 
     fn transform(&mut self, t: &Transform) {
-        // This is tricky. If t contains rotation, we update self.rotation.
-        // If t contains shear, we can't represent it.
-        // For now, assume t is translation/rotation/scale (possibly non-uniform).
+        // 1. Transforming the CENTER
+        let p = t.transform_point(lyon::math::point(self.center.x as f32, self.center.y as f32));
+        self.center = crate::model::Point::new(p.x as f64, p.y as f64);
 
-        // Transform center
-        let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
-        self.center = Point::new(p.x as f64, p.y as f64);
+        // 2. Extract the ROTATION from the matrix
+        let angle_rad = t.m12.atan2(t.m11);
+        let angle_deg = angle_rad.to_degrees() as f64;
 
-        // Extract rotation and account for reflections (negative determinant flips orientation).
-        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
-        let det = t.m11 * t.m22 - t.m12 * t.m21;
-        let mut new_rotation = self.rotation + angle_deg;
-        if det < 0.0 {
-            new_rotation = -new_rotation;
-        }
-        self.rotation = new_rotation;
+        // We add the new rotation to the existing one.
+        self.rotation += angle_deg;
 
-        // Extract scale factors from basis vectors (supports non-uniform scaling)
-        // X basis vector: (m11, m12) - determines width scale
-        // Y basis vector: (m21, m22) - determines height scale
+        // 3. SCALING
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         let sy = (t.m21 * t.m21 + t.m22 * t.m22).sqrt() as f64;
-        self.width *= sx;
-        self.height *= sy;
+
+        // We only apply scaling if it is not a pure rotation/translation matrix (approx 1.0)
+        if (sx - 1.0).abs() > 1e-6 {
+            self.width *= sx;
+        }
+        if (sy - 1.0).abs() > 1e-6 {
+            self.height *= sy;
+        }
     }
+
 
     fn properties(&self) -> Vec<Property> {
         vec![

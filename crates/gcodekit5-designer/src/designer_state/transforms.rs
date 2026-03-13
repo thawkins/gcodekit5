@@ -375,8 +375,8 @@ impl DesignerState {
         };
 
         let (sx, sy, name) = match axis {
-            MirrorAxis::X => (1.0, -1.0, "Mirror X"),
-            MirrorAxis::Y => (-1.0, 1.0, "Mirror Y"),
+            MirrorAxis::X => (-1.0, 1.0, "Mirror X"),
+            MirrorAxis::Y => (1.0, -1.0, "Mirror Y"),
         };
 
         let mut commands = Vec::new();

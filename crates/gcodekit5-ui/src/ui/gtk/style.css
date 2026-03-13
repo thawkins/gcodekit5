@@ -484,3 +484,57 @@ frame.vector-preview {
 .nav-btn:active {
     background-color: alpha(var(--accent-bg-color), 0.8);
 }
+
+/* GLOBAL REDUCTION */
+
+entry {
+    min-height: 20px;
+    max-height: 24px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+
+button {
+    min-height: 24px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+}
+
+combobox {
+    min-height: 24px;
+}
+
+spinbutton {
+    min-height: 24px;
+}
+
+listbox.compact-list row {
+    padding: 0px;
+    min-height: 24px;
+    margin: 0px;
+    border-bottom: 1px solid alpha(@borders, 0.2);
+}
+
+listbox.compact-list row:last-child {
+    border-bottom: none;
+}
+
+listbox.compact-list row * {
+    min-height: 20px;
+    max-height: 22px;
+}
+
+listbox.compact-list row label {
+    min-height: 20px;
+    padding: 0px 2px;
+    margin: 0px;
+}
+
+listbox.compact-list row entry,
+listbox.compact-list row .position-entry {
+    min-height: 20px;
+    padding: 0px 2px;
+    margin: 0px;
+}

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
-use nalgebra::{Matrix4, Vector3};
+//use nalgebra::{Matrix4, Vector3};
 
 use super::{DesignerShape, Point, Property, PropertyValue};
 
@@ -35,15 +35,17 @@ impl DesignTriangle {
 impl DesignerShape for DesignTriangle {
     fn render(&self) -> Path {
         let mut builder = Path::builder();
-        // Right angle triangle
-        // Points relative to center:
-        // (-w/2, -h/2) -> (w/2, -h/2) -> (-w/2, h/2)
-        let half_w = self.width / 2.0;
-        let half_h = self.height / 2.0;
 
-        let p1 = point(-half_w as f32, -half_h as f32);
-        let p2 = point(half_w as f32, -half_h as f32);
-        let p3 = point(-half_w as f32, half_h as f32);
+        let abs_w = self.width.abs() as f32;
+        let abs_h = self.height.abs() as f32;
+        let off_x = abs_w / 2.0;
+        let off_y = abs_h / 2.0;
+
+        let p1_x = if self.width >= 0.0 { -off_x } else { off_x };
+        let p1_y = if self.height >= 0.0 { -off_y } else { off_y };
+        let p1 = point(p1_x, p1_y);
+        let p2 = point(-p1_x, p1_y);
+        let p3 = point(p1_x, -p1_y);
 
         builder.begin(p1);
         builder.line_to(p2);
@@ -56,7 +58,7 @@ impl DesignerShape for DesignTriangle {
         let mut transform = Transform::identity();
         if self.rotation.abs() > 1e-6 {
             transform = transform
-                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
+            .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
         }
         transform = transform.then_translate(lyon::math::vector(
             self.center.x as f32,
@@ -67,28 +69,39 @@ impl DesignerShape for DesignTriangle {
     }
 
     fn as_csg(&self) -> Sketch<()> {
-        let half_w = self.width / 2.0;
-        let half_h = self.height / 2.0;
 
-        let points = vec![[-half_w, -half_h], [half_w, -half_h], [-half_w, half_h]];
+        let abs_w = self.width.abs();
+        let abs_h = self.height.abs();
+        let off_x = abs_w / 2.0;
+        let off_y = abs_h / 2.0;
 
-        let sketch = Sketch::polygon(&points, None);
+        // Determine position the right angle according to the sign
+        let p1_x = if self.width >= 0.0 { -off_x } else { off_x };
+        let p1_y = if self.height >= 0.0 { -off_y } else { off_y };
 
-        let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
-        let translation =
-            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+        let points = vec![
+            [p1_x, p1_y],      // Right angle
+            [-p1_x, p1_y],     // Horizontal end
+            [p1_x, -p1_y]      // Vertical end
+        ];
+
+        let sketch: Sketch<()> = Sketch::polygon(&points, None);
+
+        let rotation = nalgebra::Matrix4::new_rotation(nalgebra::Vector3::new(0.0, 0.0, self.rotation.to_radians()));
+        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(self.center.x, self.center.y, 0.0));
 
         sketch.transform(&(translation * rotation))
     }
 
     fn bounds(&self) -> (f64, f64, f64, f64) {
-        let path = self.render();
-        let bb = lyon::algorithms::aabb::bounding_box(path.iter());
+        // Calculate radius (half the size) always positive.
+        let half_w = (self.width / 2.0).abs();
+        let half_h = (self.height / 2.0).abs();
         (
-            bb.min.x as f64,
-            bb.min.y as f64,
-            bb.max.x as f64,
-            bb.max.y as f64,
+            self.center.x - half_w,
+         self.center.y - half_h,
+         self.center.x + half_w,
+         self.center.y + half_h,
         )
     }
 
@@ -96,17 +109,15 @@ impl DesignerShape for DesignTriangle {
         let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
         self.center = Point::new(p.x as f64, p.y as f64);
 
-        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
-        let det = t.m11 * t.m22 - t.m12 * t.m21;
-        let mut new_rotation = self.rotation + angle_deg;
-        if det < 0.0 {
-            new_rotation = -new_rotation;
-        }
-        self.rotation = new_rotation;
-
+        // Extract individual scale for each axis
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
+        let sy = (t.m21 * t.m21 + t.m22 * t.m22).sqrt() as f64;
+
         self.width *= sx;
-        self.height *= sx;
+        self.height *= sy;
+
+        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        self.rotation += angle_deg;
     }
 
     fn properties(&self) -> Vec<Property> {

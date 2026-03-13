@@ -9,6 +9,7 @@ repository.workspace = true
 description = "G-code visualization and parsing for GCodeKit4"
 
 [dependencies]
+cairo-rs = "0.20"
 gcodekit5-core = { path = "../gcodekit5-core" }
 gcodekit5-designer = { path = "../gcodekit5-designer" }
 regex = "1.10"

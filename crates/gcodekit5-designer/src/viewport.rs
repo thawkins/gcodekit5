@@ -258,7 +258,7 @@ impl fmt::Display for Viewport {
         write!(
             f,
             "Zoom: {:.2}x | Pan: ({:.1}, {:.1})",
-            self.zoom, self.pan_x, self.pan_y
+               self.zoom, self.pan_x, self.pan_y
         )
     }
 }

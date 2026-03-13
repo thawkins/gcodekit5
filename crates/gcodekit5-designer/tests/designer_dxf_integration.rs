@@ -86,6 +86,7 @@ fn test_dxf_polyline_open() {
             Point::new(10.0, 10.0),
             Point::new(0.0, 10.0),
         ],
+        bulges: Vec::new(),
         closed: false,
         layer: "Paths".to_string(),
         color: 1,
@@ -103,6 +104,7 @@ fn test_dxf_polyline_closed() {
             Point::new(10.0, 0.0),
             Point::new(5.0, 10.0),
         ],
+        bulges: Vec::new(),
         closed: false,
         layer: "Polylines".to_string(),
         color: 1,
@@ -121,6 +123,7 @@ fn test_dxf_polyline_bounds() {
             Point::new(20.0, 15.0),
             Point::new(10.0, 30.0),
         ],
+        bulges: Vec::new(),
         closed: false,
         layer: "0".to_string(),
         color: 256,
@@ -388,6 +391,7 @@ fn test_dxf_mixed_entity_types() {
 
     file.add_entity(DxfEntity::Polyline(DxfPolyline {
         vertices: vec![Point::new(0.0, 0.0), Point::new(1.0, 1.0)],
+        bulges: Vec::new(),
         closed: false,
         layer: "0".to_string(),
         color: 1,

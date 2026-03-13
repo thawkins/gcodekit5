@@ -253,7 +253,7 @@ impl RealSerialPort {
         }
 
         let builder = serialport::new(&params.port, params.baud_rate)
-            .timeout(Duration::from_millis(10)) // Short timeout for non-blocking reads
+            .timeout(Duration::from_millis(1)) // Short timeout for non-blocking reads (Modify at 1 for Ray5)
             .data_bits(match params.data_bits {
                 5 => serialport::DataBits::Five,
                 6 => serialport::DataBits::Six,

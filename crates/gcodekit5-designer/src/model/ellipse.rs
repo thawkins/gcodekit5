@@ -37,9 +37,9 @@ impl DesignerShape for DesignEllipse {
         let mut builder = Path::builder();
         builder.add_ellipse(
             point(self.center.x as f32, self.center.y as f32),
-            lyon::math::vector(self.rx as f32, self.ry as f32),
-            lyon::math::Angle::radians(self.rotation.to_radians() as f32),
-            lyon::path::Winding::Positive,
+                            lyon::math::vector(self.rx as f32, self.ry as f32),
+                            lyon::math::Angle::radians(self.rotation.to_radians() as f32),
+                            lyon::path::Winding::Positive,
         );
         builder.build()
     }
@@ -58,17 +58,49 @@ impl DesignerShape for DesignEllipse {
         let sketch = Sketch::polygon(&points, None);
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation =
-            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+        Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
         sketch.transform(&(translation * rotation))
     }
 
     fn bounds(&self) -> (f64, f64, f64, f64) {
-        (
-            self.center.x - self.rx,
-            self.center.y - self.ry,
-            self.center.x + self.rx,
-            self.center.y + self.ry,
-        )
+        if self.rotation.abs() < 1e-6 {
+            return (
+                self.center.x - self.rx,
+                self.center.y - self.ry,
+                self.center.x + self.rx,
+                self.center.y + self.ry,
+            );
+        }
+
+        // For a rotated ellipse, we calculate the bounding box axis-aligned
+        let steps = 64;
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+
+        for i in 0..=steps {
+            let angle = 2.0 * std::f64::consts::PI * (i as f64 / steps as f64);
+            // Point on the ellipse without rotating
+            let x = self.center.x + self.rx * angle.cos();
+            let y = self.center.y + self.ry * angle.sin();
+
+            // Rotate the point around the center
+            let dx = x - self.center.x;
+            let dy = y - self.center.y;
+            let cos = self.rotation.to_radians().cos();
+            let sin = self.rotation.to_radians().sin();
+
+            let rotated_x = self.center.x + dx * cos - dy * sin;
+            let rotated_y = self.center.y + dx * sin + dy * cos;
+
+            min_x = min_x.min(rotated_x);
+            min_y = min_y.min(rotated_y);
+            max_x = max_x.max(rotated_x);
+            max_y = max_y.max(rotated_y);
+        }
+
+        (min_x, min_y, max_x, max_y)
     }
 
     fn transform(&mut self, t: &Transform) {
@@ -85,8 +117,13 @@ impl DesignerShape for DesignEllipse {
 
         // Use the X basis vector length as uniform scale factor.
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
-        self.rx *= sx;
-        self.ry *= sx;
+        let sy = (t.m21 * t.m21 + t.m22 * t.m22).sqrt() as f64;
+        if (sx - 1.0).abs() > 1e-6 {
+            self.rx *= sx;
+        }
+        if (sy - 1.0).abs() > 1e-6 {
+            self.ry *= sy;
+        }
     }
 
     fn properties(&self) -> Vec<Property> {

@@ -122,6 +122,9 @@ pub struct PropertiesPanel {
     pub(crate) has_focus: Shared<bool>,
     // Aspect ratio (width/height) for locked resizing
     pub(crate) aspect_ratio: Shared<f64>,
+
+    pub(crate) rotation_warning_label: Label,
+
 }
 
 impl PropertiesPanel {
@@ -139,22 +142,32 @@ impl PropertiesPanel {
             .build();
 
         let content = Box::new(Orientation::Vertical, 12);
-        content.set_margin_start(12);
-        content.set_margin_end(12);
-        content.set_margin_top(12);
-        content.set_margin_bottom(12);
+            content.set_margin_start(12);
+            content.set_margin_end(12);
+            content.set_margin_top(12);
+            content.set_margin_bottom(12);
 
         // Header (kept for internal state, not shown in UI)
         let header = Label::new(Some(&t!("Properties")));
-        header.add_css_class("title-3");
-        header.add_css_class("heading");
-        header.set_halign(gtk4::Align::Start);
-        header.set_visible(false);
+            header.add_css_class("title-3");
+            header.add_css_class("heading");
+            header.set_halign(gtk4::Align::Start);
+            header.set_visible(false);
+
+        let rotation_warning_label = Label::new(None);
+            rotation_warning_label.add_css_class("warning");
+            rotation_warning_label.set_halign(gtk4::Align::Start);
+            rotation_warning_label.set_margin_top(5);
+            rotation_warning_label.set_margin_bottom(5);
+            rotation_warning_label.set_visible(false);
+            rotation_warning_label.set_wrap(true);
+
+            content.append(&rotation_warning_label);
 
         // Build all UI sections
         let (pos_frame, pos_x_entry, pos_y_entry, x_unit_label, y_unit_label) =
             Self::build_position_section();
-        content.append(&pos_frame);
+            content.append(&pos_frame);
 
         let (
             size_frame,
@@ -294,6 +307,7 @@ impl PropertiesPanel {
             fillet_unit_label,
             chamfer_unit_label,
             lock_aspect_ratio,
+            rotation_warning_label,
             redraw_callback: shared_none(),
             updating: shared(false),
             has_focus: shared(bool::default()),
@@ -302,7 +316,6 @@ impl PropertiesPanel {
 
         // Connect value change handlers
         panel.setup_handlers();
-
         // Setup focus tracking for all spin buttons
         panel.setup_focus_tracking();
 
@@ -592,5 +605,6 @@ impl PropertiesPanel {
             self.updating.clone(),
             self.has_focus.clone(),
         );
+
     }
 }

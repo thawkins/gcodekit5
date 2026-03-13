@@ -29,10 +29,10 @@ fn main() {
                 let mo_path = lang_dir.join("gcodekit5.mo");
 
                 let status = Command::new("msgfmt")
-                    .arg("-o")
-                    .arg(&mo_path)
-                    .arg(&path)
-                    .status();
+                .arg("-o")
+                .arg(&mo_path)
+                .arg(&path)
+                .status();
 
                 match status {
                     Ok(s) if s.success() => {}
@@ -41,6 +41,21 @@ fn main() {
             }
         }
     }
+    // ---
+    glib_build_tools::compile_resources(
+        &["resources"],
+        "resources/gresources.xml",
+        "gcodekit5.gresource",
+    );
+
+    // OPTIONAL: Only for the .exe icon in Windows
+    #[cfg(windows)]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set_icon("../../gcodekit5.ico");
+        res.compile().unwrap();
+    }
+    // ---
 
     // Expose the locale directory to the code
     println!("cargo:rustc-env=LOCALE_DIR={}", locale_dir.display());

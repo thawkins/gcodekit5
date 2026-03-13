@@ -7,11 +7,13 @@
 //! - Viewport-based coordinate transformation
 //! - Shape rendering with selection indicators
 
-use crate::model::DesignerShape;
+#[allow(unused_imports)]
+use crate::model::{DesignerShape};
 use crate::{font_manager, Canvas};
 use image::{Rgb, RgbImage};
 use rusttype::{point as rt_point, Scale};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
+
 
 const HANDLE_SIZE: f32 = 18.0; // Increased from 12.0 for easier cursor positioning
 
@@ -104,9 +106,9 @@ pub fn render_canvas(
             crate::model::Shape::Rectangle(rect) => {
                 let rect_path = Rect::from_xywh(
                     (rect.center.x - rect.width / 2.0) as f32,
-                    (rect.center.y - rect.height / 2.0) as f32,
-                    rect.width as f32,
-                    rect.height as f32,
+                                                (rect.center.y - rect.height / 2.0) as f32,
+                                                rect.width as f32,
+                                                rect.height as f32,
                 );
                 if let Some(r) = rect_path {
                     let path = PathBuilder::from_rect(r);
@@ -135,18 +137,30 @@ pub fn render_canvas(
                     pixmap.stroke_path(&path, &paint, &stroke, transform, None);
                 }
             }
+            // crate ellipse error in visualizer
             crate::model::Shape::Ellipse(ellipse) => {
-                // tiny-skia doesn't have direct ellipse primitive, use scale on circle
-                let path = PathBuilder::from_circle(0.0, 0.0, 1.0); // Unit circle
-                if let Some(p) = path {
-                    // Transform for ellipse: translate to center, scale by rx/ry
-                    let ellipse_transform = transform
-                        .pre_translate(ellipse.center.x as f32, ellipse.center.y as f32)
-                        .pre_scale(ellipse.rx as f32, ellipse.ry as f32);
+                // 1. Create the unity circle
+                if let Some(p) = PathBuilder::from_circle(0.0, 0.0, 1.0) {
+                    // 2. Create a specific transformation for this ellipse
+                    let mut ellipse_specific_transform = Transform::from_translate(
+                        ellipse.center.x as f32,
+                        ellipse.center.y as f32
+                    );
+                    ellipse_specific_transform = ellipse_specific_transform.pre_scale(
+                        ellipse.rx as f32,
+                        ellipse.ry as f32
+                    );
 
-                    pixmap.fill_path(&p, &paint, FillRule::Winding, ellipse_transform, None);
+                    // 3. Combine with the global transformation of the viewer (zoom/pan)
+                    let final_transform = transform.post_concat(ellipse_specific_transform);
+
+                    // 4. Draw
+                    pixmap.stroke_path(&p, &paint, &stroke, final_transform, None);
+                    // Or if it's stuffing:
+                    // pixmap.fill_path(&p, &paint, FillRule::Winding, final_transform, None);
                 }
             }
+
             crate::model::Shape::Path(path_shape) => {
                 // Convert lyon path to tiny-skia path
                 let mut pb = PathBuilder::new();
@@ -339,7 +353,7 @@ pub fn render_canvas(
                     }
                 }
             }
-        }
+        } // match
 
         // Draw Selection Indicators
         if shape_obj.selected {
@@ -349,8 +363,8 @@ pub fn render_canvas(
             let rect = Rect::from_ltrb(
                 x1 as f32,
                 y1.min(y2) as f32, // Ensure min/max correct
-                x2 as f32,
-                y1.max(y2) as f32,
+                                       x2 as f32,
+                                       y1.max(y2) as f32,
             );
 
             if let Some(r) = rect {
@@ -385,9 +399,9 @@ pub fn render_canvas(
 
                     let h_rect = Rect::from_xywh(
                         (hx - size as f64 / 2.0) as f32,
-                        (hy - size as f64 / 2.0) as f32,
-                        size,
-                        size,
+                                                 (hy - size as f64 / 2.0) as f32,
+                                                 size,
+                                                 size,
                     );
                     if let Some(hr) = h_rect {
                         let h_path = PathBuilder::from_rect(hr);

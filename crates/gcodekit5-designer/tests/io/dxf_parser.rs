@@ -65,6 +65,7 @@ fn test_dxf_polyline_creation() {
             Point::new(10.0, 0.0),
             Point::new(10.0, 10.0),
         ],
+        bulges: Vec::new(), // For Github mutants error
         closed: false,
         layer: "Polylines".to_string(),
         color: 1,

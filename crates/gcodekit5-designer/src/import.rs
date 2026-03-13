@@ -14,14 +14,13 @@
 
 use crate::dxf_parser::{DxfEntity, DxfFile, DxfParser};
 use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
-    DesignRectangle as Rectangle, DesignerShape, Point, Shape,
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,  DesignRectangle as Rectangle, DesignerShape, Point, Shape,
 };
 use crate::model3d::{Mesh3D, Model3DImporter};
 use anyhow::{anyhow, Result};
-use lyon::geom::Arc;
-use lyon::math::point;
+use lyon::math::{point, vector};
 use lyon::path::Path;
+
 
 /// Represents an imported design from a file
 #[derive(Debug)]
@@ -99,7 +98,7 @@ impl ImportedShape {
                 let end_x = l.end.x + offset_x;
                 Shape::Line(Line::new(
                     Point::new(start_x, start_y),
-                    Point::new(end_x, end_y),
+                                      Point::new(end_x, end_y),
                 ))
             }
             Self::Ellipse(e) => {
@@ -183,7 +182,7 @@ impl SvgImporter {
                 if let Some(transform_start) = g_tag.find("transform=\"") {
                     if let Some(transform_end) = g_tag[transform_start + 11..].find('"') {
                         let transform_str =
-                            &g_tag[transform_start + 11..transform_start + 11 + transform_end];
+                        &g_tag[transform_start + 11..transform_start + 11 + transform_end];
                         group_transform = Self::parse_matrix_transform(transform_str);
                     }
                 }
@@ -230,7 +229,7 @@ impl SvgImporter {
 
                 if r > 0.0 {
                     let circle =
-                        Circle::new(Point::new(cx * self.scale, cy * self.scale), r * self.scale);
+                    Circle::new(Point::new(cx * self.scale, cy * self.scale), r * self.scale);
                     imported_shapes.push(ImportedShape::Circle(circle));
                 }
                 search_pos = abs_tag_start + tag_end + 1;
@@ -253,7 +252,7 @@ impl SvgImporter {
 
                 let line = Line::new(
                     Point::new(x1 * self.scale, y1 * self.scale),
-                    Point::new(x2 * self.scale, y2 * self.scale),
+                                     Point::new(x2 * self.scale, y2 * self.scale),
                 );
                 imported_shapes.push(ImportedShape::Line(line));
 
@@ -278,8 +277,8 @@ impl SvgImporter {
                 if rx > 0.0 && ry > 0.0 {
                     let ellipse = Ellipse::new(
                         Point::new(cx * self.scale, cy * self.scale),
-                        rx * self.scale,
-                        ry * self.scale,
+                                               rx * self.scale,
+                                               ry * self.scale,
                     );
                     imported_shapes.push(ImportedShape::Ellipse(ellipse));
                 }
@@ -298,24 +297,24 @@ impl SvgImporter {
 
                 if let Some(points_str) = Self::extract_attr_str(tag_content, "points") {
                     let points: Vec<Point> = points_str
-                        .split([' ', ','])
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<&str>>()
-                        .chunks(2)
-                        .filter_map(|chunk| {
-                            if chunk.len() == 2 {
-                                let x = chunk[0].parse::<f64>().ok()?;
-                                let y = chunk[1].parse::<f64>().ok()?;
-                                Some(Point::new(x * self.scale, y * self.scale))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    .split([' ', ','])
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<&str>>()
+                    .chunks(2)
+                    .filter_map(|chunk| {
+                        if chunk.len() == 2 {
+                            let x = chunk[0].parse::<f64>().ok()?;
+                            let y = chunk[1].parse::<f64>().ok()?;
+                            Some(Point::new(x * self.scale, y * self.scale))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
 
                     if !points.is_empty() {
                         imported_shapes
-                            .push(ImportedShape::Path(PathShape::from_points(&points, false)));
+                        .push(ImportedShape::Path(PathShape::from_points(&points, false)));
                     }
                 }
                 search_pos = abs_tag_start + tag_end + 1;
@@ -333,24 +332,24 @@ impl SvgImporter {
 
                 if let Some(points_str) = Self::extract_attr_str(tag_content, "points") {
                     let points: Vec<Point> = points_str
-                        .split([' ', ','])
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<&str>>()
-                        .chunks(2)
-                        .filter_map(|chunk| {
-                            if chunk.len() == 2 {
-                                let x = chunk[0].parse::<f64>().ok()?;
-                                let y = chunk[1].parse::<f64>().ok()?;
-                                Some(Point::new(x * self.scale, y * self.scale))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    .split([' ', ','])
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<&str>>()
+                    .chunks(2)
+                    .filter_map(|chunk| {
+                        if chunk.len() == 2 {
+                            let x = chunk[0].parse::<f64>().ok()?;
+                            let y = chunk[1].parse::<f64>().ok()?;
+                            Some(Point::new(x * self.scale, y * self.scale))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
 
                     if !points.is_empty() {
                         imported_shapes
-                            .push(ImportedShape::Path(PathShape::from_points(&points, true)));
+                        .push(ImportedShape::Path(PathShape::from_points(&points, true)));
                     }
                 }
                 search_pos = abs_tag_start + tag_end + 1;
@@ -381,7 +380,7 @@ impl SvgImporter {
                             }
 
                             let scale_transform =
-                                lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
+                            lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
                             new_path.transform(&scale_transform);
 
                             imported_shapes.push(ImportedShape::Path(new_path));
@@ -416,19 +415,19 @@ impl SvgImporter {
         };
 
         let shapes: Vec<Shape> = imported_shapes
-            .into_iter()
-            .map(|s| s.convert(center_y, self.offset_x, self.offset_y))
-            .collect();
+        .into_iter()
+        .map(|s| s.convert(center_y, self.offset_x, self.offset_y))
+        .collect();
 
         // Default to 0 layers for SVG import unless more explicit layer logic is implemented
         let layer_count = 0usize;
 
         Ok(ImportedDesign {
             shapes,
-            dimensions: (viewbox_width * self.scale, _viewbox_height * self.scale),
-            format: FileFormat::Svg,
-            layer_count,
-            mesh_3d: None,
+           dimensions: (viewbox_width * self.scale, _viewbox_height * self.scale),
+           format: FileFormat::Svg,
+               layer_count,
+           mesh_3d: None,
         })
     }
 
@@ -456,7 +455,7 @@ impl SvgImporter {
 
         let inner = &trimmed[7..trimmed.len() - 1];
         let values: Result<Vec<f32>, _> =
-            inner.split(',').map(|s| s.trim().parse::<f32>()).collect();
+        inner.split(',').map(|s| s.trim().parse::<f32>()).collect();
 
         if let Ok(vals) = values {
             if vals.len() == 6 {
@@ -493,7 +492,7 @@ impl DxfImporter {
     /// Imported design with converted shapes
     pub fn import_file(&self, path: &str) -> Result<ImportedDesign> {
         let content =
-            std::fs::read_to_string(path).map_err(|e| anyhow!("Failed to read DXF file: {}", e))?;
+        std::fs::read_to_string(path).map_err(|e| anyhow!("Failed to read DXF file: {}", e))?;
 
         self.import_string(&content)
     }
@@ -520,10 +519,10 @@ impl DxfImporter {
 
         Ok(ImportedDesign {
             shapes,
-            dimensions,
-            format: FileFormat::Dxf,
-            layer_count: dxf_file.layer_names().len(),
-            mesh_3d: None,
+           dimensions,
+           format: FileFormat::Dxf,
+               layer_count: dxf_file.layer_names().len(),
+           mesh_3d: None,
         })
     }
 
@@ -536,10 +535,11 @@ impl DxfImporter {
 
         // Transform to apply: negate X and add offset
         // Note: dxf_file is already scaled by self.scale
-        let transform = lyon::math::Transform::scale(-1.0, 1.0).then_translate(lyon::math::vector(
+        //        let transform = lyon::math::Transform::scale(-1.0, 1.0).then_translate(lyon::math::vector(
+        let transform = lyon::math::Transform::translation(
             self.offset_x as f32,
             self.offset_y as f32,
-        ));
+        );
 
         for entity in &dxf_file.entities {
             let path_opt = match entity {
@@ -550,70 +550,189 @@ impl DxfImporter {
                     builder.end(false);
                     Some(builder.build())
                 }
+
                 DxfEntity::Circle(circle) => {
                     let mut builder = Path::builder();
                     let center = point(circle.center.x as f32, circle.center.y as f32);
                     let radius = circle.radius as f32;
 
+                    let steps = 64; // Número de puntos para un círculo suave
                     let start_point = center + lyon::math::vector(radius, 0.0);
                     builder.begin(start_point);
 
-                    let arc_geom = Arc {
-                        center,
-                        radii: lyon::math::vector(radius, radius),
-                        x_rotation: lyon::math::Angle::radians(0.0),
-                        start_angle: lyon::math::Angle::radians(0.0),
-                        sweep_angle: lyon::math::Angle::radians(2.0 * std::f32::consts::PI),
-                    };
-
-                    arc_geom.for_each_cubic_bezier(&mut |ctrl| {
-                        builder.cubic_bezier_to(ctrl.ctrl1, ctrl.ctrl2, ctrl.to);
-                    });
+                    for i in 1..=steps {
+                        let angle = 2.0 * std::f32::consts::PI * (i as f32 / steps as f32);
+                        let x = center.x + radius * angle.cos();
+                        let y = center.y + radius * angle.sin();
+                        builder.line_to(point(x, y));
+                    }
 
                     builder.close();
                     Some(builder.build())
                 }
+
                 DxfEntity::Arc(arc) => {
                     let mut builder = Path::builder();
                     let center = point(arc.center.x as f32, arc.center.y as f32);
                     let radius = arc.radius as f32;
-                    let start_angle = lyon::math::Angle::degrees(arc.start_angle as f32);
-                    let end_angle = lyon::math::Angle::degrees(arc.end_angle as f32);
-                    let sweep_angle = end_angle - start_angle;
 
-                    let start_point = center
-                        + lyon::math::vector(
-                            radius * start_angle.radians.cos(),
-                            radius * start_angle.radians.sin(),
-                        );
+                    let start_angle = arc.start_angle.to_radians() as f32;
+                    let end_angle = arc.end_angle.to_radians() as f32;
 
+                    let mut sweep_angle = end_angle - start_angle;
+                    if sweep_angle < 0.0 {
+                        sweep_angle += 2.0 * std::f32::consts::PI;
+                    }
+
+                    let steps = 64; // Número de puntos para un arco suave
+                    let steps = (steps as f32 * sweep_angle / (2.0 * std::f32::consts::PI)).ceil() as usize;
+                    let steps = steps.max(4); // Mínimo 4 puntos para arcos pequeños
+
+                    // Punto inicial
+                    let start_point = center + vector(
+                        radius * start_angle.cos(),
+                                                      radius * start_angle.sin()
+                    );
                     builder.begin(start_point);
 
-                    let arc_geom = Arc {
-                        center,
-                        radii: lyon::math::vector(radius, radius),
-                        x_rotation: lyon::math::Angle::radians(0.0),
-                        start_angle,
-                        sweep_angle,
-                    };
-
-                    arc_geom.for_each_cubic_bezier(&mut |ctrl| {
-                        builder.cubic_bezier_to(ctrl.ctrl1, ctrl.ctrl2, ctrl.to);
-                    });
+                    // Generar puntos intermedios
+                    for i in 1..=steps {
+                        let t = start_angle + sweep_angle * (i as f32 / steps as f32);
+                        let x = center.x + radius * t.cos();
+                        let y = center.y + radius * t.sin();
+                        builder.line_to(point(x, y));
+                    }
 
                     builder.end(false);
                     Some(builder.build())
                 }
+
+                DxfEntity::Ellipse(ellipse) => {
+                    let center = point(ellipse.center.x as f32, ellipse.center.y as f32);
+
+                    let major_vec = vector(ellipse.major_axis.x as f32, ellipse.major_axis.y as f32);
+                    let major_radius = (major_vec.x * major_vec.x + major_vec.y * major_vec.y).sqrt();
+                    let minor_radius = major_radius * ellipse.ratio as f32;
+
+                    let rotation = major_vec.y.atan2(major_vec.x);
+
+                    let start_angle = ellipse.start_angle as f32;
+                    let end_angle = ellipse.end_angle as f32;
+
+                    // Calc sweep angle
+                    let mut sweep_angle = end_angle - start_angle;
+                    if sweep_angle < 0.0 {
+                        sweep_angle += 2.0 * std::f32::consts::PI;
+                    }
+
+                    let steps = 64;
+                    let mut builder = Path::builder();
+
+                    let start_x = center.x + major_radius * rotation.cos() * start_angle.cos() - minor_radius * rotation.sin() * start_angle.sin();
+                    let start_y = center.y + major_radius * rotation.sin() * start_angle.cos() + minor_radius * rotation.cos() * start_angle.sin();
+                    builder.begin(point(start_x, start_y));
+
+                    for i in 1..=steps {
+                        let t = start_angle + sweep_angle * (i as f32 / steps as f32);
+                        let x = center.x + major_radius * rotation.cos() * t.cos() - minor_radius * rotation.sin() * t.sin();
+                        let y = center.y + major_radius * rotation.sin() * t.cos() + minor_radius * rotation.cos() * t.sin();
+                        builder.line_to(point(x, y));
+                    }
+
+                    let is_complete = (sweep_angle - 2.0 * std::f32::consts::PI).abs() < 0.001;
+                    if is_complete {
+                        builder.line_to(point(start_x, start_y));
+                    }
+
+                    builder.end(false);
+                    let path = builder.build();
+
+                    Some(path)
+                }
+
                 DxfEntity::Polyline(polyline) => {
                     if polyline.vertices.is_empty() {
                         None
                     } else {
+                        use lyon::math::{point, vector};
+
                         let mut builder = Path::builder();
+
+                        // Empezar en el primer vértice
                         let start = polyline.vertices[0];
                         builder.begin(point(start.x as f32, start.y as f32));
-                        for v in polyline.vertices.iter().skip(1) {
-                            builder.line_to(point(v.x as f32, v.y as f32));
+
+                        // Procesar cada segmento con su posible bulge
+                        for i in 0..polyline.vertices.len() - 1 {
+                            let v1 = polyline.vertices[i];
+                            let v2 = polyline.vertices[i + 1];
+
+                            let p1 = point(v1.x as f32, v1.y as f32);
+                            let p2 = point(v2.x as f32, v2.y as f32);
+
+                            // Obtener el bulge para este segmento (si existe)
+                            let bulge = if i < polyline.bulges.len() {
+                                polyline.bulges[i]
+                            } else {
+                                0.0  // Sin bulge = línea recta
+                            };
+
+
+                            if bulge.abs() < 0.0001 {
+                                // Línea recta
+                                builder.line_to(p2);
+                            } else {
+
+                                let dist = ((v2.x - v1.x).powi(2) + (v2.y - v1.y).powi(2)).sqrt() as f32;
+
+                                let included_angle = 4.0 * bulge.abs().atan() as f32;
+
+                                let h = bulge.abs() as f32 * (dist / 2.0);
+
+                                let radius = ( (dist / 2.0).powi(2) + h.powi(2) ) / (2.0 * h);
+
+                                let dist_to_center = radius - h;
+
+                                let mid = point(
+                                    (v1.x + v2.x) as f32 / 2.0,
+                                                (v1.y + v2.y) as f32 / 2.0
+                                );
+
+                                let perp = vector(
+                                    -(v2.y - v1.y) as f32 / dist,
+                                                  (v2.x - v1.x) as f32 / dist
+                                );
+
+                                let center = if bulge > 0.0 {
+                                    mid + perp * dist_to_center
+                                } else {
+                                    mid - perp * dist_to_center
+                                };
+
+                                let start_vec = p1 - center;
+                                let start_angle = start_vec.y.atan2(start_vec.x);
+
+                                let sweep_angle = if bulge > 0.0 {
+                                    included_angle
+                                } else {
+                                    -included_angle
+                                };
+
+                                let arc_geom = lyon::geom::Arc {
+                                    center,
+                                    radii: vector(radius, radius),
+                                    x_rotation: lyon::math::Angle::radians(0.0),
+                                    start_angle: lyon::math::Angle::radians(start_angle),
+                                    sweep_angle: lyon::math::Angle::radians(sweep_angle),
+                                };
+
+                                arc_geom.for_each_cubic_bezier(&mut |ctrl| {
+                                    builder.cubic_bezier_to(ctrl.ctrl1, ctrl.ctrl2, ctrl.to);
+                                });
+                            }
+
                         }
+
                         if polyline.closed {
                             builder.close();
                         } else {
@@ -670,8 +789,8 @@ impl StlImporter {
     /// Import STL file and return both 3D mesh and 2D shadow projection
     pub fn import_file(&self, path: &str) -> Result<ImportedDesign> {
         let importer = Model3DImporter::new()
-            .with_scale(self.scale)
-            .with_centering(self.center_model);
+        .with_scale(self.scale)
+        .with_centering(self.center_model);
 
         let mesh = importer.import_file(path)?;
         self.create_imported_design(mesh)
@@ -680,8 +799,8 @@ impl StlImporter {
     /// Import STL from binary data
     pub fn import_data(&self, data: &[u8]) -> Result<ImportedDesign> {
         let importer = Model3DImporter::new()
-            .with_scale(self.scale)
-            .with_centering(self.center_model);
+        .with_scale(self.scale)
+        .with_centering(self.center_model);
 
         let mesh = importer.import_stl_data(data)?;
         self.create_imported_design(mesh)
@@ -699,18 +818,18 @@ impl StlImporter {
 
         Ok(ImportedDesign {
             shapes,
-            dimensions,
-            format: FileFormat::Stl,
-            layer_count: 1, // STL shadow projection creates a single layer
-            mesh_3d: Some(mesh),
+           dimensions,
+           format: FileFormat::Stl,
+               layer_count: 1, // STL shadow projection creates a single layer
+           mesh_3d: Some(mesh),
         })
     }
 
     /// Import STL and slice at specific Z height
     pub fn import_with_slice(&self, path: &str, z_height: f32) -> Result<ImportedDesign> {
         let importer = Model3DImporter::new()
-            .with_scale(self.scale)
-            .with_centering(self.center_model);
+        .with_scale(self.scale)
+        .with_centering(self.center_model);
 
         let mesh = importer.import_file(path)?;
 
@@ -724,10 +843,10 @@ impl StlImporter {
 
         Ok(ImportedDesign {
             shapes,
-            dimensions,
-            format: FileFormat::Stl,
-            layer_count: 1, // Single slice creates one layer
-            mesh_3d: Some(mesh),
+           dimensions,
+           format: FileFormat::Stl,
+               layer_count: 1, // Single slice creates one layer
+           mesh_3d: Some(mesh),
         })
     }
 }

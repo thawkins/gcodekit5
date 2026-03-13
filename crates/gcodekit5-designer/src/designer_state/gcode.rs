@@ -4,8 +4,11 @@ use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::model::DesignerShape;
 use crate::shapes::OperationType;
-use crate::{Circle, Point, ToolpathToGcode};
+// use crate::{Circle, Point, ToolpathToGcode};
+use crate::{ToolpathToGcode};
 use gcodekit5_core::Units;
+use crate::designer_state::MachineMode;
+use csgrs::traits::CSG;
 
 impl DesignerState {
     /// Generates G-code from the current design.
@@ -13,13 +16,32 @@ impl DesignerState {
         let mut gcode = String::new();
         // Get safe_z from stock_material, default to 10.0 if not set
         let safe_z = self
-            .stock_material
-            .as_ref()
-            .map(|s| s.safe_z as f64)
-            .unwrap_or(10.0);
+        .stock_material
+        .as_ref()
+        .map(|s| s.safe_z as f64)
+        .unwrap_or(10.0);
         let mut gcode_gen = ToolpathToGcode::new(Units::MM, safe_z);
-        gcode_gen.num_axes = self.num_axes;
+        // Use state mode:
+        match self.machine_mode() {
+            MachineMode::Laser2D => {
+                gcode_gen = gcode_gen.with_laser_2d();
+            }
+            MachineMode::Cnc3D => {
+            }
+        }
 
+
+        gcode_gen.num_axes = self.num_axes;
+        if self.num_axes < 3 {
+            // Use state mode:
+            match self.machine_mode() {
+                MachineMode::Laser2D => {
+                    gcode_gen = gcode_gen.with_laser_2d();
+                }
+                MachineMode::Cnc3D => {
+                }
+            }
+        }
         // Store shape-to-toolpath mapping (plus whether we had to fall back from pocket->profile)
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
@@ -30,18 +52,19 @@ impl DesignerState {
             let Some(shape_obj) = self.canvas.shape_store.get(shape_id) else {
                 continue;
             };
+
             self.toolpath_generator
-                .set_pocket_strategy(shape_obj.pocket_strategy);
+            .set_pocket_strategy(shape_obj.pocket_strategy);
             self.toolpath_generator
-                .set_start_depth(shape_obj.start_depth);
+            .set_start_depth(shape_obj.start_depth);
             self.toolpath_generator
-                .set_cut_depth(shape_obj.pocket_depth);
+            .set_cut_depth(shape_obj.pocket_depth);
             self.toolpath_generator
-                .set_step_in(shape_obj.step_in as f64);
+            .set_step_in(shape_obj.step_in as f64);
             self.toolpath_generator
-                .set_ramp_angle(shape_obj.ramp_angle as f64);
+            .set_ramp_angle(shape_obj.ramp_angle as f64);
             self.toolpath_generator
-                .set_raster_fill_ratio(shape_obj.raster_fill_ratio);
+            .set_raster_fill_ratio(shape_obj.raster_fill_ratio);
 
             let effective_shape = shape_obj.get_effective_shape();
 
@@ -55,13 +78,13 @@ impl DesignerState {
                                 shape_obj.step_down as f64,
                                 shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_rectangle_contour(rect, shape_obj.step_down as f64),
-                            false,
+                            .generate_rectangle_contour(rect, shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
@@ -74,64 +97,108 @@ impl DesignerState {
                                 shape_obj.step_down as f64,
                                 shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_circle_contour(circle, shape_obj.step_down as f64),
-                            false,
+                            .generate_circle_contour(circle, shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
+
                 crate::model::Shape::Line(line) => (
                     self.toolpath_generator
-                        .generate_line_contour(line, shape_obj.step_down as f64),
-                    false,
+                    .generate_line_contour(line, shape_obj.step_down as f64),
+                                                    false,
                 ),
+                /*
+                 *                crate::model::Shape::Ellipse(ellipse) => {
+                 *                    let (x1, y1, x2, y2) = ellipse.bounds();
+                 *                    let cx = (x1 + x2) / 2.0;
+                 *                    let cy = (y1 + y2) / 2.0;
+                 *                    let radius = ((x2 - x1).abs().max((y2 - y1).abs())) / 2.0;
+                 *                    let circle = Circle::new(Point::new(cx, cy), radius);
+                 *                    (
+                 *                        self.toolpath_generator
+                 *                        .generate_circle_contour(&circle, shape_obj.step_down as f64),
+                 *                     false,
+                 *                    )
+            }
+            */
                 crate::model::Shape::Ellipse(ellipse) => {
-                    let (x1, y1, x2, y2) = ellipse.bounds();
-                    let cx = (x1 + x2) / 2.0;
-                    let cy = (y1 + y2) / 2.0;
-                    let radius = ((x2 - x1).abs().max((y2 - y1).abs())) / 2.0;
-                    let circle = Circle::new(Point::new(cx, cy), radius);
-                    (
-                        self.toolpath_generator
-                            .generate_circle_contour(&circle, shape_obj.step_down as f64),
-                        false,
-                    )
-                }
-                crate::model::Shape::Path(path_shape) => {
                     if shape_obj.operation_type == OperationType::Pocket {
                         (
-                            self.toolpath_generator.generate_path_pocket(
-                                path_shape,
+                            self.toolpath_generator.generate_ellipse_pocket(
+                                ellipse,
                                 shape_obj.pocket_depth,
                                 shape_obj.step_down as f64,
                                 shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_path_contour(path_shape, shape_obj.step_down as f64),
-                            false,
+                            .generate_ellipse_contour(ellipse, shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
+
+                crate::model::Shape::Path(path_shape) => {
+                    // 1. We clone so as not to alter the original object on the canvas
+                    let mut rotated_path = path_shape.clone();
+
+                    // 2. We apply the rotation if it exists
+                    if rotated_path.rotation.abs() > f64::EPSILON {
+                        let (x1, y1, x2, y2) = rotated_path.bounds();
+                        let cx = (x1 + x2) / 2.0;
+                        let cy = (y1 + y2) / 2.0;
+                        let rad = rotated_path.rotation.to_radians();
+                        let translation_to_origin = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(-cx, -cy, 0.0));
+                        let rotation_matrix = nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
+                        let translation_back = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(cx, cy, 0.0));
+
+                        let full_transform = translation_back * rotation_matrix * translation_to_origin;
+
+                        // Passing Matrix4
+                        rotated_path.sketch = rotated_path.sketch.transform(&full_transform);
+                    }
+
+                    // 3. We generate the G-code with the object already rotated
+                    if shape_obj.operation_type == OperationType::Pocket {
+                        (
+                            self.toolpath_generator.generate_path_pocket(
+                                &rotated_path,
+                                shape_obj.pocket_depth,
+                                shape_obj.step_down as f64,
+                                shape_obj.step_in as f64,
+                            ),
+                         false,
+                        )
+                    } else {
+                        (
+                            self.toolpath_generator
+                            .generate_path_contour(&rotated_path, shape_obj.step_down as f64),
+                         false,
+                        )
+                    }
+                }
+
                 crate::model::Shape::Text(text) => {
                     if shape_obj.operation_type == OperationType::Pocket {
                         let pocket = self
-                            .toolpath_generator
-                            .generate_text_pocket_toolpath(text, shape_obj.step_down as f64);
+                        .toolpath_generator
+                        .generate_text_pocket_toolpath(text, shape_obj.step_down as f64);
                         let pocket_len: f64 = pocket.iter().map(|tp| tp.total_length()).sum();
 
                         if pocket_len <= 1e-9 {
                             (
                                 self.toolpath_generator
-                                    .generate_text_toolpath(text, shape_obj.step_down as f64),
-                                true,
+                                .generate_text_toolpath(text, shape_obj.step_down as f64),
+                             true,
                             )
                         } else {
                             (pocket, false)
@@ -139,8 +206,8 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_text_toolpath(text, shape_obj.step_down as f64),
-                            false,
+                            .generate_text_toolpath(text, shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
@@ -153,13 +220,13 @@ impl DesignerState {
                                 shape_obj.step_down as f64,
                                 shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_triangle_contour(triangle, shape_obj.step_down as f64),
-                            false,
+                            .generate_triangle_contour(triangle, shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
@@ -172,16 +239,17 @@ impl DesignerState {
                                 shape_obj.step_down as f64,
                                 shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_polygon_contour(polygon, shape_obj.step_down as f64),
-                            false,
+                            .generate_polygon_contour(polygon, shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
+
                 _ => {
                     let path = effective_shape.render();
                     let design_path = crate::model::DesignPath::from_lyon_path(&path);
@@ -194,7 +262,7 @@ impl DesignerState {
                         )
                     } else {
                         self.toolpath_generator
-                            .generate_path_contour(&design_path, shape_obj.step_down as f64)
+                        .generate_path_contour(&design_path, shape_obj.step_down as f64)
                     };
                     (toolpaths, false)
                 }
@@ -204,32 +272,32 @@ impl DesignerState {
 
         // Calculate total length from all toolpaths
         let total_length: f64 = shape_toolpaths
-            .iter()
-            .flat_map(|(_, tps, _)| tps.iter())
-            .map(|tp| tp.total_length())
-            .sum();
+        .iter()
+        .flat_map(|(_, tps, _)| tps.iter())
+        .map(|tp| tp.total_length())
+        .sum();
 
         // Use settings from first toolpath if available, or defaults
         let (header_speed, header_feed, header_diam, header_depth) =
-            if let Some((_, tps, _)) = shape_toolpaths.first() {
-                if let Some(first) = tps.first() {
-                    let s = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.spindle_speed)
-                        .unwrap_or(3000);
-                    let f = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.feed_rate)
-                        .unwrap_or(100.0);
-                    (s, f, first.tool_diameter, first.depth)
-                } else {
-                    (3000, 100.0, 3.175, -5.0)
-                }
+        if let Some((_, tps, _)) = shape_toolpaths.first() {
+            if let Some(first) = tps.first() {
+                let s = first
+                .segments
+                .first()
+                .map(|seg| seg.spindle_speed)
+                .unwrap_or(3000);
+                let f = first
+                .segments
+                .first()
+                .map(|seg| seg.feed_rate)
+                .unwrap_or(100.0);
+                (s, f, first.tool_diameter, first.depth)
             } else {
                 (3000, 100.0, 3.175, -5.0)
-            };
+            }
+        } else {
+            (3000, 100.0, 3.175, -5.0)
+        };
 
         gcode.push_str(&gcode_gen.generate_header(
             header_speed,
@@ -240,18 +308,9 @@ impl DesignerState {
         ));
 
         let mut line_number = 10;
-        let mut is_first_shape = true;
 
+        // ------ Bucle Shape --------
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
-            if !is_first_shape && self.num_axes >= 3 {
-                gcode.push_str(&format!(
-                    "G00 Z{:.3}   ; Retract to safe Z before next shape\n",
-                    safe_z
-                ));
-                line_number += 10;
-            }
-            is_first_shape = false;
-
             // Add shape metadata as comments
             gcode.push_str(&format!(
                 "\n; Shape ID={}, Type={:?}\n",
@@ -282,21 +341,65 @@ impl DesignerState {
 
             // Generate G-code for all toolpaths associated with this shape
             let mut current_z = gcode_gen.safe_z;
-            for toolpath in toolpaths {
-                let (body_gcode, final_z) =
+            // inicio
+            let global_step_down = self.tool_settings.step_down;
+
+            let num_passes = if gcode_gen.is_laser_2d {
+                // LASER MODE: global value
+                global_step_down.max(1.0) as usize
+            } else {
+                // CNC MODE: use step_down
+                let total_depth = (shape.start_depth - shape.pocket_depth).abs();
+                if total_depth <= 0.001 {
+                    1
+                } else {
+                    let step = if shape.step_down <= 0.001 {
+                        total_depth
+                    } else {
+                        shape.step_down as f64
+                    };
+                    (total_depth / step).ceil() as usize
+                }
+            };
+
+            for pass in 0..num_passes {
+                if pass > 0 {
+                    // Reposition to the start for subsequent passes
+                    if let Some(first_tp) = toolpaths.first() {
+                        if let Some(first_seg) = first_tp.segments.first() {
+                            gcode.push_str(&format!(
+                                "G00 X{:.3} Y{:.3}   ; Reposition for pass {}\n",
+                                first_seg.start.x, first_seg.start.y, pass + 1
+                            ));
+                        }
+                    }
+                }
+
+                for toolpath in toolpaths {
+                    let (body_gcode, final_z) =
                     gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
-                gcode.push_str(&body_gcode);
-                line_number += (toolpath.segments.len() as u32) * 10;
-                current_z = final_z;
+                    gcode.push_str(&body_gcode);
+                    line_number += (toolpath.segments.len() as u32) * 10;
+                    current_z = final_z;
+                }
             }
-        }
+
+            if let Some(last_tp) = toolpaths.last() {
+
+                for seg in last_tp.segments.iter().rev() {
+                    if seg.end.x != 0.0 || seg.end.y != 0.0 {
+                        break;
+                    }
+                }
+            }
+        } // for (shape, toolpaths, pocket_fallback_to_profile)
 
         gcode.push_str(&gcode_gen.generate_footer());
 
         self.generated_gcode = gcode.clone();
         self.gcode_generated = self.canvas.shape_count() > 0;
         gcode
-    }
+    } // pub fn generate_gcode
 
     /// Appends shape-specific metadata to G-code comments.
     fn append_shape_metadata(gcode: &mut String, shape: &DrawingObject) {
@@ -305,34 +408,34 @@ impl DesignerState {
                 let (x1, y1, x2, y2) = rect.bounds();
                 gcode.push_str(&format!(
                     "; Position: ({:.3}, {:.3}) to ({:.3}, {:.3})\n",
-                    x1, y1, x2, y2
+                                        x1, y1, x2, y2
                 ));
                 gcode.push_str(&format!("; Corner radius: {:.3}mm\n", rect.corner_radius));
             }
             crate::model::Shape::Circle(circle) => {
                 gcode.push_str(&format!(
                     "; Center: ({:.3}, {:.3}), Radius: {:.3}mm\n",
-                    circle.center.x, circle.center.y, circle.radius
+                                        circle.center.x, circle.center.y, circle.radius
                 ));
             }
             crate::model::Shape::Line(line) => {
                 gcode.push_str(&format!(
                     "; Start: ({:.3}, {:.3}), End: ({:.3}, {:.3})\n",
-                    line.start.x, line.start.y, line.end.x, line.end.y
+                                        line.start.x, line.start.y, line.end.x, line.end.y
                 ));
             }
             crate::model::Shape::Ellipse(ellipse) => {
                 let (x1, y1, x2, y2) = ellipse.bounds();
                 gcode.push_str(&format!(
                     "; Position: ({:.3}, {:.3}) to ({:.3}, {:.3})\n",
-                    x1, y1, x2, y2
+                                        x1, y1, x2, y2
                 ));
             }
             crate::model::Shape::Path(path) => {
                 let (x1, y1, x2, y2) = path.bounds();
                 gcode.push_str(&format!(
                     "; Path bounds: ({:.3}, {:.3}) to ({:.3}, {:.3})\n",
-                    x1, y1, x2, y2
+                                        x1, y1, x2, y2
                 ));
             }
             crate::model::Shape::Text(text) => {
@@ -345,27 +448,28 @@ impl DesignerState {
             crate::model::Shape::Triangle(triangle) => {
                 gcode.push_str(&format!(
                     "; Triangle: Center ({:.3}, {:.3}), Width: {:.3}mm, Height: {:.3}mm\n",
-                    triangle.center.x, triangle.center.y, triangle.width, triangle.height
+                                        triangle.center.x, triangle.center.y, triangle.width, triangle.height
                 ));
             }
             crate::model::Shape::Polygon(polygon) => {
                 gcode.push_str(&format!(
                     "; Polygon: Center ({:.3}, {:.3}), Radius: {:.3}mm, Sides: {}\n",
-                    polygon.center.x, polygon.center.y, polygon.radius, polygon.sides
+                                        polygon.center.x, polygon.center.y, polygon.radius, polygon.sides
                 ));
             }
             crate::model::Shape::Gear(gear) => {
                 gcode.push_str(&format!(
                     "; Gear: Center ({:.3}, {:.3}), Module: {:.3}, Teeth: {}\n",
-                    gear.center.x, gear.center.y, gear.module, gear.teeth
+                                        gear.center.x, gear.center.y, gear.module, gear.teeth
                 ));
             }
             crate::model::Shape::Sprocket(sprocket) => {
                 gcode.push_str(&format!(
                     "; Sprocket: Center ({:.3}, {:.3}), Pitch: {:.3}, Teeth: {}\n",
-                    sprocket.center.x, sprocket.center.y, sprocket.pitch, sprocket.teeth
+                                        sprocket.center.x, sprocket.center.y, sprocket.pitch, sprocket.teeth
                 ));
             }
+
         }
     }
 }

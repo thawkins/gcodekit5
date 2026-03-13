@@ -42,22 +42,50 @@ pub fn setup_rotation_handler(
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
 ) {
-    rotation_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
+    // Text change
+    rotation_entry.connect_changed({
+        let state = state.clone();
+        let redraw_callback = redraw_callback.clone();
+        let updating = updating.clone();
+        move |entry| {
+            if *updating.borrow() { return; }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                entry.remove_css_class("entry-invalid");
+                let mut designer_state = state.borrow_mut();
+                designer_state.set_selected_rotation(val);
+                drop(designer_state);
+                // Forzar iteración para que la UI no se quede atrás
+                while gtk4::glib::MainContext::default().iteration(false) {}
+                if let Some(ref cb) = *redraw_callback.borrow() {
+                    cb();
+                }
+            } else {
+                entry.add_css_class("entry-invalid");
+            }
         }
-        if let Ok(val) = entry.text().parse::<f64>() {
-            entry.remove_css_class("entry-invalid");
-            let mut designer_state = state.borrow_mut();
-            designer_state.set_selected_rotation(val);
-            drop(designer_state);
+    });
+
+   // ENTER
+    rotation_entry.connect_activate({
+        let redraw_callback = redraw_callback.clone();
+        move |_| {
             if let Some(ref cb) = *redraw_callback.borrow() {
                 cb();
             }
-        } else {
-            entry.add_css_class("entry-invalid");
         }
     });
+
+    // TAB
+    let focus_controller = gtk4::EventControllerFocus::new();
+    focus_controller.connect_leave({
+        let redraw_callback = redraw_callback.clone();
+        move |_| {
+            if let Some(ref cb) = *redraw_callback.borrow() {
+                cb();
+            }
+        }
+    });
+    rotation_entry.add_controller(focus_controller);
 }
 
 /// Setup corner radius entry handler
@@ -94,7 +122,7 @@ pub fn setup_is_slot_handler(
     is_slot_check: &CheckButton,
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
-    updating: Shared<bool>,
+                             updating: Shared<bool>,
 ) {
     is_slot_check.connect_toggled(move |check| {
         if *updating.borrow() {

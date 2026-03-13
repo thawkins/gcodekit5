@@ -33,18 +33,33 @@ pub struct ToolSettings {
     pub cut_depth: f64,
     pub start_depth: f64,
     pub step_down: f64,
+    pub machine_mode: MachineMode,
 }
 
 impl Default for ToolSettings {
     fn default() -> Self {
         Self {
-            feed_rate: 100.0,
-            spindle_speed: 3000,
-            tool_diameter: 3.175,
-            cut_depth: 5.0,
+            feed_rate: 2000.0,
+            spindle_speed: 200,
+            tool_diameter: 0.1,
+            cut_depth: 0.0,
             start_depth: 0.0,
-            step_down: 1.0,
+            step_down: 0.0,
+            machine_mode: MachineMode::default(),
         }
+    }
+}
+
+/// Machine operation mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MachineMode {
+    Laser2D,
+    Cnc3D,
+}
+
+impl Default for MachineMode {
+    fn default() -> Self {
+        Self::Laser2D  // By default, Laser2D
     }
 }
 
@@ -187,6 +202,19 @@ impl DesignerState {
         self.tool_settings.step_down = step;
         self.gcode_generated = false;
     }
+
+/// Gets the current machine mode
+    pub fn machine_mode(&self) -> MachineMode {
+        self.tool_settings.machine_mode
+    }
+
+    /// Sets the machine mode
+    pub fn set_machine_mode(&mut self, mode: MachineMode) {
+        self.tool_settings.machine_mode = mode;
+        self.gcode_generated = false;
+    }
+
+
 }
 
 impl Default for DesignerState {

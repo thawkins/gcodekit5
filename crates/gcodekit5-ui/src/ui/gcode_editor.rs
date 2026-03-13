@@ -14,7 +14,7 @@
 //! File operations use the `rfd` crate for cross-platform file dialogs.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use gcodekit5_core::{thread_safe, ThreadSafe};
 
 /// Token types for G-Code syntax highlighting
@@ -293,6 +293,10 @@ pub struct GcodeEditor {
     file: ThreadSafe<GcodeFile>,
     /// Whether the editor is editable
     editable: ThreadSafe<bool>,
+    // ---
+    /// Sender to Visualizer
+    toolpath_sender: mpsc::Sender<Vec<Toolpath>>,
+    // ---
 }
 
 impl GcodeEditor {
@@ -617,6 +621,17 @@ impl GcodeEditor {
         std::fs::write(path, content)?;
         Ok(())
     }
+
+    // ---
+pub fn on_gcode_loaded(&mut self, gcode: String) {
+        match parse_gcode_to_toolpaths(&gcode) {
+            Ok(toolpaths) => {
+                let _ = self.toolpath_sender.send(toolpaths);
+            }
+            Err(e) => eprintln!("Error parsing G-code: {}", e),
+        }
+    }
+    // ---
 }
 
 impl Default for GcodeEditor {

@@ -273,6 +273,23 @@ impl ShapeStore {
     pub fn set_next_id(&mut self, id: u64) {
         self.next_id = id;
     }
+
+    pub fn get_depth(&self, id: u64) -> Option<usize> {
+        self.draw_order.iter().position(|&shape_id| shape_id == id)
+    }
+
+    pub fn move_to_position(&mut self, id: u64, new_position_0based: usize) {
+        if let Some(old_pos) = self.draw_order.iter().position(|&x| x == id) {
+            self.draw_order.remove(old_pos);
+
+            // Insert directly into new_position_0based
+            let insert_pos = new_position_0based.min(self.draw_order.len());
+            self.draw_order.insert(insert_pos, id);
+        }
+    }
+    pub fn draw_order(&self) -> &Vec<u64> {
+        &self.draw_order
+    }
 }
 
 impl Default for ShapeStore {

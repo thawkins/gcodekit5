@@ -44,7 +44,7 @@ pub fn render_grid(canvas: &Canvas, width: u32, height: u32) -> (String, f64) {
     let margin_pixels = 500.0;
     let top_left = viewport.pixel_to_world(-margin_pixels, -margin_pixels);
     let bottom_right =
-        viewport.pixel_to_world(width as f64 + margin_pixels, height as f64 + margin_pixels);
+    viewport.pixel_to_world(width as f64 + margin_pixels, height as f64 + margin_pixels);
 
     let world_left = top_left.x.min(bottom_right.x);
     let world_right = top_left.x.max(bottom_right.x);
@@ -215,7 +215,7 @@ pub fn render_selection_handles(canvas: &Canvas, _width: u32, _height: u32) -> S
         (screen_right, screen_bottom), // Bottom-right (screen)
         (
             (screen_left + screen_right) / 2.0,
-            (screen_top + screen_bottom) / 2.0,
+         (screen_top + screen_bottom) / 2.0,
         ), // Center
     ];
 
@@ -360,9 +360,9 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
             // We need to work in world coordinates for rotation, then convert to pixel
             // rect.corner_radius is in world units.
             let r_world = rect
-                .corner_radius
-                .min(rect.width / 2.0)
-                .min(rect.height / 2.0);
+            .corner_radius
+            .min(rect.width / 2.0)
+            .min(rect.height / 2.0);
 
             if r_world < 0.001 {
                 // Sharp rectangle
@@ -517,13 +517,13 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                 match event {
                     lyon::path::Event::Begin { at } => {
                         let (rx, ry) =
-                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("M {} {} ", sx, sy));
                     }
                     lyon::path::Event::Line { to, .. } => {
                         let (rx, ry) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
@@ -544,13 +544,13 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                 match event {
                     lyon::path::Event::Begin { at } => {
                         let (rx, ry) =
-                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("M {} {} ", sx, sy));
                     }
                     lyon::path::Event::Line { to, .. } => {
                         let (rx, ry) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
@@ -570,13 +570,13 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                 match event {
                     lyon::path::Event::Begin { at } => {
                         let (rx, ry) =
-                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("M {} {} ", sx, sy));
                     }
                     lyon::path::Event::Line { from: _, to } => {
                         let (rx, ry) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
@@ -589,7 +589,7 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                             rotation,
                         );
                         let (rtx, rty) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (cx, cy) = viewport.world_to_pixel(rcx, rcy);
                         let (sx, sy) = viewport.world_to_pixel(rtx, rty);
                         path_str.push_str(&format!("Q {} {} {} {} ", cx, cy, sx, sy));
@@ -615,12 +615,12 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                             rotation,
                         );
                         let (rtx, rty) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (c1x, c1y) = viewport.world_to_pixel(rc1x, rc1y);
                         let (c2x, c2y) = viewport.world_to_pixel(rc2x, rc2y);
                         let (sx, sy) = viewport.world_to_pixel(rtx, rty);
                         path_str
-                            .push_str(&format!("C {} {} {} {} {} {} ", c1x, c1y, c2x, c2y, sx, sy));
+                        .push_str(&format!("C {} {} {} {} {} {} ", c1x, c1y, c2x, c2y, sx, sy));
                     }
                     lyon::path::Event::End {
                         last: _,
@@ -642,13 +642,13 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                 match event {
                     lyon::path::Event::Begin { at } => {
                         let (rx, ry) =
-                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("M {} {} ", sx, sy));
                     }
                     lyon::path::Event::Line { to, .. } => {
                         let (rx, ry) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
@@ -669,13 +669,13 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                 match event {
                     lyon::path::Event::Begin { at } => {
                         let (rx, ry) =
-                            rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
+                        rotate_point(at.x as f64, at.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("M {} {} ", sx, sy));
                     }
                     lyon::path::Event::Line { to, .. } => {
                         let (rx, ry) =
-                            rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
+                        rotate_point(to.x as f64, to.y as f64, center_x, center_y, rotation);
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
@@ -742,7 +742,7 @@ impl OutlineBuilder for SvgPathBuilder {
         let (sx1, sy1) = self.viewport.world_to_pixel(rx1, ry1);
         let (sx, sy) = self.viewport.world_to_pixel(rx, ry);
         self.path
-            .push_str(&format!("Q {} {} {} {} ", sx1, sy1, sx, sy));
+        .push_str(&format!("Q {} {} {} {} ", sx1, sy1, sx, sy));
     }
 
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
@@ -771,7 +771,7 @@ impl OutlineBuilder for SvgPathBuilder {
         let (sx2, sy2) = self.viewport.world_to_pixel(rx2, ry2);
         let (sx, sy) = self.viewport.world_to_pixel(rx, ry);
         self.path
-            .push_str(&format!("C {} {} {} {} {} {} ", sx1, sy1, sx2, sy2, sx, sy));
+        .push_str(&format!("C {} {} {} {} {} {} ", sx1, sy1, sx2, sy2, sx, sy));
     }
 
     fn close(&mut self) {

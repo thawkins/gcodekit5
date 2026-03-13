@@ -690,7 +690,7 @@ mod tests {
             2,
             "Carbide".to_string(),
         );
-        let mut stt = SliceToToolpath::contour_cutting(tool.clone(), 1.0);
+        let stt = SliceToToolpath::contour_cutting(tool.clone(), 1.0);
 
         let rect = DesignRectangle {
             width: 10.0,
@@ -720,7 +720,7 @@ mod tests {
             2,
             "Carbide".to_string(),
         );
-        let mut stt = SliceToToolpath::pocket_clearing(tool.clone(), 0.5);
+        let stt = SliceToToolpath::pocket_clearing(tool.clone(), 0.5);
 
         let rect = DesignRectangle {
             width: 20.0,

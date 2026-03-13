@@ -135,7 +135,7 @@ pub struct ShapeData {
 }
 
 fn default_lock_aspect_ratio() -> bool {
-    true
+    false //true
 }
 
 fn default_raster_fill_ratio() -> f64 {
@@ -273,7 +273,7 @@ impl DesignFile {
             },
             shapes: Vec::new(),
             default_properties: None,
-            toolpath_params: ToolpathParameters::default(),
+                toolpath_params: ToolpathParameters::default(),
         }
     }
 
@@ -289,10 +289,10 @@ impl DesignFile {
     /// Load design from file
     pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content =
-            std::fs::read_to_string(path.as_ref()).context("Failed to read design file")?;
+        std::fs::read_to_string(path.as_ref()).context("Failed to read design file")?;
 
         let mut design: DesignFile =
-            serde_json::from_str(&content).context("Failed to parse design file")?;
+        serde_json::from_str(&content).context("Failed to parse design file")?;
 
         // Update modified timestamp
         design.metadata.modified = Utc::now();
@@ -302,9 +302,18 @@ impl DesignFile {
 
     /// Convert DrawingObject to ShapeData
     pub fn from_drawing_object(obj: &DrawingObject) -> ShapeData {
-        let (x, y, x2, y2) = obj.shape.bounds();
-        let width = x2 - x;
-        let height = y2 - y;
+
+        // 1. We only use the bounds to calculate the center (cx, cy)
+        let (x1, y1, x2, y2) = obj.shape.bounds();
+        let cx = (x1 + x2) / 2.0;
+        let cy = (y1 + y2) / 2.0;
+
+        // 2. We obtain the actual width and height of the object
+        let (real_width, real_height) = match &obj.shape {
+            Shape::Rectangle(r) => (r.width, r.height),
+            Shape::Ellipse(e) => (e.rx * 2.0, e.ry * 2.0),
+            _ => (x2 - x1, y2 - y1),
+        };
 
         let shape_type = match obj.shape.shape_type() {
             ShapeType::Rectangle => "rectangle",
@@ -317,20 +326,67 @@ impl DesignFile {
             ShapeType::Polygon => "polygon",
             ShapeType::Gear => "gear",
             ShapeType::Sprocket => "sprocket",
+            //      ShapeType::Polyline => "polyline",
+        };
+
+        let rotation = obj.shape.rotation();
+
+        ShapeData {
+            id: obj.id as i32,
+            group_id: obj.group_id,
+            name: obj.name.clone(),
+            shape_type: shape_type.to_string(),
+            x: cx,
+            y: cy,
+            width: real_width,
+            height: real_height,
+            rotation,
+            selected: obj.selected,
+            operation_type: format!("{:?}", obj.operation_type).to_lowercase(),
+            pocket_strategy: obj.pocket_strategy,
+            use_custom_values: obj.use_custom_values,
+            pocket_depth: obj.pocket_depth,
+            start_depth: obj.start_depth,
+            step_down: obj.step_down,
+            step_in: obj.step_in,
+            ramp_angle: obj.ramp_angle,
+            raster_fill_ratio: obj.raster_fill_ratio,
+            offset: obj.offset,
+            fillet: obj.fillet,
+            chamfer: obj.chamfer,
+            lock_aspect_ratio: obj.lock_aspect_ratio,
+            depth: obj.pocket_depth,
+            points: Vec::new(),
+            tab_size: 0.0,
+            thickness: 0.0,
+            path_data: String::new(),
+            text_content: String::new(),
+            font_family: String::new(),
+            font_size: 0.0,
+            font_bold: false,
+            font_italic: false,
+            corner_radius: 0.0,
+            is_slot: false,
+            sides: 0,
+            module: 0.0,
+            teeth: 0,
+            pressure_angle: 0.0,
+            pitch: 0.0,
+            roller_diameter: 0.0,
         };
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
-            if let Shape::Text(text_shape) = &obj.shape {
-                (
-                    text_shape.text.clone(),
-                    text_shape.font_size,
-                    text_shape.font_family.clone(),
-                    text_shape.bold,
-                    text_shape.italic,
-                )
-            } else {
-                (String::new(), 0.0, String::new(), false, false)
-            };
+        if let Shape::Text(text_shape) = &obj.shape {
+            (
+                text_shape.text.clone(),
+             text_shape.font_size,
+             text_shape.font_family.clone(),
+             text_shape.bold,
+             text_shape.italic,
+            )
+        } else {
+            (String::new(), 0.0, String::new(), false, false)
+        };
 
         let path_data = if let Shape::Path(path_shape) = &obj.shape {
             path_shape.to_svg_path()
@@ -377,10 +433,10 @@ impl DesignFile {
             id: obj.id as i32,
             shape_type: shape_type.to_string(),
             name: obj.name.clone(),
-            x,
-            y,
-            width,
-            height,
+            x: cx,
+            y: cy,
+            width: real_width,
+            height: real_height,
             points: Vec::new(),
             selected: false,
             use_custom_values: obj.use_custom_values,
@@ -453,6 +509,7 @@ impl DesignFile {
                 let radius = data.width.min(data.height) / 2.0;
                 Shape::Polygon(Polygon::new(center, radius, data.sides))
             }
+
             "polyline" => {
                 let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
                 let radius = data.width.min(data.height) / 2.0;
@@ -466,9 +523,10 @@ impl DesignFile {
                 }
                 Shape::Path(PathShape::from_points(&vertices, true))
             }
+
             "text" => {
                 let mut s =
-                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }
@@ -515,6 +573,7 @@ impl DesignFile {
             Shape::Polygon(s) => s.rotation = data.rotation,
             Shape::Gear(s) => s.rotation = data.rotation,
             Shape::Sprocket(s) => s.rotation = data.rotation,
+            //            Shape::Polyline(s) => s.rotation = data.rotation,
         }
 
         let operation_type = match data.operation_type.as_str() {
@@ -533,31 +592,32 @@ impl DesignFile {
             crate::model::ShapeType::Polygon => "Polygon",
             crate::model::ShapeType::Gear => "Gear",
             crate::model::ShapeType::Sprocket => "Sprocket",
+            //            crate::model::ShapeType::Polyline => "Polyline",
         };
 
         Ok(DrawingObject {
             id: next_id as u64,
-            group_id: data.group_id,
-            name: if data.name.is_empty() {
-                default_name.to_string()
-            } else {
-                data.name.clone()
-            },
-            shape,
-            selected: data.selected,
-            operation_type,
-            use_custom_values: data.use_custom_values,
-            pocket_depth: data.pocket_depth,
-            start_depth: data.start_depth,
-            step_down: data.step_down,
-            step_in: data.step_in,
-            ramp_angle: data.ramp_angle,
-            pocket_strategy: data.pocket_strategy,
-            raster_fill_ratio: data.raster_fill_ratio,
-            offset: data.offset,
-            fillet: data.fillet,
-            chamfer: data.chamfer,
-            lock_aspect_ratio: data.lock_aspect_ratio,
+           group_id: data.group_id,
+           name: if data.name.is_empty() {
+               default_name.to_string()
+           } else {
+               data.name.clone()
+           },
+           shape,
+           selected: data.selected,
+           operation_type,
+           use_custom_values: data.use_custom_values,
+           pocket_depth: data.pocket_depth,
+           start_depth: data.start_depth,
+           step_down: data.step_down,
+           step_in: data.step_in,
+           ramp_angle: data.ramp_angle,
+           pocket_strategy: data.pocket_strategy,
+           raster_fill_ratio: data.raster_fill_ratio,
+           offset: data.offset,
+           fillet: data.fillet,
+           chamfer: data.chamfer,
+           lock_aspect_ratio: data.lock_aspect_ratio,
         })
     }
 }

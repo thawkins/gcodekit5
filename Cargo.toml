@@ -65,6 +65,10 @@ gcodekit5-designer = { path = "crates/gcodekit5-designer" }
 gcodekit5-visualizer = { path = "crates/gcodekit5-visualizer" }
 gcodekit5-ui = { path = "crates/gcodekit5-ui" }
 
+gtk4 = { version = "0.9", features = ["v4_14"] }
+
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
+
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
@@ -99,3 +103,6 @@ assets = [
     { source = "assets/Pictures/com.github.thawkins.gcodekit5.png", dest = "/usr/share/icons/hicolor/128x128/apps/gcodekit5.png", mode = "644" },
     { source = "flatpak/com.github.thawkins.gcodekit5.desktop", dest = "/usr/share/applications/gcodekit5.desktop", mode = "644" },
 ]
+
+[dev-dependencies]
+mutants = "0.0.3"
