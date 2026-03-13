@@ -2474,3 +2474,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - For single selection: Width and height changes now preserve the current position directly from the shape data instead of reading from UI text fields.
   - Width and height changes now only apply when the user finishes editing (Enter key or Tab to next field) instead of on every keystroke, preventing intermediate values from causing position shifts.
 - **Designer**: Fixed UI formatting issue where position values would appear to change after editing size properties due to text field reformatting from user input to formatted output.
+
+### Added
+- **UI/UX Density:** Applied global CSS to reduce text box heights in the Inspector, improving information density for high-count layer projects.
+- **Iconography:** New SVG icons for Designer tools (Triangle, etc.) with adaptive light/dark theme colors.
+- **Workflow:** Added an editable "Order" field for entities to allow manual toolpath sequencing.
+- **Persistence:** The application now saves and restores the last working path in `config.json`.
+- **Tooling:** Added `mutants` as a dev-dependency for mutation testing and LSP error cleanup.
+
+### Fixed
+- **GTK4 Compatibility:** Resolved a critical bug in KDE/Kubuntu where file dialogs were broken; replaced `FileChooserNative` with `FileChooserDialog`.
+- **DXF Import Engine:** Fixed symmetry, scaling, and distortion issues during DXF import.
+- **Geometry:** Polylines in DXF now import as smooth curves instead of chamfered segments.
+- **Designer Logic:**
+    - Fixed object positioning to use the **center** as the anchor point instead of the bottom-left corner.
+    - Implemented **Aspect Ratio Lock** in the Inspector to prevent accidental deformations.
+    - Fixed resizing bugs in the **Polygon** tool.
+    - Improved **Triangle** tool to support asymmetric right triangles via Inspector.
+- **Selection:** Fixed bidirectional synchronization between the canvas and the Layers list, with improved click tolerance for high zoom levels.
+- **Visualizer:** Improved visibility of imported G-Code files on the canvas.
+
+### Changed
+- **Laser Mode:** When "Laser" is selected in Devices, G-Code generation is now restricted to 2D (X/Y axes only), omitting unnecessary Z movements.
+- **Compiler Noise:** Silenced ~800+ GTK 4.14 deprecation warnings via `.cargo/config.toml` to maintain a clean build log.
+- **Infrastructure:** Updated codebase to align with the new `core` and `spatial_index` module structure.
