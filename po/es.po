@@ -3,14 +3,17 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-02-10 01:41+0100\n"
-"Last-Translator: \n"
+"PO-Revision-Date: 2026-03-15 20:08+0100\n"
+"Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: Poedit 3.4.2\n"
+"X-Poedit-KeywordsList: t;t:1\n"
+"X-Poedit-Basepath: ../crates/gcodekit5-ui/src/ui/gtk/cam_tools\n"
+"X-Poedit-SearchPath-0: vector_engraving.rs\n"
 
 msgid "About"
 msgstr "Acerca de"
@@ -520,22 +523,22 @@ msgid "Increase feed rate by 10%"
 msgstr "Incrementar velocidad un 10%"
 
 msgid "Decrease spindle speed by 10%"
-msgstr ""
+msgstr "Disminuye velocidad de husillo un 10%"
 
 msgid "Decrease spindle speed by 1%"
-msgstr ""
+msgstr "Disminuye velocidad de husillo un 1%"
 
 msgid "Reset spindle speed to 100%"
-msgstr ""
+msgstr "Restablecer velocidad de husillo al 100%"
 
 msgid "Stop spindle"
-msgstr ""
+msgstr "Parar husillo"
 
 msgid "Increase spindle speed by 1%"
-msgstr ""
+msgstr "Aumentar velocidad de husillo un 1%"
 
 msgid "Increase spindle speed by 10%"
-msgstr ""
+msgstr "Aumentar velocidad de husillo un 10%"
 
 msgid "Work Coordinates (WPos)"
 msgstr "Coordenadas de trabajo (WPos)"
@@ -641,3 +644,200 @@ msgstr "Error al conectar"
 
 msgid "No valid G-Code lines found."
 msgstr "No se encontraron líneas de G-Code válidas."
+
+# crates/gcodekit5-ui/src/ui/gtk/cam-tools/bitmap_engraving.rs
+msgid "Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."
+msgstr "Convierte imágenes de mapa de bits a G-code para grabado láser. Admite diversos métodos de tramado y transformaciones de imagen."
+
+msgid "No image selected"
+msgstr "Ninguna imagen seleccionada"
+
+msgid "Width:"
+msgstr "Anchura:"
+
+msgid "Image File"
+msgstr "Archivo de imagen"
+
+msgid "Image Path:"
+msgstr "Ruta de la imagen:"
+
+msgid "Scanning"
+msgstr "Escaneando"
+
+msgid "Scan Direction:"
+msgstr "Dirección de Escaneo:"
+
+msgid "Pixels per mm:"
+msgstr "Pixels por mm:"
+
+msgid "Line Spacing:"
+msgstr "Interlineado:"
+
+msgid "Bidirectional:"
+msgstr "Bidireccional:"
+
+msgid "Image Transformations"
+msgstr "Transformación de imagen"
+
+msgid "Invert:"
+msgstr "Invertir:"
+
+msgid "Mirror X:"
+msgstr "Simetría en X:"
+
+msgid "Mirror Y:"
+msgstr "Simetría en Y:"
+
+msgid "Rotation:"
+msgstr "Rotación:"
+
+msgid "Halftoning"
+msgstr "Tramado"
+
+msgid "Method:"
+msgstr "Método:"
+
+msgid "Dot Size:"
+msgstr "Tamaño de Punto:"
+
+msgid "Threshold:"
+msgstr "Límite:"
+
+msgid "Select Image"
+msgstr "Seleccionar imagen"
+
+msgid "No Image Selected"
+msgstr "No se ha seleccionado ninguna imagen"
+
+msgid "Please select an image file first."
+msgstr "Por favor, seleccione primero un archivo de imagen."
+
+msgid "Generating Engraving"
+msgstr "Generar Grabado"
+
+msgid "Processing image..."
+msgstr "Procesando Imagen..."
+
+msgid "Loading image..."
+msgstr "Cargando Imagen..."
+
+msgid "Generating G-code..."
+msgstr "Generando G-code..."
+
+msgid "Finalizing..."
+msgstr "Finalizando..."
+
+msgid "Engraving Generation Failed"
+msgstr "Fallo de generación de Grabado"
+
+msgid "Failed to generate engraving"
+msgstr "Fallo al generar el Grabado"
+
+msgid "Save Parameters"
+msgstr "Guardar parámetros"
+
+msgid "Load Parameters"
+msgstr "Cargar parámetros"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/vector_engraving.rs
+msgid "Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."
+msgstr "Convierte gráficos vectoriales (SVG, DXF) a G-code para corte/grabado láser. Admite sombreado, pasadas múltiples y optimización de trayectoria."
+
+msgid "No file selected"
+msgstr "No se ha seleccionado archivo"
+
+msgid "No vector file selected"
+msgstr "No se ha seleccionado archivo vectorizado"
+
+msgid "Z Step Down:"
+msgstr "Paso en Z:"
+
+msgid "Desired Width:"
+msgstr "Ancho deseado:"
+
+msgid "Hatch Spacing:"
+msgstr "Espaciado de Sombreado:"
+
+msgid "Hatch Tolerance:"
+msgstr "Tolerancia de sombreado:"
+
+msgid "Vector File"
+msgstr "Archivo vectorizado"
+
+msgid "File Path:"
+msgstr "Ruta de archivo:"
+
+msgid "Browse..."
+msgstr "Explorador..."
+
+msgid "Output Settings"
+msgstr "Configuración de salida"
+
+msgid "Feed Rate:"
+msgstr "Velocidad en trabajo:"
+
+msgid "Travel Rate:"
+msgstr "Velocidad en vacío:"
+
+msgid "Laser Power"
+msgstr "Potencia de Láser"
+
+msgid "Cut Power (%):"
+msgstr "Potencia de corte (%):"
+
+msgid "Engrave Power (%):"
+msgstr "Potencia de Grabado (%):"
+
+msgid "Power Scale (S):"
+msgstr "Escala de potencia (S):"
+
+msgid "Invert Power:"
+msgstr "Invertir Potencia:"
+
+msgid "Multi-Pass Settings"
+msgstr "Configuración Multipasada"
+
+msgid "Multi-Pass:"
+msgstr "Multipasada:"
+
+msgid "Number of Passes:"
+msgstr "Num. de Pasadas:"
+
+msgid "Hatching"
+msgstr "Sombreado"
+
+msgid "Enable Hatch:"
+msgstr "Habilitar Sombreado:"
+
+msgid "Hatch Angle (°):"
+msgstr "Angulo de Sombreado (°):"
+
+msgid "Cross Hatch:"
+msgstr "Sombreado Cruzado:"
+
+msgid "Dwell Settings"
+msgstr "Ajustes de Pausa"
+
+msgid "Enable Dwell:"
+msgstr "Activar Pausa:"
+
+msgid "Dwell Time (s):"
+msgstr "Tiempo de Pausa (s):"
+
+msgid "Work Offsets"
+msgstr "Offsets de trabajo"
+
+msgid "Home Device Before Start"
+msgstr "Inicio Dispositivo antes de comenzar"
+
+msgid "Unknown file extension"
+msgstr "Extensión no reconocida"
+
+msgid "Unsupported file format"
+msgstr "Formato de archivo no soportado"
+
+msgid "Failed to load SVG"
+msgstr "Fallo leyendo SVG"
+
+msgid "Failed to load DXF"
+msgstr "Fallo leyendo DXF"

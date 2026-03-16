@@ -20,6 +20,7 @@ use gcodekit5_camtools::laser_engraver::{
 };
 use gcodekit5_core::units;
 use gcodekit5_settings::SettingsController;
+use crate::t;
 
 struct BitmapEngravingWidgets {
     width_mm: Entry,
@@ -74,7 +75,7 @@ impl BitmapEngravingTool {
         header.append(&back_btn);
 
         let title = Label::builder()
-            .label("Laser Image Engraver")
+            .label(&t!("Laser Image Engraver"))
             .css_classes(vec!["title-2"])
             .build();
         title.set_hexpand(true);
@@ -107,7 +108,7 @@ impl BitmapEngravingTool {
         sidebar.append(&title_label);
 
         let desc = Label::builder()
-            .label("Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations.")
+            .label(&t!("Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."))
             .css_classes(vec!["body"])
             .wrap(true)
             .halign(Align::Start)
@@ -143,11 +144,11 @@ impl BitmapEngravingTool {
 
         // Create Widgets
         let image_path = Entry::builder()
-            .placeholder_text("No image selected")
+            .placeholder_text(&t!("No image selected"))
             .valign(Align::Center)
             .build();
         let (width_mm_row, width_mm, width_mm_unit) =
-            create_dimension_row("Width:", 100.0, &settings);
+            create_dimension_row(&t!("Width:"), 100.0, &settings);
         let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
         let travel_rate = Entry::builder().text("3000").valign(Align::Center).build();
         let min_power = Entry::builder().text("0").valign(Align::Center).build();
@@ -208,64 +209,64 @@ impl BitmapEngravingTool {
             .build();
 
         // Groups
-        let image_group = PreferencesGroup::builder().title("Image File").build();
-        let image_row = ActionRow::builder().title("Image Path:").build();
+        let image_group = PreferencesGroup::builder().title(&t!("Image File")).build();
+        let image_row = ActionRow::builder().title(&t!("Image Path:")).build();
         let image_box = Box::new(Orientation::Horizontal, 6);
         image_box.append(&image_path);
-        let load_image_btn = Button::builder().label("Browse...").build();
+        let load_image_btn = Button::builder().label(&t!("Browse...")).build();
         image_box.append(&load_image_btn);
         image_row.add_suffix(&image_box);
         image_group.add(&image_row);
         scroll_content.append(&image_group);
 
-        let output_group = PreferencesGroup::builder().title("Output Settings").build();
+        let output_group = PreferencesGroup::builder().title(&t!("Output Settings")).build();
         output_group.add(&width_mm_row);
-        output_group.add(&Self::create_row("Feed Rate:", &feed_rate));
-        output_group.add(&Self::create_row("Travel Rate:", &travel_rate));
+        output_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
+        output_group.add(&Self::create_row(&t!("Travel Rate:"), &travel_rate));
         scroll_content.append(&output_group);
 
-        let power_group = PreferencesGroup::builder().title("Laser Power").build();
-        power_group.add(&Self::create_row("Min Power (%):", &min_power));
-        power_group.add(&Self::create_row("Max Power (%):", &max_power));
-        power_group.add(&Self::create_row("Power Scale (S):", &power_scale));
+        let power_group = PreferencesGroup::builder().title(&t!("Laser Power")).build();
+        power_group.add(&Self::create_row(&t!("Min Power (%):"), &min_power));
+        power_group.add(&Self::create_row(&t!("Max Power (%):"), &max_power));
+        power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));
         scroll_content.append(&power_group);
 
-        let scan_group = PreferencesGroup::builder().title("Scanning").build();
-        scan_group.add(&Self::create_row("Scan Direction:", &scan_direction));
-        scan_group.add(&Self::create_row("Pixels per mm:", &pixels_per_mm));
-        scan_group.add(&Self::create_row("Line Spacing:", &line_spacing));
-        let bid_row = ActionRow::builder().title("Bidirectional:").build();
+        let scan_group = PreferencesGroup::builder().title(&t!("Scanning")).build();
+        scan_group.add(&Self::create_row(&t!("Scan Direction:"), &scan_direction));
+        scan_group.add(&Self::create_row(&t!("Pixels per mm:"), &pixels_per_mm));
+        scan_group.add(&Self::create_row(&t!("Line Spacing:"), &line_spacing));
+        let bid_row = ActionRow::builder().title(&t!("Bidirectional:")).build();
         bid_row.add_suffix(&bidirectional);
         scan_group.add(&bid_row);
         scroll_content.append(&scan_group);
 
         let transform_group = PreferencesGroup::builder()
-            .title("Image Transformations")
+            .title(&t!("Image Transformations"))
             .build();
-        let invert_row = ActionRow::builder().title("Invert:").build();
+        let invert_row = ActionRow::builder().title(&t!("Invert:")).build();
         invert_row.add_suffix(&invert);
         transform_group.add(&invert_row);
-        let mirror_x_row = ActionRow::builder().title("Mirror X:").build();
+        let mirror_x_row = ActionRow::builder().title(&t!("Mirror X:")).build();
         mirror_x_row.add_suffix(&mirror_x);
         transform_group.add(&mirror_x_row);
-        let mirror_y_row = ActionRow::builder().title("Mirror Y:").build();
+        let mirror_y_row = ActionRow::builder().title(&t!("Mirror Y:")).build();
         mirror_y_row.add_suffix(&mirror_y);
         transform_group.add(&mirror_y_row);
-        transform_group.add(&Self::create_row("Rotation:", &rotation));
+        transform_group.add(&Self::create_row(&t!("Rotation:"), &rotation));
         scroll_content.append(&transform_group);
 
-        let halftone_group = PreferencesGroup::builder().title("Halftoning").build();
-        halftone_group.add(&Self::create_row("Method:", &halftone));
-        halftone_group.add(&Self::create_row("Dot Size:", &halftone_dot_size));
-        halftone_group.add(&Self::create_row("Threshold:", &halftone_threshold));
+        let halftone_group = PreferencesGroup::builder().title(&t!("Halftoning")).build();
+        halftone_group.add(&Self::create_row(&t!("Method:"), &halftone));
+        halftone_group.add(&Self::create_row(&t!("Dot Size:"), &halftone_dot_size));
+        halftone_group.add(&Self::create_row(&t!("Threshold:"), &halftone_threshold));
         scroll_content.append(&halftone_group);
 
-        let offset_group = PreferencesGroup::builder().title("Work Offsets").build();
+        let offset_group = PreferencesGroup::builder().title(&t!("Work Offsets")).build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title("Home Device Before Start")
+            .title(&t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -281,10 +282,10 @@ impl BitmapEngravingTool {
         action_box.set_margin_end(12);
         action_box.set_halign(Align::End);
 
-        let load_btn = Button::with_label("Load");
-        let save_btn = Button::with_label("Save");
-        let cancel_btn = Button::with_label("Cancel");
-        let generate_btn = Button::with_label("Generate");
+        let load_btn = Button::with_label(&t!("Load"));
+        let save_btn = Button::with_label(&t!("Save"));
+        let cancel_btn = Button::with_label(&t!("Cancel"));
+        let generate_btn = Button::with_label(&t!("Generate"));
         generate_btn.add_css_class("suggested-action");
         action_box.append(&load_btn);
         action_box.append(&save_btn);
@@ -370,12 +371,12 @@ impl BitmapEngravingTool {
         let w_load_image = widgets.clone();
         load_image_btn.connect_clicked(move |_| {
             let dialog = FileChooserDialog::new(
-                Some("Select Image"),
+                Some(&t!("Select Image")),
                 None::<&gtk4::Window>,
                 FileChooserAction::Open,
                 &[
-                    ("Cancel", ResponseType::Cancel),
-                    ("Open", ResponseType::Accept),
+                    (&t!("Cancel"), ResponseType::Cancel),
+                    (&t!("Open"), ResponseType::Accept),
                 ],
             );
             dialog.set_default_size(900, 700);
@@ -447,15 +448,15 @@ impl BitmapEngravingTool {
 
             if image_path.is_empty() {
                 CamToolsView::show_error_dialog(
-                    "No Image Selected",
-                    "Please select an image file first.",
+                    &t!("No Image Selected"),
+                    &t!("Please select an image file first."),
                 );
                 return;
             }
 
             // Create progress dialog with progress bar and cancel button
             let progress_window = gtk4::Window::builder()
-                .title("Generating Engraving")
+                .title(&t!("Generating Engraving"))
                 .modal(true)
                 .default_width(400)
                 .default_height(150)
@@ -468,7 +469,7 @@ impl BitmapEngravingTool {
             vbox.set_margin_start(24);
             vbox.set_margin_end(24);
 
-            let status_label = Label::new(Some("Processing image..."));
+            let status_label = Label::new(Some(&t!("Processing image...")));
             vbox.append(&status_label);
 
             let progress_bar = gtk4::ProgressBar::new();
@@ -477,7 +478,7 @@ impl BitmapEngravingTool {
 
             let button_box = Box::new(Orientation::Horizontal, 6);
             button_box.set_halign(Align::End);
-            let cancel_button = Button::with_label("Cancel");
+            let cancel_button = Button::with_label(&t!("Cancel"));
             button_box.append(&cancel_button);
             vbox.append(&button_box);
 
@@ -537,11 +538,11 @@ impl BitmapEngravingTool {
 
                     // Update status label based on progress
                     if progress < 0.1 {
-                        status_label_clone.set_text("Loading image...");
+                        status_label_clone.set_text(&t!("Loading image..."));
                     } else if progress < 0.9 {
-                        status_label_clone.set_text("Generating G-code...");
+                        status_label_clone.set_text(&t!("Generating G-code..."));
                     } else {
-                        status_label_clone.set_text("Finalizing...");
+                        status_label_clone.set_text(&t!("Finalizing..."));
                     }
                 }
 
@@ -555,8 +556,8 @@ impl BitmapEngravingTool {
                         }
                         Err(e) => {
                             CamToolsView::show_error_dialog(
-                                "Engraving Generation Failed",
-                                &format!("Failed to generate engraving: {}", e),
+                                &t!("Engraving Generation Failed"),
+                                &format!("{}: {}", t!("Failed to generate engraving"), e),
                             );
                         }
                     }
@@ -571,12 +572,12 @@ impl BitmapEngravingTool {
         let w_save = widgets.clone();
         save_btn.connect_clicked(move |_| {
             let dialog = FileChooserDialog::new(
-                Some("Save Parameters"),
+                Some(&t!("Save Parameters")),
                 None::<&gtk4::Window>,
                 FileChooserAction::Save,
                 &[
-                    ("Cancel", ResponseType::Cancel),
-                    ("Save", ResponseType::Accept),
+                    (&t!("Cancel"), ResponseType::Cancel),
+                    (&t!("Save"), ResponseType::Accept),
                 ],
             );
             dialog.set_default_size(900, 700);
@@ -604,12 +605,12 @@ impl BitmapEngravingTool {
         let w_load = widgets.clone();
         load_btn.connect_clicked(move |_| {
             let dialog = FileChooserDialog::new(
-                Some("Load Parameters"),
+                Some(&t!("Load Parameters")),
                 None::<&gtk4::Window>,
                 FileChooserAction::Open,
                 &[
-                    ("Cancel", ResponseType::Cancel),
-                    ("Open", ResponseType::Accept),
+                    (&t!("Cancel"), ResponseType::Cancel),
+                    (&t!("Open"), ResponseType::Accept),
                 ],
             );
             dialog.set_default_size(900, 700);

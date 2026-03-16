@@ -295,12 +295,12 @@ pub fn main() {
         let cam_tools_view = CamToolsView::new_with_designer(
             settings_controller_cam,
             Some(machine_control_cam),
-                                                             move |gcode| {
-                                                                 editor_clone.set_text(&gcode);
-                                                                 stack_clone_for_cam.set_visible_child_name("editor");
-                                                                 editor_clone.grab_focus();
-                                                             },
-                                                             Some(designer.clone()),
+            move |gcode| {
+                editor_clone.set_text(&gcode);
+                stack_clone_for_cam.set_visible_child_name("editor");
+                editor_clone.grab_focus();
+            },
+            Some(designer.clone()),
         );
         stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), &t!("CAM Tools"));
 

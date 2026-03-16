@@ -20,12 +20,12 @@ impl DesignerView {
 
         let dialog = gtk4::FileChooserDialog::new(
             Some(&t!("Open Design File")),
-                                                  None::<&gtk4::Window>,
-                                                  gtk4::FileChooserAction::Open,
-                                                  &[
-                                                      (&*open_label, gtk4::ResponseType::Accept),
-                                                  (&*cancel_label, gtk4::ResponseType::Cancel),
-                                                  ]
+            None::<&gtk4::Window>,
+            gtk4::FileChooserAction::Open,
+            &[
+                (&*open_label, gtk4::ResponseType::Accept),
+                (&*cancel_label, gtk4::ResponseType::Cancel),
+            ]
         );
 
         if let Some(ref settings) = self.settings_persistence {

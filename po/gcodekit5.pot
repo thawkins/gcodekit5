@@ -646,3 +646,200 @@ msgstr ""
 
 msgid "No valid G-Code lines found."
 msgstr ""
+
+# crates/gcodekit5-ui/src/ui/gtk/cam-tools/bitmap_engraving.rs
+msgid "Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."
+msgstr ""
+
+msgid "No image selected"
+msgstr ""
+
+msgid "Width:"
+msgstr ""
+
+msgid "Image File"
+msgstr ""
+
+msgid "Image Path:"
+msgstr ""
+
+msgid "Scanning"
+msgstr ""
+
+msgid "Scan Direction:"
+msgstr ""
+
+msgid "Pixels per mm:"
+msgstr ""
+
+msgid "Line Spacing:"
+msgstr ""
+
+msgid "Bidirectional:"
+msgstr ""
+
+msgid "Image Transformations"
+msgstr ""
+
+msgid "Invert:"
+msgstr ""
+
+msgid "Mirror X:"
+msgstr ""
+
+msgid "Mirror Y:"
+msgstr ""
+
+msgid "Rotation:"
+msgstr ""
+
+msgid "Halftoning"
+msgstr ""
+
+msgid "Method:"
+msgstr ""
+
+msgid "Dot Size:"
+msgstr ""
+
+msgid "Threshold:"
+msgstr ""
+
+msgid "Select Image"
+msgstr ""
+
+msgid "No Image Selected"
+msgstr ""
+
+msgid "Please select an image file first."
+msgstr ""
+
+msgid "Generating Engraving"
+msgstr ""
+
+msgid "Processing image..."
+msgstr ""
+
+msgid "Loading image..."
+msgstr ""
+
+msgid "Generating G-code..."
+msgstr ""
+
+msgid "Finalizing..."
+msgstr ""
+
+msgid "Engraving Generation Failed"
+msgstr ""
+
+msgid "Failed to generate engraving"
+msgstr ""
+
+msgid "Save Parameters"
+msgstr ""
+
+msgid "Load Parameters"
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/vector_engraving.rs
+msgid "Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."
+msgstr ""
+
+msgid "No file selected"
+msgstr ""
+
+msgid "No vector file selected"
+msgstr ""
+
+msgid "Z Step Down:"
+msgstr ""
+
+msgid "Desired Width:"
+msgstr ""
+
+msgid "Hatch Spacing:"
+msgstr ""
+
+msgid "Hatch Tolerance:"
+msgstr ""
+
+msgid "Vector File"
+msgstr ""
+
+msgid "File Path:"
+msgstr ""
+
+msgid "Browse..."
+msgstr ""
+
+msgid "Output Settings"
+msgstr ""
+
+msgid "Feed Rate:"
+msgstr ""
+
+msgid "Travel Rate:"
+msgstr ""
+
+msgid "Laser Power"
+msgstr ""
+
+msgid "Cut Power (%):"
+msgstr ""
+
+msgid "Engrave Power (%):"
+msgstr ""
+
+msgid "Power Scale (S):"
+msgstr ""
+
+msgid "Invert Power:"
+msgstr ""
+
+msgid "Multi-Pass Settings"
+msgstr ""
+
+msgid "Multi-Pass:"
+msgstr ""
+
+msgid "Number of Passes:"
+msgstr ""
+
+msgid "Hatching"
+msgstr ""
+
+msgid "Enable Hatch:"
+msgstr ""
+
+msgid "Hatch Angle (°):"
+msgstr ""
+
+msgid "Cross Hatch:"
+msgstr ""
+
+msgid "Dwell Settings"
+msgstr ""
+
+msgid "Enable Dwell:"
+msgstr ""
+
+msgid "Dwell Time (s):"
+msgstr ""
+
+msgid "Work Offsets"
+msgstr ""
+
+msgid "Home Device Before Start"
+msgstr ""
+
+msgid "Unknown file extension"
+msgstr ""
+
+msgid "Unsupported file format"
+msgstr ""
+
+msgid "Failed to load SVG"
+msgstr ""
+
+msgid "Failed to load DXF"
+msgstr ""
