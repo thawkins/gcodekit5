@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-03-15 20:08+0100\n"
+"PO-Revision-Date: 2026-03-17 14:02+0100\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
@@ -841,3 +841,70 @@ msgstr "Fallo leyendo SVG"
 
 msgid "Failed to load DXF"
 msgstr "Fallo leyendo DXF"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs
+msgid "Tabbed Box Maker"
+msgstr "Creador de cajas con pestañas"
+
+msgid "Generate G-code for laser/CNC cut boxes with finger joints"
+msgstr "Genera G-code para cajas con uniones de dedos (finger joints)"
+
+msgid "Jigsaw Puzzle Generator"
+msgstr "Generador de puzles"
+
+msgid "Create custom jigsaw puzzle patterns from images"
+msgstr "Crea patrones de puzles personalizados a partir de imágenes"
+
+msgid "Laser Image Engraver"
+msgstr "Grabador de imágenes por láser"
+
+msgid "Convert raster images to G-code for laser engraving"
+msgstr "Convierte imágenes rasterizadas a G-code para grabado láser"
+
+msgid "Laser Vector Engraver"
+msgstr "Grabador vectorial por láser"
+
+msgid "Convert SVG and DXF vector files to G-code"
+msgstr "Convierte archivos vectoriales SVG y DXF a G-code"
+
+msgid "Speeds and Feeds Calculator"
+msgstr "Calculadora de velocidades y avances"
+
+msgid "Calculate cutting speeds and feeds for your materials"
+msgstr "Calcula las velocidades de corte y avances para tus materiales"
+
+msgid "Spoilboard Surfacing"
+msgstr "Planeado de sufridera"
+
+msgid "Generate surfacing toolpaths to flatten your spoilboard"
+msgstr "Genera trayectorias para aplanar el tablero sufridera"
+
+msgid "Create Spoilboard Grid"
+msgstr "Crear rejilla en la sufridera"
+
+msgid "Generate grid patterns for spoilboard alignment"
+msgstr "Genera patrones de rejilla para alineación en la sufridera"
+
+msgid "Gerber to G-Code"
+msgstr "De Gerber a G-Code"
+
+msgid "Convert Gerber files to G-Code for PCB milling"
+msgstr "Convierte archivos Gerber a G-Code para fresado de PCBs"
+
+msgid "Drill Press"
+msgstr "Taladradora de columna"
+
+msgid "Emulate a drill press with peck drilling and helical cycles"
+msgstr "Emula una taladradora con ciclos de taladrado profundo y helicoidales"
+
+msgid "generators"
+msgstr "generadores"
+
+msgid "engraving"
+msgstr "grabado"
+
+msgid "calculators"
+msgstr "calculadoras"
+
+msgid "maintenance"
+msgstr "mantenimiento"

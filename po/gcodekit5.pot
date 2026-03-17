@@ -843,3 +843,70 @@ msgstr ""
 
 msgid "Failed to load DXF"
 msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs
+msgid "Tabbed Box Maker"
+msgstr ""
+
+msgid "Generate G-code for laser/CNC cut boxes with finger joints"
+msgstr ""
+
+msgid "Jigsaw Puzzle Generator"
+msgstr ""
+
+msgid "Create custom jigsaw puzzle patterns from images"
+msgstr ""
+
+msgid "Laser Image Engraver"
+msgstr ""
+
+msgid "Convert raster images to G-code for laser engraving"
+msgstr ""
+
+msgid "Laser Vector Engraver"
+msgstr ""
+
+msgid "Convert SVG and DXF vector files to G-code"
+msgstr ""
+
+msgid "Speeds and Feeds Calculator"
+msgstr ""
+
+msgid "Calculate cutting speeds and feeds for your materials"
+msgstr ""
+
+msgid "Spoilboard Surfacing"
+msgstr ""
+
+msgid "Generate surfacing toolpaths to flatten your spoilboard"
+msgstr ""
+
+msgid "Create Spoilboard Grid"
+msgstr ""
+
+msgid "Generate grid patterns for spoilboard alignment"
+msgstr ""
+
+msgid "Gerber to G-Code"
+msgstr ""
+
+msgid "Convert Gerber files to G-Code for PCB milling"
+msgstr ""
+
+msgid "Drill Press"
+msgstr ""
+
+msgid "Emulate a drill press with peck drilling and helical cycles"
+msgstr ""
+
+msgid "generators"
+msgstr ""
+
+msgid "engraving"
+msgstr ""
+
+msgid "calculators"
+msgstr ""
+
+msgid "maintenance"
+msgstr ""

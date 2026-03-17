@@ -36,6 +36,8 @@ use std::rc::Rc;
 use crate::ui::gtk::machine_control::MachineControlView;
 use gcodekit5_settings::SettingsController;
 
+use crate::t;
+
 pub struct CamToolsView {
     pub content: Stack,
 }
@@ -125,6 +127,85 @@ impl CamToolsView {
     fn create_dashboard(stack: &Stack) -> Box {
         // Compact dashboard: tool list (left) + details panel (right)
         // with search + category filtering.
+        // Compact dashboard: tool list (left) + details panel (right)
+        // with search + category filtering.
+        #[derive(Clone)]
+struct Tool {
+    page: &'static str,
+    title: String,
+    desc: String,
+    icon: &'static str,
+    category: String,
+}
+
+fn get_tools() -> Vec<Tool> {
+    vec![
+    Tool {
+        page: "tabbed_box",
+        title: t!("Tabbed Box Maker"),
+        desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
+        icon: "object-select-symbolic",
+        category: t!("generators"),
+    },
+    Tool {
+        page: "jigsaw",
+        title: t!("Jigsaw Puzzle Generator"),
+        desc: t!("Create custom jigsaw puzzle patterns from images"),
+        icon: "image-x-generic-symbolic",
+        category: t!("generators"),
+    },
+    Tool {
+        page: "laser_image",
+        title: t!("Laser Image Engraver"),
+        desc: t!("Convert raster images to G-code for laser engraving"),
+        icon: "camera-photo-symbolic",
+        category: t!("engraving"),
+    },
+    Tool {
+        page: "laser_vector",
+        title: t!("Laser Vector Engraver"),
+        desc: t!("Convert SVG and DXF vector files to G-code"),
+        icon: "insert-image-symbolic",
+        category: t!("engraving"),
+    },
+    Tool {
+        page: "feeds",
+        title: t!("Speeds and Feeds Calculator"),
+        desc: t!("Calculate cutting speeds and feeds for your materials"),
+        icon: "accessories-calculator-symbolic",
+        category: t!("calculators"),
+    },
+    Tool {
+        page: "surfacing",
+        title: t!("Spoilboard Surfacing"),
+        desc: t!("Generate surfacing toolpaths to flatten your spoilboard"),
+        icon: "view-refresh-symbolic",
+        category: t!("maintenance"),
+    },
+    Tool {
+        page: "grid",
+        title: t!("Create Spoilboard Grid"),
+        desc: t!("Generate grid patterns for spoilboard alignment"),
+        icon: "view-grid-symbolic",
+        category: t!("maintenance"),
+    },
+    Tool {
+        page: "gerber",
+        title: t!("Gerber to G-Code"),
+        desc: t!("Convert Gerber files to G-Code for PCB milling"),
+        icon: "media-floppy-symbolic",
+        category: t!("generators"),
+    },
+    Tool {
+        page: "drill_press",
+        title: t!("Drill Press"),
+        desc: t!("Emulate a drill press with peck drilling and helical cycles"),
+        icon: "input-mouse-symbolic",
+        category: t!("generators"),
+    }
+]
+}
+/*
         #[derive(Clone, Copy)]
         struct Tool {
             page: &'static str,
@@ -199,10 +280,10 @@ impl CamToolsView {
                 category: "generators",
             },
         ];
-
+*/
         fn apply_filters(list: &gtk4::ListBox, query: &str, category: &str) {
             let q = query.trim().to_lowercase();
-
+let tools = get_tools();
             let mut child = list.first_child();
             while let Some(w) = child {
                 child = w.next_sibling();
@@ -218,7 +299,7 @@ impl CamToolsView {
                 let Some(idx) = idx else {
                     continue;
                 };
-                let Some(tool) = TOOLS.get(idx) else {
+                let Some(tool) = tools.get(idx) else {
                     continue;
                 };
 
@@ -276,7 +357,9 @@ impl CamToolsView {
         let list = gtk4::ListBox::new();
         list.add_css_class("boxed-list");
 
-        for (idx, tool) in TOOLS.iter().enumerate() {
+let tools = get_tools();
+
+        for (idx, tool) in get_tools().iter().enumerate() {
             let row = gtk4::ListBoxRow::new();
             row.set_selectable(true);
             // SAFETY: set_data stores a u32 keyed by "camtool-index". The data
@@ -296,11 +379,13 @@ impl CamToolsView {
             icon.set_valign(Align::Start);
 
             let v = Box::new(Orientation::Vertical, 2);
-            let t = Label::new(Some(tool.title));
+//            let t = Label::new(Some(tool.title));
+let t = Label::new(Some(&tool.title));
             t.set_xalign(0.0);
             t.add_css_class("heading");
 
-            let d = Label::new(Some(tool.desc));
+//            let d = Label::new(Some(tool.desc));
+            let d = Label::new(Some(&tool.desc));
             d.set_xalign(0.0);
             d.set_wrap(true);
             d.add_css_class("caption");
@@ -366,9 +451,9 @@ impl CamToolsView {
                             .map(|p| *p.as_ref() as usize)
                     };
                     if let Some(idx) = idx {
-                        if let Some(tool) = TOOLS.get(idx) {
-                            details_title.set_text(tool.title);
-                            details_desc.set_text(tool.desc);
+                        if let Some(tool) = get_tools().get(idx) {
+                            details_title.set_text(&tool.title);
+                            details_desc.set_text(&tool.desc);
                         }
                     }
                     open_btn.set_sensitive(true);
@@ -393,7 +478,7 @@ impl CamToolsView {
                             .map(|p| *p.as_ref() as usize)
                     };
                     if let Some(idx) = idx {
-                        if let Some(tool) = TOOLS.get(idx) {
+                        if let Some(tool) = get_tools().get(idx) {
                             stack_for_click.set_visible_child_name(tool.page);
                         }
                     }
@@ -409,7 +494,7 @@ impl CamToolsView {
                         .map(|p| *p.as_ref() as usize)
                 };
                 if let Some(idx) = idx {
-                    if let Some(tool) = TOOLS.get(idx) {
+                    if let Some(tool) = tools.get(idx) {
                         stack_for_activate.set_visible_child_name(tool.page);
                     }
                 }
