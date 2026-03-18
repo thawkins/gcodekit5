@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-03-17 14:02+0100\n"
+"PO-Revision-Date: 2026-03-18 22:46+0100\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
@@ -828,7 +828,7 @@ msgid "Work Offsets"
 msgstr "Offsets de trabajo"
 
 msgid "Home Device Before Start"
-msgstr "Inicio Dispositivo antes de comenzar"
+msgstr "Iniciar Dispositivo antes de comenzar"
 
 msgid "Unknown file extension"
 msgstr "Extensión no reconocida"
@@ -908,3 +908,182 @@ msgstr "calculadoras"
 
 msgid "maintenance"
 msgstr "mantenimiento"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/tabbed_box.rs
+msgid "Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."
+msgstr "Genera G-code para hacer cajas cortadas con láser/CNC con uniones dentadas, basado en el algoritmo boxes.py."
+
+msgid "X (Width):"
+msgstr "X (Ancho):"
+
+msgid "Y (Depth):"
+msgstr "Y (Profundidad):"
+
+msgid "H (Height):"
+msgstr "H (Altura):"
+
+msgid "Thickness:"
+msgstr "Espesor:"
+
+msgid "Burn / Tool Dia:"
+msgstr "Sangría/Diam. Herramienta:"
+
+msgid "Play (fit tolerance):"
+msgstr "Holgura (tolerancia de ajuste):"
+
+msgid "Extra Length:"
+msgstr "Longitud extra:"
+
+msgid "Full Box"
+msgstr "Caja completa"
+
+msgid "No Top"
+msgstr "Sin Tapa"
+
+msgid "No Bottom"
+msgstr "Sin Fondo"
+
+msgid "No Sides"
+msgstr "Sin Laterales"
+
+msgid "No Front/Back"
+msgstr "Sin Frontal/Trasero"
+
+msgid "No Left/Right"
+msgstr "Sin Izquierda/Derecha"
+
+msgid "Walls and Floor"
+msgstr "Paredes y Fondo"
+
+msgid "Walls Only"
+msgstr "Solo Paredes"
+
+msgid "Floor Only"
+msgstr "Solo Fondo"
+
+msgid "None"
+msgstr "Nada"
+
+msgid "Offset X:"
+msgstr "Offset X:"
+
+msgid "Offset Y:"
+msgstr "Offset Y:"
+
+msgid "Box Dimensions"
+msgstr "Dimensiones de la Caja"
+
+msgid "Outside Dims:"
+msgstr "Dims. Exteriores:"
+
+msgid "Box Configuration"
+msgstr "Configuración de la Caja"
+
+msgid "Box Type:"
+msgstr "Tipo de Caja:"
+
+msgid "Dividers X:"
+msgstr "Separadores X:"
+
+msgid "Dividers Y:"
+msgstr "Separadores Y:"
+
+msgid "Divider Keying:"
+msgstr "Clave Divisora:"
+
+msgid "Optimize Layout:"
+msgstr "Optimizar diseño:"
+
+msgid "Material Settings"
+msgstr "Configuración de material"
+
+msgid "Finger Joint Settings (multiples of thickness)"
+msgstr "Ajustes de las articulaciones (múltiplos del espesor)"
+
+msgid "Finger Width:"
+msgstr "Ancho del pestaña:"
+
+msgid "Space Width:"
+msgstr "Ancho del espacio:"
+
+msgid "Laser Settings"
+msgstr "Configuración del láser"
+
+msgid "Passes:"
+msgstr "Pases:"
+
+msgid "Power (S):"
+msgstr "Potencia (S):"
+
+msgid "Work Origin Offsets"
+msgstr "Offsets de inicio"
+
+msgid "Load"
+msgstr "Cargar"
+
+msgid "Generate G-code"
+msgstr "Generar G-code"
+
+msgid "Generate Shapes"
+msgstr "Generar Formas"
+
+msgid "Generating Box"
+msgstr "Generando Caja"
+
+msgid "Generating box panels..."
+msgstr "Generando paneles de caja..."
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/jigsaw.rs
+msgid "Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."
+msgstr "Crea patrones personalizados para puzzles a partir de imágenes o material en blanco. Incorpora el algoritmo de Draradech para piezas únicas."
+
+msgid "Height:"
+msgstr "Altura:"
+
+msgid "Kerf:"
+msgstr "Corte:"
+
+msgid "Corner Radius:"
+msgstr "Radio de esquina:"
+
+msgid "Puzzle Dimensions"
+msgstr "Dimensiones del puzzle"
+
+msgid "Grid Configuration"
+msgstr "Configuración de Matriz"
+
+msgid "Pieces Across:"
+msgstr "Piezas en ancho:"
+
+msgid "Pieces Down:"
+msgstr "Piezas en alto:"
+
+msgid "Puzzle Parameters"
+msgstr "Parámetros del Puzzle"
+
+msgid "Tab Size (%):"
+msgstr "Tamaño de la pestaña (%):"
+
+msgid "Jitter (%):"
+msgstr "Fluctuación (%):"
+
+msgid "Random Seed:"
+msgstr "Semilla aleatoria:"
+
+msgid "Generate"
+msgstr "Generar"
+
+msgid "Generating Puzzle"
+msgstr "Generar Puzzle"
+
+msgid "Generating puzzle pieces..."
+msgstr "Generando Piezas de Puzzle..."
+
+msgid "Cancelled by user"
+msgstr "Cancelado por el usuario"
+
+msgid "Puzzle Generation Failed"
+msgstr "Generación de Puzzle Fallida"
+
+msgid "Failed to generate puzzle"
+msgstr "Fallo al Generar el Puzzle"
