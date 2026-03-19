@@ -124,6 +124,7 @@ impl PropertiesPanel {
                     Shape::Triangle(t) => (t.width, t.height, t.rotation),
                     Shape::Ellipse(e) => (e.rx * 2.0, e.ry * 2.0, e.rotation),
                     Shape::Circle(c) => (c.radius * 2.0, c.radius * 2.0, 0.0),
+                    Shape::Polygon(p) => (p.radius * 2.0, p.radius * 2.0, p.rotation),
                     Shape::Path(p) => {
                         let (x1, y1, x2, y2) = p.bounds();
                         (x2 - x1, y2 - y1, p.rotation)
@@ -265,6 +266,7 @@ impl PropertiesPanel {
                             self.sides_entry.set_sensitive(true);
                         }
 
+                        self.size_frame.set_visible(true);
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(true);
@@ -272,6 +274,7 @@ impl PropertiesPanel {
                         self.sprocket_frame.set_visible(false);
                         self.sides_entry.set_text(&p.sides.to_string());
                         self.rotation_entry.set_text(&format!("{:.1}", p.rotation.to_degrees()));
+                        self.height_entry.set_sensitive(false);
                     }
                     Shape::Gear(g) => {
                         self.corner_frame.set_visible(false);
@@ -532,7 +535,7 @@ impl PropertiesPanel {
         rotation: f64,
         system: gcodekit5_core::units::MeasurementSystem,
     ) {
-//        let has_rotation = rotation.abs() > f64::EPSILON;
+
     let has_rotation = rotation.abs() > 0.01;
 
         // --- NOTICE CONTROL ---
