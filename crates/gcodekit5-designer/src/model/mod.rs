@@ -323,6 +323,7 @@ impl Shape {
 //                Shape::Polyline(s) => s.rotation,
             },
             original_path: None,
+            lock_aspect_ratio: false,
         }
     }
 

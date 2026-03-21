@@ -30,6 +30,11 @@ impl DesignerState {
 
     /// Resizes the selected shape via handle drag.
     /// handle: 0=TL, 1=TR, 2=BL, 3=BR, 4=Center (move)
+
+    /// Resizes the selected shape via handle drag.
+/// handle: 0=TL, 1=TR, 2=BL, 3=BR, 4=Center (move)
+
+/*
     pub fn resize_selected(&mut self, handle: usize, dx: f64, dy: f64) {
         let ids: Vec<u64> = self
             .canvas
@@ -128,6 +133,7 @@ impl DesignerState {
         });
         self.push_command(cmd);
     }
+*/
 
     /// Snaps the selected shape to whole millimeters.
     pub fn snap_selected_to_mm(&mut self) {

@@ -1089,3 +1089,79 @@ msgstr ""
 
 msgid "Failed to generate puzzle"
 msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Position"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid "Lock Aspect:"
+msgstr ""
+
+msgid "Angle:"
+msgstr ""
+
+msgid "Corner"
+msgstr ""
+
+msgid "Slot Mode:"
+msgstr ""
+
+msgid "Content:"
+msgstr ""
+
+msgid "Sides:"
+msgstr ""
+
+msgid "Module:"
+msgstr ""
+
+msgid "Teeth:"
+msgstr ""
+
+msgid "Pressure Angle:"
+msgstr ""
+
+msgid "Pitch:"
+msgstr ""
+
+msgid "Roller Dia:"
+msgstr ""
+
+msgid "Geometry Operations"
+msgstr ""
+
+msgid "Fillet:"
+msgstr ""
+
+msgid "Chamfer:"
+msgstr ""
+
+msgid "CAM Properties"
+msgstr ""
+
+msgid "Operation:"
+msgstr ""
+
+msgid "Profile"
+msgstr ""
+
+msgid "Depth:"
+msgstr ""
+
+msgid "Step Down:"
+msgstr ""
+
+msgid "Step In:"
+msgstr ""
+
+msgid "Ramp Angle:"
+msgstr ""
+
+msgid "Strategy:"
+msgstr ""
+
+msgid "Raster Fill (%):"
+msgstr ""

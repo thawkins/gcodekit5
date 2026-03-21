@@ -26,6 +26,7 @@ pub struct DesignPath {
     pub rotation: f64,
     #[serde(skip)]
     pub original_path: Option<Path>,
+    pub lock_aspect_ratio: bool,
 }
 
 fn distance_to_line_segment(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
@@ -55,9 +56,23 @@ impl DesignPath {
             sketch,
             rotation: 0.0,
             original_path: None,
+            lock_aspect_ratio: false,
         }
     }
 
+    pub fn translate(&mut self, dx: f64, dy: f64) {
+        let transform = Transform::identity()
+        .then_translate(lyon::math::Vector::new(dx as f32, dy as f32));
+        self.transform(&transform);
+    }
+
+    pub fn scale(&mut self, sx: f64, sy: f64, center: Point) {
+        let transform = Transform::identity()
+        .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32))
+        .then_scale(sx as f32, sy as f32)
+        .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32));
+        self.transform(&transform);
+    }
 
     pub fn distance_to_point(&self, point: &Point) -> f64 {
         // Get path to Lyon
@@ -114,70 +129,186 @@ impl DesignPath {
     }
 
     pub fn from_svg_path(d: &str) -> Option<Self> {
+        // Build the Lyon path directly from the SVG data
+        if let Some(lyon_path) = Self::build_lyon_path_from_svg_data(d) {
+            // from_lyon_path ya construye el sketch y el original_path correctamente
+            return Some(Self::from_lyon_path(&lyon_path));
+        }
+
+        // Fallback: usar Sketch::from_svg
         let svg = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000"><path d="{}"/></svg>"#,
             d
         );
         if let Ok(sketch) = Sketch::from_svg(&svg) {
+            let _bounds = CSG::bounding_box(&sketch);
             return Some(Self {
                 sketch,
                 rotation: 0.0,
                 original_path: None,
+                lock_aspect_ratio: true,
             });
         }
-
-        let lyon_path = Self::build_lyon_path_from_svg_data(d)?;
-        Some(Self::from_lyon_path(&lyon_path))
+        None
     }
 
-    pub fn from_points(points: &[Point], _closed: bool) -> Self {
-        let pts: Vec<[f64; 2]> = points.iter().map(|p| [p.x, p.y]).collect();
-        let sketch = Sketch::polygon(&pts, None);
+    pub fn from_points(points: &[Point], closed: bool) -> Self {
+        if points.is_empty() {
+            return Self {
+                sketch: Sketch::new(),
+                rotation: 0.0,
+                original_path: None,
+                lock_aspect_ratio: false,
+            };
+        }
+
+        // Build the Lyon path directly
+        let mut builder = Path::builder();
+        let mut first = true;
+
+        for p in points {
+            let lyon_point = point(p.x as f32, p.y as f32);
+            if first {
+                builder.begin(lyon_point);
+                first = false;
+            } else {
+                builder.line_to(lyon_point);
+            }
+        }
+
+        if closed && points.len() > 2 {
+            builder.close();
+        } else {
+            builder.end(false);
+        }
+        let lyon_path = builder.build();
+
+        // Create the sketch for visualization
+        let sketch = if closed && points.len() >= 3 {
+            let pts: Vec<[f64; 2]> = points.iter().map(|p| [p.x, p.y]).collect();
+            Sketch::polygon(&pts, None)
+        } else if points.len() >= 2 {
+            // For open paths, preserve Y coordinates
+            let mut open_sketch = Sketch::new();
+            for i in 0..points.len() - 1 {
+                let p1 = points[i];
+                let p2 = points[i + 1];
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
+                let len = (dx*dx + dy*dy).sqrt();
+
+                if len > 1e-6 {
+                    let thickness = 0.05;
+                    let perp_x = -dy / len * thickness;
+                    let perp_y = dx / len * thickness;
+
+                    let line_poly = vec![
+                        [p1.x + perp_x, p1.y + perp_y],
+                        [p1.x - perp_x, p1.y - perp_y],
+                        [p2.x - perp_x, p2.y - perp_y],
+                        [p2.x + perp_x, p2.y + perp_y],
+                    ];
+
+                    let segment = Sketch::polygon(&line_poly, None);
+                    open_sketch = open_sketch.union(&segment);
+                }
+            }
+            open_sketch
+        } else {
+            Sketch::new()
+        };
         Self {
             sketch,
             rotation: 0.0,
-            original_path: None,
+            original_path: Some(lyon_path),
+            lock_aspect_ratio: false,
         }
     }
 
     pub fn from_lyon_path(path: &Path) -> Self {
-        let tolerance = 0.1; // ---
+        // Collect all points on the path with their full coordinates
+        let tolerance = 0.1;
         let flattened = path.iter().flattened(tolerance);
-        let mut polygons: Vec<Vec<[f64; 2]>> = Vec::new();
-        let mut current_poly: Vec<[f64; 2]> = Vec::new();
+        let mut paths_info: Vec<(Vec<Point>, bool)> = Vec::new();
+        let mut current_poly: Vec<Point> = Vec::new();
+        let mut current_closed = false;
 
         for event in flattened {
             match event {
                 lyon::path::Event::Begin { at } => {
+                    if !current_poly.is_empty() {
+                        paths_info.push((current_poly.clone(), current_closed));
+                    }
                     current_poly.clear();
-                    current_poly.push([at.x as f64, at.y as f64]);
+                    let p = Point::new(at.x as f64, at.y as f64);
+                    current_poly.push(p);
+                    current_closed = false;
                 }
                 lyon::path::Event::Line { to, .. } => {
-                    current_poly.push([to.x as f64, to.y as f64]);
+                    let p = Point::new(to.x as f64, to.y as f64);
+                    current_poly.push(p);
                 }
-                lyon::path::Event::End { .. } => {
+                lyon::path::Event::End { close, .. } => {
+                    current_closed = close;
                     if !current_poly.is_empty() {
-                        polygons.push(current_poly.clone());
+                        paths_info.push((current_poly.clone(), current_closed));
                     }
+                    current_poly.clear();
                 }
                 _ => {}
             }
         }
 
-        if polygons.is_empty() && !current_poly.is_empty() {
-            polygons.push(current_poly);
+        if !current_poly.is_empty() {
+            paths_info.push((current_poly, current_closed));
         }
 
-        let mut sketch = Sketch::new();
-        for poly in polygons {
-            let s = Sketch::polygon(&poly, None);
-            sketch = sketch.union(&s);
+        // Build the sketch by combining all the paths
+        let mut combined_sketch = Sketch::new();
+
+        for (_idx, (points, is_closed)) in paths_info.iter().enumerate() {
+            if points.is_empty() {
+                continue;
+            }
+
+            if *is_closed && points.len() >= 3 {
+                // Closed path: create polygon
+                let pts: Vec<[f64; 2]> = points.iter().map(|p| [p.x, p.y]).collect();
+                let poly = Sketch::polygon(&pts, None);
+                combined_sketch = combined_sketch.union(&poly);
+            } else if points.len() >= 2 {
+                // Open path: create line segments
+                for i in 0..points.len() - 1 {
+                    let p1 = points[i];
+                    let p2 = points[i + 1];
+                    let dx = p2.x - p1.x;
+                    let dy = p2.y - p1.y;
+                    let len = (dx*dx + dy*dy).sqrt();
+
+                    if len > 1e-6 {
+                        let thickness = 0.05;
+                        let perp_x = -dy / len * thickness;
+                        let perp_y = dx / len * thickness;
+
+                        let line_poly = vec![
+                            [p1.x + perp_x, p1.y + perp_y],
+                            [p1.x - perp_x, p1.y - perp_y],
+                            [p2.x - perp_x, p2.y - perp_y],
+                            [p2.x + perp_x, p2.y + perp_y],
+                        ];
+
+                        let segment = Sketch::polygon(&line_poly, None);
+                        combined_sketch = combined_sketch.union(&segment);
+                    }
+                }
+            }
         }
 
         Self {
-            sketch,
+            sketch: combined_sketch,
             rotation: 0.0,
             original_path: Some(path.clone()),
+            lock_aspect_ratio: false,
         }
     }
 
@@ -779,12 +910,26 @@ D: Deserializer<'de>,
 
 impl DesignerShape for DesignPath {
     fn render(&self) -> Path {
-        let mut builder = Path::builder();
         if let Some(path) = &self.original_path {
+            let mut y_values = Vec::new();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => {
+                        y_values.push(at.y);
+                    }
+                    lyon::path::Event::Line { to, .. } => {
+                        y_values.push(to.y);
+                    }
+                    _ => {}
+                }
+            }
+
             return path.clone();
         }
 
+        let mut builder = Path::builder();
         let mp = self.sketch.to_multipolygon();
+
         for poly in mp.0 {
             let exterior = poly.exterior();
             let mut first = true;
@@ -827,29 +972,80 @@ impl DesignerShape for DesignPath {
     }
 
     fn transform(&mut self, t: &Transform) {
-        let m = Matrix4::new(
-            t.m11 as f64,
-            t.m21 as f64,
-            0.0,
-            t.m31 as f64,
-            t.m12 as f64,
-            t.m22 as f64,
-            0.0,
-            t.m32 as f64,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        );
+        // Show values ​​Y before
+        if let Some(path) = &self.original_path {
+            let mut y_before = Vec::new();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => y_before.push(at.y),
+                    lyon::path::Event::Line { to, .. } => y_before.push(to.y),
+                    _ => {}
+                }
+                if y_before.len() > 5 { break; }
+            }
+        }
 
+        // Update rotation
+        let angle_deg = (t.m12.atan2(t.m11) as f64).to_degrees();
+        self.rotation += angle_deg;
+
+        // Transform the sketch
+        let m = Matrix4::new(
+            t.m11 as f64, t.m21 as f64, 0.0, t.m31 as f64,
+            t.m12 as f64, t.m22 as f64, 0.0, t.m32 as f64,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        );
         self.sketch = self.sketch.transform(&m);
 
-        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
-        self.rotation += angle_deg;
+        if let Some(path) = &self.original_path {
+            let mut builder = Path::builder();
+            for event in path.iter() {
+                match event {
+                    lyon::path::Event::Begin { at } => {
+                        let transformed = t.transform_point(at);
+                        builder.begin(transformed);
+                    }
+                    lyon::path::Event::Line { to, .. } => {
+                        let transformed = t.transform_point(to);
+                        builder.line_to(transformed);
+                    }
+                    lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                        builder.quadratic_bezier_to(
+                            t.transform_point(ctrl),
+                                                    t.transform_point(to)
+                        );
+                    }
+                    lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => {
+                        builder.cubic_bezier_to(
+                            t.transform_point(ctrl1),
+                                                t.transform_point(ctrl2),
+                                                t.transform_point(to)
+                        );
+                    }
+                    lyon::path::Event::End { close, .. } => {
+                        if close {
+                            builder.close();
+                        } else {
+                            builder.end(false);
+                        }
+                    }
+                }
+            }
+            self.original_path = Some(builder.build());
+
+            if let Some(path) = &self.original_path {
+                let mut y_after = Vec::new();
+                for event in path.iter() {
+                    match event {
+                        lyon::path::Event::Begin { at } => y_after.push(at.y),
+                        lyon::path::Event::Line { to, .. } => y_after.push(to.y),
+                        _ => {}
+                    }
+                    if y_after.len() > 5 { break; }
+                }
+            }
+        }
     }
 
     fn properties(&self) -> Vec<Property> {

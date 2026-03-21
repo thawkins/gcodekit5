@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-03-18 22:46+0100\n"
+"PO-Revision-Date: 2026-03-21 01:26+0100\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
@@ -1087,3 +1087,79 @@ msgstr "Generación de Puzzle Fallida"
 
 msgid "Failed to generate puzzle"
 msgstr "Fallo al Generar el Puzzle"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Position"
+msgstr "Posición"
+
+msgid "Size"
+msgstr "Tamaño"
+
+msgid "Lock Aspect:"
+msgstr "Bloquear Aspecto:"
+
+msgid "Angle:"
+msgstr "Angulo:"
+
+msgid "Corner"
+msgstr "Esquina"
+
+msgid "Slot Mode:"
+msgstr "Modo ranura:"
+
+msgid "Content:"
+msgstr "Contenido:"
+
+msgid "Sides:"
+msgstr "Lados:"
+
+msgid "Module:"
+msgstr "Módulo:"
+
+msgid "Teeth:"
+msgstr "Dientes:"
+
+msgid "Pressure Angle:"
+msgstr "Angulo de Presión:"
+
+msgid "Pitch:"
+msgstr "Paso:"
+
+msgid "Roller Dia:"
+msgstr "Diám. Rodillo:"
+
+msgid "Geometry Operations"
+msgstr "Operaciones geométricas"
+
+msgid "Fillet:"
+msgstr "Empalme:"
+
+msgid "Chamfer:"
+msgstr "Chaflán:"
+
+msgid "CAM Properties"
+msgstr "Propiedades CAM"
+
+msgid "Operation:"
+msgstr "Operación:"
+
+msgid "Profile"
+msgstr "Perfil"
+
+msgid "Depth:"
+msgstr "Profundidad:"
+
+msgid "Step Down:"
+msgstr "Bajar un paso:"
+
+msgid "Step In:"
+msgstr "Subir un paso:"
+
+msgid "Ramp Angle:"
+msgstr "Ángulo de rampa:"
+
+msgid "Strategy:"
+msgstr "Estrategia:"
+
+msgid "Raster Fill (%):"
+msgstr "Relleno Rasterizado (%):"

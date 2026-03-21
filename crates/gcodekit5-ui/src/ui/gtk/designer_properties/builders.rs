@@ -80,7 +80,7 @@ impl PropertiesPanel {
         let lock_aspect_label = Label::new(Some(&t!("Lock Aspect:")));
         lock_aspect_label.set_halign(gtk4::Align::Start);
         let lock_aspect_ratio = CheckButton::new();
-        lock_aspect_ratio.set_active(true);
+        lock_aspect_ratio.set_active(false); // before true
 
         grid.attach(&width_label, 0, 0, 1, 1);
         grid.attach(&width_entry, 1, 0, 1, 1);
@@ -103,7 +103,7 @@ impl PropertiesPanel {
     }
 
     pub(crate) fn build_rotation_section() -> (Frame, Entry) {
-        let frame = Self::create_section(&t!("Rotation"));
+        let frame = Self::create_section(&t!("Rotation:"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
             .column_spacing(8)
@@ -170,7 +170,7 @@ impl PropertiesPanel {
         Entry,
         Label,
     ) {
-        let frame = Self::create_section(&t!("Text"));
+        let frame = Self::create_section(&t!("Text:"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
             .column_spacing(8)

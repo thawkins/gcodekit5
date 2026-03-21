@@ -526,20 +526,10 @@ impl ToolpathGenerator {
             ));
             current = p;
         }
-        /*
-         *        // Return to origin with rapid move
-         *        segments.push(ToolpathSegment::new(
-         *            ToolpathSegmentType::RapidMove,
-         *            start_point,
-         * //            Point::new(0.0, 0.0),
-         *            self.feed_rate,
-         *            self.spindle_speed,
-         *        ));
-         */
+
         self.create_multipass_toolpaths(segments, step_down)
     }
 
-    // ---
 /// Generates a contour toolpath for an ellipse.
 pub fn generate_ellipse_contour(&self, ellipse: &Ellipse, step_down: f64) -> Vec<Toolpath> {
     let mut segments = Vec::new();
@@ -548,10 +538,10 @@ pub fn generate_ellipse_contour(&self, ellipse: &Ellipse, step_down: f64) -> Vec
     let ry = ellipse.ry;
     let rotation = ellipse.rotation;
 
-    // Número de puntos para una elipse suave (misma lógica que en importación)
+    // Number of points for a smooth ellipse (same logic as in import)
     let steps = 64;
 
-    // Función para transformar punto según rotación
+    // Function to transform a point according to rotation
     let transform_point = |p: Point| -> Point {
         if rotation.abs() > 1e-6 {
             rotate_point(p, center, rotation)
@@ -560,12 +550,12 @@ pub fn generate_ellipse_contour(&self, ellipse: &Ellipse, step_down: f64) -> Vec
         }
     };
 
-    // Punto inicial (ángulo 0)
+    // Starting point (angle 0)
     let start_x = center.x + rx;
     let start_y = center.y;
     let start_point = transform_point(Point::new(start_x, start_y));
 
-    // Mover al punto inicial con láser apagado
+   // Move to the starting point with the laser off
     segments.push(ToolpathSegment::new(
         ToolpathSegmentType::RapidMove,
         Point::new(0.0, 0.0),
@@ -593,7 +583,7 @@ pub fn generate_ellipse_contour(&self, ellipse: &Ellipse, step_down: f64) -> Vec
         current = p;
     }
 
-    // Cerrar la elipse (volver al punto inicial)
+    // Close the ellipse (return to the starting point)
     if current.distance_to(&start_point) > 0.001 {
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::LinearMove,
@@ -615,8 +605,6 @@ pub fn generate_ellipse_pocket(
     step_down: f64,
     step_in: f64,
 ) -> Vec<Toolpath> {
-    // Por ahora, convertimos la elipse a un path y usamos path pocket
-    // Esto es una solución temporal, idealmente habría un algoritmo específico para elipses
     let steps = 64;
     let mut vertices = Vec::with_capacity(steps + 1);
     let center = ellipse.center;
@@ -638,7 +626,6 @@ pub fn generate_ellipse_pocket(
 
     self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
 }
-// ---
 
     /// Generates a contour toolpath for a line.
     pub fn generate_line_contour(&self, line: &Line, step_down: f64) -> Vec<Toolpath> {
@@ -659,16 +646,7 @@ pub fn generate_ellipse_pocket(
                 self.feed_rate,
                 self.spindle_speed,
             ),
-            /*
-             *            // Return to origin
-             *            ToolpathSegment::new(
-             *                ToolpathSegmentType::RapidMove,
-             *                line.end,
-             * //                Point::new(0.0, 0.0),
-             *                self.feed_rate,
-             *                self.spindle_speed,
-             *            ),
-             */
+
         ];
 
         self.create_multipass_toolpaths(segments, step_down)
@@ -678,7 +656,7 @@ pub fn generate_ellipse_pocket(
     pub fn generate_polyline_contour(
         &self,
         vertices: &[Point],
-        bulges: &[f64],  // ← AÑADE ESTE PARÁMETRO
+        bulges: &[f64],
         step_down: f64
     ) -> Vec<Toolpath> {
         let mut segments = Vec::new();
@@ -892,8 +870,8 @@ pub fn generate_ellipse_pocket(
     ) -> Vec<Toolpath> {
         let op = PocketOperation::new(
             "circle_pocket".to_string(),
-                                      pocket_depth,
-                                      self.tool_diameter,
+            pocket_depth,
+            self.tool_diameter,
         );
         let mut gen = PocketGenerator::new(op);
         gen.operation.set_start_depth(self.start_depth);
@@ -915,8 +893,8 @@ pub fn generate_ellipse_pocket(
     ) -> Vec<Toolpath> {
         let op = PocketOperation::new(
             "polyline_pocket".to_string(),
-                                      pocket_depth,
-                                      self.tool_diameter,
+            pocket_depth,
+            self.tool_diameter,
         );
         let mut gen = PocketGenerator::new(op);
         gen.operation.set_start_depth(self.start_depth);
@@ -1112,133 +1090,122 @@ pub fn generate_ellipse_pocket(
 
         self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
     }
+// ---
 
-    pub fn generate_path_contour(&self, path_shape: &PathShape, step_down: f64) -> Vec<Toolpath> {
-        let mut segments = Vec::new();
-        let mut current_pos = Point::new(0.0, 0.0);
-        let mut first_point = None;
+pub fn generate_path_contour(&self, path_shape: &PathShape, step_down: f64) -> Vec<Toolpath> {
+    let mut segments = Vec::new();
+    let mut current_pos = Point::new(0.0, 0.0);
+    let mut first_point: Option<Point> = None;
 
-        for event in path_shape.render().iter() {
-            match event {
-                lyon::path::Event::Begin { at } => {
-                    let p = Point::new(at.x as f64, at.y as f64);
-                    if first_point.is_none() {
-                        first_point = Some(p);
-                        segments.push(ToolpathSegment::new(
-                            ToolpathSegmentType::RapidMove,
-                            Point::new(0.0, 0.0),
-                                                           p,
-                                                           self.feed_rate,
-                                                           self.spindle_speed,
-                        ));
-                    }
-                    current_pos = p;
-                }
-                lyon::path::Event::Line { to, .. } => {
-                    let p = Point::new(to.x as f64, to.y as f64);
-                    segments.push(ToolpathSegment::new(
-                        ToolpathSegmentType::LinearMove,
+    for event in path_shape.render().iter() {
+        match event {
+            lyon::path::Event::Begin { at } => {
+                let p = Point::new(at.x as f64, at.y as f64);
+                // Siempre iniciar un nuevo subpath con un movimiento rápido desde la posición actual
+                // (la posición actual puede ser la última posición del subpath anterior, pero eso está bien)
+                segments.push(ToolpathSegment::new(
+                    ToolpathSegmentType::RapidMove,
+                    current_pos,
+                    p,
+                    self.feed_rate,
+                    self.spindle_speed,
+                ));
+                current_pos = p;
+                first_point = Some(p);
+            }
+            lyon::path::Event::Line { to, .. } => {
+                let p = Point::new(to.x as f64, to.y as f64);
+                segments.push(ToolpathSegment::new(
+                    ToolpathSegmentType::LinearMove,
+                    current_pos,
+                    p,
+                    self.feed_rate,
+                    self.spindle_speed,
+                ));
+                current_pos = p;
+            }
+            lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => {
+                let p_to = Point::new(to.x as f64, to.y as f64);
+                let p_c1 = Point::new(ctrl1.x as f64, ctrl1.y as f64);
+                let p_c2 = Point::new(ctrl2.x as f64, ctrl2.y as f64);
+
+                if let Some((center, is_ccw)) = self.try_convert_to_arc(current_pos, p_to, p_c1, p_c2) {
+                    segments.push(ToolpathSegment::new_arc(
+                        if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
                         current_pos,
-                        p,
+                        p_to,
+                        center,
                         self.feed_rate,
                         self.spindle_speed,
                     ));
-                    current_pos = p;
-                }
-
-                lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => {
-                    let p_to = Point::new(to.x as f64, to.y as f64);
-                    let p_c1 = Point::new(ctrl1.x as f64, ctrl1.y as f64);
-                    let p_c2 = Point::new(ctrl2.x as f64, ctrl2.y as f64);
-
-                    if let Some((center, is_ccw)) = self.try_convert_to_arc(current_pos, p_to, p_c1, p_c2) {
-                        // Si detecta el arco, usamos G02/G03
-                        segments.push(ToolpathSegment::new_arc(
-                            if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
-                                current_pos,
-                                p_to,
-                                center,
-                                self.feed_rate,
-                                self.spindle_speed,
-                        ));
-                    } else {
-                        // FALLBACK: If it's not a perfect arc, we DON'T chamfer it.
-                        // We divided the curve into 16 small segments so that it would be curved and not straight.
-                        let mut last_p = current_pos;
-                        let steps = 16;
-                        for i in 1..=steps {
-                            let t = i as f64 / steps as f64;
-                            let inv_t = 1.0 - t;
-
-                            // Cubic Bézier Formula
-                            let x = inv_t.powi(3) * current_pos.x
+                } else {
+                    let mut last_p = current_pos;
+                    let steps = 16;
+                    for i in 1..=steps {
+                        let t = i as f64 / steps as f64;
+                        let inv_t = 1.0 - t;
+                        let x = inv_t.powi(3) * current_pos.x
                             + 3.0 * inv_t.powi(2) * t * p_c1.x
                             + 3.0 * inv_t * t.powi(2) * p_c2.x
                             + t.powi(3) * p_to.x;
-                            let y = inv_t.powi(3) * current_pos.y
+                        let y = inv_t.powi(3) * current_pos.y
                             + 3.0 * inv_t.powi(2) * t * p_c1.y
                             + 3.0 * inv_t * t.powi(2) * p_c2.y
                             + t.powi(3) * p_to.y;
-
-                            let next_p = Point::new(x, y);
-                            segments.push(ToolpathSegment::new(
-                                ToolpathSegmentType::LinearMove,
-                                last_p,
-                                next_p,
-                                self.feed_rate,
-                                self.spindle_speed,
-                            ));
-                            last_p = next_p;
-                        }
-                    }
-                    current_pos = p_to;
-                }
-
-                // ------ Quadratic
-                lyon::path::Event::Quadratic { ctrl, to, .. } => {
-
-                    let p_to = Point::new(to.x as f64, to.y as f64);
-                    let p_ctrl = Point::new(ctrl.x as f64, ctrl.y as f64);
-
-                    // Try to convert the quadratic curve to an arc G02/G03
-                    if let Some((center, is_ccw)) = self.try_convert_quadratic_to_arc(current_pos, p_to, p_ctrl) {
-                        segments.push(ToolpathSegment::new_arc(
-                            if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
-                                current_pos,
-                                p_to,
-                                center,
-                                self.feed_rate,
-                                self.spindle_speed,
+                        let next_p = Point::new(x, y);
+                        segments.push(ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            last_p,
+                            next_p,
+                            self.feed_rate,
+                            self.spindle_speed,
                         ));
-                    } else {
-                        // If detection fails, instead of a chamfer,
-                        // we linearized the curve with small segments to maintain the shape.
-                        let mut last_p = current_pos;
-                        let steps = 10; // Divide into 10 segments to smooth
-
-                        for i in 1..=steps {
-                            let t = i as f64 / steps as f64;
-                            // Quadratic Bézier equation: (1-t)²P0 + 2(1-t)tP1 + t²P2
-                            let x = (1.0 - t).powi(2) * current_pos.x + 2.0 * (1.0 - t) * t * p_ctrl.x + t.powi(2) * p_to.x;
-                            let y = (1.0 - t).powi(2) * current_pos.y + 2.0 * (1.0 - t) * t * p_ctrl.y + t.powi(2) * p_to.y;
-                            let next_p = Point::new(x, y);
-
-                            segments.push(ToolpathSegment::new(
-                                ToolpathSegmentType::LinearMove,
-                                last_p,
-                                next_p,
-                                self.feed_rate,
-                                self.spindle_speed,
-                            ));
-                            last_p = next_p;
-                        }
+                        last_p = next_p;
                     }
-                    current_pos = p_to;
                 }
+                current_pos = p_to;
+            }
+            lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                let p_to = Point::new(to.x as f64, to.y as f64);
+                let p_ctrl = Point::new(ctrl.x as f64, ctrl.y as f64);
 
-                lyon::path::Event::End { close, .. } => {
-                    if close {
-                        if let Some(first) = first_point {
+                if let Some((center, is_ccw)) = self.try_convert_quadratic_to_arc(current_pos, p_to, p_ctrl) {
+                    segments.push(ToolpathSegment::new_arc(
+                        if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                        current_pos,
+                        p_to,
+                        center,
+                        self.feed_rate,
+                        self.spindle_speed,
+                    ));
+                } else {
+                    let mut last_p = current_pos;
+                    let steps = 10;
+                    for i in 1..=steps {
+                        let t = i as f64 / steps as f64;
+                        let x = (1.0 - t).powi(2) * current_pos.x
+                            + 2.0 * (1.0 - t) * t * p_ctrl.x
+                            + t.powi(2) * p_to.x;
+                        let y = (1.0 - t).powi(2) * current_pos.y
+                            + 2.0 * (1.0 - t) * t * p_ctrl.y
+                            + t.powi(2) * p_to.y;
+                        let next_p = Point::new(x, y);
+                        segments.push(ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            last_p,
+                            next_p,
+                            self.feed_rate,
+                            self.spindle_speed,
+                        ));
+                        last_p = next_p;
+                    }
+                }
+                current_pos = p_to;
+            }
+            lyon::path::Event::End { close, .. } => {
+                if close {
+                    if let Some(first) = first_point {
+                        if current_pos.distance_to(&first) > 0.001 {
                             segments.push(ToolpathSegment::new(
                                 ToolpathSegmentType::LinearMove,
                                 current_pos,
@@ -1246,15 +1213,19 @@ pub fn generate_ellipse_pocket(
                                 self.feed_rate,
                                 self.spindle_speed,
                             ));
+                            current_pos = first;
                         }
                     }
                 }
-
+                // IMPORTANT: Reset first_point and current_pos for the following subpath
+                first_point = None;
             }
         }
-
-        self.create_multipass_toolpaths(segments, step_down)
     }
+
+    self.create_multipass_toolpaths(segments, step_down)
+}
+
 
     fn try_convert_quadratic_to_arc(&self, start: Point, end: Point, ctrl: Point) -> Option<(Point, bool)> {
 
@@ -1262,13 +1233,14 @@ pub fn generate_ellipse_pocket(
         let mid_ctrl_end = Point::new((ctrl.x + end.x) / 2.0, (ctrl.y + end.y) / 2.0);
         let center_candidate = Point::new(
             (mid_start_ctrl.x + mid_ctrl_end.x) / 2.0,
-                                          (mid_start_ctrl.y + mid_ctrl_end.y) / 2.0
+            (mid_start_ctrl.y + mid_ctrl_end.y) / 2.0
         );
 
         let r_start = start.distance_to(&center_candidate);
         let r_end = end.distance_to(&center_candidate);
 
-        let tolerance = 0.1; // Increased to compensate for rounding errors in DXF
+    let chord_len = start.distance_to(&end);
+    let tolerance = (chord_len * 0.05).max(0.01); // 5% of the string, minimum 0.01mm
 
         if (r_start - r_end).abs() < tolerance {
             let v1 = (start.x - center_candidate.x, start.y - center_candidate.y);
@@ -1284,7 +1256,7 @@ pub fn generate_ellipse_pocket(
         // Calculate approximate center (midpoint of the control points)
         let center_candidate = Point::new(
             (ctrl1.x + ctrl2.x) / 2.0,
-                                          (ctrl1.y + ctrl2.y) / 2.0,
+            (ctrl1.y + ctrl2.y) / 2.0,
         );
 
         // Calculate radii from the candidate center
@@ -1295,7 +1267,9 @@ pub fn generate_ellipse_pocket(
 
         // Verify that all points are approximately the same distance apart
         let r_avg = (r_start + r_end + r_ctrl1 + r_ctrl2) / 4.0;
-        let tolerance = 0.1; // 0.1 mm Tolerance
+
+        let chord_len = start.distance_to(&end);
+        let tolerance = (chord_len * 0.05).max(0.01); // 5% of the string, minimum 0.01mm
 
         if (r_start - r_avg).abs() < tolerance &&
             (r_end - r_avg).abs() < tolerance &&
@@ -1685,15 +1659,7 @@ pub fn generate_ellipse_pocket(
                 y += stepover.max(0.05);
             }
         }
-        /*
-         *        segments.push(ToolpathSegment::new(
-         *            ToolpathSegmentType::RapidMove,
-         *            current,
-         * //            Point::new(0.0, 0.0),
-         *            self.feed_rate,
-         *            self.spindle_speed,
-         *        ));
-         */
+
         self.create_multipass_toolpaths(segments, step_down)
     }
 

@@ -78,6 +78,7 @@ impl PropertiesPanel {
                 // Multiple selection - only show CAM properties (use first shape's values)
                 let obj = &selected[0];
                 let any_not_text = selected.iter().any(|s| !matches!(s.shape, Shape::Text(_)));
+
                 Some((
                     selected.iter().map(|s| s.id).collect(),
                       None, // No shape data for multi-selection
@@ -92,7 +93,7 @@ impl PropertiesPanel {
                       obj.fillet,
                       obj.chamfer,
                       any_not_text,
-                      false, // Multi-selection: don't lock aspect ratio
+                      false,
                 ))
             }
         };
@@ -169,8 +170,6 @@ impl PropertiesPanel {
 
                 self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
                 self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
-
-
 
                 self.lock_aspect_ratio.set_active(lock_aspect);
 
@@ -461,6 +460,7 @@ impl PropertiesPanel {
             self.raster_fill_entry.set_sensitive(false);
 
             self.raster_fill_entry.set_text("");
+            self.lock_aspect_ratio.set_active(false);
             *self.updating.borrow_mut() = false;
         }
     }

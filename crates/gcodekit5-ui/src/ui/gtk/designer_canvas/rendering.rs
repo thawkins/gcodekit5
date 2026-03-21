@@ -828,7 +828,30 @@ impl DesignerCanvas {
         let mut dx = current_x - start.0;
         let mut dy = current_y - start.1;
 
-        if shift_pressed {
+        // Get all selected objects and check if ALL have lock_aspect_ratio active
+        let state = self.state.borrow();
+        let selected_ids: Vec<u64> = state
+        .canvas
+        .shapes()
+        .filter(|s| s.selected)
+        .map(|s| s.id)
+        .collect();
+
+        // Check if ALL selected objects have lock_aspect_ratio = true
+        let all_lock_aspect = if !selected_ids.is_empty() {
+            selected_ids.iter().all(|&id| {
+                if let Some(obj) = state.canvas.get_shape(id) {
+                    obj.lock_aspect_ratio
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        };
+        drop(state);
+
+        if shift_pressed || all_lock_aspect {
             // Maintain aspect ratio
             let ratio = if orig_height.abs() > 0.001 {
                 orig_width / orig_height
@@ -948,8 +971,6 @@ impl DesignerCanvas {
         let mut state = self.state.borrow_mut();
 
         // Restore original shapes first so drag updates don't compound transforms.
-        // (Without this, we repeatedly multiply already-scaled dimensions and the selection
-        // shrinks/grows exponentially.)
         if let Some(originals) = self.resize_original_shapes.borrow().as_ref() {
             for (id, original_shape) in originals {
                 if let Some(obj) = state.canvas.shape_store.get_mut(*id) {
@@ -960,9 +981,7 @@ impl DesignerCanvas {
             }
         }
 
-        // Apply scaling to all selected shapes (single or multiple)
-        // This ensures consistent behavior for rotated shapes where AABB resizing
-        // should be treated as a scaling operation relative to the anchor point.
+        // Apply scaling to all selected shapes
         let anchor = Point::new(anchor_x, anchor_y);
         for obj in state.canvas.shape_store.iter_mut() {
             if !obj.selected {
@@ -975,8 +994,6 @@ impl DesignerCanvas {
                     rect.width *= sx.abs();
                     rect.height *= sy.abs();
 
-                    // Only scale corner_radius if not in slot mode
-                    // (slot mode calculates radius dynamically)
                     if !rect.is_slot {
                         rect.corner_radius *= sx.abs().min(sy.abs());
                     }
