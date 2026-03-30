@@ -1165,3 +1165,26 @@ msgstr ""
 
 msgid "Raster Fill (%):"
 msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
+msgid "Select a shape to edit its properties"
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Laser Engraving"
+msgstr ""
+
+msgid "Min Power:"
+msgstr ""
+
+msgid "Max Power:"
+msgstr ""
+
+msgid "Resolution:"
+msgstr ""
+
+msgid "Dithering:"
+msgstr ""
+
+msgid "Halftone Threshold:"
+msgstr ""
