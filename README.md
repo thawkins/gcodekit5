@@ -132,6 +132,11 @@ This modular structure enables:
   - Selecting "Properties" with multiple shapes opens a "Multiple Shapes" dialog that applies pocket/text/toolpath settings to every selected object while keeping individual positions intact
 - **Toolpath Generation**: Convert designs to executable G-code
 
+- **Image Import**: Import raster files, jpg, png, bmp ...
+  - New features in the image engraving Inspector
+  - **NEW**: G-code generator optimized for raster images
+  - **NEW**: Frame button to generate Bounds Gcode
+
 ### 👁️ 2D Visualizer
 - **Real-time Rendering**: Instant visualization of G-code toolpaths
 - **Adaptive Grid System**:
