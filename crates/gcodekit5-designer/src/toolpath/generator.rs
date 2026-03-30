@@ -2,8 +2,9 @@
 
 use super::*;
 
-use lyon::path::iterator::PathIterator;
+// use lyon::path::iterator::PathIterator;
 use rusttype::{GlyphId, OutlineBuilder, Scale};
+use crate::Ellipse;
 use smallvec::SmallVec;
 
 /// Generates toolpaths from design shapes.
@@ -50,7 +51,7 @@ impl ToolpathGenerator {
     pub fn set_feed_rate(&mut self, feed_rate: f64) {
         debug_assert!(
             feed_rate.is_finite() && feed_rate > 0.0,
-            "feed_rate must be positive and finite, got {feed_rate}"
+                      "feed_rate must be positive and finite, got {feed_rate}"
         );
         self.feed_rate = feed_rate;
     }
@@ -64,7 +65,7 @@ impl ToolpathGenerator {
     pub fn set_tool_diameter(&mut self, diameter: f64) {
         debug_assert!(
             diameter.is_finite() && diameter > 0.0,
-            "tool_diameter must be positive and finite, got {diameter}"
+                      "tool_diameter must be positive and finite, got {diameter}"
         );
         self.tool_diameter = diameter;
     }
@@ -145,9 +146,9 @@ impl ToolpathGenerator {
             segments.push(ToolpathSegment::new(
                 ToolpathSegmentType::RapidMove,
                 Point::new(0.0, 0.0),
-                t_corners[0],
-                self.feed_rate,
-                self.spindle_speed,
+                                               t_corners[0],
+                                               self.feed_rate,
+                                               self.spindle_speed,
             ));
 
             // Move around the rectangle
@@ -161,15 +162,16 @@ impl ToolpathGenerator {
                     self.spindle_speed,
                 ));
             }
-
-            // Return to origin with rapid move
-            segments.push(ToolpathSegment::new(
-                ToolpathSegmentType::RapidMove,
-                t_corners[0],
-                Point::new(0.0, 0.0),
-                self.feed_rate,
-                self.spindle_speed,
-            ));
+            /*
+             *            // Return to origin with rapid move
+             *            segments.push(ToolpathSegment::new(
+             *                ToolpathSegmentType::RapidMove,
+             *                t_corners[0],
+             * //                Point::new(0.0, 0.0),
+             *                self.feed_rate,
+             *                self.spindle_speed,
+             *            ));
+             */
         } else {
             // Rounded corners
             // Start point: (x + r, y)
@@ -180,9 +182,9 @@ impl ToolpathGenerator {
             segments.push(ToolpathSegment::new(
                 ToolpathSegmentType::RapidMove,
                 Point::new(0.0, 0.0),
-                start_pt,
-                self.feed_rate,
-                self.spindle_speed,
+                                               start_pt,
+                                               self.feed_rate,
+                                               self.spindle_speed,
             ));
 
             let mut current_pt = start_pt;
@@ -309,16 +311,17 @@ impl ToolpathGenerator {
                 self.feed_rate,
                 self.spindle_speed,
             ));
-            current_pt = p_bl_end;
-
-            // Return to origin
-            segments.push(ToolpathSegment::new(
-                ToolpathSegmentType::RapidMove,
-                current_pt,
-                Point::new(0.0, 0.0),
-                self.feed_rate,
-                self.spindle_speed,
-            ));
+            //            current_pt = p_bl_end;
+            /*
+             *            // Return to origin
+             *            segments.push(ToolpathSegment::new(
+             *                ToolpathSegmentType::RapidMove,
+             *                current_pt,
+             * //                Point::new(0.0, 0.0),
+             *                self.feed_rate,
+             *                self.spindle_speed,
+             *            ));
+             */
         }
 
         self.create_multipass_toolpaths(segments, step_down)
@@ -326,10 +329,12 @@ impl ToolpathGenerator {
 
     /// Helper to create multiple toolpaths from segments based on depth settings
     fn create_multipass_toolpaths(
+
         &self,
         segments: Vec<ToolpathSegment>,
         step_down: f64,
     ) -> Vec<Toolpath> {
+
         let mut toolpaths = Vec::new();
         let start_z = self.start_depth;
         // Treat cut_depth as magnitude (positive distance downwards)
@@ -339,18 +344,18 @@ impl ToolpathGenerator {
         if self.ramp_angle > 0.001 && !segments.is_empty() {
             // Ramping logic
             let contour_length: f64 = segments
-                .iter()
-                .map(|s| {
-                    match s.segment_type {
-                        ToolpathSegmentType::LinearMove | ToolpathSegmentType::RapidMove => {
-                            s.start.distance_to(&s.end)
-                        }
-                        ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
-                            s.start.distance_to(&s.end) // Approximation using chord length
-                        }
+            .iter()
+            .map(|s| {
+                match s.segment_type {
+                    ToolpathSegmentType::LinearMove | ToolpathSegmentType::RapidMove => {
+                        s.start.distance_to(&s.end)
                     }
-                })
-                .sum();
+                    ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
+                        s.start.distance_to(&s.end) // Approximation using chord length
+                    }
+                }
+            })
+            .sum();
 
             if contour_length > 0.001 {
                 let mut current_z = start_z;
@@ -369,14 +374,14 @@ impl ToolpathGenerator {
                         // Add a final pass at target_z and break
                         let mut final_pass = Toolpath::new(self.tool_diameter, target_z);
                         final_pass.segments = segments
-                            .iter()
-                            .map(|s| {
-                                let mut ns = s.clone();
-                                ns.start_z = Some(target_z);
-                                ns.z_depth = Some(target_z);
-                                ns
-                            })
-                            .collect();
+                        .iter()
+                        .map(|s| {
+                            let mut ns = s.clone();
+                            ns.start_z = Some(target_z);
+                            ns.z_depth = Some(target_z);
+                            ns
+                        })
+                        .collect();
                         toolpaths.push(final_pass);
                         return toolpaths;
                     }
@@ -439,14 +444,14 @@ impl ToolpathGenerator {
                 // Add a final flat pass at the bottom
                 let mut final_pass = Toolpath::new(self.tool_diameter, target_z);
                 final_pass.segments = segments
-                    .iter()
-                    .map(|s| {
-                        let mut ns = s.clone();
-                        ns.start_z = Some(target_z);
-                        ns.z_depth = Some(target_z);
-                        ns
-                    })
-                    .collect();
+                .iter()
+                .map(|s| {
+                    let mut ns = s.clone();
+                    ns.start_z = Some(target_z);
+                    ns.z_depth = Some(target_z);
+                    ns
+                })
+                .collect();
                 toolpaths.push(final_pass);
 
                 return toolpaths;
@@ -494,9 +499,9 @@ impl ToolpathGenerator {
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
             Point::new(0.0, 0.0),
-            start_point,
-            self.feed_rate,
-            self.spindle_speed,
+                                           start_point,
+                                           self.feed_rate,
+                                           self.spindle_speed,
         ));
 
         // Generate 4 arc segments (90 degrees each) for full circle
@@ -522,17 +527,105 @@ impl ToolpathGenerator {
             current = p;
         }
 
-        // Return to origin with rapid move
+        self.create_multipass_toolpaths(segments, step_down)
+    }
+
+/// Generates a contour toolpath for an ellipse.
+pub fn generate_ellipse_contour(&self, ellipse: &Ellipse, step_down: f64) -> Vec<Toolpath> {
+    let mut segments = Vec::new();
+    let center = ellipse.center;
+    let rx = ellipse.rx;
+    let ry = ellipse.ry;
+    let rotation = ellipse.rotation;
+
+    // Number of points for a smooth ellipse (same logic as in import)
+    let steps = 64;
+
+    // Function to transform a point according to rotation
+    let transform_point = |p: Point| -> Point {
+        if rotation.abs() > 1e-6 {
+            rotate_point(p, center, rotation)
+        } else {
+            p
+        }
+    };
+
+    // Starting point (angle 0)
+    let start_x = center.x + rx;
+    let start_y = center.y;
+    let start_point = transform_point(Point::new(start_x, start_y));
+
+   // Move to the starting point with the laser off
+    segments.push(ToolpathSegment::new(
+        ToolpathSegmentType::RapidMove,
+        Point::new(0.0, 0.0),
+        start_point,
+        self.feed_rate,
+        self.spindle_speed,
+    ));
+
+    let mut current = start_point;
+
+    // Generate intermediate points (angle 0 to 2π)
+    for i in 1..=steps {
+        let t = 2.0 * std::f64::consts::PI * (i as f64 / steps as f64);
+        let x = center.x + rx * t.cos();
+        let y = center.y + ry * t.sin();
+        let p = transform_point(Point::new(x, y));
+
         segments.push(ToolpathSegment::new(
-            ToolpathSegmentType::RapidMove,
-            start_point,
-            Point::new(0.0, 0.0),
+            ToolpathSegmentType::LinearMove,
+            current,
+            p,
             self.feed_rate,
             self.spindle_speed,
         ));
-
-        self.create_multipass_toolpaths(segments, step_down)
+        current = p;
     }
+
+    // Close the ellipse (return to the starting point)
+    if current.distance_to(&start_point) > 0.001 {
+        segments.push(ToolpathSegment::new(
+            ToolpathSegmentType::LinearMove,
+            current,
+            start_point,
+            self.feed_rate,
+            self.spindle_speed,
+        ));
+    }
+
+    self.create_multipass_toolpaths(segments, step_down)
+}
+
+/// Generates a pocket toolpath for an ellipse.
+pub fn generate_ellipse_pocket(
+    &self,
+    ellipse: &Ellipse,
+    pocket_depth: f64,
+    step_down: f64,
+    step_in: f64,
+) -> Vec<Toolpath> {
+    let steps = 64;
+    let mut vertices = Vec::with_capacity(steps + 1);
+    let center = ellipse.center;
+    let rx = ellipse.rx;
+    let ry = ellipse.ry;
+    let rotation = ellipse.rotation;
+
+    for i in 0..=steps {
+        let t = 2.0 * std::f64::consts::PI * (i as f64 / steps as f64);
+        let x = center.x + rx * t.cos();
+        let y = center.y + ry * t.sin();
+        let mut p = Point::new(x, y);
+
+        if rotation.abs() > 1e-6 {
+            p = rotate_point(p, center, rotation);
+        }
+        vertices.push(p);
+    }
+
+    self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
+}
 
     /// Generates a contour toolpath for a line.
     pub fn generate_line_contour(&self, line: &Line, step_down: f64) -> Vec<Toolpath> {
@@ -541,9 +634,9 @@ impl ToolpathGenerator {
             ToolpathSegment::new(
                 ToolpathSegmentType::RapidMove,
                 Point::new(0.0, 0.0),
-                line.start,
-                self.feed_rate,
-                self.spindle_speed,
+                                 line.start,
+                                 self.feed_rate,
+                                 self.spindle_speed,
             ),
             // Linear move along the line
             ToolpathSegment::new(
@@ -553,21 +646,19 @@ impl ToolpathGenerator {
                 self.feed_rate,
                 self.spindle_speed,
             ),
-            // Return to origin
-            ToolpathSegment::new(
-                ToolpathSegmentType::RapidMove,
-                line.end,
-                Point::new(0.0, 0.0),
-                self.feed_rate,
-                self.spindle_speed,
-            ),
+
         ];
 
         self.create_multipass_toolpaths(segments, step_down)
     }
 
-    /// Generates a contour toolpath for a polyline.
-    pub fn generate_polyline_contour(&self, vertices: &[Point], step_down: f64) -> Vec<Toolpath> {
+    /// Generates a contour toolpath for a polyline (with bulges for arcs)
+    pub fn generate_polyline_contour(
+        &self,
+        vertices: &[Point],
+        bulges: &[f64],
+        step_down: f64
+    ) -> Vec<Toolpath> {
         let mut segments = Vec::new();
 
         if vertices.is_empty() {
@@ -578,34 +669,112 @@ impl ToolpathGenerator {
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
             Point::new(0.0, 0.0),
-            vertices[0],
-            self.feed_rate,
-            self.spindle_speed,
+                                           vertices[0],
+                                           self.feed_rate,
+                                           self.spindle_speed,
         ));
 
-        // Move along the polyline
-        for i in 0..vertices.len() {
-            let next_i = (i + 1) % vertices.len();
-            segments.push(ToolpathSegment::new(
-                ToolpathSegmentType::LinearMove,
-                vertices[i],
-                vertices[next_i],
-                self.feed_rate,
-                self.spindle_speed,
-            ));
+        // Move along the polyline, processing each segment
+        let mut current = vertices[0];
+
+        for i in 0..vertices.len() - 1 {
+            let next = vertices[i + 1];
+
+            // Get bulge for this segment (if available)
+            let bulge = if i < bulges.len() { bulges[i] } else { 0.0 };
+
+            if bulge.abs() < 0.001 {
+                // Straight line
+                segments.push(ToolpathSegment::new(
+                    ToolpathSegmentType::LinearMove,
+                    current,
+                    next,
+                    self.feed_rate,
+                    self.spindle_speed,
+                ));
+            } else {
+                // Arc: convert bulge to arc parameters
+                let (center, is_ccw) = self.bulge_to_arc(current, next, bulge);
+
+                segments.push(ToolpathSegment::new_arc(
+                    if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                        current,
+                        next,
+                        center,
+                        self.feed_rate,
+                        self.spindle_speed,
+                ));
+            }
+
+            current = next;
         }
 
-        // Return to origin with rapid move
-        segments.push(ToolpathSegment::new(
-            ToolpathSegmentType::RapidMove,
-            vertices[0],
-            Point::new(0.0, 0.0),
-            self.feed_rate,
-            self.spindle_speed,
-        ));
+        // If closed, add final segment from last vertex back to first
+        if let Some(&last_bulge) = bulges.last() {
+            if vertices.len() > 1 {
+                let last = vertices.last().unwrap();
+                let first = vertices.first().unwrap();
+
+                if last_bulge.abs() < 0.001 {
+                    segments.push(ToolpathSegment::new(
+                        ToolpathSegmentType::LinearMove,
+                        *last,
+                        *first,
+                        self.feed_rate,
+                        self.spindle_speed,
+                    ));
+                } else {
+                    let (center, is_ccw) = self.bulge_to_arc(*last, *first, last_bulge);
+                    segments.push(ToolpathSegment::new_arc(
+                        if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                            *last,
+                            *first,
+                            center,
+                            self.feed_rate,
+                            self.spindle_speed,
+                    ));
+                }
+            }
+        }
 
         self.create_multipass_toolpaths(segments, step_down)
     }
+
+    /// Converts a DXF bulge to an arc and steering center
+    fn bulge_to_arc(&self, p1: Point, p2: Point, bulge: f64) -> (Point, bool) {
+        let chord = p1.distance_to(&p2);
+        let angle = 4.0 * bulge.atan();  // Ángulo incluido del arco
+
+        // Radius = (chord/2) / sin(angle/2)
+        let radius = (chord / 2.0) / (angle / 2.0).sin();
+
+        // Arch height (sagitta)
+        let sagitta = radius - (radius.powi(2) - (chord / 2.0).powi(2)).sqrt();
+        if !sagitta.is_finite() {
+            return (p1.midpoint(&p2), bulge > 0.0);
+        }
+
+        // Vector perpendicular to string
+        let dx = p2.x - p1.x;
+        let dy = p2.y - p1.y;
+        let perp_x = -dy / chord;
+        let perp_y = dx / chord;
+
+        // Center direction (positive = left, negative = right)
+        let dir = if bulge > 0.0 { 1.0 } else { -1.0 };
+
+        // Midpoint of string
+        let mid = p1.midpoint(&p2);
+
+        // Center arch
+        let center = Point::new(
+            mid.x + perp_x * sagitta * dir,
+            mid.y + perp_y * sagitta * dir
+        );
+
+        (center, bulge > 0.0)
+    }
+
 
     /// Generates a pocket toolpath for a rectangle.
     pub fn generate_rectangle_pocket(
@@ -616,9 +785,9 @@ impl ToolpathGenerator {
         step_in: f64,
     ) -> Vec<Toolpath> {
         let r = rect
-            .effective_corner_radius()
-            .min(rect.width.abs() / 2.0)
-            .min(rect.height.abs() / 2.0);
+        .effective_corner_radius()
+        .min(rect.width.abs() / 2.0)
+        .min(rect.height.abs() / 2.0);
 
         if r > 0.001 || rect.rotation.abs() > 1e-6 {
             // Convert rounded or rotated rectangle to polygon for pocketing
@@ -634,20 +803,20 @@ impl ToolpathGenerator {
 
                 // Helper to add arc points (excluding start point to avoid duplicates)
                 let mut add_arc_points =
-                    |center: Point, start_angle: f64, end_angle: f64, include_start: bool| {
-                        let start_rad = start_angle.to_radians();
-                        let end_rad = end_angle.to_radians();
-                        let step = (end_rad - start_rad) / segments as f64;
+                |center: Point, start_angle: f64, end_angle: f64, include_start: bool| {
+                    let start_rad = start_angle.to_radians();
+                    let end_rad = end_angle.to_radians();
+                    let step = (end_rad - start_rad) / segments as f64;
 
-                        let start_i = if include_start { 0 } else { 1 };
-                        for i in start_i..=segments {
-                            let angle = start_rad + step * i as f64;
-                            vertices.push(Point::new(
-                                center.x + r * angle.cos(),
-                                center.y + r * angle.sin(),
-                            ));
-                        }
-                    };
+                    let start_i = if include_start { 0 } else { 1 };
+                    for i in start_i..=segments {
+                        let angle = start_rad + step * i as f64;
+                        vertices.push(Point::new(
+                            center.x + r * angle.cos(),
+                                                 center.y + r * angle.sin(),
+                        ));
+                    }
+                };
 
                 // Generate rounded rectangle corners (clockwise from bottom-right)
                 // BR Corner (270 -> 360) - include start point
@@ -687,7 +856,7 @@ impl ToolpathGenerator {
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
         gen.operation
-            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.generate_rectangular_pocket(rect, step_down)
     }
 
@@ -710,7 +879,7 @@ impl ToolpathGenerator {
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
         gen.operation
-            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.generate_circular_pocket(circle, step_down)
     }
 
@@ -732,7 +901,7 @@ impl ToolpathGenerator {
         gen.operation.set_ramp_angle(self.ramp_angle);
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
         gen.operation
-            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.operation.set_strategy(self.pocket_strategy);
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
         gen.generate_polygon_pocket(vertices, step_down)
@@ -768,9 +937,9 @@ impl ToolpathGenerator {
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
             Point::new(0.0, 0.0),
-            p1,
-            self.feed_rate,
-            self.spindle_speed,
+                                           p1,
+                                           self.feed_rate,
+                                           self.spindle_speed,
         ));
 
         // p1 -> p2
@@ -796,15 +965,6 @@ impl ToolpathGenerator {
             ToolpathSegmentType::LinearMove,
             p3,
             p1,
-            self.feed_rate,
-            self.spindle_speed,
-        ));
-
-        // Return to origin
-        segments.push(ToolpathSegment::new(
-            ToolpathSegmentType::RapidMove,
-            p1,
-            Point::new(0.0, 0.0),
             self.feed_rate,
             self.spindle_speed,
         ));
@@ -844,9 +1004,9 @@ impl ToolpathGenerator {
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
             Point::new(0.0, 0.0),
-            points[0],
-            self.feed_rate,
-            self.spindle_speed,
+                                           points[0],
+                                           self.feed_rate,
+                                           self.spindle_speed,
         ));
 
         for i in 0..sides as usize {
@@ -859,15 +1019,6 @@ impl ToolpathGenerator {
                 self.spindle_speed,
             ));
         }
-
-        // Return to origin
-        segments.push(ToolpathSegment::new(
-            ToolpathSegmentType::RapidMove,
-            points[0],
-            Point::new(0.0, 0.0),
-            self.feed_rate,
-            self.spindle_speed,
-        ));
 
         self.create_multipass_toolpaths(segments, step_down)
     }
@@ -940,85 +1091,200 @@ impl ToolpathGenerator {
         self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
     }
 
-    /// Generates a contour toolpath for a PathShape.
-    pub fn generate_path_contour(&self, path_shape: &PathShape, step_down: f64) -> Vec<Toolpath> {
-        let mut segments = Vec::new();
-        let tolerance = 0.05; // mm
+pub fn generate_path_contour(&self, path_shape: &PathShape, step_down: f64) -> Vec<Toolpath> {
+    let mut segments = Vec::new();
+    let mut current_pos = Point::new(0.0, 0.0);
+    let mut first_point: Option<Point> = None;
 
-        let mut current_point = Point::new(0.0, 0.0);
-        let mut start_point = Point::new(0.0, 0.0);
+    for event in path_shape.render().iter() {
+        match event {
+            lyon::path::Event::Begin { at } => {
+                let p = Point::new(at.x as f64, at.y as f64);
+                // Siempre iniciar un nuevo subpath con un movimiento rápido desde la posición actual
+                // (la posición actual puede ser la última posición del subpath anterior, pero eso está bien)
+                segments.push(ToolpathSegment::new(
+                    ToolpathSegmentType::RapidMove,
+                    current_pos,
+                    p,
+                    self.feed_rate,
+                    self.spindle_speed,
+                ));
+                current_pos = p;
+                first_point = Some(p);
+            }
+            lyon::path::Event::Line { to, .. } => {
+                let p = Point::new(to.x as f64, to.y as f64);
+                segments.push(ToolpathSegment::new(
+                    ToolpathSegmentType::LinearMove,
+                    current_pos,
+                    p,
+                    self.feed_rate,
+                    self.spindle_speed,
+                ));
+                current_pos = p;
+            }
+            lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => {
+                let p_to = Point::new(to.x as f64, to.y as f64);
+                let p_c1 = Point::new(ctrl1.x as f64, ctrl1.y as f64);
+                let p_c2 = Point::new(ctrl2.x as f64, ctrl2.y as f64);
 
-        // Calculate center for rotation (unrotated bounding box)
-        let rect = lyon::algorithms::aabb::bounding_box(&path_shape.render());
-        let center = Point::new(
-            (rect.min.x + rect.max.x) as f64 / 2.0,
-            (rect.min.y + rect.max.y) as f64 / 2.0,
-        );
-        let rotation = path_shape.rotation;
-
-        for event in path_shape.render().iter().flattened(tolerance) {
-            match event {
-                lyon::path::Event::Begin { at } => {
-                    let mut p = Point::new(at.x as f64, at.y as f64);
-                    if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation);
-                    }
-                    segments.push(ToolpathSegment::new(
-                        ToolpathSegmentType::RapidMove,
-                        current_point,
-                        p,
+                if let Some((center, is_ccw)) = self.try_convert_to_arc(current_pos, p_to, p_c1, p_c2) {
+                    segments.push(ToolpathSegment::new_arc(
+                        if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                        current_pos,
+                        p_to,
+                        center,
                         self.feed_rate,
                         self.spindle_speed,
                     ));
-                    current_point = p;
-                    start_point = p;
-                }
-                lyon::path::Event::Line { from: _, to } => {
-                    let mut p = Point::new(to.x as f64, to.y as f64);
-                    if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation);
-                    }
-                    segments.push(ToolpathSegment::new(
-                        ToolpathSegmentType::LinearMove,
-                        current_point,
-                        p,
-                        self.feed_rate,
-                        self.spindle_speed,
-                    ));
-                    current_point = p;
-                }
-                lyon::path::Event::End {
-                    last: _,
-                    first: _,
-                    close,
-                } => {
-                    if close {
+                } else {
+                    let mut last_p = current_pos;
+                    let steps = 16;
+                    for i in 1..=steps {
+                        let t = i as f64 / steps as f64;
+                        let inv_t = 1.0 - t;
+                        let x = inv_t.powi(3) * current_pos.x
+                            + 3.0 * inv_t.powi(2) * t * p_c1.x
+                            + 3.0 * inv_t * t.powi(2) * p_c2.x
+                            + t.powi(3) * p_to.x;
+                        let y = inv_t.powi(3) * current_pos.y
+                            + 3.0 * inv_t.powi(2) * t * p_c1.y
+                            + 3.0 * inv_t * t.powi(2) * p_c2.y
+                            + t.powi(3) * p_to.y;
+                        let next_p = Point::new(x, y);
                         segments.push(ToolpathSegment::new(
                             ToolpathSegmentType::LinearMove,
-                            current_point,
-                            start_point,
+                            last_p,
+                            next_p,
                             self.feed_rate,
                             self.spindle_speed,
                         ));
-                        current_point = start_point;
+                        last_p = next_p;
                     }
                 }
-                _ => {}
+                current_pos = p_to;
+            }
+            lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                let p_to = Point::new(to.x as f64, to.y as f64);
+                let p_ctrl = Point::new(ctrl.x as f64, ctrl.y as f64);
+
+                if let Some((center, is_ccw)) = self.try_convert_quadratic_to_arc(current_pos, p_to, p_ctrl) {
+                    segments.push(ToolpathSegment::new_arc(
+                        if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                        current_pos,
+                        p_to,
+                        center,
+                        self.feed_rate,
+                        self.spindle_speed,
+                    ));
+                } else {
+                    let mut last_p = current_pos;
+                    let steps = 10;
+                    for i in 1..=steps {
+                        let t = i as f64 / steps as f64;
+                        let x = (1.0 - t).powi(2) * current_pos.x
+                            + 2.0 * (1.0 - t) * t * p_ctrl.x
+                            + t.powi(2) * p_to.x;
+                        let y = (1.0 - t).powi(2) * current_pos.y
+                            + 2.0 * (1.0 - t) * t * p_ctrl.y
+                            + t.powi(2) * p_to.y;
+                        let next_p = Point::new(x, y);
+                        segments.push(ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            last_p,
+                            next_p,
+                            self.feed_rate,
+                            self.spindle_speed,
+                        ));
+                        last_p = next_p;
+                    }
+                }
+                current_pos = p_to;
+            }
+            lyon::path::Event::End { close, .. } => {
+                if close {
+                    if let Some(first) = first_point {
+                        if current_pos.distance_to(&first) > 0.001 {
+                            segments.push(ToolpathSegment::new(
+                                ToolpathSegmentType::LinearMove,
+                                current_pos,
+                                first,
+                                self.feed_rate,
+                                self.spindle_speed,
+                            ));
+                            current_pos = first;
+                        }
+                    }
+                }
+                // IMPORTANT: Reset first_point and current_pos for the following subpath
+                first_point = None;
             }
         }
-
-        // Return to origin
-        segments.push(ToolpathSegment::new(
-            ToolpathSegmentType::RapidMove,
-            current_point,
-            Point::new(0.0, 0.0),
-            self.feed_rate,
-            self.spindle_speed,
-        ));
-
-        self.create_multipass_toolpaths(segments, step_down)
     }
 
+    self.create_multipass_toolpaths(segments, step_down)
+}
+
+
+    fn try_convert_quadratic_to_arc(&self, start: Point, end: Point, ctrl: Point) -> Option<(Point, bool)> {
+
+        let mid_start_ctrl = Point::new((start.x + ctrl.x) / 2.0, (start.y + ctrl.y) / 2.0);
+        let mid_ctrl_end = Point::new((ctrl.x + end.x) / 2.0, (ctrl.y + end.y) / 2.0);
+        let center_candidate = Point::new(
+            (mid_start_ctrl.x + mid_ctrl_end.x) / 2.0,
+            (mid_start_ctrl.y + mid_ctrl_end.y) / 2.0
+        );
+
+        let r_start = start.distance_to(&center_candidate);
+        let r_end = end.distance_to(&center_candidate);
+
+    let chord_len = start.distance_to(&end);
+    let tolerance = (chord_len * 0.05).max(0.01); // 5% of the string, minimum 0.01mm
+
+        if (r_start - r_end).abs() < tolerance {
+            let v1 = (start.x - center_candidate.x, start.y - center_candidate.y);
+            let v2 = (end.x - center_candidate.x, end.y - center_candidate.y);
+            let cross = v1.0 * v2.1 - v1.1 * v2.0;
+            Some((center_candidate, cross > 0.0))
+        } else {
+            None
+        }
+    }
+
+    fn try_convert_to_arc(&self, start: Point, end: Point, ctrl1: Point, ctrl2: Point) -> Option<(Point, bool)> {
+        // Calculate approximate center (midpoint of the control points)
+        let center_candidate = Point::new(
+            (ctrl1.x + ctrl2.x) / 2.0,
+            (ctrl1.y + ctrl2.y) / 2.0,
+        );
+
+        // Calculate radii from the candidate center
+        let r_start = start.distance_to(&center_candidate);
+        let r_end = end.distance_to(&center_candidate);
+        let r_ctrl1 = ctrl1.distance_to(&center_candidate);
+        let r_ctrl2 = ctrl2.distance_to(&center_candidate);
+
+        // Verify that all points are approximately the same distance apart
+        let r_avg = (r_start + r_end + r_ctrl1 + r_ctrl2) / 4.0;
+
+        let chord_len = start.distance_to(&end);
+        let tolerance = (chord_len * 0.05).max(0.01); // 5% of the string, minimum 0.01mm
+
+        if (r_start - r_avg).abs() < tolerance &&
+            (r_end - r_avg).abs() < tolerance &&
+            (r_ctrl1 - r_avg).abs() < tolerance &&
+            (r_ctrl2 - r_avg).abs() < tolerance {
+
+                // Determine the direction of the arc
+                let v_start = (start.x - center_candidate.x, start.y - center_candidate.y);
+                let v_end = (end.x - center_candidate.x, end.y - center_candidate.y);
+                let cross = v_start.0 * v_end.1 - v_start.1 * v_end.0;
+
+                Some((center_candidate, cross > 0.0))
+            } else {
+                None
+            }
+    }
     /// Generates a pocket toolpath for a PathShape.
     pub fn generate_path_pocket(
         &self,
@@ -1028,18 +1294,18 @@ impl ToolpathGenerator {
         step_in: f64,
     ) -> Vec<Toolpath> {
         // Flatten path to polyline and use polyline pocket generation
-        let tolerance = 0.1; // mm
+        //        let tolerance = 0.1; // mm
         let mut vertices = Vec::new();
 
         // Calculate center for rotation
         let rect = lyon::algorithms::aabb::bounding_box(&path_shape.render());
         let center = Point::new(
             (rect.min.x + rect.max.x) as f64 / 2.0,
-            (rect.min.y + rect.max.y) as f64 / 2.0,
+                                (rect.min.y + rect.max.y) as f64 / 2.0,
         );
         let rotation = path_shape.rotation;
 
-        for event in path_shape.render().iter().flattened(tolerance) {
+        for event in path_shape.render().iter() {
             match event {
                 lyon::path::Event::Begin { at } => {
                     let mut p = Point::new(at.x as f64, at.y as f64);
@@ -1067,7 +1333,7 @@ impl ToolpathGenerator {
         let mut segments = Vec::new();
 
         let font =
-            font_manager::get_font_for(&text_shape.font_family, text_shape.bold, text_shape.italic);
+        font_manager::get_font_for(&text_shape.font_family, text_shape.bold, text_shape.italic);
         let scale = Scale::uniform(text_shape.font_size as f32);
         let v_metrics = font.v_metrics(scale);
         let line_height = v_metrics.ascent - v_metrics.descent + v_metrics.line_gap;
@@ -1111,8 +1377,8 @@ impl ToolpathGenerator {
                 self.spindle_speed,
                 pen,
                 Point::new(caret_x as f64, baseline_y as f64),
-                rotation_center,
-                text_shape.rotation,
+                                                   rotation_center,
+                                                   text_shape.rotation,
             );
             scaled.build_outline(&mut builder);
             pen = builder.current_point;
@@ -1190,7 +1456,7 @@ impl ToolpathGenerator {
                 let pi = poly[i];
                 let pj = poly[j];
                 let intersect = ((pi.y > p.y) != (pj.y > p.y))
-                    && (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y + 1e-12) + pi.x);
+                && (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y + 1e-12) + pi.x);
                 if intersect {
                     inside = !inside;
                 }
@@ -1283,7 +1549,7 @@ impl ToolpathGenerator {
 
         fn subtract_intervals(
             mut allowed: Vec<(f64, f64)>,
-            forbidden: &[(f64, f64)],
+                              forbidden: &[(f64, f64)],
         ) -> Vec<(f64, f64)> {
             if forbidden.is_empty() {
                 return allowed;
@@ -1392,14 +1658,6 @@ impl ToolpathGenerator {
                 y += stepover.max(0.05);
             }
         }
-
-        segments.push(ToolpathSegment::new(
-            ToolpathSegmentType::RapidMove,
-            current,
-            Point::new(0.0, 0.0),
-            self.feed_rate,
-            self.spindle_speed,
-        ));
 
         self.create_multipass_toolpaths(segments, step_down)
     }
@@ -1607,8 +1865,8 @@ impl OutlineBuilder for ToolpathBuilder {
         let p3 = self.map_point(x, y);
 
         let approx_len = (p0.x - p1.x).hypot(p0.y - p1.y)
-            + (p1.x - p2.x).hypot(p1.y - p2.y)
-            + (p2.x - p3.x).hypot(p2.y - p3.y);
+        + (p1.x - p2.x).hypot(p1.y - p2.y)
+        + (p2.x - p3.x).hypot(p2.y - p3.y);
         let max_seg_len = 0.5_f64;
         let steps = ((approx_len / max_seg_len).ceil() as usize).clamp(8, 128);
 
@@ -1616,13 +1874,13 @@ impl OutlineBuilder for ToolpathBuilder {
             let t = (i as f64) / (steps as f64);
             let mt = 1.0 - t;
             let px = mt * mt * mt * p0.x
-                + 3.0 * mt * mt * t * p1.x
-                + 3.0 * mt * t * t * p2.x
-                + t * t * t * p3.x;
+            + 3.0 * mt * mt * t * p1.x
+            + 3.0 * mt * t * t * p2.x
+            + t * t * t * p3.x;
             let py = mt * mt * mt * p0.y
-                + 3.0 * mt * mt * t * p1.y
-                + 3.0 * mt * t * t * p2.y
-                + t * t * t * p3.y;
+            + 3.0 * mt * mt * t * p1.y
+            + 3.0 * mt * t * t * p2.y
+            + t * t * t * p3.y;
             let p = Point::new(px, py);
             self.segments.push(ToolpathSegment::new(
                 ToolpathSegmentType::LinearMove,

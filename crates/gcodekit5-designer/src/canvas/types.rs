@@ -105,8 +105,20 @@ impl DrawingObject {
     }
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
-        self.shape.contains_point(*point, tolerance)
-            || self.get_effective_shape().contains_point(*point, tolerance)
+        match &self.shape {
+            Shape::Line(line) => {
+                line.distance_to_point(point) <= tolerance
+            },
+            Shape::Path(path) => {
+                path.distance_to_point(point) <= tolerance
+            },
+            //For shapes with an area, you can keep the current method
+            _ => {
+                let (x1, y1, x2, y2) = self.shape.bounds();
+                point.x >= x1 - tolerance && point.x <= x2 + tolerance &&
+                point.y >= y1 - tolerance && point.y <= y2 + tolerance
+            }
+        }
     }
 
     /// Creates a new drawing object.
@@ -122,6 +134,7 @@ impl DrawingObject {
             ShapeType::Polygon => "Polygon",
             ShapeType::Gear => "Gear",
             ShapeType::Sprocket => "Sprocket",
+            ShapeType::RasterImage => "Raster Image",
         }
         .to_string();
 
@@ -143,7 +156,7 @@ impl DrawingObject {
             offset: 0.0,
             fillet: 0.0,
             chamfer: 0.0,
-            lock_aspect_ratio: true,
+            lock_aspect_ratio: false, // true,
         }
     }
 }

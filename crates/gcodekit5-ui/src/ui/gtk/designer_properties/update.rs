@@ -47,10 +47,10 @@ impl PropertiesPanel {
         let selection_data = {
             let designer_state = self.state.borrow();
             let selected: Vec<_> = designer_state
-                .canvas
-                .shapes()
-                .filter(|s| s.selected)
-                .collect();
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .collect();
 
             if selected.is_empty() {
                 None
@@ -61,38 +61,39 @@ impl PropertiesPanel {
                 Some((
                     vec![obj.id],
                     Some(obj.shape.clone()),
-                    obj.operation_type,
-                    obj.pocket_depth,
-                    obj.step_down,
-                    obj.step_in,
-                    obj.ramp_angle,
-                    obj.pocket_strategy,
-                    obj.raster_fill_ratio,
-                    obj.offset,
-                    obj.fillet,
-                    obj.chamfer,
-                    any_not_text,
-                    obj.lock_aspect_ratio,
+                      obj.operation_type,
+                      obj.pocket_depth,
+                      obj.step_down,
+                      obj.step_in,
+                      obj.ramp_angle,
+                      obj.pocket_strategy,
+                      obj.raster_fill_ratio,
+                      obj.offset,
+                      obj.fillet,
+                      obj.chamfer,
+                      any_not_text,
+                      obj.lock_aspect_ratio,
                 ))
             } else {
                 // Multiple selection - only show CAM properties (use first shape's values)
                 let obj = &selected[0];
                 let any_not_text = selected.iter().any(|s| !matches!(s.shape, Shape::Text(_)));
+
                 Some((
                     selected.iter().map(|s| s.id).collect(),
-                    None, // No shape data for multi-selection
-                    obj.operation_type,
-                    obj.pocket_depth,
-                    obj.step_down,
-                    obj.step_in,
-                    obj.ramp_angle,
-                    obj.pocket_strategy,
-                    obj.raster_fill_ratio,
-                    obj.offset,
-                    obj.fillet,
-                    obj.chamfer,
-                    any_not_text,
-                    false, // Multi-selection: don't lock aspect ratio
+                      None, // No shape data for multi-selection
+                      obj.operation_type,
+                      obj.pocket_depth,
+                      obj.step_down,
+                      obj.step_in,
+                      obj.ramp_angle,
+                      obj.pocket_strategy,
+                      obj.raster_fill_ratio,
+                      obj.offset,
+                      obj.fillet,
+                      obj.chamfer,
+                      any_not_text,
+                      false,
                 ))
             }
         };
@@ -114,13 +115,33 @@ impl PropertiesPanel {
             lock_aspect,
         )) = selection_data
         {
+
+            let (w, h, rot) = if let Some(shape) = &shape_opt {
+                match shape {
+                    Shape::Rectangle(r) => (r.width, r.height, r.rotation),
+                    Shape::Triangle(t) => (t.width, t.height, t.rotation),
+                    Shape::Ellipse(e) => (e.rx * 2.0, e.ry * 2.0, e.rotation),
+                    Shape::Circle(c) => (c.radius * 2.0, c.radius * 2.0, 0.0),
+                    Shape::Polygon(p) => (p.radius * 2.0, p.radius * 2.0, p.rotation),
+                    Shape::Path(p) => {
+                        let (x1, y1, x2, y2) = p.bounds();
+                        (x2 - x1, y2 - y1, p.rotation)
+                    },
+                    Shape::RasterImage(r) => (r.width_mm, r.height_mm, r.rotation),
+                    _ => (0.0, 0.0, 0.0),
+                }
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+            self.update_dimensions_ui(&self.width_entry, &self.height_entry, w, h, rot, system);
+
             // Set flag to prevent feedback loop during updates
             *self.updating.borrow_mut() = true;
 
             // Update header with shape ID(s)
             if ids.len() == 1 {
                 self.header
-                    .set_text(&format!("{} [{}]", t!("Properties"), ids[0]));
+                .set_text(&format!("{} [{}]", t!("Properties"), ids[0]));
             } else {
                 self.header.set_text(&format!(
                     "{} [{} {}]",
@@ -132,26 +153,61 @@ impl PropertiesPanel {
 
             // Show/hide appropriate sections
             self.empty_label.set_visible(false);
-            self.cam_frame.set_visible(true);
-            self.ops_frame.set_visible(any_not_text);
+
+            let is_raster = matches!(shape_opt, Some(Shape::RasterImage(_)));
+            // CAM frame solo visible para shapes que no son imágenes
+            self.cam_frame.set_visible(!is_raster);
+            self.ops_frame.set_visible(!is_raster && any_not_text);
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
-                self.pos_frame.set_visible(true);
+                self.pos_frame.set_visible(false);
                 self.size_frame.set_visible(true);
-                self.rot_frame.set_visible(true);
+                self.rot_frame.set_visible(false);
+                // --- Object Center
+                let (x1, y1, x2, y2) = shape.bounds();
+                let center_x = (x1 + x2) / 2.0;
+                let center_y = (y1 + y2) / 2.0;
 
-                // Update position and size using bounding box
-                let (min_x, min_y, max_x, max_y) = shape.bounds();
-                self.set_entry_text_if_changed(&self.pos_x_entry, min_x as f32, system);
-                self.set_entry_text_if_changed(&self.pos_y_entry, min_y as f32, system);
-                self.set_entry_text_if_changed(&self.width_entry, (max_x - min_x) as f32, system);
-                self.set_entry_text_if_changed(&self.height_entry, (max_y - min_y) as f32, system);
+                self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
+                self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
+
                 self.lock_aspect_ratio.set_active(lock_aspect);
 
                 // Shape-specific properties
                 match &shape {
+
+                    Shape::RasterImage(r) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(false);
+                        self.ops_frame.set_visible(false);
+                        self.cam_frame.set_visible(false);
+                        self.image_engraving_frame.set_visible(true);
+
+                        self.image_feed_rate_entry.set_text(&r.feed_rate.to_string());
+                        self.image_travel_rate_entry.set_text(&r.travel_rate.to_string());
+                        self.image_min_power_entry.set_text(&r.min_power.to_string());
+                        self.image_max_power_entry.set_text(&r.max_power.to_string());
+                        self.image_ppi_entry.set_text(&r.ppi.to_string());
+                        self.image_scan_direction_combo.set_active_id(Some(&r.scan_direction));
+                        self.image_bidirectional_check.set_active(r.bidirectional);
+                        self.image_invert_check.set_active(r.invert);
+                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
+                        //Force lock aspect ratio and disable the button so it cannot be changed
+                        self.lock_aspect_ratio.set_active(true);
+                        self.lock_aspect_ratio.set_sensitive(false);
+                        // Disable the rotation field
+                        self.rotation_entry.set_sensitive(false);
+                        self.rotation_entry.set_text("0.0");
+                    }
+
                     Shape::Rectangle(r) => {
+                        // Disable input X and Y
+                        self.pos_x_entry.set_sensitive(true);
+                        self.pos_y_entry.set_sensitive(true);
                         self.corner_frame.set_visible(true);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
@@ -164,6 +220,8 @@ impl PropertiesPanel {
                         );
                         self.is_slot_check.set_active(r.is_slot);
                         self.rotation_entry.set_text(&format!("{:.1}", r.rotation));
+                        self.set_entry_text_if_changed(&self.width_entry, r.width as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, r.height as f32, system);
                     }
                     Shape::Circle(_) => {
                         self.corner_frame.set_visible(false);
@@ -173,15 +231,31 @@ impl PropertiesPanel {
                         self.sprocket_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
                     }
+
                     Shape::Ellipse(e) => {
+                        let has_rotation = e.rotation.abs() > f64::EPSILON;
+                        self.rotation_entry.set_text(&format!("{:.1}", e.rotation.to_degrees()));
+
+                        if has_rotation {
+                            self.width_entry.set_sensitive(false);
+                            self.height_entry.set_sensitive(false);
+                            self.width_entry.set_text(&format!("{:.2}", e.rx * 2.0));
+                            self.height_entry.set_text(&format!("{:.2}", e.ry * 2.0));
+                        } else {
+                            self.width_entry.set_sensitive(true);
+                            self.height_entry.set_sensitive(true);
+                            self.set_entry_text_if_changed(&self.width_entry, (e.rx * 2.0) as f32, system);
+                            self.set_entry_text_if_changed(&self.height_entry, (e.ry * 2.0) as f32, system);
+                        }
+
+                        self.rotation_entry.set_text(&format!("{:.1}", e.rotation.to_degrees()));
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", e.rotation.to_degrees()));
                     }
+
                     Shape::Text(t) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(true);
@@ -190,13 +264,13 @@ impl PropertiesPanel {
                         self.sprocket_frame.set_visible(false);
                         self.text_entry.set_text(&t.text);
                         self.font_size_entry
-                            .set_text(&format_font_points(t.font_size));
+                        .set_text(&format_font_points(t.font_size));
                         self.font_bold_check.set_active(t.bold);
                         self.font_italic_check.set_active(t.italic);
 
                         // Set font family in dropdown
                         let Some(model) =
-                            self.font_family_combo.model().and_downcast::<StringList>()
+                        self.font_family_combo.model().and_downcast::<StringList>()
                         else {
                             return;
                         };
@@ -211,14 +285,24 @@ impl PropertiesPanel {
                         self.rotation_entry.set_text("0.0");
                     }
                     Shape::Polygon(p) => {
+                        let has_rotation = p.rotation.abs() > f64::EPSILON;
+                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation.to_degrees()));
+
+                        if has_rotation {
+                            self.sides_entry.set_sensitive(false);
+                        } else {
+                            self.sides_entry.set_sensitive(true);
+                        }
+
+                        self.size_frame.set_visible(true);
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(true);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
                         self.sides_entry.set_text(&p.sides.to_string());
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", p.rotation.to_degrees()));
+                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation.to_degrees()));
+                        self.height_entry.set_sensitive(false);
                     }
                     Shape::Gear(g) => {
                         self.corner_frame.set_visible(false);
@@ -229,7 +313,7 @@ impl PropertiesPanel {
                         self.gear_module_entry.set_text(&format!("{:.2}", g.module));
                         self.gear_teeth_entry.set_text(&g.teeth.to_string());
                         self.gear_pressure_angle_entry
-                            .set_text(&format!("{:.1}", g.pressure_angle.to_degrees()));
+                        .set_text(&format!("{:.1}", g.pressure_angle.to_degrees()));
                         self.rotation_entry.set_text("0.0");
                     }
                     Shape::Sprocket(s) => {
@@ -239,11 +323,56 @@ impl PropertiesPanel {
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(true);
                         self.sprocket_pitch_entry
-                            .set_text(&format!("{:.2}", s.pitch));
+                        .set_text(&format!("{:.2}", s.pitch));
                         self.sprocket_teeth_entry.set_text(&s.teeth.to_string());
                         self.sprocket_roller_diameter_entry
-                            .set_text(&format!("{:.2}", s.roller_diameter));
+                        .set_text(&format!("{:.2}", s.roller_diameter));
                         self.rotation_entry.set_text("0.0");
+                    }
+
+                    Shape::Path(p) => {
+                        let has_rotation = p.rotation.abs() > f64::EPSILON;
+                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
+
+                        let (x1, y1, x2, y2) = shape.bounds();
+                        self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(false);
+
+                        // No edit X Y
+                        self.pos_x_entry.set_sensitive(true);
+                        self.pos_y_entry.set_sensitive(true);
+                        self.width_entry.set_sensitive(!has_rotation);
+                        self.height_entry.set_sensitive(!has_rotation);
+
+                        // Transfer real value to GTK Entry
+                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
+                        // Other
+                        let (x1, y1, x2, y2) = shape.bounds();
+                        let cx = (x1 + x2) / 2.0;
+                        let cy = (y1 + y2) / 2.0;
+                        self.pos_x_entry.set_text(&format!("{:.2}", cx));
+                        self.pos_y_entry.set_text(&format!("{:.2}", cy));
+                        self.width_entry.set_text(&format!("{:.2}", x2 - x1));
+                        self.height_entry.set_text(&format!("{:.2}", y2 - y1));
+                        self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
+
+                    }
+
+                    Shape::Triangle(t) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(false);
+                        self.set_entry_text_if_changed(&self.width_entry, t.width as f32, system);
+                        self.set_entry_text_if_changed(&self.height_entry, t.height as f32, system);
+                        self.rotation_entry.set_text(&format!("{:.1}", t.rotation.to_degrees()));
                     }
                     _ => {
                         self.corner_frame.set_visible(false);
@@ -264,6 +393,7 @@ impl PropertiesPanel {
                 self.polygon_frame.set_visible(false);
                 self.gear_frame.set_visible(false);
                 self.sprocket_frame.set_visible(false);
+                self.image_engraving_frame.set_visible(false);
 
                 // Calculate bounding box of all selected shapes
                 let designer_state = self.state.borrow();
@@ -288,16 +418,16 @@ impl PropertiesPanel {
 
             // Update CAM properties (common to all shapes)
             self.op_type_combo
-                .set_selected(if op_type == OperationType::Pocket {
-                    1
-                } else {
-                    0
-                });
+            .set_selected(if op_type == OperationType::Pocket {
+                1
+            } else {
+                0
+            });
             self.set_entry_text_if_changed(&self.depth_entry, depth as f32, system);
             self.set_entry_text_if_changed(&self.step_down_entry, step_down, system);
             self.set_entry_text_if_changed(&self.step_in_entry, step_in, system);
             self.ramp_angle_entry
-                .set_text(&format!("{:.1}", ramp_angle));
+            .set_text(&format!("{:.1}", ramp_angle));
 
             let strategy_index = match strategy {
                 PocketStrategy::Raster { .. } => 0,
@@ -306,7 +436,7 @@ impl PropertiesPanel {
             };
             self.strategy_combo.set_selected(strategy_index);
             self.raster_fill_entry
-                .set_text(&format!("{:.0}", raster_fill * 100.0));
+            .set_text(&format!("{:.0}", raster_fill * 100.0));
 
             // Update geometry ops values
             self.offset_entry.set_text(&format!("{:.2}", offset));
@@ -333,6 +463,7 @@ impl PropertiesPanel {
             self.sprocket_frame.set_visible(false);
             self.cam_frame.set_visible(false);
             self.ops_frame.set_visible(false);
+            self.image_engraving_frame.set_visible(false);
             self.header.set_text(&t!("Properties"));
 
             // Clear entries
@@ -358,7 +489,9 @@ impl PropertiesPanel {
             self.raster_fill_entry.set_sensitive(false);
 
             self.raster_fill_entry.set_text("");
+            self.lock_aspect_ratio.set_active(false);
             *self.updating.borrow_mut() = false;
+
         }
     }
 
@@ -387,6 +520,11 @@ impl PropertiesPanel {
             &self.offset_entry,
             &self.fillet_entry,
             &self.chamfer_entry,
+            &self.image_feed_rate_entry,
+            &self.image_travel_rate_entry,
+            &self.image_min_power_entry,
+            &self.image_max_power_entry,
+            &self.image_ppi_entry,
         ];
 
         for entry in entries {
@@ -421,5 +559,38 @@ impl PropertiesPanel {
     /// Clear the focus flag - call this when user interacts with the canvas
     pub fn clear_focus(&self) {
         *self.has_focus.borrow_mut() = false;
+    }
+
+    fn update_dimensions_ui(
+        &self,
+        entry_w: &gtk4::Entry,
+        entry_h: &gtk4::Entry,
+        width: f64,
+        height: f64,
+        rotation: f64,
+        system: gcodekit5_core::units::MeasurementSystem,
+    ) {
+
+    let has_rotation = rotation.abs() > 0.01;
+
+        // --- NOTICE CONTROL ---
+        self.rotation_warning_label.set_visible(has_rotation);
+
+        if has_rotation {
+            self.rotation_warning_label.set_text("⚠️ Rotated object: Dimensions locked");
+            self.rotation_warning_label.set_visible(true);
+
+            entry_w.set_sensitive(false);
+            entry_h.set_sensitive(false);
+            entry_w.set_text(&format!("{:.2}", width));
+            entry_h.set_text(&format!("{:.2}", height));
+        } else {
+            entry_w.set_sensitive(true);
+            entry_h.set_sensitive(true);
+            self.set_entry_text_if_changed(entry_w, width as f32, system);
+            self.set_entry_text_if_changed(entry_h, height as f32, system);
+            self.rotation_warning_label.set_text("");
+            self.rotation_warning_label.set_visible(false);
+        }
     }
 }

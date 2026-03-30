@@ -273,7 +273,7 @@ impl DesignerState {
                     let vy = center.y + radius * angle.sin();
                     vertices.push(Point::new(vx, vy));
                 }
-                let path_shape = PathShape::from_points(&vertices, true);
+                let path_shape = PathShape::from_points(&vertices, false); // antes true y cierra
                 let obj = DrawingObject::new(id, Shape::Path(path_shape));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,

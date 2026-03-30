@@ -90,7 +90,7 @@ fn test_polyline_contour_square() {
         Point::new(40.0, 40.0),
         Point::new(0.0, 40.0),
     ];
-    let toolpaths = gen.generate_polyline_contour(&vertices, 1.0);
+    let toolpaths = gen.generate_polyline_contour(&vertices, &[], 1.0);
     assert!(!toolpaths.is_empty());
     assert!(!toolpaths[0].segments.is_empty());
 }
@@ -105,7 +105,7 @@ fn test_polyline_contour_star() {
             Point::new(50.0 + r * angle.cos(), 50.0 + r * angle.sin())
         })
         .collect();
-    let toolpaths = gen.generate_polyline_contour(&vertices, 1.0);
+    let toolpaths = gen.generate_polyline_contour(&vertices, &[], 1.0);
     assert!(!toolpaths.is_empty());
 }
 

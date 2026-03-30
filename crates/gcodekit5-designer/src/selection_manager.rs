@@ -146,7 +146,7 @@ impl SelectionManager {
             point.x + tolerance,
             point.y + tolerance,
         );
-        let candidates: HashSet<u64> = spatial_index.query(&query_bounds).into_iter().collect();
+        let _candidates: HashSet<u64> = spatial_index.query(&query_bounds).into_iter().collect();
 
         // Pre-calculate group bounding boxes
         let mut group_bounds: HashMap<u64, (f64, f64, f64, f64)> = HashMap::new();
@@ -154,14 +154,14 @@ impl SelectionManager {
             if let Some(gid) = obj.group_id {
                 let (sx1, sy1, sx2, sy2) = obj.get_total_bounds();
                 group_bounds
-                    .entry(gid)
-                    .and_modify(|(min_x, min_y, max_x, max_y)| {
-                        *min_x = min_x.min(sx1);
-                        *min_y = min_y.min(sy1);
-                        *max_x = max_x.max(sx2);
-                        *max_y = max_y.max(sy2);
-                    })
-                    .or_insert((sx1, sy1, sx2, sy2));
+                .entry(gid)
+                .and_modify(|(min_x, min_y, max_x, max_y)| {
+                    *min_x = min_x.min(sx1);
+                    *min_y = min_y.min(sy1);
+                    *max_x = max_x.max(sx2);
+                    *max_y = max_y.max(sy2);
+                })
+                .or_insert((sx1, sy1, sx2, sy2));
             }
         }
 
@@ -172,31 +172,26 @@ impl SelectionManager {
         // candidates_at_point logged temporarily during debugging
         for id in store.draw_order_iter().rev() {
             if let Some(obj) = store.get(id) {
+                // CHANGE: Now we ALWAYS do the accurate hit test first
+                if !obj.contains_point(point, tolerance) {
+                    continue; // If the mouse does not touch the actual figure, we move on to the next one.
+                }
+
                 if let Some(gid) = obj.group_id {
-                    // Handle group selection: check composite bounding box
                     if processed_groups.contains(&gid) {
                         continue;
                     }
                     processed_groups.insert(gid);
 
-                    if let Some(&(min_x, min_y, max_x, max_y)) = group_bounds.get(&gid) {
-                        if point.x >= min_x - tolerance
-                            && point.x <= max_x + tolerance
-                            && point.y >= min_y - tolerance
-                            && point.y <= max_y + tolerance
-                        {
-                            found_id = Some(obj.id);
-                            found_group_id = Some(gid);
-                            break;
-                        }
-                    }
+                    // If the object touched is part of a group, we mark the group.
+                    found_id = Some(obj.id);
+                    found_group_id = Some(gid);
+                    break;
                 } else {
-                    // Handle single shape selection: use precise hit test
-                    if candidates.contains(&obj.id) && obj.contains_point(point, tolerance) {
-                        found_id = Some(obj.id);
-                        found_group_id = None;
-                        break;
-                    }
+                    // individual object touched
+                    found_id = Some(obj.id);
+                    found_group_id = None;
+                    break;
                 }
             }
         }
@@ -209,18 +204,18 @@ impl SelectionManager {
             // Determine which IDs to select (single shape or whole group)
             let ids_to_select: Vec<u64> = if let Some(gid) = found_group_id {
                 store
-                    .iter()
-                    .filter(|o| o.group_id == Some(gid))
-                    .map(|o| o.id)
-                    .collect()
+                .iter()
+                .filter(|o| o.group_id == Some(gid))
+                .map(|o| o.id)
+                .collect()
             } else {
                 vec![id]
             };
 
             // If multi-select, check if we should toggle off (only if all are already selected)
             let all_selected = ids_to_select
-                .iter()
-                .all(|&sid| store.get(sid).map(|o| o.selected).unwrap_or(false));
+            .iter()
+            .all(|&sid| store.get(sid).map(|o| o.selected).unwrap_or(false));
 
             let should_select = if multi { !all_selected } else { true };
 

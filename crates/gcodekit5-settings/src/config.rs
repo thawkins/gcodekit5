@@ -335,7 +335,7 @@ impl Default for MachineSettings {
             y_limit: 200.0,
             z_limit: 100.0,
             default_unit: "mm".to_string(),
-            homing_direction: homing,
+                homing_direction: homing,
         }
     }
 }
@@ -372,6 +372,8 @@ pub struct Config {
     pub machine: MachineSettings,
     /// Recent files list
     pub recent_files: Vec<PathBuf>,
+    /// Last Path
+    pub last_opened_path: Option<String>,
 }
 
 impl Config {
@@ -383,14 +385,14 @@ impl Config {
     /// Load config from file (JSON or TOML)
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
-            .map_err(|e| Error::other(format!("Failed to read config file: {}", e)))?;
+        .map_err(|e| Error::other(format!("Failed to read config file: {}", e)))?;
 
         let config: Self = if path.extension().is_some_and(|ext| ext == "json") {
             serde_json::from_str(&content)
-                .map_err(|e| Error::other(format!("Invalid JSON config: {}", e)))?
+            .map_err(|e| Error::other(format!("Invalid JSON config: {}", e)))?
         } else if path.extension().is_some_and(|ext| ext == "toml") {
             toml::from_str(&content)
-                .map_err(|e| Error::other(format!("Invalid TOML config: {}", e)))?
+            .map_err(|e| Error::other(format!("Invalid TOML config: {}", e)))?
         } else {
             return Err(Error::other(
                 "Config file must be .json or .toml".to_string(),
@@ -407,10 +409,10 @@ impl Config {
 
         let content = if path.extension().is_some_and(|ext| ext == "json") {
             serde_json::to_string_pretty(self)
-                .map_err(|e| Error::other(format!("Failed to serialize config: {}", e)))?
+            .map_err(|e| Error::other(format!("Failed to serialize config: {}", e)))?
         } else if path.extension().is_some_and(|ext| ext == "toml") {
             toml::to_string_pretty(self)
-                .map_err(|e| Error::other(format!("Failed to serialize config: {}", e)))?
+            .map_err(|e| Error::other(format!("Failed to serialize config: {}", e)))?
         } else {
             return Err(Error::other(
                 "Config file must be .json or .toml".to_string(),
@@ -418,7 +420,7 @@ impl Config {
         };
 
         std::fs::write(path, content)
-            .map_err(|e| Error::other(format!("Failed to write config file: {}", e)))?;
+        .map_err(|e| Error::other(format!("Failed to write config file: {}", e)))?;
 
         Ok(())
     }
@@ -475,7 +477,7 @@ impl Config {
 
         // Trim to max size
         self.recent_files
-            .truncate(self.file_processing.recent_files_count);
+        .truncate(self.file_processing.recent_files_count);
     }
 
     /// Merge another config into this one (preserves existing values for missing sections)

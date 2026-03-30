@@ -177,6 +177,12 @@ impl DesignerCanvas {
                             gen.generate_sprocket_contour(sprocket, shape.step_down as f64)
                         }
                     }
+
+                    Shape::RasterImage(_) => {
+                        // Las imágenes raster no generan toolpath en preview
+                        Vec::new()
+                    }
+
                 };
                 toolpaths.extend(shape_toolpaths);
                 done_shapes_thread.fetch_add(1, Ordering::Relaxed);

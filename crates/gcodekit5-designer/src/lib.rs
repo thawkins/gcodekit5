@@ -105,6 +105,8 @@ pub mod designer_editor_integration;
 pub mod designer_state;
 pub mod designer_visualizer_integration;
 pub mod gcode_converter;
+pub mod image_importer;
+pub mod engraving;
 
 // Re-export all public types from submodules
 pub use adaptive::{

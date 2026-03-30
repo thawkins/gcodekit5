@@ -16,6 +16,7 @@ use gtk4::{
 };
 use std::cell::Cell;
 use std::rc::Rc;
+use gcodekit5_designer::designer_state::MachineMode;
 
 // Dialog widgets should not be dropped; they are owned by closures attached to buttons.
 
@@ -63,10 +64,10 @@ impl DesignerTool {
             DesignerTool::Polyline => "polyline.svg",
             DesignerTool::Text => "text.svg",
             DesignerTool::Pan => "grab.svg",
-            DesignerTool::Triangle => "media-playback-start-symbolic",
-            DesignerTool::Polygon => "emblem-shared-symbolic",
-            DesignerTool::Gear => "system-run-symbolic",
-            DesignerTool::Sprocket => "emblem-system-symbolic",
+            DesignerTool::Triangle => "triangle.svg",
+            DesignerTool::Polygon => "poligon.svg",
+            DesignerTool::Gear => "gear.svg",
+            DesignerTool::Sprocket => "sprocket.svg",
         }
     }
 
@@ -96,6 +97,7 @@ pub struct DesignerToolbox {
     active_tool_label: Label,
     buttons: Vec<Button>,
     tools: Vec<DesignerTool>,
+    pub frame_btn: Button,
     generate_btn: Button,
     fast_shape_gallery: Rc<FastShapeGallery>,
     _state: Shared<DesignerState>,
@@ -127,11 +129,11 @@ impl DesignerToolbox {
         main_container.set_margin_end(5);
 
         let scrolled = ScrolledWindow::builder()
-            .hscrollbar_policy(PolicyType::Never)
-            .vscrollbar_policy(PolicyType::Automatic)
-            .hexpand(false)
-            .vexpand(true)
-            .build();
+        .hscrollbar_policy(PolicyType::Never)
+        .vscrollbar_policy(PolicyType::Automatic)
+        .hexpand(false)
+        .vexpand(true)
+        .build();
 
         let content_box = Box::new(Orientation::Vertical, 2);
 
@@ -140,7 +142,7 @@ impl DesignerToolbox {
         let active_tool_label = Label::new(Some(&format!(
             "{} {}",
             t!("Active tool:"),
-            init_tool.tooltip()
+                                                         init_tool.tooltip()
         )));
         active_tool_label.add_css_class("active-tool-chip");
         active_tool_label.set_halign(Align::Center);
@@ -161,13 +163,14 @@ impl DesignerToolbox {
             DesignerTool::Text,
             DesignerTool::Gear,
             DesignerTool::Sprocket,
+//            DesignerTool::ImageImport,
         ];
 
         let grid = gtk4::Grid::builder()
-            .column_spacing(2)
-            .row_spacing(2)
-            .halign(Align::Center)
-            .build();
+        .column_spacing(2)
+        .row_spacing(2)
+        .halign(Align::Center)
+        .build();
 
         for (i, tool) in tools.iter().enumerate() {
             let btn = Button::new();
@@ -248,6 +251,60 @@ impl DesignerToolbox {
 
         content_box.append(&fast_shapes_btn);
 
+        #[allow(clippy::type_complexity)]
+        let refresh_callbacks: SharedVec<Rc<dyn Fn()>> = shared(Vec::new());
+        // ===== ADD SELECTOR LASER/CNC =====
+        let mode_frame = Frame::new(Some(&t!("Machine Mode")));
+        mode_frame.set_margin_top(10);
+        mode_frame.set_margin_bottom(5);
+
+        let mode_box = Box::new(Orientation::Horizontal, 5);
+        mode_box.set_margin_start(5);
+        mode_box.set_margin_end(5);
+        mode_box.set_margin_top(5);
+        mode_box.set_margin_bottom(5);
+
+        let laser_radio = gtk4::CheckButton::with_label(&t!("Laser 2D"));
+        let cnc_radio = gtk4::CheckButton::with_label(&t!("CNC 3D"));
+
+        let radio_group = laser_radio.clone();
+        cnc_radio.set_group(Some(&radio_group));
+
+        let current_mode = state.borrow().machine_mode();
+        laser_radio.set_active(current_mode == MachineMode::Laser2D);
+        cnc_radio.set_active(current_mode == MachineMode::Cnc3D);
+
+        let state_laser = state.clone();
+        let refresh_cb = refresh_callbacks.clone();
+        laser_radio.connect_toggled(move |rb| {
+            if rb.is_active() {
+                state_laser.borrow_mut().set_machine_mode(MachineMode::Laser2D);
+
+                for callback in refresh_cb.borrow().iter() {
+                    callback();
+                }
+            }
+        });
+
+        let state_cnc = state.clone();
+        let refresh_cb = refresh_callbacks.clone();
+        cnc_radio.connect_toggled(move |rb| {
+            if rb.is_active() {
+                state_cnc.borrow_mut().set_machine_mode(MachineMode::Cnc3D);
+
+                for callback in refresh_cb.borrow().iter() {
+                    callback();
+                }
+            }
+        });
+
+        // --- Select Laser/CNC ---
+        content_box.append(&mode_frame);
+        mode_box.append(&laser_radio);
+        mode_box.append(&cnc_radio);
+        mode_frame.set_child(Some(&mode_box));
+
+
         // Add separator
         let separator = gtk4::Separator::new(Orientation::Horizontal);
         separator.set_margin_top(10);
@@ -266,16 +323,15 @@ impl DesignerToolbox {
 
         let current_units = thread_safe(
             settings_controller
-                .persistence
-                .borrow()
-                .config()
-                .ui
-                .measurement_system,
+            .persistence
+            .borrow()
+            .config()
+            .ui
+            .measurement_system,
         );
 
         // Collection of callbacks to refresh all settings UI widgets from state
-        #[allow(clippy::type_complexity)]
-        let refresh_callbacks: SharedVec<Rc<dyn Fn()>> = shared(Vec::new());
+        // #[allow(clippy::type_complexity)]
 
         let tool_row = Rc::new(Cell::new(0));
 
@@ -286,14 +342,32 @@ impl DesignerToolbox {
             let settings_grid = settings_grid.clone();
             let tool_row = tool_row.clone();
             let refresh_callbacks = refresh_callbacks.clone();
+            let state = state.clone();
 
             move |label_text: String,
-                  getter: Rc<dyn Fn() -> f64>,
-                  setter: Rc<dyn Fn(f64)>,
-                  tooltip: String,
-                  units_kind: UnitsKind|
-                  -> Entry {
-                let label = Label::new(Some(&format!("{}:", label_text)));
+            getter: Rc<dyn Fn() -> f64>,
+            setter: Rc<dyn Fn(f64)>,
+            tooltip: String,
+            units_kind: UnitsKind|
+            -> Entry {
+
+                // Determine the label text according to the mode
+                let machine_mode = state.borrow().machine_mode();
+                let display_label = match (label_text.as_str(), machine_mode) {
+                    ("Feed", MachineMode::Laser2D) => t!("Laser Speed"),
+                    ("Feed", MachineMode::Cnc3D) => t!("Feed Rate"),
+                    ("Speed", MachineMode::Laser2D) => t!("Laser Power"),
+                    ("Speed", MachineMode::Cnc3D) => t!("Spindle Speed"),
+                    ("Step Down", MachineMode::Laser2D) => t!("Number of Passes"),
+                    ("Step Down", MachineMode::Cnc3D) => t!("Step Down"),
+                    ("Tool Dia", MachineMode::Laser2D) => t!(""),
+                    ("Tool Dia", MachineMode::Cnc3D) => t!("Tool Dia"),
+                    ("Cut Depth", MachineMode::Laser2D) => t!(""),
+                    ("Cut Depth", MachineMode::Cnc3D) => t!("Cut Depth"),
+                    _ => label_text.clone(),
+                };
+
+                let label = Label::new(Some(&format!("{}:", display_label)));
                 label.set_halign(Align::Start);
 
                 let entry = Entry::builder().tooltip_text(&tooltip).build();
@@ -316,21 +390,29 @@ impl DesignerToolbox {
                     let units_label = units_label.clone();
                     let getter = getter.clone();
                     let current_units = current_units.clone();
+                    let machine_mode = state.borrow().machine_mode();
 
                     Rc::new(move || {
                         let val_mm = getter();
                         let units = *current_units.lock();
 
-                        let (val_display, unit_str) = match units_kind {
-                            UnitsKind::Length => match units {
+                        // Update_display (mostrar)
+                        let (val_display, unit_str) = match (units_kind, machine_mode) {
+                            (UnitsKind::Rpm, MachineMode::Laser2D) => {
+
+                                let percent = (val_mm / 10.0).clamp(0.0, 100.0);
+                                (percent, "%")
+                            }
+                            (UnitsKind::Rpm, MachineMode::Cnc3D) => (val_mm, "RPM"),
+                            (UnitsKind::Length, MachineMode::Laser2D) => (val_mm, ""),
+                            (UnitsKind::Length, MachineMode::Cnc3D) => match units {
                                 MeasurementSystem::Metric => (val_mm, "mm"),
-                                MeasurementSystem::Imperial => (val_mm / 25.4, "in"),
+                            MeasurementSystem::Imperial => (val_mm / 25.4, "in"),
                             },
-                            UnitsKind::FeedRate => match units {
+                            (UnitsKind::FeedRate, _) => match units {
                                 MeasurementSystem::Metric => (val_mm, "mm/min"),
-                                MeasurementSystem::Imperial => (val_mm / 25.4, "in/min"),
+                            MeasurementSystem::Imperial => (val_mm / 25.4, "in/min"),
                             },
-                            UnitsKind::Rpm => (val_mm, "RPM"),
                         };
 
                         units_label.set_text(unit_str);
@@ -347,17 +429,23 @@ impl DesignerToolbox {
                 {
                     let current_units = current_units.clone();
                     let setter = setter.clone();
+                    let state = state.clone();
                     entry.connect_changed(move |e| {
+
                         if let Ok(val) = e.text().parse::<f64>() {
                             e.remove_css_class("entry-invalid");
                             let units = *current_units.lock();
-                            let val_mm = match units_kind {
-                                UnitsKind::Length | UnitsKind::FeedRate => match units {
-                                    MeasurementSystem::Metric => val,
-                                    MeasurementSystem::Imperial => val * 25.4,
-                                },
-                                UnitsKind::Rpm => val,
+                            let machine_mode = state.borrow().machine_mode();
+
+                            let val_mm = match (units_kind, machine_mode) {
+                                (UnitsKind::Rpm, MachineMode::Laser2D) => val * 10.0,
+                                          (UnitsKind::Rpm, MachineMode::Cnc3D) => val,
+                                          (UnitsKind::Length | UnitsKind::FeedRate, _) => match units {
+                                              MeasurementSystem::Metric => val,
+                                          MeasurementSystem::Imperial => val * 25.4,
+                                          },
                             };
+
                             setter(val_mm);
                         } else {
                             e.add_css_class("entry-invalid");
@@ -373,14 +461,14 @@ impl DesignerToolbox {
                         if key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
-                            {
-                                *current_units.lock() = system;
-                            } else if value == "Metric" {
-                                *current_units.lock() = MeasurementSystem::Metric;
-                            } else if value == "Imperial" {
-                                *current_units.lock() = MeasurementSystem::Imperial;
-                            }
-                            update_display();
+                                {
+                                    *current_units.lock() = system;
+                                } else if value == "Metric" {
+                                    *current_units.lock() = MeasurementSystem::Metric;
+                                } else if value == "Imperial" {
+                                    *current_units.lock() = MeasurementSystem::Imperial;
+                                }
+                                update_display();
                         }
                     });
                 }
@@ -397,10 +485,10 @@ impl DesignerToolbox {
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_feed_rate(val));
             create_setting(
                 t!("Feed"),
-                getter,
-                setter,
-                t!("Feed Rate"),
-                UnitsKind::FeedRate,
+                           getter,
+                           setter,
+                           t!("Feed Rate"),
+                           UnitsKind::FeedRate,
             );
         }
 
@@ -410,13 +498,13 @@ impl DesignerToolbox {
             let getter = Rc::new(move || state_getter.borrow().tool_settings.spindle_speed as f64);
             let state_setter = state.clone();
             let setter =
-                Rc::new(move |val: f64| state_setter.borrow_mut().set_spindle_speed(val as u32));
+            Rc::new(move |val: f64| state_setter.borrow_mut().set_spindle_speed(val as u32));
             create_setting(
                 t!("Speed"),
-                getter,
-                setter,
-                t!("Spindle Speed"),
-                UnitsKind::Rpm,
+                           getter,
+                           setter,
+                           t!("Spindle Speed"),
+                           UnitsKind::Rpm,
             );
         }
 
@@ -428,10 +516,10 @@ impl DesignerToolbox {
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_tool_diameter(val));
             create_setting(
                 t!("Tool Dia"),
-                getter,
-                setter,
-                t!("Tool Diameter"),
-                UnitsKind::Length,
+                           getter,
+                           setter,
+                           t!("Tool Diameter"),
+                           UnitsKind::Length,
             );
         }
 
@@ -443,25 +531,37 @@ impl DesignerToolbox {
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_cut_depth(val));
             create_setting(
                 t!("Cut Depth"),
-                getter,
-                setter,
-                t!("Target Cut Depth (positive)"),
-                UnitsKind::Length,
+                           getter,
+                           setter,
+                           t!("Target Cut Depth (positive)"),
+                           UnitsKind::Length,
             );
         }
 
         // Step Down
         {
             let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.step_down);
+            //            let getter = Rc::new(move || state_getter.borrow().tool_settings.step_down);
+
+            let getter = Rc::new(move || {
+                let val = state_getter.borrow().tool_settings.step_down;
+                val
+            });
+
+
             let state_setter = state.clone();
-            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_step_down(val));
+            //            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_step_down(val));
+
+            let setter = Rc::new(move |val: f64| {
+                state_setter.borrow_mut().set_step_down(val);
+            });
+
             create_setting(
                 t!("Step Down"),
-                getter,
-                setter,
-                t!("Depth per pass"),
-                UnitsKind::Length,
+                           getter,
+                           setter,
+                           t!("Depth per pass"),
+                           UnitsKind::Length,
             );
         }
 
@@ -472,10 +572,10 @@ impl DesignerToolbox {
         tool_settings_btn.set_margin_end(5);
 
         let tool_settings_dialog = Dialog::builder()
-            .title(t!("Tool Settings"))
-            .modal(true)
-            .resizable(true)
-            .build();
+        .title(t!("Tool Settings"))
+        .modal(true)
+        .resizable(true)
+        .build();
         tool_settings_dialog.set_default_size(520, 520);
         tool_settings_dialog.add_button(&t!("Close"), ResponseType::Close);
         tool_settings_dialog.connect_response(|d, _| d.hide());
@@ -496,12 +596,12 @@ impl DesignerToolbox {
         tool_dialog_content.append(&tool_frame);
 
         let tool_scroller = ScrolledWindow::builder()
-            .hscrollbar_policy(PolicyType::Never)
-            .vscrollbar_policy(PolicyType::Automatic)
-            .min_content_width(520)
-            .min_content_height(360)
-            .child(&tool_dialog_content)
-            .build();
+        .hscrollbar_policy(PolicyType::Never)
+        .vscrollbar_policy(PolicyType::Automatic)
+        .min_content_width(520)
+        .min_content_height(360)
+        .child(&tool_dialog_content)
+        .build();
         tool_settings_dialog.content_area().append(&tool_scroller);
 
         {
@@ -539,10 +639,10 @@ impl DesignerToolbox {
             let refresh_callbacks = refresh_callbacks.clone();
 
             move |label_text: String,
-                  getter: Rc<dyn Fn() -> f32>,
-                  setter: Rc<dyn Fn(f32)>,
-                  tooltip: String|
-                  -> Entry {
+            getter: Rc<dyn Fn() -> f32>,
+            setter: Rc<dyn Fn(f32)>,
+            tooltip: String|
+            -> Entry {
                 let label = Label::new(Some(&format!("{}:", label_text)));
                 label.set_halign(Align::Start);
 
@@ -613,14 +713,14 @@ impl DesignerToolbox {
                         if key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
-                            {
-                                *current_units.lock() = system;
-                            } else if value == "Metric" {
-                                *current_units.lock() = MeasurementSystem::Metric;
-                            } else if value == "Imperial" {
-                                *current_units.lock() = MeasurementSystem::Imperial;
-                            }
-                            update_display();
+                                {
+                                    *current_units.lock() = system;
+                                } else if value == "Metric" {
+                                    *current_units.lock() = MeasurementSystem::Metric;
+                                } else if value == "Imperial" {
+                                    *current_units.lock() = MeasurementSystem::Imperial;
+                                }
+                                update_display();
                         }
                     });
                 }
@@ -634,11 +734,11 @@ impl DesignerToolbox {
             let state_getter = state.clone();
             let getter = Rc::new(move || {
                 state_getter
-                    .borrow()
-                    .stock_material
-                    .as_ref()
-                    .map(|s| s.width)
-                    .unwrap_or(200.0)
+                .borrow()
+                .stock_material
+                .as_ref()
+                .map(|s| s.width)
+                .unwrap_or(200.0)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
@@ -649,9 +749,9 @@ impl DesignerToolbox {
             });
             create_stock_setting(
                 t!("Stock Width"),
-                getter,
-                setter,
-                t!("Stock material width"),
+                                 getter,
+                                 setter,
+                                 t!("Stock material width"),
             );
         }
 
@@ -659,11 +759,11 @@ impl DesignerToolbox {
             let state_getter = state.clone();
             let getter = Rc::new(move || {
                 state_getter
-                    .borrow()
-                    .stock_material
-                    .as_ref()
-                    .map(|s| s.height)
-                    .unwrap_or(200.0)
+                .borrow()
+                .stock_material
+                .as_ref()
+                .map(|s| s.height)
+                .unwrap_or(200.0)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
@@ -674,9 +774,9 @@ impl DesignerToolbox {
             });
             create_stock_setting(
                 t!("Stock Height"),
-                getter,
-                setter,
-                t!("Stock material height"),
+                                 getter,
+                                 setter,
+                                 t!("Stock material height"),
             );
         }
 
@@ -684,11 +784,11 @@ impl DesignerToolbox {
             let state_getter = state.clone();
             let getter = Rc::new(move || {
                 state_getter
-                    .borrow()
-                    .stock_material
-                    .as_ref()
-                    .map(|s| s.thickness)
-                    .unwrap_or(10.0)
+                .borrow()
+                .stock_material
+                .as_ref()
+                .map(|s| s.thickness)
+                .unwrap_or(10.0)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
@@ -699,9 +799,9 @@ impl DesignerToolbox {
             });
             create_stock_setting(
                 t!("Stock Thickness"),
-                getter,
-                setter,
-                t!("Stock material thickness"),
+                                 getter,
+                                 setter,
+                                 t!("Stock material thickness"),
             );
         }
 
@@ -710,11 +810,11 @@ impl DesignerToolbox {
             let state_getter = state.clone();
             let getter = Rc::new(move || {
                 state_getter
-                    .borrow()
-                    .stock_material
-                    .as_ref()
-                    .map(|s| s.safe_z)
-                    .unwrap_or(10.0)
+                .borrow()
+                .stock_material
+                .as_ref()
+                .map(|s| s.safe_z)
+                .unwrap_or(10.0)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
@@ -725,9 +825,9 @@ impl DesignerToolbox {
             });
             create_stock_setting(
                 t!("Safe Z Height"),
-                getter,
-                setter,
-                t!("Safe height for rapid moves"),
+                                 getter,
+                                 setter,
+                                 t!("Safe height for rapid moves"),
             );
         }
 
@@ -741,9 +841,9 @@ impl DesignerToolbox {
             });
             create_stock_setting(
                 t!("Resolution"),
-                getter,
-                setter,
-                t!("Simulation resolution (lower = more detail)"),
+                                 getter,
+                                 setter,
+                                 t!("Simulation resolution (lower = more detail)"),
             );
         }
 
@@ -766,10 +866,10 @@ impl DesignerToolbox {
         stock_settings_btn.set_margin_end(5);
 
         let stock_settings_dialog = Dialog::builder()
-            .title(t!("Stock Settings"))
-            .modal(true)
-            .resizable(true)
-            .build();
+        .title(t!("Stock Settings"))
+        .modal(true)
+        .resizable(true)
+        .build();
         stock_settings_dialog.set_default_size(520, 520);
         stock_settings_dialog.add_button(&t!("Close"), ResponseType::Close);
         stock_settings_dialog.connect_response(|d, _| d.hide());
@@ -790,12 +890,12 @@ impl DesignerToolbox {
         stock_dialog_content.append(&stock_frame);
 
         let stock_scroller = ScrolledWindow::builder()
-            .hscrollbar_policy(PolicyType::Never)
-            .vscrollbar_policy(PolicyType::Automatic)
-            .min_content_width(520)
-            .min_content_height(360)
-            .child(&stock_dialog_content)
-            .build();
+        .hscrollbar_policy(PolicyType::Never)
+        .vscrollbar_policy(PolicyType::Automatic)
+        .min_content_width(520)
+        .min_content_height(360)
+        .child(&stock_dialog_content)
+        .build();
         stock_settings_dialog.content_area().append(&stock_scroller);
 
         {
@@ -811,6 +911,52 @@ impl DesignerToolbox {
             });
         }
 
+        // ===== NEW BUTTON FRAME =====
+        let frame_btn = Button::with_label(&format!(" ⛶  {}", t!("Frame ")));
+        frame_btn.set_tooltip_text(Some(&t!("Generate low-power frame to position material")));
+//        frame_btn.add_css_class("suggested-action");
+//        frame_btn.remove_css_class("suggested-action");
+        frame_btn.add_css_class("flat");
+        frame_btn.set_halign(gtk4::Align::Center);
+
+        // Connect functionality
+        let state_clone = state.clone();
+        frame_btn.connect_clicked(move |_| {
+            let state = state_clone.borrow();
+
+            // Get bounds from selection or entire canvas
+            let (x1, y1, x2, y2) = if let Some(bounds) = state.canvas.selection_bounds() {
+                bounds
+            } else {
+                // If there is no selection, use all objects
+                let mut min_x = f64::INFINITY;
+                let mut min_y = f64::INFINITY;
+                let mut max_x = f64::NEG_INFINITY;
+                let mut max_y = f64::NEG_INFINITY;
+
+                for obj in state.canvas.shape_store.iter() {
+                    let (ox1, oy1, ox2, oy2) = obj.get_total_bounds();
+                    min_x = min_x.min(ox1);
+                    min_y = min_y.min(oy1);
+                    max_x = max_x.max(ox2);
+                    max_y = max_y.max(oy2);
+                }
+
+                if min_x.is_finite() {
+                    (min_x, min_y, max_x, max_y)
+                } else {
+                    // Empty canvas, use default values
+                    (0.0, 0.0, 100.0, 100.0)
+                }
+            };
+
+            // G-code frame Generate
+            let gcode = generate_frame_gcode(x1, y1, x2, y2);
+            println!("Frame G-code:\n{}", gcode);
+
+            // Add code to send to the editor or the machine
+        });
+
         content_box.append(&stock_settings_btn);
 
         // Generate G-Code Button
@@ -822,6 +968,14 @@ impl DesignerToolbox {
         generate_btn.set_margin_end(5);
         content_box.append(&generate_btn);
 
+        // Add separator
+        let separator = gtk4::Separator::new(Orientation::Horizontal);
+        separator.set_margin_top(10);
+        separator.set_margin_bottom(10);
+        content_box.append(&separator);
+        // Add Frame button
+        content_box.append(&frame_btn);
+
         scrolled.set_child(Some(&content_box));
         main_container.append(&scrolled);
 
@@ -831,6 +985,7 @@ impl DesignerToolbox {
             active_tool_label,
             buttons,
             tools,
+            frame_btn,
             generate_btn,
             fast_shape_gallery,
             _state: state,
@@ -838,6 +993,9 @@ impl DesignerToolbox {
             _current_units: current_units,
             refresh_callbacks,
         })
+
+
+
     }
 
     pub fn connect_generate_clicked<F: Fn() + 'static>(&self, f: F) {
@@ -859,7 +1017,7 @@ impl DesignerToolbox {
     pub fn set_tool(&self, tool: DesignerTool) {
         *self.current_tool.borrow_mut() = tool;
         self.active_tool_label
-            .set_text(&format!("{} {}", t!("Active tool:"), tool.tooltip()));
+        .set_text(&format!("{} {}", t!("Active tool:"), tool.tooltip()));
 
         // Update button styles
         for (i, btn) in self.buttons.iter().enumerate() {
@@ -878,4 +1036,26 @@ impl DesignerToolbox {
             callback();
         }
     }
+
+    pub fn connect_frame_clicked<F: Fn() + 'static>(&self, f: F) {
+        self.frame_btn.connect_clicked(move |_| f());
+    }
+}
+
+// Gcode Function Frame
+pub fn generate_frame_gcode(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
+    format!(
+        "; --- Laser Frame Start ---\n\
+G90 ; Absolute coordinates\n\
+M3 S10 ; Laser ON low power\n\
+G0 X{x1:.3} Y{y1:.3} F3000 ; Go to corner\n\
+G1 X{x2:.3} Y{y1:.3} F1000 ; Bottom side\n\
+G1 X{x2:.3} Y{y2:.3} ; Right side\n\
+G1 X{x1:.3} Y{y2:.3} ; Top side\n\
+G1 X{x1:.3} Y{y1:.3} ; Left side\n\
+M5 ; Láser OFF\n\
+G0 X0 Y0 ; Volver a origen\n\
+; --- Laser Frame End ---",
+x1=x1, y1=y1, x2=x2, y2=y2
+    )
 }

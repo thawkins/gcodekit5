@@ -103,6 +103,7 @@ pub const BUILD_DATE: &str = env!("BUILD_DATE");
 /// - Console output with pretty formatting
 /// - RUST_LOG environment variable support
 /// - UTF timestamps
+#[cfg_attr(test, mutants::skip)]
 pub fn init_logging() -> anyhow::Result<()> {
     use tracing_subscriber::fmt;
     use tracing_subscriber::prelude::*;

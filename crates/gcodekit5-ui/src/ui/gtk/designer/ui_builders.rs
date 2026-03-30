@@ -285,6 +285,11 @@ impl DesignerView {
                     canvas_keys.widget.queue_draw();
                     gtk4::glib::Propagation::Stop
                 }
+
+                (Key::i, true, _) | (Key::I, true, _) => {
+                    canvas_keys.import_raster_image();
+                    gtk4::glib::Propagation::Stop
+                }
                 _ => gtk4::glib::Propagation::Proceed,
             }
         });
@@ -326,42 +331,42 @@ impl DesignerView {
         floating_box.set_margin_end(20);
 
         let float_zoom_out = gtk4::Button::builder()
-            .icon_name("zoom-out-symbolic")
-            .tooltip_text(t!("Zoom Out"))
-            .build();
+        .icon_name("zoom-out-symbolic")
+        .tooltip_text(t!("Zoom Out"))
+        .build();
         float_zoom_out.update_property(&[gtk4::accessible::Property::Label(&t!("Zoom Out"))]);
 
         let float_fit = gtk4::Button::builder()
-            .icon_name("zoom-fit-best-symbolic")
-            .tooltip_text(t!("Fit to Content"))
-            .build();
+        .icon_name("zoom-fit-best-symbolic")
+        .tooltip_text(t!("Fit to Content"))
+        .build();
         float_fit.update_property(&[gtk4::accessible::Property::Label(&t!("Fit to Content"))]);
 
         let float_reset = gtk4::Button::builder()
-            .icon_name("view-restore-symbolic")
-            .tooltip_text(t!("Fit to Viewport"))
-            .build();
+        .icon_name("view-restore-symbolic")
+        .tooltip_text(t!("Fit to Viewport"))
+        .build();
         float_reset.update_property(&[gtk4::accessible::Property::Label(&t!("Fit to Viewport"))]);
 
         let float_fit_device = gtk4::Button::builder()
-            .icon_name("preferences-desktop-display-symbolic")
-            .tooltip_text(t!("Fit to Device Working Area"))
-            .build();
+        .icon_name("preferences-desktop-display-symbolic")
+        .tooltip_text(t!("Fit to Device Working Area"))
+        .build();
         float_fit_device.update_property(&[gtk4::accessible::Property::Label(&t!(
             "Fit to Device Working Area"
         ))]);
 
         let scrollbars_btn = gtk4::Button::builder()
-            .icon_name("view-list-symbolic")
-            .tooltip_text(t!("Toggle Scrollbars"))
-            .build();
+        .icon_name("view-list-symbolic")
+        .tooltip_text(t!("Toggle Scrollbars"))
+        .build();
         scrollbars_btn
-            .update_property(&[gtk4::accessible::Property::Label(&t!("Toggle Scrollbars"))]);
+        .update_property(&[gtk4::accessible::Property::Label(&t!("Toggle Scrollbars"))]);
 
         let help_btn = gtk4::Button::builder()
-            .label("?")
-            .tooltip_text(t!("Keyboard Shortcuts"))
-            .build();
+        .label("?")
+        .tooltip_text(t!("Keyboard Shortcuts"))
+        .build();
         help_btn.update_property(&[gtk4::accessible::Property::Label(&t!("Keyboard Shortcuts"))]);
 
         let help_popover = Popover::new();
@@ -390,9 +395,9 @@ impl DesignerView {
         }
 
         let float_zoom_in = gtk4::Button::builder()
-            .icon_name("zoom-in-symbolic")
-            .tooltip_text(t!("Zoom In"))
-            .build();
+        .icon_name("zoom-in-symbolic")
+        .tooltip_text(t!("Zoom In"))
+        .build();
         float_zoom_in.update_property(&[gtk4::accessible::Property::Label(&t!("Zoom In"))]);
 
         for b in [
@@ -419,12 +424,12 @@ impl DesignerView {
 
         (
             floating_box,
-            float_zoom_in,
-            float_zoom_out,
-            float_fit,
-            float_reset,
-            float_fit_device,
-            scrollbars_btn,
+         float_zoom_in,
+         float_zoom_out,
+         float_fit,
+         float_reset,
+         float_fit_device,
+         scrollbars_btn,
         )
     }
 
@@ -435,6 +440,7 @@ impl DesignerView {
         settings_controller: &Rc<SettingsController>,
     ) -> (
         Box,
+        gtk4::Button,
         gtk4::Button,
         gtk4::Button,
         gtk4::Button,
@@ -463,6 +469,7 @@ impl DesignerView {
         let empty_import_svg_btn = gtk4::Button::with_label(&t!("Import SVG"));
         let empty_import_dxf_btn = gtk4::Button::with_label(&t!("Import DXF"));
         let empty_import_stl_btn = gtk4::Button::with_label(&t!("Import STL"));
+        let empty_import_image_btn = gtk4::Button::with_label(&t!("Import Image"));
 
         let enable_stl_import = settings_controller
             .persistence
@@ -477,6 +484,7 @@ impl DesignerView {
         empty_actions.append(&empty_import_svg_btn);
         empty_actions.append(&empty_import_dxf_btn);
         empty_actions.append(&empty_import_stl_btn);
+        empty_actions.append(&empty_import_image_btn);
         empty_box.append(&empty_actions);
         empty_box.set_visible(true);
 
@@ -487,7 +495,9 @@ impl DesignerView {
             empty_import_svg_btn,
             empty_import_dxf_btn,
             empty_import_stl_btn,
+            empty_import_image_btn,
         )
+
     }
 
     /// Creates the status panel for the bottom-left of the canvas.

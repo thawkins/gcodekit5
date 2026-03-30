@@ -124,7 +124,7 @@ mod position_size_update_tests {
         let initial_center_x = (initial_min_x + initial_max_x) / 2.0;
         let initial_center_y = (initial_min_y + initial_max_y) / 2.0;
         let initial_width = initial_max_x - initial_min_x;
-        let initial_height = initial_max_y - initial_min_y;
+        let _initial_height = initial_max_y - initial_min_y;
 
         // Verify initial values
         assert!(

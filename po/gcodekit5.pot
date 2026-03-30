@@ -646,3 +646,522 @@ msgstr ""
 
 msgid "No valid G-Code lines found."
 msgstr ""
+
+# crates/gcodekit5-ui/src/ui/gtk/cam-tools/bitmap_engraving.rs
+msgid "Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."
+msgstr ""
+
+msgid "No image selected"
+msgstr ""
+
+msgid "Width:"
+msgstr ""
+
+msgid "Image File"
+msgstr ""
+
+msgid "Image Path:"
+msgstr ""
+
+msgid "Scanning"
+msgstr ""
+
+msgid "Scan Direction:"
+msgstr ""
+
+msgid "Pixels per mm:"
+msgstr ""
+
+msgid "Line Spacing:"
+msgstr ""
+
+msgid "Bidirectional:"
+msgstr ""
+
+msgid "Image Transformations"
+msgstr ""
+
+msgid "Invert:"
+msgstr ""
+
+msgid "Mirror X:"
+msgstr ""
+
+msgid "Mirror Y:"
+msgstr ""
+
+msgid "Rotation:"
+msgstr ""
+
+msgid "Halftoning"
+msgstr ""
+
+msgid "Method:"
+msgstr ""
+
+msgid "Dot Size:"
+msgstr ""
+
+msgid "Threshold:"
+msgstr ""
+
+msgid "Select Image"
+msgstr ""
+
+msgid "No Image Selected"
+msgstr ""
+
+msgid "Please select an image file first."
+msgstr ""
+
+msgid "Generating Engraving"
+msgstr ""
+
+msgid "Processing image..."
+msgstr ""
+
+msgid "Loading image..."
+msgstr ""
+
+msgid "Generating G-code..."
+msgstr ""
+
+msgid "Finalizing..."
+msgstr ""
+
+msgid "Engraving Generation Failed"
+msgstr ""
+
+msgid "Failed to generate engraving"
+msgstr ""
+
+msgid "Save Parameters"
+msgstr ""
+
+msgid "Load Parameters"
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/vector_engraving.rs
+msgid "Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."
+msgstr ""
+
+msgid "No file selected"
+msgstr ""
+
+msgid "No vector file selected"
+msgstr ""
+
+msgid "Z Step Down:"
+msgstr ""
+
+msgid "Desired Width:"
+msgstr ""
+
+msgid "Hatch Spacing:"
+msgstr ""
+
+msgid "Hatch Tolerance:"
+msgstr ""
+
+msgid "Vector File"
+msgstr ""
+
+msgid "File Path:"
+msgstr ""
+
+msgid "Browse..."
+msgstr ""
+
+msgid "Output Settings"
+msgstr ""
+
+msgid "Feed Rate:"
+msgstr ""
+
+msgid "Travel Rate:"
+msgstr ""
+
+msgid "Laser Power"
+msgstr ""
+
+msgid "Cut Power (%):"
+msgstr ""
+
+msgid "Engrave Power (%):"
+msgstr ""
+
+msgid "Power Scale (S):"
+msgstr ""
+
+msgid "Invert Power:"
+msgstr ""
+
+msgid "Multi-Pass Settings"
+msgstr ""
+
+msgid "Multi-Pass:"
+msgstr ""
+
+msgid "Number of Passes:"
+msgstr ""
+
+msgid "Hatching"
+msgstr ""
+
+msgid "Enable Hatch:"
+msgstr ""
+
+msgid "Hatch Angle (°):"
+msgstr ""
+
+msgid "Cross Hatch:"
+msgstr ""
+
+msgid "Dwell Settings"
+msgstr ""
+
+msgid "Enable Dwell:"
+msgstr ""
+
+msgid "Dwell Time (s):"
+msgstr ""
+
+msgid "Work Offsets"
+msgstr ""
+
+msgid "Home Device Before Start"
+msgstr ""
+
+msgid "Unknown file extension"
+msgstr ""
+
+msgid "Unsupported file format"
+msgstr ""
+
+msgid "Failed to load SVG"
+msgstr ""
+
+msgid "Failed to load DXF"
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs
+msgid "Tabbed Box Maker"
+msgstr ""
+
+msgid "Generate G-code for laser/CNC cut boxes with finger joints"
+msgstr ""
+
+msgid "Jigsaw Puzzle Generator"
+msgstr ""
+
+msgid "Create custom jigsaw puzzle patterns from images"
+msgstr ""
+
+msgid "Laser Image Engraver"
+msgstr ""
+
+msgid "Convert raster images to G-code for laser engraving"
+msgstr ""
+
+msgid "Laser Vector Engraver"
+msgstr ""
+
+msgid "Convert SVG and DXF vector files to G-code"
+msgstr ""
+
+msgid "Speeds and Feeds Calculator"
+msgstr ""
+
+msgid "Calculate cutting speeds and feeds for your materials"
+msgstr ""
+
+msgid "Spoilboard Surfacing"
+msgstr ""
+
+msgid "Generate surfacing toolpaths to flatten your spoilboard"
+msgstr ""
+
+msgid "Create Spoilboard Grid"
+msgstr ""
+
+msgid "Generate grid patterns for spoilboard alignment"
+msgstr ""
+
+msgid "Gerber to G-Code"
+msgstr ""
+
+msgid "Convert Gerber files to G-Code for PCB milling"
+msgstr ""
+
+msgid "Drill Press"
+msgstr ""
+
+msgid "Emulate a drill press with peck drilling and helical cycles"
+msgstr ""
+
+msgid "generators"
+msgstr ""
+
+msgid "engraving"
+msgstr ""
+
+msgid "calculators"
+msgstr ""
+
+msgid "maintenance"
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/tabbed_box.rs
+msgid "Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."
+msgstr ""
+
+msgid "X (Width):"
+msgstr ""
+
+msgid "Y (Depth):"
+msgstr ""
+
+msgid "H (Height):"
+msgstr ""
+
+msgid "Thickness:"
+msgstr ""
+
+msgid "Burn / Tool Dia:"
+msgstr ""
+
+msgid "Play (fit tolerance):"
+msgstr ""
+
+msgid "Extra Length:"
+msgstr ""
+
+msgid "Full Box"
+msgstr ""
+
+msgid "No Top"
+msgstr ""
+
+msgid "No Bottom"
+msgstr ""
+
+msgid "No Sides"
+msgstr ""
+
+msgid "No Front/Back"
+msgstr ""
+
+msgid "No Left/Right"
+msgstr ""
+
+msgid "Walls and Floor"
+msgstr ""
+
+msgid "Walls Only"
+msgstr ""
+
+msgid "Floor Only"
+msgstr ""
+
+msgid "None"
+msgstr ""
+
+msgid "Offset X:"
+msgstr ""
+
+msgid "Offset Y:"
+msgstr ""
+
+msgid "Box Dimensions"
+msgstr ""
+
+msgid "Outside Dims:"
+msgstr ""
+
+msgid "Box Configuration"
+msgstr ""
+
+msgid "Box Type:"
+msgstr ""
+
+msgid "Dividers X:"
+msgstr ""
+
+msgid "Dividers Y:"
+msgstr ""
+
+msgid "Divider Keying:"
+msgstr ""
+
+msgid "Optimize Layout:"
+msgstr ""
+
+msgid "Material Settings"
+msgstr ""
+
+msgid "Finger Joint Settings (multiples of thickness)"
+msgstr ""
+
+msgid "Finger Width:"
+msgstr ""
+
+msgid "Space Width:"
+msgstr ""
+
+msgid "Laser Settings"
+msgstr ""
+
+msgid "Passes:"
+msgstr ""
+
+msgid "Power (S):"
+msgstr ""
+
+msgid "Work Origin Offsets"
+msgstr ""
+
+msgid "Load"
+msgstr ""
+
+msgid "Generate G-code"
+msgstr ""
+
+msgid "Generate Shapes"
+msgstr ""
+
+msgid "Generating Box"
+msgstr ""
+
+msgid "Generating box panels..."
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/jigsaw.rs
+msgid "Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."
+msgstr ""
+
+msgid "Height:"
+msgstr ""
+
+msgid "Kerf:"
+msgstr ""
+
+msgid "Corner Radius:"
+msgstr ""
+
+msgid "Puzzle Dimensions"
+msgstr ""
+
+msgid "Grid Configuration"
+msgstr ""
+
+msgid "Pieces Across:"
+msgstr ""
+
+msgid "Pieces Down:"
+msgstr ""
+
+msgid "Puzzle Parameters"
+msgstr ""
+
+msgid "Tab Size (%):"
+msgstr ""
+
+msgid "Jitter (%):"
+msgstr ""
+
+msgid "Random Seed:"
+msgstr ""
+
+msgid "Generate"
+msgstr ""
+
+msgid "Generating Puzzle"
+msgstr ""
+
+msgid "Generating puzzle pieces..."
+msgstr ""
+
+msgid "Cancelled by user"
+msgstr ""
+
+msgid "Puzzle Generation Failed"
+msgstr ""
+
+msgid "Failed to generate puzzle"
+msgstr ""
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Position"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid "Lock Aspect:"
+msgstr ""
+
+msgid "Angle:"
+msgstr ""
+
+msgid "Corner"
+msgstr ""
+
+msgid "Slot Mode:"
+msgstr ""
+
+msgid "Content:"
+msgstr ""
+
+msgid "Sides:"
+msgstr ""
+
+msgid "Module:"
+msgstr ""
+
+msgid "Teeth:"
+msgstr ""
+
+msgid "Pressure Angle:"
+msgstr ""
+
+msgid "Pitch:"
+msgstr ""
+
+msgid "Roller Dia:"
+msgstr ""
+
+msgid "Geometry Operations"
+msgstr ""
+
+msgid "Fillet:"
+msgstr ""
+
+msgid "Chamfer:"
+msgstr ""
+
+msgid "CAM Properties"
+msgstr ""
+
+msgid "Operation:"
+msgstr ""
+
+msgid "Profile"
+msgstr ""
+
+msgid "Depth:"
+msgstr ""
+
+msgid "Step Down:"
+msgstr ""
+
+msgid "Step In:"
+msgstr ""
+
+msgid "Ramp Angle:"
+msgstr ""
+
+msgid "Strategy:"
+msgstr ""
+
+msgid "Raster Fill (%):"
+msgstr ""

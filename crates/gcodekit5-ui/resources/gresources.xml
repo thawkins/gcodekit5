@@ -9,6 +9,10 @@
     <file compressed="true" alias="select.svg">icons/select.svg</file>
     <file compressed="true" alias="text.svg">icons/text.svg</file>
     <file compressed="true" alias="grab.svg">icons/grab.svg</file>
+    <file compressed="true" alias="triangle.svg">icons/triangle.svg</file>
+    <file compressed="true" alias="poligon.svg">icons/poligon.svg</file>
+    <file compressed="true" alias="gear.svg">icons/gear.svg</file>
+    <file compressed="true" alias="sprocket.svg">icons/sprocket.svg</file>
   </gresource>
   <gresource prefix="/com/gcodekit5/images">
     <file compressed="true" alias="gcodekit5.png">images/gcodekit5.png</file>

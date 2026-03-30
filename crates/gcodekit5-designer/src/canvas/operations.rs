@@ -2,10 +2,11 @@
 
 use super::types::{Alignment, DrawingObject};
 use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape, RasterImage,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
-    DesignTriangle as Triangle, DesignerShape, Point, Shape, ShapeType,
+    DesignTriangle as Triangle, DesignerShape, Point, Shape, ShapeType
 };
+
 use crate::spatial_index::Bounds;
 
 use super::Canvas;
@@ -25,7 +26,7 @@ impl Canvas {
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
-                    Bounds::new(new_x1, new_y1, new_x2, new_y2),
+                              Bounds::new(new_x1, new_y1, new_x2, new_y2),
                 ));
             }
         }
@@ -65,21 +66,21 @@ impl Canvas {
         // 1. Calculate target value
         let target = match alignment {
             Alignment::Left => selected
-                .iter()
-                .map(|o| o.shape.bounds().0)
-                .fold(f64::INFINITY, f64::min),
+            .iter()
+            .map(|o| o.shape.bounds().0)
+            .fold(f64::INFINITY, f64::min),
             Alignment::Right => selected
-                .iter()
-                .map(|o| o.shape.bounds().2)
-                .fold(f64::NEG_INFINITY, f64::max),
+            .iter()
+            .map(|o| o.shape.bounds().2)
+            .fold(f64::NEG_INFINITY, f64::max),
             Alignment::CenterHorizontal => {
                 let (min_x, max_x) =
-                    selected
-                        .iter()
-                        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), o| {
-                            let (x1, _, x2, _) = o.shape.bounds();
-                            (min.min(x1), max.max(x2))
-                        });
+                selected
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), o| {
+                    let (x1, _, x2, _) = o.shape.bounds();
+                    (min.min(x1), max.max(x2))
+                });
                 if min_x.is_infinite() {
                     f64::INFINITY
                 } else {
@@ -87,21 +88,21 @@ impl Canvas {
                 }
             }
             Alignment::Top => selected
-                .iter()
-                .map(|o| o.shape.bounds().3)
-                .fold(f64::NEG_INFINITY, f64::max),
+            .iter()
+            .map(|o| o.shape.bounds().3)
+            .fold(f64::NEG_INFINITY, f64::max),
             Alignment::Bottom => selected
-                .iter()
-                .map(|o| o.shape.bounds().1)
-                .fold(f64::INFINITY, f64::min),
+            .iter()
+            .map(|o| o.shape.bounds().1)
+            .fold(f64::INFINITY, f64::min),
             Alignment::CenterVertical => {
                 let (min_y, max_y) =
-                    selected
-                        .iter()
-                        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), o| {
-                            let (_, y1, _, y2) = o.shape.bounds();
-                            (min.min(y1), max.max(y2))
-                        });
+                selected
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), o| {
+                    let (_, y1, _, y2) = o.shape.bounds();
+                    (min.min(y1), max.max(y2))
+                });
                 if min_y.is_infinite() {
                     f64::INFINITY
                 } else {
@@ -191,7 +192,7 @@ impl Canvas {
 
             self.shape_store.insert(id, new_obj);
             self.spatial_manager
-                .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
             new_ids.push(id);
         }
 
@@ -201,96 +202,6 @@ impl Canvas {
         }
 
         new_ids
-    }
-
-    /// Resizes the selected shape. Handles: 0=TL, 1=TR, 2=BL, 3=BR, 4=Center (moves)
-    pub fn resize_selected(&mut self, handle: usize, dx: f64, dy: f64) {
-        // Calculate bounding box of ALL selected shapes
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-        let mut has_selected = false;
-
-        for obj in self.shape_store.iter().filter(|o| o.selected) {
-            let (x1, y1, x2, y2) = obj.shape.bounds();
-            min_x = min_x.min(x1);
-            min_y = min_y.min(y1);
-            max_x = max_x.max(x2);
-            max_y = max_y.max(y2);
-            has_selected = true;
-        }
-
-        if !has_selected {
-            return;
-        }
-
-        // If handle is 4 (move), we just translate all selected shapes
-        if handle == 4 {
-            self.move_selected(dx, dy);
-            return;
-        }
-
-        // Calculate new bounding box based on handle movement
-        let (new_min_x, new_min_y, new_max_x, new_max_y) = match handle {
-            0 => (min_x + dx, min_y + dy, max_x, max_y), // Top-left
-            1 => (min_x, min_y + dy, max_x + dx, max_y), // Top-right
-            2 => (min_x + dx, min_y, max_x, max_y + dy), // Bottom-left
-            3 => (min_x, min_y, max_x + dx, max_y + dy), // Bottom-right
-            _ => (min_x, min_y, max_x, max_y),
-        };
-
-        let old_width = max_x - min_x;
-        let old_height = max_y - min_y;
-        let new_width = (new_max_x - new_min_x).abs();
-        let new_height = (new_max_y - new_min_y).abs();
-
-        // Calculate scale factors
-        let sx = if old_width.abs() > 1e-6 {
-            new_width / old_width
-        } else {
-            1.0
-        };
-        let sy = if old_height.abs() > 1e-6 {
-            new_height / old_height
-        } else {
-            1.0
-        };
-
-        // Center of scaling
-        let center_x = (min_x + max_x) / 2.0;
-        let center_y = (min_y + max_y) / 2.0;
-
-        let new_center_x = (new_min_x + new_max_x) / 2.0;
-        let new_center_y = (new_min_y + new_max_y) / 2.0;
-
-        let mut updates = Vec::new();
-
-        for obj in self.shape_store.iter_mut() {
-            if obj.selected {
-                let (old_x1, old_y1, old_x2, old_y2) = obj.get_total_bounds();
-
-                // Scale relative to the center of the SELECTION bounding box
-                obj.shape.scale(sx, sy, Point::new(center_x, center_y));
-
-                // Translate to new center
-                let t_dx = new_center_x - center_x;
-                let t_dy = new_center_y - center_y;
-                obj.shape.translate(t_dx, t_dy);
-
-                let (new_x1, new_y1, new_x2, new_y2) = obj.get_total_bounds();
-                updates.push((
-                    obj.id,
-                    Bounds::new(old_x1, old_y1, old_x2, old_y2),
-                    Bounds::new(new_x1, new_y1, new_x2, new_y2),
-                ));
-            }
-        }
-
-        for (id, old_bounds, new_bounds) in updates {
-            self.spatial_manager.remove_bounds(id, &old_bounds);
-            self.spatial_manager.insert_bounds(id, &new_bounds);
-        }
     }
 
     /// Calculates the snapped shapes without modifying the canvas.
@@ -321,7 +232,7 @@ impl Canvas {
                     let radius = snapped_width / 2.0;
                     Shape::Circle(Circle::new(
                         Point::new(snapped_x1 + radius, snapped_y1 + radius),
-                        radius,
+                                              radius,
                     ))
                 }
                 Shape::Line(_) => Shape::Line(Line::new(
@@ -372,9 +283,9 @@ impl Canvas {
                 }
                 Shape::Text(text) => Shape::Text(TextShape::new(
                     text.text.clone(),
-                    snapped_x1,
-                    snapped_y1,
-                    text.font_size,
+                                                                snapped_x1,
+                                                                snapped_y1,
+                                                                text.font_size,
                 )),
                 Shape::Triangle(_triangle) => {
                     let center = Point::new(
@@ -405,13 +316,26 @@ impl Canvas {
                         snapped_y1 + snapped_height / 2.0,
                     );
                     let pitch =
-                        snapped_width * (std::f64::consts::PI / sprocket.teeth as f64).sin();
+                    snapped_width * (std::f64::consts::PI / sprocket.teeth as f64).sin();
                     Shape::Sprocket(crate::model::DesignSprocket::new(
                         center,
                         pitch,
                         sprocket.teeth,
                     ))
                 }
+
+                Shape::RasterImage(_) => {
+                    // For raster images, maintain the dimensions
+                    Shape::RasterImage(RasterImage::new(
+                        0,
+                        Point::new(snapped_x1 + snapped_width / 2.0, snapped_y1 + snapped_height / 2.0),
+                        snapped_width,
+                        snapped_height,
+                        vec![],
+                        None,
+                    ))
+                }
+
             };
 
             let mut new_obj = obj.clone();
@@ -452,20 +376,20 @@ impl Canvas {
                         let radius = snapped_width / 2.0;
                         Shape::Circle(Circle::new(
                             Point::new(snapped_x1 + radius, snapped_y1 + radius),
-                            radius,
+                                                  radius,
                         ))
                     }
                     ShapeType::Line => Shape::Line(Line::new(
                         Point::new(snapped_x1, snapped_y1),
-                        Point::new(snapped_x1 + snapped_width, snapped_y1 + snapped_height),
+                                                             Point::new(snapped_x1 + snapped_width, snapped_y1 + snapped_height),
                     )),
                     ShapeType::Ellipse => {
                         let rx = snapped_width / 2.0;
                         let ry = snapped_height / 2.0;
                         Shape::Ellipse(Ellipse::new(
                             Point::new(snapped_x1 + rx, snapped_y1 + ry),
-                            rx,
-                            ry,
+                                                    rx,
+                                                    ry,
                         ))
                     }
                     ShapeType::Path => {
@@ -502,9 +426,9 @@ impl Canvas {
                         if let Some(text) = shape.as_any().downcast_ref::<TextShape>() {
                             Shape::Text(TextShape::new(
                                 text.text.clone(),
-                                snapped_x1,
-                                snapped_y1,
-                                text.font_size,
+                                                       snapped_x1,
+                                                       snapped_y1,
+                                                       text.font_size,
                             ))
                         } else {
                             shape.clone()
@@ -532,37 +456,43 @@ impl Canvas {
                     ShapeType::Gear => {
                         if let Some(gear) =
                             shape.as_any().downcast_ref::<crate::model::DesignGear>()
-                        {
-                            let center = Point::new(
-                                snapped_x1 + snapped_width / 2.0,
-                                snapped_y1 + snapped_height / 2.0,
-                            );
-                            let module = snapped_width / gear.teeth as f64;
-                            Shape::Gear(crate::model::DesignGear::new(center, module, gear.teeth))
-                        } else {
-                            shape.clone()
-                        }
+                            {
+                                let center = Point::new(
+                                    snapped_x1 + snapped_width / 2.0,
+                                    snapped_y1 + snapped_height / 2.0,
+                                );
+                                let module = snapped_width / gear.teeth as f64;
+                                Shape::Gear(crate::model::DesignGear::new(center, module, gear.teeth))
+                            } else {
+                                shape.clone()
+                            }
                     }
                     ShapeType::Sprocket => {
                         if let Some(sprocket) = shape
                             .as_any()
                             .downcast_ref::<crate::model::DesignSprocket>()
-                        {
-                            let center = Point::new(
-                                snapped_x1 + snapped_width / 2.0,
-                                snapped_y1 + snapped_height / 2.0,
-                            );
-                            let pitch = snapped_width
+                            {
+                                let center = Point::new(
+                                    snapped_x1 + snapped_width / 2.0,
+                                    snapped_y1 + snapped_height / 2.0,
+                                );
+                                let pitch = snapped_width
                                 * (std::f64::consts::PI / sprocket.teeth as f64).sin();
-                            Shape::Sprocket(crate::model::DesignSprocket::new(
-                                center,
-                                pitch,
-                                sprocket.teeth,
-                            ))
-                        } else {
-                            shape.clone()
-                        }
+                                Shape::Sprocket(crate::model::DesignSprocket::new(
+                                    center,
+                                    pitch,
+                                    sprocket.teeth,
+                                ))
+                            } else {
+                                shape.clone()
+                            }
                     }
+
+                    ShapeType::RasterImage => {
+                        // For raster images, maintain the original shape or clone
+                        shape.clone()
+                    }
+
                 };
                 obj.shape = new_shape;
 
@@ -570,7 +500,7 @@ impl Canvas {
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
-                    Bounds::new(new_x1, new_y1, new_x2, new_y2),
+                              Bounds::new(new_x1, new_y1, new_x2, new_y2),
                 ));
             }
         }
@@ -653,8 +583,8 @@ impl Canvas {
 
             // Apply scaling relative to group center
             new_obj
-                .shape
-                .scale(sx, sy, Point::new(group_center_x, group_center_y));
+            .shape
+            .scale(sx, sy, Point::new(group_center_x, group_center_y));
 
             // Calculate translation to move to target position
             // The group's new center after scaling is still (group_center_x, group_center_y)
@@ -749,7 +679,7 @@ impl Canvas {
 
             // Apply scaling relative to group center
             obj.shape
-                .scale(sx, sy, Point::new(group_center_x, group_center_y));
+            .scale(sx, sy, Point::new(group_center_x, group_center_y));
 
             // Calculate translation to move to target position
             let current_new_x = group_center_x - target_w / 2.0;
@@ -766,7 +696,7 @@ impl Canvas {
             updates.push((
                 obj.id,
                 Bounds::new(old_x, old_y, old_x2, old_y2),
-                Bounds::new(new_x1, new_y1, new_x2, new_y2),
+                          Bounds::new(new_x1, new_y1, new_x2, new_y2),
             ));
         }
 
@@ -818,7 +748,7 @@ impl Canvas {
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
-                    Bounds::new(new_x1, new_y1, new_x2, new_y2),
+                              Bounds::new(new_x1, new_y1, new_x2, new_y2),
                 ));
             }
         }
@@ -892,7 +822,7 @@ impl Canvas {
                 updates.push((
                     obj.id,
                     Bounds::new(old_x1, old_y1, old_x2, old_y2),
-                    Bounds::new(new_x1, new_y1, new_x2, new_y2),
+                              Bounds::new(new_x1, new_y1, new_x2, new_y2),
                 ));
             }
         }

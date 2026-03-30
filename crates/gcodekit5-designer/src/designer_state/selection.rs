@@ -78,4 +78,17 @@ impl DesignerState {
 
         self.canvas.select_shape(new_id, false);
     }
+
+    /// Sets the lock aspect ratio flag for the currently selected shape.
+    pub fn set_selected_lock_aspect_ratio(&mut self, locked: bool) {
+        // We obtain the ID of the selected object (in singular)
+        if let Some(id) = self.canvas.selected_id() {
+            // We look for that object in the shape_store
+            // If get a 'borrow' error, try: self.canvas.shape_store.get_mut(id)
+            if let Some(shape) = self.canvas.shape_store.get_mut(id) {
+                // 3. Cambiamos el valor real
+                shape.lock_aspect_ratio = locked;
+            }
+        }
+    }
 }

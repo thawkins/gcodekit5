@@ -270,26 +270,26 @@ impl ToolsManagerView {
 
         let (
             basic_page,
-            edit_id,
-            edit_number,
-            edit_name,
-            edit_tool_type,
-            edit_material,
-            edit_coating,
-            edit_shank,
+             edit_id,
+             edit_number,
+             edit_name,
+             edit_tool_type,
+             edit_material,
+             edit_coating,
+             edit_shank,
         ) = Self::create_basic_tab();
         let (
             geometry_page,
-            edit_diameter,
-            edit_length,
-            edit_flute_length,
-            edit_shaft_diameter,
-            edit_flutes,
-            edit_corner_radius,
-            edit_tip_angle,
+             edit_diameter,
+             edit_length,
+             edit_flute_length,
+             edit_shaft_diameter,
+             edit_flutes,
+             edit_corner_radius,
+             edit_tip_angle,
         ) = Self::create_geometry_tab();
         let (mfg_page, edit_manufacturer, edit_part_number, edit_description) =
-            Self::create_manufacturer_tab();
+        Self::create_manufacturer_tab();
         let (notes_page, edit_notes) = Self::create_notes_tab();
 
         stack.add_titled(&basic_page, Some("basic"), "Basic Info");
@@ -329,44 +329,44 @@ impl ToolsManagerView {
         let view = Rc::new(Self {
             widget,
             backend: backend.clone(),
-            settings_controller,
-            tools_list,
-            search_entry,
-            type_filter,
-            material_filter,
-            dia_min,
-            dia_max,
-            right_panel_stack: right_panel_stack.clone(),
-            edit_id,
-            edit_number,
-            edit_name,
-            edit_tool_type,
-            edit_material,
-            edit_coating,
-            edit_shank,
-            edit_diameter,
-            edit_length,
-            edit_flute_length,
-            edit_shaft_diameter,
-            edit_flutes,
-            edit_corner_radius,
-            edit_tip_angle,
-            edit_manufacturer,
-            edit_part_number,
-            edit_description,
-            edit_notes,
-            error_label,
-            selected_tool: shared_none(),
-            is_creating: shared(false),
-            last_selected_tool_id: shared_none(),
-            save_btn,
-            cancel_btn,
-            delete_btn,
-            new_btn,
-            import_zip_btn,
-            import_json_btn,
-            export_btn,
-            reset_btn,
+                           settings_controller,
+                           tools_list,
+                           search_entry,
+                           type_filter,
+                           material_filter,
+                           dia_min,
+                           dia_max,
+                           right_panel_stack: right_panel_stack.clone(),
+                           edit_id,
+                           edit_number,
+                           edit_name,
+                           edit_tool_type,
+                           edit_material,
+                           edit_coating,
+                           edit_shank,
+                           edit_diameter,
+                           edit_length,
+                           edit_flute_length,
+                           edit_shaft_diameter,
+                           edit_flutes,
+                           edit_corner_radius,
+                           edit_tip_angle,
+                           edit_manufacturer,
+                           edit_part_number,
+                           edit_description,
+                           edit_notes,
+                           error_label,
+                           selected_tool: shared_none(),
+                           is_creating: shared(false),
+                           last_selected_tool_id: shared_none(),
+                           save_btn,
+                           cancel_btn,
+                           delete_btn,
+                           new_btn,
+                           import_zip_btn,
+                           import_json_btn,
+                           export_btn,
+                           reset_btn,
         });
 
         view.restore_ui_state();
@@ -405,7 +405,7 @@ impl ToolsManagerView {
             p.config_mut().ui.tools_manager_dia_min = parsed_dia_min;
             p.config_mut().ui.tools_manager_dia_max = parsed_dia_max;
             p.config_mut().ui.tools_manager_selected_tool =
-                self.last_selected_tool_id.borrow().clone();
+            self.last_selected_tool_id.borrow().clone();
 
             if let Ok(path) = SettingsManager::config_file_path() {
                 let _ = SettingsManager::ensure_config_dir();
@@ -423,7 +423,7 @@ impl ToolsManagerView {
                     // SAFETY: row.data() retrieves a String previously stored
                     // via set_data() with the same key. Type and key match.
                     row.data::<String>(ROW_TOOL_ID_KEY)
-                        .map(|p| p.as_ref().clone())
+                    .map(|p| p.as_ref().clone())
                 };
                 if stored.as_deref() == Some(tool_id) {
                     list.select_row(Some(&row));
@@ -447,9 +447,9 @@ impl ToolsManagerView {
             tools.retain(|t| {
                 let dia = format!("{:.3}", t.diameter);
                 t.name.to_lowercase().contains(&q)
-                    || t.id.0.to_lowercase().contains(&q)
-                    || t.tool_type.to_string().to_lowercase().contains(&q)
-                    || dia.contains(&q)
+                || t.id.0.to_lowercase().contains(&q)
+                || t.tool_type.to_string().to_lowercase().contains(&q)
+                || dia.contains(&q)
             });
         }
 
@@ -527,9 +527,9 @@ impl ToolsManagerView {
             row_box.append(&name_label);
 
             let coating = tool
-                .coating
-                .map(|c| c.to_string())
-                .unwrap_or("None".to_string());
+            .coating
+            .map(|c| c.to_string())
+            .unwrap_or("None".to_string());
             let shaft = tool.shaft_diameter.unwrap_or(tool.diameter);
             let info = format!(
                 "{} • id:{} • Ø{:.3}mm • shaft Ø{:.3}mm • {}F • FL{:.3}mm • {} / {}",
@@ -621,30 +621,30 @@ impl ToolsManagerView {
 
             self.edit_material.set_active(match tool.material {
                 ToolMaterial::HSS => Some(0),
-                ToolMaterial::Carbide => Some(1),
-                ToolMaterial::CoatedCarbide => Some(2),
-                ToolMaterial::Diamond => Some(3),
+                                          ToolMaterial::Carbide => Some(1),
+                                          ToolMaterial::CoatedCarbide => Some(2),
+                                          ToolMaterial::Diamond => Some(3),
             });
 
             self.edit_coating.set_active(match tool.coating {
                 None => Some(0),
-                Some(ToolCoating::TiN) => Some(1),
-                Some(ToolCoating::TiAlN) => Some(2),
-                Some(ToolCoating::DLC) => Some(3),
-                Some(ToolCoating::AlOx) => Some(4),
+                                         Some(ToolCoating::TiN) => Some(1),
+                                         Some(ToolCoating::TiAlN) => Some(2),
+                                         Some(ToolCoating::DLC) => Some(3),
+                                         Some(ToolCoating::AlOx) => Some(4),
             });
 
             self.edit_shank.set_active(match tool.shank {
                 ShankType::Straight(_) => Some(0),
-                ShankType::Collet => Some(1),
-                ShankType::Tapered => Some(2),
+                                       ShankType::Collet => Some(1),
+                                       ShankType::Tapered => Some(2),
             });
 
             self.edit_diameter
-                .set_text(&format!("{:.3}", tool.diameter));
+            .set_text(&format!("{:.3}", tool.diameter));
             self.edit_length.set_text(&format!("{:.3}", tool.length));
             self.edit_flute_length
-                .set_text(&format!("{:.3}", tool.flute_length));
+            .set_text(&format!("{:.3}", tool.flute_length));
 
             let shaft = tool.shaft_diameter.unwrap_or(tool.diameter);
             self.edit_shaft_diameter.set_text(&format!("{shaft:.3}"));
@@ -652,15 +652,15 @@ impl ToolsManagerView {
 
             self.edit_corner_radius.set_text(
                 &tool
-                    .corner_radius
-                    .map(|v| format!("{v:.3}"))
-                    .unwrap_or_default(),
+                .corner_radius
+                .map(|v| format!("{v:.3}"))
+                .unwrap_or_default(),
             );
             self.edit_tip_angle.set_text(
                 &tool
-                    .tip_angle
-                    .map(|v| format!("{v:.3}"))
-                    .unwrap_or_default(),
+                .tip_angle
+                .map(|v| format!("{v:.3}"))
+                .unwrap_or_default(),
             );
 
             if let Some(ref manufacturer) = tool.manufacturer {
@@ -772,37 +772,37 @@ impl ToolsManagerView {
         let tool_type = Self::tool_type_from_active(self.edit_tool_type.active());
 
         let material_text = self
-            .edit_material
-            .active_text()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "Carbide".to_string());
+        .edit_material
+        .active_text()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Carbide".to_string());
         let tool_material = string_to_tool_material(&material_text)
-            .ok_or_else(|| "Invalid tool material".to_string())?;
+        .ok_or_else(|| "Invalid tool material".to_string())?;
 
         let diameter = self
-            .edit_diameter
-            .text()
-            .trim()
-            .parse::<f32>()
-            .map_err(|_| "Invalid diameter".to_string())?;
+        .edit_diameter
+        .text()
+        .trim()
+        .parse::<f32>()
+        .map_err(|_| "Invalid diameter".to_string())?;
         let length = self
-            .edit_length
-            .text()
-            .trim()
-            .parse::<f32>()
-            .map_err(|_| "Invalid length".to_string())?;
+        .edit_length
+        .text()
+        .trim()
+        .parse::<f32>()
+        .map_err(|_| "Invalid length".to_string())?;
         let flute_length = self
-            .edit_flute_length
-            .text()
-            .trim()
-            .parse::<f32>()
-            .map_err(|_| "Invalid flute length".to_string())?;
+        .edit_flute_length
+        .text()
+        .trim()
+        .parse::<f32>()
+        .map_err(|_| "Invalid flute length".to_string())?;
         let shaft_diameter_mm = self
-            .edit_shaft_diameter
-            .text()
-            .trim()
-            .parse::<f32>()
-            .map_err(|_| "Invalid shaft diameter".to_string())?;
+        .edit_shaft_diameter
+        .text()
+        .trim()
+        .parse::<f32>()
+        .map_err(|_| "Invalid shaft diameter".to_string())?;
 
         let flutes = self.edit_flutes.value() as u32;
 
@@ -813,7 +813,7 @@ impl ToolsManagerView {
             } else {
                 Some(
                     txt.parse::<f32>()
-                        .map_err(|_| "Invalid corner radius".to_string())?,
+                    .map_err(|_| "Invalid corner radius".to_string())?,
                 )
             }
         } else {
@@ -827,7 +827,7 @@ impl ToolsManagerView {
             } else {
                 Some(
                     txt.parse::<f32>()
-                        .map_err(|_| "Invalid tip angle".to_string())?,
+                    .map_err(|_| "Invalid tip angle".to_string())?,
                 )
             }
         } else {
@@ -835,10 +835,10 @@ impl ToolsManagerView {
         };
 
         let coating = self
-            .edit_coating
-            .active_text()
-            .map(|s| s.to_string())
-            .and_then(|t| Self::coating_from_combo(&t));
+        .edit_coating
+        .active_text()
+        .map(|s| s.to_string())
+        .and_then(|t| Self::coating_from_combo(&t));
 
         let shank = Self::shank_from_combo(self.edit_shank.active(), shaft_diameter_mm);
 
@@ -867,11 +867,11 @@ impl ToolsManagerView {
 
         let mut tool = Tool::new(
             ToolId(tool_id),
-            tool_number,
-            tool_name,
-            tool_type,
-            diameter,
-            length,
+                                 tool_number,
+                                 tool_name,
+                                 tool_type,
+                                 diameter,
+                                 length,
         );
 
         tool.custom = true;
@@ -911,22 +911,22 @@ impl ToolsManagerView {
         };
 
         a.id.0 == b.id.0
-            && a.name == b.name
-            && a.description == b.description
-            && a.tool_type == b.tool_type
-            && eq_f32(a.diameter, b.diameter)
-            && eq_f32(a.length, b.length)
-            && eq_f32(a.flute_length, b.flute_length)
-            && a.flutes == b.flutes
-            && eq_opt_f32(a.corner_radius, b.corner_radius)
-            && eq_opt_f32(a.tip_angle, b.tip_angle)
-            && eq_f32(eq_shaft(a), eq_shaft(b))
-            && a.material == b.material
-            && a.coating == b.coating
-            && a.shank == b.shank
-            && eq_str(&a.manufacturer, &b.manufacturer)
-            && eq_str(&a.part_number, &b.part_number)
-            && a.notes == b.notes
+        && a.name == b.name
+        && a.description == b.description
+        && a.tool_type == b.tool_type
+        && eq_f32(a.diameter, b.diameter)
+        && eq_f32(a.length, b.length)
+        && eq_f32(a.flute_length, b.flute_length)
+        && a.flutes == b.flutes
+        && eq_opt_f32(a.corner_radius, b.corner_radius)
+        && eq_opt_f32(a.tip_angle, b.tip_angle)
+        && eq_f32(eq_shaft(a), eq_shaft(b))
+        && a.material == b.material
+        && a.coating == b.coating
+        && a.shank == b.shank
+        && eq_str(&a.manufacturer, &b.manufacturer)
+        && eq_str(&a.part_number, &b.part_number)
+        && a.notes == b.notes
     }
 
     fn is_dirty(&self) -> bool {
@@ -956,13 +956,13 @@ impl ToolsManagerView {
         };
 
         let dialog = gtk4::MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(gtk4::MessageType::Question)
-            .buttons(gtk4::ButtonsType::YesNo)
-            .text("Discard changes?")
-            .secondary_text("You have unsaved changes. Discard them?")
-            .build();
+        .transient_for(&window)
+        .modal(true)
+        .message_type(gtk4::MessageType::Question)
+        .buttons(gtk4::ButtonsType::YesNo)
+        .text("Discard changes?")
+        .secondary_text("You have unsaved changes. Discard them?")
+        .build();
 
         dialog.connect_response(move |d, resp| {
             if resp == gtk4::ResponseType::Yes {
@@ -1020,7 +1020,7 @@ impl ToolsManagerView {
             let backend = self.backend.borrow();
             if backend.get_tool(&tool.id).is_some() {
                 self.error_label
-                    .set_text("Tool ID already exists. Please choose a unique ID.");
+                .set_text("Tool ID already exists. Please choose a unique ID.");
                 self.error_label.set_visible(true);
                 return;
             }
@@ -1051,16 +1051,16 @@ impl ToolsManagerView {
 
             if let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() {
                 let dialog = gtk4::MessageDialog::builder()
-                    .transient_for(&window)
-                    .modal(true)
-                    .message_type(gtk4::MessageType::Warning)
-                    .buttons(gtk4::ButtonsType::YesNo)
-                    .text("Delete Tool?")
-                    .secondary_text(format!(
-                        "Are you sure you want to delete tool '{}' (id: {})?\n\nThis action cannot be undone.",
-                        tool.name, tool.id.0
-                    ))
-                    .build();
+                .transient_for(&window)
+                .modal(true)
+                .message_type(gtk4::MessageType::Warning)
+                .buttons(gtk4::ButtonsType::YesNo)
+                .text("Delete Tool?")
+                .secondary_text(format!(
+                    "Are you sure you want to delete tool '{}' (id: {})?\n\nThis action cannot be undone.",
+                                        tool.name, tool.id.0
+                ))
+                .build();
 
                 let backend = self.backend.clone();
                 let view = self.clone();
@@ -1143,8 +1143,8 @@ impl ToolsManagerView {
                                     &format!(
                                         "Imported: {}\nSkipped: {}\nErrors: {}",
                                         result.imported_tools.len(),
-                                        result.skipped_tools,
-                                        result.errors.len()
+                                             result.skipped_tools,
+                                             result.errors.len()
                                     ),
                                 );
                             }
@@ -1184,8 +1184,8 @@ impl ToolsManagerView {
                                     &format!(
                                         "Imported: {}\nSkipped: {}\nErrors: {}",
                                         result.imported_tools.len(),
-                                        result.skipped_tools,
-                                        result.errors.len()
+                                             result.skipped_tools,
+                                             result.errors.len()
                                     ),
                                 );
                             }
@@ -1207,29 +1207,32 @@ impl ToolsManagerView {
             return;
         };
 
-        let dialog = super::file_dialog::save_dialog("Export Custom Tools", Some(&window));
+        // 1. Configuración del FileDialog moderno
+        let file_dialog = gtk4::FileDialog::builder()
+        .title("Export Custom Tools")
+        .accept_label("Exportar")
+        .build();
 
         let backend = self.backend.clone();
         let view = self.clone();
 
-        dialog.connect_response(move |dialog, resp| {
-            if resp == gtk4::ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        let backend = backend.borrow();
-                        match backend.export_custom_tools(path) {
-                            Ok(_) => {
-                                view.show_info_dialog("Export Complete", "Custom tools exported.")
-                            }
-                            Err(e) => view.show_error_dialog("Export Failed", &e.to_string()),
+        // 2. Asynchronous execution (replaces connect_response and show)
+        // We use gio::Cancellable::NONE to indicate that we do not want to cancel the operation.
+        file_dialog.save(Some(&window), gtk4::gio::Cancellable::NONE, move |result| {
+            // result is a Result<gio::File, glib::Error>
+            if let Ok(file) = result {
+                if let Some(path) = file.path() {
+                    let backend = backend.borrow();
+                    match backend.export_custom_tools(path) {
+                        Ok(_) => {
+                            view.show_info_dialog("Export Complete", "Custom tools exported.")
                         }
+                        Err(e) => view.show_error_dialog("Export Failed", &e.to_string()),
                     }
                 }
             }
-            dialog.destroy();
+            // The dialog closes automatically; you don't need .destroy()
         });
-
-        dialog.show();
     }
 
     fn reset_custom_tools(&self) {
@@ -1238,15 +1241,15 @@ impl ToolsManagerView {
         };
 
         let dialog = gtk4::MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(gtk4::MessageType::Warning)
-            .buttons(gtk4::ButtonsType::YesNo)
-            .text("Reset custom tools?")
-            .secondary_text(
-                "This will delete all custom/imported tools and remove local custom tools storage.\n\nContinue?",
-            )
-            .build();
+        .transient_for(&window)
+        .modal(true)
+        .message_type(gtk4::MessageType::Warning)
+        .buttons(gtk4::ButtonsType::YesNo)
+        .text("Reset custom tools?")
+        .secondary_text(
+            "This will delete all custom/imported tools and remove local custom tools storage.\n\nContinue?",
+        )
+        .build();
 
         let backend = self.backend.clone();
         let view = self.clone();
@@ -1272,13 +1275,13 @@ impl ToolsManagerView {
     fn show_info_dialog(&self, title: &str, message: &str) {
         if let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() {
             let dialog = gtk4::MessageDialog::builder()
-                .transient_for(&window)
-                .modal(true)
-                .message_type(gtk4::MessageType::Info)
-                .buttons(gtk4::ButtonsType::Ok)
-                .text(title)
-                .secondary_text(message)
-                .build();
+            .transient_for(&window)
+            .modal(true)
+            .message_type(gtk4::MessageType::Info)
+            .buttons(gtk4::ButtonsType::Ok)
+            .text(title)
+            .secondary_text(message)
+            .build();
             dialog.connect_response(|d, _| d.close());
             dialog.show();
         }

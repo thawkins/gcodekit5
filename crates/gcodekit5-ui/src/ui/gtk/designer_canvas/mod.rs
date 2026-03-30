@@ -299,7 +299,8 @@ impl DesignerCanvas {
                 | DesignerTool::Polygon
                 | DesignerTool::Polyline
                 | DesignerTool::Gear
-                | DesignerTool::Sprocket => widget_motion.set_cursor_from_name(Some("pencil")),
+                | DesignerTool::Sprocket =>
+                widget_motion.set_cursor_from_name(Some("pencil")),
             }
 
             widget_motion.queue_draw();
@@ -526,4 +527,80 @@ impl DesignerCanvas {
         *self.hadjustment.borrow_mut() = Some(hadj);
         *self.vadjustment.borrow_mut() = Some(vadj);
     }
+
+    /// Import a raster image (JPG, PNG, etc.) and convert it to toolpath
+    pub fn import_raster_image(&self) {
+        use gtk4::FileChooserDialog;
+        use gtk4::FileChooserAction;
+        use gtk4::ResponseType;
+
+        let dialog = FileChooserDialog::builder()
+            .title("Import Image")
+            .action(FileChooserAction::Open)
+            .transient_for(&self.widget.root().and_then(|r| r.downcast::<gtk4::Window>().ok()).unwrap())
+            .build();
+
+        let filter = gtk4::FileFilter::new();
+        filter.add_mime_type("image/jpeg");
+        filter.add_mime_type("image/png");
+        filter.add_mime_type("image/bmp");
+        filter.add_mime_type("image/tiff");
+        filter.add_mime_type("image/webp");
+        filter.set_name(Some("Image files"));
+        dialog.add_filter(&filter);
+
+        dialog.add_buttons(&[
+            ("Cancel", ResponseType::Cancel),
+            ("Import", ResponseType::Accept),
+        ]);
+
+        let canvas = self.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = dialog.file() {
+                    if let Some(path) = file.path() {
+                        canvas.process_imported_image(path);
+                    }
+                }
+            }
+            dialog.close();
+        });
+
+        dialog.show();
+    }
+
+    /// Process the imported image and convert it to a toolpath
+    fn process_imported_image(&self, path: std::path::PathBuf) {
+        use gcodekit5_designer::image_importer::ImageImporter;
+        if let Some(status_bar) = &self.status_bar {
+            status_bar.set_state("Importing image...");
+        }
+
+        let canvas = self.clone();
+        let status_bar = self.status_bar.clone();
+        let state = self.state.clone();
+
+        glib::MainContext::default().spawn_local(async move {
+            let result = ImageImporter::import(&path);
+
+            match result {
+                Ok(shape) => {
+                    state.borrow_mut().add_shape_with_undo(shape);
+                    canvas.widget.queue_draw();
+
+                    if let Some(status_bar) = &status_bar {
+                        status_bar.set_state("Image imported successfully");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    if let Some(status_bar) = &status_bar {
+                        status_bar.set_state(&format!("Import error: {}", e));
+                    }
+                }
+            }
+        });
+    }
+
 }
+

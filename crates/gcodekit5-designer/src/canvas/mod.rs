@@ -60,7 +60,6 @@ impl Canvas {
     }
 
     /// Returns the number of shapes on the canvas.
-    /// Returns the number of shapes on the canvas.
     pub fn shape_count(&self) -> usize {
         self.shape_store.len()
     }
@@ -111,9 +110,9 @@ impl Canvas {
         let rect = Rectangle::new(x, y, width, height);
         let (min_x, min_y, max_x, max_y) = rect.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Rectangle(rect)));
+        .insert(id, DrawingObject::new(id, Shape::Rectangle(rect)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -123,9 +122,9 @@ impl Canvas {
         let circle = Circle::new(center, radius);
         let (min_x, min_y, max_x, max_y) = circle.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Circle(circle)));
+        .insert(id, DrawingObject::new(id, Shape::Circle(circle)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -135,7 +134,7 @@ impl Canvas {
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.shape_store.insert(id, DrawingObject::new(id, shape));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -145,9 +144,9 @@ impl Canvas {
         let line = Line::new(start, end);
         let (min_x, min_y, max_x, max_y) = line.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Line(line)));
+        .insert(id, DrawingObject::new(id, Shape::Line(line)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -157,9 +156,9 @@ impl Canvas {
         let ellipse = Ellipse::new(center, rx, ry);
         let (min_x, min_y, max_x, max_y) = ellipse.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Ellipse(ellipse)));
+        .insert(id, DrawingObject::new(id, Shape::Ellipse(ellipse)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -170,9 +169,9 @@ impl Canvas {
         let path_shape = PathShape::from_points(&vertices, true);
         let (min_x, min_y, max_x, max_y) = path_shape.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Path(path_shape)));
+        .insert(id, DrawingObject::new(id, Shape::Path(path_shape)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -182,9 +181,9 @@ impl Canvas {
         let shape = TextShape::new(text, x, y, font_size);
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Text(shape)));
+        .insert(id, DrawingObject::new(id, Shape::Text(shape)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -194,9 +193,9 @@ impl Canvas {
         let triangle = Triangle::new(center, width, height);
         let (min_x, min_y, max_x, max_y) = triangle.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Triangle(triangle)));
+        .insert(id, DrawingObject::new(id, Shape::Triangle(triangle)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -206,9 +205,9 @@ impl Canvas {
         let polygon = Polygon::new(center, radius, sides);
         let (min_x, min_y, max_x, max_y) = polygon.bounds();
         self.shape_store
-            .insert(id, DrawingObject::new(id, Shape::Polygon(polygon)));
+        .insert(id, DrawingObject::new(id, Shape::Polygon(polygon)));
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         id
     }
 
@@ -240,14 +239,65 @@ impl Canvas {
     /// Selects a shape at the given point.
     /// If multi is true, toggles selection of the shape at point while keeping others.
     /// If multi is false, clears other selections and selects the shape at point.
+
     pub fn select_at(&mut self, point: &Point, tolerance: f64, multi: bool) -> Option<u64> {
-        self.selection_manager.select_at(
-            &mut self.shape_store,
-            self.spatial_manager.inner(),
-            point,
-            tolerance,
-            multi,
-        )
+        let margin = tolerance * 2.0;
+        let query_bounds = Bounds::new(
+            point.x - margin,
+            point.y - margin,
+            point.x + margin,
+            point.y + margin
+        );
+
+        let near_ids = self.spatial_manager.query(&query_bounds);
+
+        let mut candidates = Vec::new();
+
+        for &id in &near_ids {
+            if let Some(obj) = self.shape_store.get(id) {
+                let distance = match &obj.shape {
+                    Shape::Path(path) => path.distance_to_point(point),
+                    Shape::Line(line) => line.distance_to_point(point),
+                    _ => {
+                        let (x1, y1, x2, y2) = obj.get_total_bounds();
+                        let closest_x = point.x.clamp(x1, x2);
+                        let closest_y = point.y.clamp(y1, y2);
+                        let dx = point.x - closest_x;
+                        let dy = point.y - closest_y;
+                        (dx*dx + dy*dy).sqrt()
+                    }
+                };
+
+                if distance <= tolerance {
+                    candidates.push((id, distance));
+                }
+            }
+        }
+
+        // Sort by distance
+        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+        if multi {
+            // In multi mode, do not deselect existing ones
+            for &(id, _dist) in &candidates {
+                if let Some(obj) = self.shape_store.get_mut(id) {
+                    obj.selected = true;
+                }
+            }
+        } else {
+            // In normal mode, deselect all first
+            for obj in self.shape_store.iter_mut() {
+                obj.selected = false;
+            }
+
+            // Then select the best one.
+            if let Some(&(best_id, _)) = candidates.first() {
+                if let Some(obj) = self.shape_store.get_mut(best_id) {
+                    obj.selected = true;
+                }
+            }
+        }
+        candidates.first().map(|&(id, _)| id)
     }
 
     /// Selects shapes within or intersecting the given rectangle.
@@ -257,18 +307,18 @@ impl Canvas {
         self.selection_manager.select_in_rect(
             &mut self.shape_store,
             self.spatial_manager.inner(),
-            x,
-            y,
-            width,
-            height,
-            multi,
+                                              x,
+                                              y,
+                                              width,
+                                              height,
+                                              multi,
         );
     }
 
     /// Selects a shape by ID.
     pub fn select_shape(&mut self, id: u64, multi: bool) {
         self.selection_manager
-            .select_id(&mut self.shape_store, id, multi);
+        .select_id(&mut self.shape_store, id, multi);
     }
 
     /// Gets the number of selected shapes.
@@ -279,7 +329,7 @@ impl Canvas {
     /// Removes all selected shapes.
     pub fn remove_selected(&mut self) {
         self.selection_manager
-            .remove_selected(&mut self.shape_store, self.spatial_manager.inner_mut());
+        .remove_selected(&mut self.shape_store, self.spatial_manager.inner_mut());
     }
 
     /// Gets all shapes on the canvas.
@@ -307,7 +357,7 @@ impl Canvas {
         if let Some(obj) = self.shape_store.remove(id) {
             let (min_x, min_y, max_x, max_y) = obj.get_total_bounds();
             self.spatial_manager
-                .remove_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+            .remove_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
 
             if self.selection_manager.selected_id() == Some(id) {
                 self.selection_manager.set_selected_id(None);
@@ -323,7 +373,7 @@ impl Canvas {
         let id = obj.id;
         let (min_x, min_y, max_x, max_y) = obj.get_total_bounds();
         self.spatial_manager
-            .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        .insert_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
         self.shape_store.insert(id, obj);
     }
 
@@ -356,7 +406,9 @@ impl Canvas {
     pub fn is_point_in_selected(&self, point: &Point) -> bool {
         if let Some(id) = self.selection_manager.selected_id() {
             if let Some(obj) = self.shape_store.get(id) {
-                return obj.contains_point(point, 3.0);
+                // Calculate tolerance based on zoom (5 pixels on screen)
+                let tolerance = 5.0 / self.viewport.zoom();
+                return obj.contains_point(point, tolerance);
             }
         }
         false
@@ -380,7 +432,7 @@ impl Canvas {
     /// Fit the viewport to the given world bounds using specified padding.
     pub fn fit_to_bounds(&mut self, min_x: f64, min_y: f64, max_x: f64, max_y: f64, padding: f64) {
         self.viewport
-            .fit_to_bounds(min_x, min_y, max_x, max_y, padding);
+        .fit_to_bounds(min_x, min_y, max_x, max_y, padding);
     }
 
     /// Zooms in.
@@ -510,6 +562,45 @@ impl Canvas {
     pub fn set_selected_id(&mut self, id: Option<u64>) {
         self.selection_manager.set_selected_id(id);
     }
+
+    pub fn select_next_at_position(&mut self, point: &Point, tolerance: f64) -> Option<u64> {
+        // Get all IDs near the point using the spatial manager
+        let near_ids = self.spatial_manager.query_point(point.x, point.y);
+
+        // Collect objects that actually contain the dot
+        let objects_at_point: Vec<u64> = near_ids
+        .iter()
+        .filter_map(|&id| {
+            if let Some(obj) = self.shape_store.get(id) {
+                // Use contains_point method of DrawingObject
+                if obj.contains_point(point, tolerance) {
+                    return Some(id);
+                }
+            }
+            None
+        })
+        .collect();
+
+        if objects_at_point.is_empty() {
+            return None;
+        }
+
+        // If there is a current selection, find the next one.
+        if let Some(current_id) = self.selection_manager.selected_id() {
+            if let Some(pos) = objects_at_point.iter().position(|&id| id == current_id) {
+                // Select the next one (or go back to the first one)
+                let next_idx = (pos + 1) % objects_at_point.len();
+                let next_id = objects_at_point[next_idx];
+                self.select_shape(next_id, false);
+                return Some(next_id);
+            }
+        }
+
+        // If there is no current selection, select the first one.
+        let first_id = objects_at_point[0];
+        self.select_shape(first_id, false);
+        Some(first_id)
+    }
 }
 
 impl Default for Canvas {
@@ -517,3 +608,5 @@ impl Default for Canvas {
         Self::new()
     }
 }
+
+
