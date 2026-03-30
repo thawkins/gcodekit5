@@ -146,8 +146,8 @@ impl PropertiesPanel {
                 self.header.set_text(&format!(
                     "{} [{} {}]",
                     t!("Properties"),
-                    ids.len(),
-                    t!("shapes")
+                                              ids.len(),
+                                              t!("shapes")
                 ));
             }
 
@@ -197,6 +197,9 @@ impl PropertiesPanel {
                         self.image_invert_check.set_active(r.invert);
                         self.image_dithering_combo.set_active_id(Some(&r.dithering));
                         //Force lock aspect ratio and disable the button so it cannot be changed
+                        if !*self.has_focus.borrow() {
+                            self.image_halftone_threshold_entry.set_text(&r.halftone_threshold.to_string());
+                        }
                         self.lock_aspect_ratio.set_active(true);
                         self.lock_aspect_ratio.set_sensitive(false);
                         // Disable the rotation field
@@ -525,6 +528,7 @@ impl PropertiesPanel {
             &self.image_min_power_entry,
             &self.image_max_power_entry,
             &self.image_ppi_entry,
+            &self.image_halftone_threshold_entry,
         ];
 
         for entry in entries {

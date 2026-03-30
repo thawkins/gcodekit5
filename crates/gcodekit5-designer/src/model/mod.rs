@@ -96,6 +96,7 @@ pub struct RasterImage {
     pub invert: bool,
     pub scan_direction: String, // "horizontal" or "vertical"
     pub dithering: String,      // "none", "threshold", "floyd", "atkinson", "bayer"
+    pub halftone_threshold: u8,
 }
 
 impl Default for RasterImage {
@@ -117,6 +118,7 @@ impl Default for RasterImage {
             invert: true,
             scan_direction: "horizontal".to_string(),
             dithering: "none".to_string(),
+            halftone_threshold: 127,
         }
     }
 }

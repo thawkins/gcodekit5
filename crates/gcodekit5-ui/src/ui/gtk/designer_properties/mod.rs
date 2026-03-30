@@ -137,6 +137,7 @@ pub struct PropertiesPanel {
     pub(crate) image_bidirectional_check: CheckButton,
     pub(crate) image_invert_check: CheckButton,
     pub(crate) image_dithering_combo: ComboBoxText,
+    pub(crate) image_halftone_threshold_entry: Entry,
 
 }
 
@@ -262,8 +263,10 @@ impl PropertiesPanel {
             image_bidirectional_check,
             image_invert_check,
             image_dithering_combo,
+            image_halftone_threshold_entry,
         ) = Self::build_image_engraving_section();
             content.append(&image_engraving_frame);
+
 
         // Empty state message
         let empty_label = Label::new(Some(&t!("Select a shape to edit its properties")));
@@ -331,6 +334,7 @@ impl PropertiesPanel {
             image_bidirectional_check,
             image_invert_check,
             image_dithering_combo,
+            image_halftone_threshold_entry,
 
             header,
             x_unit_label,
@@ -704,6 +708,13 @@ impl PropertiesPanel {
 
         handlers::image::setup_dithering_handler(
             &self.image_dithering_combo,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_halftone_threshold_handler(
+            &self.image_halftone_threshold_entry,
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),

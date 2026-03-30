@@ -47,6 +47,7 @@ pub struct EngravingParams {
     pub mirror_y: bool,
     pub rotation: RotationAngle,
     pub halftone: HalftoneMethod,
+    pub halftone_threshold: u8,
     pub offset_x: f32,
     pub offset_y: f32,
     pub power_scale: f32,
@@ -70,6 +71,7 @@ impl Default for EngravingParams {
             mirror_y: false,
             rotation: RotationAngle::Degrees0,
             halftone: HalftoneMethod::None,
+            halftone_threshold: 127,
             offset_x: 10.0,
             offset_y: 10.0,
             power_scale: 1000.0,
@@ -104,6 +106,7 @@ impl ImageEngraver {
 
     /// Create a new engraver from a designer RasterImage
     pub fn from_raster_image(image: &crate::model::RasterImage, params: EngravingParams) -> Result<Self> {
+
         let path = image.original_path.as_ref()
         .ok_or_else(|| anyhow::anyhow!("Image has no original path"))?;
 
@@ -179,7 +182,7 @@ impl ImageEngraver {
 
         } else {
             match params.halftone {
-                HalftoneMethod::Threshold => Self::threshold(image, 127),
+                HalftoneMethod::Threshold => Self::threshold(image, params.halftone_threshold),
                 HalftoneMethod::Bayer4x4 => Self::bayer_dither(image),
                 HalftoneMethod::FloydSteinberg => Self::floyd_steinberg(image),
                 HalftoneMethod::Atkinson => Self::atkinson(image),
@@ -189,11 +192,11 @@ impl ImageEngraver {
         Ok(())
     }
 
-    fn threshold(image: &mut GrayImage, threshold: u8) {
-        for pixel in image.pixels_mut() {
-            pixel.0[0] = if pixel.0[0] >= threshold { 255 } else { 0 };
-        }
+fn threshold(image: &mut GrayImage, threshold: u8) {
+    for pixel in image.pixels_mut() {
+        pixel.0[0] = if pixel.0[0] >= threshold { 255 } else { 0 };
     }
+}
 
     fn bayer_dither(image: &mut GrayImage) {
         let bayer = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];

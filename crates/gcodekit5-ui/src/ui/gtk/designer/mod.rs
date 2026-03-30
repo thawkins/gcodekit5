@@ -566,6 +566,7 @@ impl DesignerView {
                         "atkinson" => image_engraver::HalftoneMethod::Atkinson,
                         _ => image_engraver::HalftoneMethod::None,
                     },
+                    halftone_threshold: raster_image.halftone_threshold,
                     offset_x: (raster_image.center.x - raster_image.width_mm / 2.0) as f32,
                     offset_y: (raster_image.center.y - raster_image.height_mm / 2.0) as f32,
                     power_scale: 1000.0,

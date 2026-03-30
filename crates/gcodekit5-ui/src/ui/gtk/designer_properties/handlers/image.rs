@@ -316,3 +316,64 @@ pub fn setup_dithering_handler(
         }
     });
 }
+
+// Handler for halftone_threshold
+pub fn setup_halftone_threshold_handler(
+    entry: &Entry,
+    state: Shared<DesignerState>,
+    redraw_callback: SharedOption<Rc<dyn Fn()>>,
+    updating: Shared<bool>,
+) {
+    let state_clone = state.clone();
+    let updating_clone = updating.clone();
+    let redraw = redraw_callback.clone();
+
+    entry.connect_changed(move |entry| {
+        if *updating_clone.borrow() {
+            return;
+        }
+
+        let text = entry.text();
+        let threshold = match text.parse::<u8>() {
+            Ok(val) => val.clamp(0, 255),
+            Err(_) => return,
+        };
+
+        let mut designer_state = match state_clone.try_borrow_mut() {
+            Ok(state) => state,
+            Err(_) => return, // No se puede obtener el lock, salir
+        };
+
+        let mut modified = false;
+        let mut ids_to_update = Vec::new();
+
+        for shape in designer_state.canvas.shapes() {
+            if shape.selected && matches!(shape.shape, Shape::RasterImage(_)) {
+                ids_to_update.push(shape.id);
+            }
+        }
+
+        if ids_to_update.is_empty() {
+            return;
+        }
+
+        for shape in designer_state.canvas.shapes_mut() {
+            if ids_to_update.contains(&shape.id) {
+                if let Shape::RasterImage(img) = &mut shape.shape {
+                    if img.halftone_threshold != threshold {
+                        img.halftone_threshold = threshold;
+                        modified = true;
+                    }
+                }
+            }
+        }
+
+        drop(designer_state);
+
+        if modified {
+            if let Some(cb) = redraw.borrow().as_ref() {
+                cb();
+            }
+        }
+    });
+}
