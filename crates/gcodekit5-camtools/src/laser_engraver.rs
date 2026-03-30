@@ -427,9 +427,7 @@ impl BitmapImageEngraver {
     where
         F: FnMut(f32),
     {
-        println!("📝 laser_engraver. pub fn generate_gcode_with_progress");
         let mut gcode = String::new();
-
         gcode.push_str("; Laser Image Engraving G-code\n");
         gcode.push_str(&format!(
             "; Generated: {}\n",
@@ -454,7 +452,7 @@ impl BitmapImageEngraver {
         ));
         gcode.push_str(&format!(
             "; Estimated time: {:.1} minutes\n",
-            self.estimate_time() / 6.0 // ---   / 60.0
+            self.estimate_time() / 6.0
         ));
         gcode.push_str(";\n");
 
@@ -542,7 +540,6 @@ impl BitmapImageEngraver {
     where
         F: FnMut(f32),
     {
-        println!("📝 laser_engraver. fn generate_horizontal_scan_with_progress");
         let height = image.height();
         let width = image.width();
         let mut left_to_right = true;
@@ -580,8 +577,6 @@ impl BitmapImageEngraver {
         Ok(())
     }
 
-// ---
-
 fn scan_line(
     &self,
     gcode: &mut String,
@@ -591,7 +586,6 @@ fn scan_line(
     pixel_width: f32,
     left_to_right: bool,
 ) {
-    println!("📝 laser_engraver. fn scan_line(");
     let width = image.width();
     let mut in_burn = false;
     let mut current_power = 0u32;
@@ -610,15 +604,14 @@ for &x in &indices {
             let power = self.intensity_to_power(intensity);
             let mut power_value = (power * self.params.power_scale / 100.0).round() as u32;
 
-            // 1. Filtro de umbral
+            // Threshold filter
             if power_value < 5 {
                 power_value = 0;
             }
 
-            // 2. NUEVO: Redondeo de potencia para "aplanar" colores similares
-            // Esto agrupa valores cercanos (ej: 171, 172, 174 se vuelven todos 170)
+            // Power rounding to "flatten" similar colors
             if power_value > 0 {
-                let step = 5; // Puedes probar con 5 o 10
+                let step = 5; // try with 5 or 10
                 power_value = (power_value / step) * step;
             }
 
@@ -631,11 +624,11 @@ for &x in &indices {
                 current_power = power_value;
                 segment_start = x_pos;
                 segment_end = x_pos;
-                first_segment_of_burst = true; // Es un inicio tras un espacio en blanco
+                first_segment_of_burst = true;
             } else if power_value == current_power {
                 segment_end = x_pos;
             } else {
-                // Cambio de potencia pegado al anterior: is_new_segment = first_segment_of_burst
+                // Power change attached to the previous one: is_new_segment = first_segment_of_burst
                 self.emit_segment(gcode, segment_start, segment_end, y_pos, current_power, left_to_right, first_segment_of_burst);
 
                 current_power = power_value;
@@ -657,8 +650,6 @@ for &x in &indices {
     }
 }
 
-
-
 fn emit_segment(
     &self,
     gcode: &mut String,
@@ -669,27 +660,22 @@ fn emit_segment(
     left_to_right: bool,
     is_new_segment: bool,
 ) {
-    println!("📝 laser_engraver. fn emit_segment");
     let pos_x = if left_to_right { start } else { end };
     let target_x = if left_to_right { end } else { start };
 
         if is_new_segment {
-            // Posicionamiento rápido
+            // Rapid positioning
             gcode.push_str(&format!("G0 X{:.3} Y{:.3} S0\n", pos_x, y_pos));
-
-            // Primera línea del segmento: AQUÍ definimos F y M4
+            // First line of the segment
             gcode.push_str(&format!(
                 "G1 X{:.3} S{} F{:.0} M4\n",
                 target_x, power, self.params.feed_rate
             ));
         } else {
-            // Continuación del segmento: Solo enviamos X y S (F y M4 ya están activos)
+            // Continuation of the segment
             gcode.push_str(&format!("G1 X{:.3} S{}\n", target_x, power));
         }
 }
-
-// ---
-
 
     fn generate_vertical_scan_with_progress<F>(
         &self,
@@ -702,7 +688,6 @@ fn emit_segment(
     where
         F: FnMut(f32),
     {
-        println!("📝 laser_engraver. fn generate_vertical_scan_with_progress");
         let height = image.height();
         let width = image.width();
         let mut top_to_bottom = true;

@@ -588,7 +588,7 @@ pub fn main() {
             }
         });
         app.add_action(&import_action);
-// ---
+
         let import_image_action = gio::SimpleAction::new("file_import_image", None);
 
         let designer_clone_image = designer.clone();
@@ -597,7 +597,7 @@ pub fn main() {
         });
         app.add_action(&import_image_action);
         app.set_accels_for_action("app.file_import_image", &["<Control><Shift>i"]);
-// ---
+
         let export_gcode_action = gio::SimpleAction::new("file_export_gcode", None);
         let designer_clone_gcode = designer.clone();
         let stack_clone_gcode = stack.clone();

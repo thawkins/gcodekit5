@@ -1090,7 +1090,6 @@ pub fn generate_ellipse_pocket(
 
         self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
     }
-// ---
 
 pub fn generate_path_contour(&self, path_shape: &PathShape, step_down: f64) -> Vec<Toolpath> {
     let mut segments = Vec::new();

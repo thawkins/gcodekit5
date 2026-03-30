@@ -29,33 +29,32 @@ impl DesignLine {
         }
     }
 
-// ---
 pub fn distance_to_point(&self, point: &Point) -> f64 {
         // Vector de start a end
         let dx = self.end.x - self.start.x;
         let dy = self.end.y - self.start.y;
 
-        // Si la línea es un punto
+        // If the line is a point
         if dx == 0.0 && dy == 0.0 {
             let dx = point.x - self.start.x;
             let dy = point.y - self.start.y;
             return (dx*dx + dy*dy).sqrt();
         }
 
-        // Proyección del punto sobre la línea
+        // Projection of the point onto the line
         let t = ((point.x - self.start.x) * dx + (point.y - self.start.y) * dy) / (dx*dx + dy*dy);
 
-        // Encontrar el punto más cercano en el segmento
+        // Find the nearest point on the segment
         let t_clamped = t.clamp(0.0, 1.0);
         let proj_x = self.start.x + t_clamped * dx;
         let proj_y = self.start.y + t_clamped * dy;
 
-        // Distancia al punto proyectado
+        // Distance to the projected point
         let dx = point.x - proj_x;
         let dy = point.y - proj_y;
         (dx*dx + dy*dy).sqrt()
     }
-// ---
+
     pub fn current_angle_degrees(&self) -> f64 {
         let dx = self.end.x - self.start.x;
         let dy = self.end.y - self.start.y;
