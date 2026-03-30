@@ -1,6 +1,7 @@
 //! UI section builder methods for the properties panel.
 
 use super::*;
+use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
 impl PropertiesPanel {
@@ -11,13 +12,13 @@ impl PropertiesPanel {
     pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let x_label = Label::new(Some(&t!("X:")));
         x_label.set_halign(gtk4::Align::Start);
@@ -51,13 +52,13 @@ impl PropertiesPanel {
     pub(crate) fn build_size_section() -> (Frame, Entry, Entry, CheckButton, Label, Label) {
         let frame = Self::create_section(&t!("Size"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let width_label = Label::new(Some(&t!("Width:")));
         width_label.set_halign(gtk4::Align::Start);
@@ -94,24 +95,24 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-            width_entry,
-            height_entry,
-            lock_aspect_ratio,
-            width_unit_label,
-            height_unit_label,
+         width_entry,
+         height_entry,
+         lock_aspect_ratio,
+         width_unit_label,
+         height_unit_label,
         )
     }
 
     pub(crate) fn build_rotation_section() -> (Frame, Entry) {
         let frame = Self::create_section(&t!("Rotation:"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let rot_label = Label::new(Some(&t!("Angle:")));
         rot_label.set_halign(gtk4::Align::Start);
@@ -130,13 +131,13 @@ impl PropertiesPanel {
     pub(crate) fn build_corner_section() -> (Frame, Entry, CheckButton, Label) {
         let frame = Self::create_section(&t!("Corner"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let radius_label = Label::new(Some(&t!("Radius:")));
         radius_label.set_halign(gtk4::Align::Start);
@@ -172,13 +173,13 @@ impl PropertiesPanel {
     ) {
         let frame = Self::create_section(&t!("Text:"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let text_content_label = Label::new(Some(&t!("Content:")));
         text_content_label.set_halign(gtk4::Align::Start);
@@ -227,25 +228,25 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-            text_entry,
-            font_family_combo,
-            font_bold_check,
-            font_italic_check,
-            font_size_entry,
-            font_size_unit_label,
+         text_entry,
+         font_family_combo,
+         font_bold_check,
+         font_italic_check,
+         font_size_entry,
+         font_size_unit_label,
         )
     }
 
     pub(crate) fn build_polygon_section() -> (Frame, Entry) {
         let frame = Self::create_section(&t!("Polygon"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let sides_label = Label::new(Some(&t!("Sides:")));
         sides_label.set_halign(gtk4::Align::Start);
@@ -262,13 +263,13 @@ impl PropertiesPanel {
     pub(crate) fn build_gear_section() -> (Frame, Entry, Entry, Entry) {
         let frame = Self::create_section(&t!("Gear"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let module_label = Label::new(Some(&t!("Module:")));
         module_label.set_halign(gtk4::Align::Start);
@@ -295,22 +296,22 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-            gear_module_entry,
-            gear_teeth_entry,
-            gear_pressure_angle_entry,
+         gear_module_entry,
+         gear_teeth_entry,
+         gear_pressure_angle_entry,
         )
     }
 
     pub(crate) fn build_sprocket_section() -> (Frame, Entry, Entry, Entry) {
         let frame = Self::create_section(&t!("Sprocket"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let pitch_label = Label::new(Some(&t!("Pitch:")));
         pitch_label.set_halign(gtk4::Align::Start);
@@ -337,9 +338,9 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-            sprocket_pitch_entry,
-            sprocket_teeth_entry,
-            sprocket_roller_diameter_entry,
+         sprocket_pitch_entry,
+         sprocket_teeth_entry,
+         sprocket_roller_diameter_entry,
         )
     }
 
@@ -347,13 +348,13 @@ impl PropertiesPanel {
     {
         let frame = Self::create_section(&t!("Geometry Operations"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         let offset_label = Label::new(Some(&t!("Offset:")));
         offset_label.set_halign(gtk4::Align::Start);
@@ -389,12 +390,12 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-            offset_entry,
-            fillet_entry,
-            chamfer_entry,
-            offset_unit_label,
-            fillet_unit_label,
-            chamfer_unit_label,
+         offset_entry,
+         fillet_entry,
+         chamfer_entry,
+         offset_unit_label,
+         fillet_unit_label,
+         chamfer_unit_label,
         )
     }
 
@@ -415,13 +416,13 @@ impl PropertiesPanel {
     ) {
         let frame = Self::create_section(&t!("CAM Properties"));
         let grid = gtk4::Grid::builder()
-            .row_spacing(8)
-            .column_spacing(8)
-            .margin_start(8)
-            .margin_end(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .build();
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
 
         // Operation Type
         let op_label = Label::new(Some(&t!("Operation:")));
@@ -514,16 +515,143 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-            op_type_combo,
-            depth_entry,
-            step_down_entry,
-            step_in_entry,
-            ramp_angle_entry,
-            strategy_combo,
-            raster_fill_entry,
-            depth_unit_label,
-            step_down_unit_label,
-            step_in_unit_label,
+         op_type_combo,
+         depth_entry,
+         step_down_entry,
+         step_in_entry,
+         ramp_angle_entry,
+         strategy_combo,
+         raster_fill_entry,
+         depth_unit_label,
+         step_down_unit_label,
+         step_in_unit_label,
         )
     }
+
+    pub(crate) fn build_image_engraving_section() -> (
+        Frame,
+        Entry,  // feed_rate
+        Entry,  // travel_rate
+        Entry,  // min_power
+        Entry,  // max_power
+        Entry,  // ppi
+        ComboBoxText, // scan_direction
+        CheckButton,  // bidirectional
+        CheckButton,  // invert
+        ComboBoxText,  // dithering
+    ) {
+        let frame = Self::create_section(&t!("Laser Engraving"));
+        let grid = gtk4::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_start(8)
+        .margin_end(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
+
+        // Feed Rate
+        let feed_label = Label::new(Some(&t!("Feed Rate:")));
+        let feed_entry = Entry::new();
+        let feed_unit = Label::new(Some("mm/s"));
+        feed_entry.set_text(&RasterImage::default().feed_rate.to_string());
+
+        // Travel Rate
+        let travel_label = Label::new(Some(&t!("Travel Rate:")));
+        let travel_entry = Entry::new();
+        let travel_unit = Label::new(Some("mm/s"));
+        travel_entry.set_text(&RasterImage::default().travel_rate.to_string());
+
+        // Min Power
+        let min_power_label = Label::new(Some(&t!("Min Power:")));
+        let min_power_entry = Entry::new();
+        let power_unit = Label::new(Some("%"));
+        min_power_entry.set_text(&RasterImage::default().min_power.to_string());
+
+        // Max Power
+        let max_power_label = Label::new(Some(&t!("Max Power:")));
+        let max_power_entry = Entry::new();
+        let max_power_unit = Label::new(Some("%"));
+        max_power_entry.set_text(&RasterImage::default().max_power.to_string());
+
+        // PPI
+        let ppi_label = Label::new(Some(&t!("Resolution:")));
+        let ppi_entry = Entry::new();
+        let ppi_unit = Label::new(Some("PPI"));
+        ppi_entry.set_text(&RasterImage::default().ppi.to_string());
+
+        // Scan Direction
+        let scan_label = Label::new(Some(&t!("Scan Direction:")));
+        let scan_combo = ComboBoxText::new();
+        scan_combo.append(Some("horizontal"), &t!("Horizontal"));
+        scan_combo.append(Some("vertical"), &t!("Vertical"));
+        scan_combo.set_active_id(Some(&RasterImage::default().scan_direction));
+
+        // Bidirectional
+        let bidir_label = Label::new(Some(&t!("Bidirectional:")));
+        let bidir_check = CheckButton::new();
+        bidir_check.set_active(RasterImage::default().bidirectional);
+
+        // Dithering
+        let dither_label = Label::new(Some(&t!("Dithering:")));
+        let dither_combo = ComboBoxText::new();
+        dither_combo.append(Some("none"), &t!("None"));
+        dither_combo.append(Some("threshold"), &t!("Threshold"));
+        dither_combo.append(Some("floyd"), &t!("Floyd-Steinberg"));
+        dither_combo.append(Some("atkinson"), &t!("Atkinson"));
+        dither_combo.append(Some("bayer"), &t!("Bayer"));
+        dither_combo.set_active_id(Some(&RasterImage::default().dithering));
+
+        // Invert
+        let invert_label = Label::new(Some(&t!("Invert:")));
+        let invert_check = CheckButton::new();
+
+        // Layout
+        grid.attach(&feed_label, 0, 0, 1, 1);
+        grid.attach(&feed_entry, 1, 0, 1, 1);
+        grid.attach(&feed_unit, 2, 0, 1, 1);
+
+        grid.attach(&travel_label, 0, 1, 1, 1);
+        grid.attach(&travel_entry, 1, 1, 1, 1);
+        grid.attach(&travel_unit, 2, 1, 1, 1);
+
+        grid.attach(&min_power_label, 0, 2, 1, 1);
+        grid.attach(&min_power_entry, 1, 2, 1, 1);
+        grid.attach(&power_unit, 2, 2, 1, 1);
+
+        grid.attach(&max_power_label, 0, 3, 1, 1);
+        grid.attach(&max_power_entry, 1, 3, 1, 1);
+        grid.attach(&max_power_unit, 2, 3, 1, 1);
+
+        grid.attach(&ppi_label, 0, 4, 1, 1);
+        grid.attach(&ppi_entry, 1, 4, 1, 1);
+        grid.attach(&ppi_unit, 2, 4, 1, 1);
+
+        grid.attach(&scan_label, 0, 5, 1, 1);
+        grid.attach(&scan_combo, 1, 5, 1, 1);
+
+        grid.attach(&bidir_label, 0, 6, 1, 1);
+        grid.attach(&bidir_check, 1, 6, 1, 1);
+
+        grid.attach(&invert_label, 0, 7, 1, 1);
+        grid.attach(&invert_check, 1, 7, 1, 1);
+
+        grid.attach(&dither_label, 0, 8, 1, 1);
+        grid.attach(&dither_combo, 1, 8, 1, 1);
+
+        frame.set_child(Some(&grid));
+        (
+            frame,
+         feed_entry,
+         travel_entry,
+         min_power_entry,
+         max_power_entry,
+         ppi_entry,
+         scan_combo,
+         bidir_check,
+         invert_check,
+         dither_combo,
+        )
+    }
+
 }

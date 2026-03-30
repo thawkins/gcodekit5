@@ -134,6 +134,7 @@ impl DrawingObject {
             ShapeType::Polygon => "Polygon",
             ShapeType::Gear => "Gear",
             ShapeType::Sprocket => "Sprocket",
+            ShapeType::RasterImage => "Raster Image",
         }
         .to_string();
 

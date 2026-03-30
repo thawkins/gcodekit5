@@ -12,8 +12,7 @@ use crate::model::{DesignerShape};
 use crate::{font_manager, Canvas};
 use image::{Rgb, RgbImage};
 use rusttype::{point as rt_point, Scale};
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
-
+use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform, PixmapPaint};
 
 const HANDLE_SIZE: f32 = 18.0; // Increased from 12.0 for easier cursor positioning
 
@@ -288,6 +287,58 @@ pub fn render_canvas(
                     pixmap.fill_path(&p, &paint, FillRule::Winding, transform, None);
                 }
             }
+
+            crate::model::Shape::RasterImage(raster) => {
+                use image::GenericImageView;
+
+
+
+                // Attempt to decode PNG image
+                match image::load_from_memory(&raster.image_data) {
+                    Ok(img) => {
+                        let (img_w, img_h) = img.dimensions();
+                        let target_w = raster.width_mm as f32;
+                        let target_h = raster.height_mm as f32;
+
+                        let rgba = img.to_rgba8();
+                        let data = rgba.as_raw();
+
+                        use tiny_skia::IntSize;
+                        let size = IntSize::from_wh(img_w, img_h).unwrap();
+                        match tiny_skia::Pixmap::from_vec(data.clone(), size) {
+                            Some(img_pixmap) => {
+                                let (x1, y1, _, _) = raster.bounds();
+                                let scale_x = target_w / img_w as f32;
+                                let scale_y = target_h / img_h as f32;
+                                let transform = Transform::from_translate(x1 as f32, y1 as f32)
+                                    .post_scale(scale_x, scale_y);
+
+                                let paint = PixmapPaint::default();
+                                pixmap.draw_pixmap(0, 0, img_pixmap.as_ref(), &paint, transform, None);
+                                eprintln!("Image drawn");
+                            }
+                            None => eprintln!("Failed to create pixmap from data"),
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to load image from memory: {}", e),
+                }
+
+                // Draw the border around the image
+                let (x1, y1, x2, y2) = raster.bounds();
+                let rect = Rect::from_xywh(x1 as f32, y1 as f32, (x2 - x1) as f32, (y2 - y1) as f32);
+                if let Some(r) = rect {
+                    let path = PathBuilder::from_rect(r);
+                    let mut stroke_paint = Paint::default();
+                    stroke_paint.set_color(tiny_skia::Color::from_rgba8(0, 0, 0, 255));
+                    stroke_paint.anti_alias = true;
+                    let stroke = Stroke {
+                        width: 1.0 / zoom,
+                        ..Default::default()
+                    };
+                    pixmap.stroke_path(&path, &stroke_paint, &stroke, transform, None);
+                }
+            }
+
             crate::model::Shape::Text(text_shape) => {
                 // Text rendering using rusttype, drawing di(rect.center.y - rect.height/2.0) to pixmap pixels or using paths
                 // For simplicity and quality, let's convert glyphs to paths if possible, or just draw pixels.

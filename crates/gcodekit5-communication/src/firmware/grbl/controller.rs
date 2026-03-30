@@ -116,7 +116,7 @@ impl GrblController {
             let mut last_poll = Instant::now();
 
             // We use a short sleep to prevent busy looping when no data
-            let loop_delay = Duration::from_millis(10);
+            let loop_delay = Duration::from_millis(1); // ---  Era 10
 
             loop {
                 // Check for shutdown

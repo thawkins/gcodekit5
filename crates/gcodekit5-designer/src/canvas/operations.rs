@@ -2,7 +2,7 @@
 
 use super::types::{Alignment, DrawingObject};
 use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape, RasterImage,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
     DesignTriangle as Triangle, DesignerShape, Point, Shape, ShapeType
 };
@@ -323,6 +323,19 @@ impl Canvas {
                         sprocket.teeth,
                     ))
                 }
+
+                Shape::RasterImage(_) => {
+                    // For raster images, maintain the dimensions
+                    Shape::RasterImage(RasterImage::new(
+                        0,
+                        Point::new(snapped_x1 + snapped_width / 2.0, snapped_y1 + snapped_height / 2.0),
+                        snapped_width,
+                        snapped_height,
+                        vec![],
+                        None,
+                    ))
+                }
+
             };
 
             let mut new_obj = obj.clone();
@@ -474,6 +487,12 @@ impl Canvas {
                                 shape.clone()
                             }
                     }
+
+                    ShapeType::RasterImage => {
+                        // For raster images, maintain the original shape or clone
+                        shape.clone()
+                    }
+
                 };
                 obj.shape = new_shape;
 

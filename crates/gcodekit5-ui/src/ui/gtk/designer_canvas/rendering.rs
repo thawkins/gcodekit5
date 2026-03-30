@@ -4,6 +4,7 @@ use super::*;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::{DesignerShape, Point, Shape};
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
+use image::GenericImageView;
 
 impl DesignerCanvas {
     // Canvas rendering requires all transform, theme, and state parameters.
@@ -434,6 +435,7 @@ impl DesignerCanvas {
         }
 
         match shape {
+            Shape::RasterImage(raster) => raster.bounds(),
             Shape::Rectangle(rect) => {
                 if rect.rotation.abs() <= 1e-9 {
                     return rect.bounds();
@@ -522,6 +524,76 @@ impl DesignerCanvas {
 
     fn draw_shape_geometry(cr: &gtk4::cairo::Context, shape: &Shape) {
         match shape {
+
+            Shape::RasterImage(raster) => {
+                // Load the image from the data
+                if let Ok(img) = image::load_from_memory(&raster.image_data) {
+                    let (img_w, img_h) = img.dimensions();
+                    let target_w = raster.width_mm;
+                    let target_h = raster.height_mm;
+                    let (x1, y1, _, _) = raster.bounds();
+
+                    // Convert to RGBA
+                    let rgba = img.to_rgba8();
+                    let data = rgba.as_raw();
+
+                    // Create image surface in Cairo
+                    use gtk4::cairo::ImageSurface;
+                    use gtk4::cairo::Format;
+
+                    if let Ok(mut surface) = ImageSurface::create(Format::ARgb32, img_w as i32, img_h as i32) {
+                        // Cairo expects ARGB, convert RGBA to ARGB
+                        let stride = surface.stride() as usize;
+                        {
+                            let mut surface_data = surface.data().unwrap();
+
+                            for y in 0..img_h {
+                                for x in 0..img_w {
+                                    let src_idx = ((y * img_w + x) * 4) as usize;
+                                    let dst_idx = (y as usize * stride) + (x as usize * 4);
+
+                                    let r = data[src_idx];
+                                    let g = data[src_idx + 1];
+                                    let b = data[src_idx + 2];
+                                    let a = data[src_idx + 3];
+
+                                    // Cairo ARGB: A R G B
+                                    surface_data[dst_idx] = b;
+                                    surface_data[dst_idx + 1] = g;
+                                    surface_data[dst_idx + 2] = r;
+                                    surface_data[dst_idx + 3] = a;
+                                }
+                            }
+                        }
+
+                        surface.mark_dirty();
+
+                        // Draw the scaled image
+                        let _ = cr.save();
+                        let _ = cr.translate(x1, y1 + target_h);
+                        let _ = cr.scale(target_w / img_w as f64, -target_h / img_h as f64);
+                        let _ = cr.set_source_surface(&surface, 0.0, 0.0);
+                        let _ = cr.paint();
+                        let _ = cr.restore();
+
+                        // Draw border
+                        let _ = cr.rectangle(x1, y1, target_w, target_h);
+                        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                        let _ = cr.stroke();
+                        return;
+                    }
+                }
+
+                // Fallback: rectángulo gris
+                let (x1, y1, x2, y2) = raster.bounds();
+                cr.rectangle(x1, y1, x2 - x1, y2 - y1);
+                cr.set_source_rgba(0.7, 0.7, 0.7, 0.5);
+                let _ = cr.fill();
+                cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                let _ = cr.stroke();
+            }
+
+
             Shape::Rectangle(rect) => {
                 let _ = cr.save();
                 cr.translate(rect.center.x, rect.center.y);
@@ -1047,6 +1119,14 @@ impl DesignerCanvas {
                     sprocket.pitch *= s;
                     sprocket.roller_diameter *= s;
                 }
+
+                Shape::RasterImage(raster) => {
+                    raster.center.x = anchor.x + (raster.center.x - anchor.x) * sx;
+                    raster.center.y = anchor.y + (raster.center.y - anchor.y) * sy;
+                    raster.width_mm *= sx.abs();
+                    raster.height_mm *= sy.abs();
+                }
+
             }
         }
     }

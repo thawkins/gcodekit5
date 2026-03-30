@@ -54,6 +54,8 @@ pub struct DeviceConsoleManager {
     auto_scroll_enabled: ThreadSafe<bool>,
     /// Event callbacks (with interior mutability)
     on_event: ThreadSafeVec<DataCallback<ConsoleEvent>>,
+    /// Modo silencioso - no mostrar mensajes en consola
+    silent_mode: ThreadSafe<bool>,
 }
 
 impl DeviceConsoleManager {
@@ -64,38 +66,44 @@ impl DeviceConsoleManager {
             verbose_enabled: thread_safe(false),
             auto_scroll_enabled: thread_safe(true),
             on_event: thread_safe_vec(),
+            silent_mode: thread_safe(false),
         }
     }
 
     /// Add message to console
-    pub fn add_message(&self, msg_type: DeviceMessageType, content: impl Into<String>) {
-        let content = content.into();
-
-        let level = match msg_type {
-            DeviceMessageType::Output => MessageLevel::Info,
-            DeviceMessageType::Error => MessageLevel::Error,
-            DeviceMessageType::Verbose => MessageLevel::Debug,
-            DeviceMessageType::Success => MessageLevel::Success,
-            DeviceMessageType::Command => MessageLevel::Info,
-        };
-
-        // Check if verbose filtering applies - recover from poisoned lock
-        let verbose_check = self.verbose_enabled.lock();
-        if msg_type == DeviceMessageType::Verbose && !*verbose_check {
-            return;
-        }
-
-        {
-            let mut console = self.console.lock();
-            if msg_type == DeviceMessageType::Command {
-                console.add_command(&content);
-            } else {
-                console.add_message(level, &content);
-            }
-        }
-
-        self.emit_event(ConsoleEvent::MessageReceived { msg_type, content });
+pub fn add_message(&self, msg_type: DeviceMessageType, content: impl Into<String>) {
+    // Si estamos en modo silencioso, no mostrar nada
+    if *self.silent_mode.lock() {
+        return;
     }
+
+    let content = content.into();
+
+    let level = match msg_type {
+        DeviceMessageType::Output => MessageLevel::Info,
+        DeviceMessageType::Error => MessageLevel::Error,
+        DeviceMessageType::Verbose => MessageLevel::Debug,
+        DeviceMessageType::Success => MessageLevel::Success,
+        DeviceMessageType::Command => MessageLevel::Info,
+    };
+
+    // Check if verbose filtering applies - recover from poisoned lock
+    let verbose_check = self.verbose_enabled.lock();
+    if msg_type == DeviceMessageType::Verbose && !*verbose_check {
+        return;
+    }
+
+    {
+        let mut console = self.console.lock();
+        if msg_type == DeviceMessageType::Command {
+            console.add_command(&content);
+        } else {
+            console.add_message(level, &content);
+        }
+    }
+
+    self.emit_event(ConsoleEvent::MessageReceived { msg_type, content });
+}
 
     /// Add command to history
     pub fn add_command_to_history(&self, command: impl Into<String>) {
@@ -228,7 +236,19 @@ impl DeviceConsoleManager {
             callbacks.push(Box::new(callback));
         }
     }
+
+        /// Activar/desactivar modo silencioso (para grabado de imágenes)
+        pub fn set_silent_mode(&self, enabled: bool) {
+            *self.silent_mode.lock() = enabled;
+        }
+
+        /// Obtener estado del modo silencioso
+        pub fn is_silent_mode(&self) -> bool {
+            *self.silent_mode.lock()
+        }
+
 }
+
 
 impl Default for DeviceConsoleManager {
     fn default() -> Self {
@@ -296,6 +316,7 @@ impl CommunicatorListener for ConsoleListener {
     }
 
     fn on_data_received(&self, data: &[u8]) {
+
         if let Ok(text) = std::str::from_utf8(data) {
             let trimmed = text.trim();
 
@@ -418,6 +439,7 @@ impl CommunicatorListener for ConsoleListener {
     }
 
     fn on_data_sent(&self, data: &[u8]) {
+
         if let Ok(text) = std::str::from_utf8(data) {
             let trimmed = text.trim();
 

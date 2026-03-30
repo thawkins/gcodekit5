@@ -135,7 +135,7 @@ pub struct ShapeData {
 }
 
 fn default_lock_aspect_ratio() -> bool {
-    false //true
+    false // true
 }
 
 fn default_raster_fill_ratio() -> f64 {
@@ -326,7 +326,7 @@ impl DesignFile {
             ShapeType::Polygon => "polygon",
             ShapeType::Gear => "gear",
             ShapeType::Sprocket => "sprocket",
-            //      ShapeType::Polyline => "polyline",
+            ShapeType::RasterImage => "raster_image",
         };
 
         let rotation = obj.shape.rotation();
@@ -573,7 +573,7 @@ impl DesignFile {
             Shape::Polygon(s) => s.rotation = data.rotation,
             Shape::Gear(s) => s.rotation = data.rotation,
             Shape::Sprocket(s) => s.rotation = data.rotation,
-            //            Shape::Polyline(s) => s.rotation = data.rotation,
+            Shape::RasterImage(s) => s.rotation = data.rotation,
         }
 
         let operation_type = match data.operation_type.as_str() {
@@ -592,7 +592,7 @@ impl DesignFile {
             crate::model::ShapeType::Polygon => "Polygon",
             crate::model::ShapeType::Gear => "Gear",
             crate::model::ShapeType::Sprocket => "Sprocket",
-            //            crate::model::ShapeType::Polyline => "Polyline",
+            crate::model::ShapeType::RasterImage => "Raster Image",
         };
 
         Ok(DrawingObject {

@@ -31,6 +31,7 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::{debug, info};
+// use gcodekit5_core::thread_safe_none;
 
 pub fn main() {
     let app = Application::builder()
@@ -147,6 +148,7 @@ pub fn main() {
         file_menu.append(Some(&t!("Save")), Some("app.file_save"));
         file_menu.append(Some(&t!("Save As...")), Some("app.file_save_as"));
         file_menu.append(Some(&t!("Import")), Some("app.file_import"));
+        file_menu.append(Some(&t!("Import Image...")), Some("app.file_import_image"));
         file_menu.append(Some(&t!("Export G-Code...")), Some("app.file_export_gcode"));
         file_menu.append(Some(&t!("Export SVG...")), Some("app.file_export_svg"));
         file_menu.append(Some(&t!("Run")), Some("app.file_run"));
@@ -207,10 +209,10 @@ pub fn main() {
         // 2. Machine Control
         let machine_control = MachineControlView::new(
             Some(status_bar.clone()),
-                                                      Some(device_console.clone()),
-                                                      Some(editor.clone()),
-                                                      Some(visualizer.clone()),
-                                                      Some(settings_controller.clone()),
+            Some(device_console.clone()),
+            Some(editor.clone()),
+            Some(visualizer.clone()),
+            Some(settings_controller.clone()),
         );
 
         // Wire up ConsoleListener for command parsing and logging
@@ -586,7 +588,16 @@ pub fn main() {
             }
         });
         app.add_action(&import_action);
+// ---
+        let import_image_action = gio::SimpleAction::new("file_import_image", None);
 
+        let designer_clone_image = designer.clone();
+        import_image_action.connect_activate(move |_, _| {
+            designer_clone_image.import_image_file();
+        });
+        app.add_action(&import_image_action);
+        app.set_accels_for_action("app.file_import_image", &["<Control><Shift>i"]);
+// ---
         let export_gcode_action = gio::SimpleAction::new("file_export_gcode", None);
         let designer_clone_gcode = designer.clone();
         let stack_clone_gcode = stack.clone();

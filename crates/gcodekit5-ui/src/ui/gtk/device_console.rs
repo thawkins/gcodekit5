@@ -14,6 +14,7 @@ use std::{borrow::Cow, rc::Rc};
 use crate::ui::gtk::command_history::CommandHistory;
 use gcodekit5_core::{shared, Shared};
 
+#[derive(Clone)]
 pub struct DeviceConsoleView {
     pub widget: Paned,
     pub console_text: TextView,

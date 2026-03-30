@@ -24,6 +24,7 @@ use gtk4::{
     ScrolledWindow, StringList,
 };
 use std::rc::Rc;
+use gtk4::ComboBoxText;
 
 const MM_PER_PT: f64 = 25.4 / 72.0;
 
@@ -124,6 +125,18 @@ pub struct PropertiesPanel {
     pub(crate) aspect_ratio: Shared<f64>,
 
     pub(crate) rotation_warning_label: Label,
+
+    // Image
+    pub(crate) image_engraving_frame: Frame,
+    pub(crate) image_feed_rate_entry: Entry,
+    pub(crate) image_travel_rate_entry: Entry,
+    pub(crate) image_min_power_entry: Entry,
+    pub(crate) image_max_power_entry: Entry,
+    pub(crate) image_ppi_entry: Entry,
+    pub(crate) image_scan_direction_combo: ComboBoxText,
+    pub(crate) image_bidirectional_check: CheckButton,
+    pub(crate) image_invert_check: CheckButton,
+    pub(crate) image_dithering_combo: ComboBoxText,
 
 }
 
@@ -238,6 +251,20 @@ impl PropertiesPanel {
         ) = Self::build_cam_section();
         content.append(&cam_frame);
 
+        let (
+            image_engraving_frame,
+            image_feed_rate_entry,
+            image_travel_rate_entry,
+            image_min_power_entry,
+            image_max_power_entry,
+            image_ppi_entry,
+            image_scan_direction_combo,
+            image_bidirectional_check,
+            image_invert_check,
+            image_dithering_combo,
+        ) = Self::build_image_engraving_section();
+            content.append(&image_engraving_frame);
+
         // Empty state message
         let empty_label = Label::new(Some(&t!("Select a shape to edit its properties")));
         empty_label.add_css_class("dim-label");
@@ -293,6 +320,18 @@ impl PropertiesPanel {
             offset_entry,
             fillet_entry,
             chamfer_entry,
+
+            image_engraving_frame,
+            image_feed_rate_entry,
+            image_travel_rate_entry,
+            image_min_power_entry,
+            image_max_power_entry,
+            image_ppi_entry,
+            image_scan_direction_combo,
+            image_bidirectional_check,
+            image_invert_check,
+            image_dithering_combo,
+
             header,
             x_unit_label,
             y_unit_label,
@@ -604,6 +643,70 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
+        );
+
+        // Image engraving handlers
+        handlers::image::setup_feed_rate_handler(
+            &self.image_feed_rate_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_travel_rate_handler(
+            &self.image_travel_rate_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_min_power_handler(
+            &self.image_min_power_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_max_power_handler(
+            &self.image_max_power_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_ppi_handler(
+            &self.image_ppi_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_scan_direction_handler(
+            &self.image_scan_direction_combo,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_bidirectional_handler(
+            &self.image_bidirectional_check,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_invert_handler(
+            &self.image_invert_check,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::image::setup_dithering_handler(
+            &self.image_dithering_combo,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
         );
 
     }

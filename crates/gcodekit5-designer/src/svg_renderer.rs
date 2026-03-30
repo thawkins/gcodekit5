@@ -689,6 +689,19 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
             }
             path_str
         }
+
+        crate::model::Shape::RasterImage(raster) => {
+            let (x1, y1, x2, y2) = raster.bounds();
+            let (sx1, sy1) = viewport.world_to_pixel(x1, y1);
+            let (sx2, sy2) = viewport.world_to_pixel(x2, y2);
+            let width = (sx2 - sx1).abs();
+            let height = (sy1 - sy2).abs();
+
+            format!(
+                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="gray" stroke="black" stroke-width="1" />"#,
+                sx1.min(sx2), sy1.min(sy2), width, height
+            )
+        }
     }
 }
 

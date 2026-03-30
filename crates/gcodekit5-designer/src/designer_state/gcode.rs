@@ -113,20 +113,7 @@ impl DesignerState {
                     .generate_line_contour(line, shape_obj.step_down as f64),
                                                     false,
                 ),
-                /*
-                 *                crate::model::Shape::Ellipse(ellipse) => {
-                 *                    let (x1, y1, x2, y2) = ellipse.bounds();
-                 *                    let cx = (x1 + x2) / 2.0;
-                 *                    let cy = (y1 + y2) / 2.0;
-                 *                    let radius = ((x2 - x1).abs().max((y2 - y1).abs())) / 2.0;
-                 *                    let circle = Circle::new(Point::new(cx, cy), radius);
-                 *                    (
-                 *                        self.toolpath_generator
-                 *                        .generate_circle_contour(&circle, shape_obj.step_down as f64),
-                 *                     false,
-                 *                    )
-            }
-            */
+
                 crate::model::Shape::Ellipse(ellipse) => {
                     if shape_obj.operation_type == OperationType::Pocket {
                         (
@@ -250,6 +237,10 @@ impl DesignerState {
                     }
                 }
 
+                crate::model::Shape::RasterImage(_) => {
+                    // Raster images do not directly generate a toolpath.
+                    (Vec::new(), false)
+                }
                 _ => {
                     let path = effective_shape.render();
                     let design_path = crate::model::DesignPath::from_lyon_path(&path);
@@ -309,7 +300,7 @@ impl DesignerState {
 
         let mut line_number = 10;
 
-        // ------ Bucle Shape --------
+        // ------ Loop Shape --------
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
             // Add shape metadata as comments
             gcode.push_str(&format!(
@@ -341,7 +332,7 @@ impl DesignerState {
 
             // Generate G-code for all toolpaths associated with this shape
             let mut current_z = gcode_gen.safe_z;
-            // inicio
+            // Init
             let global_step_down = self.tool_settings.step_down;
 
             let num_passes = if gcode_gen.is_laser_2d {
@@ -468,6 +459,17 @@ impl DesignerState {
                     "; Sprocket: Center ({:.3}, {:.3}), Pitch: {:.3}, Teeth: {}\n",
                                         sprocket.center.x, sprocket.center.y, sprocket.pitch, sprocket.teeth
                 ));
+            }
+
+            crate::model::Shape::RasterImage(raster) => {
+                let (x1, y1, x2, y2) = raster.bounds();
+                gcode.push_str(&format!(
+                    "; Raster Image: ({:.3}, {:.3}) to ({:.3}, {:.3})\n",
+                    x1, y1, x2, y2
+                ));
+                if let Some(path) = &raster.original_path {
+                    gcode.push_str(&format!("; Original file: {}\n", path.display()));
+                }
             }
 
         }

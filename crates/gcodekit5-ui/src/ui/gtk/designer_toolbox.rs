@@ -163,6 +163,7 @@ impl DesignerToolbox {
             DesignerTool::Text,
             DesignerTool::Gear,
             DesignerTool::Sprocket,
+//            DesignerTool::ImageImport,
         ];
 
         let grid = gtk4::Grid::builder()

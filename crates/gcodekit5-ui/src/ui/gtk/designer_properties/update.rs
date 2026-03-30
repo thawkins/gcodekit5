@@ -98,9 +98,6 @@ impl PropertiesPanel {
             }
         };
 
-
-
-
         if let Some((
             ids,
             shape_opt,
@@ -130,6 +127,7 @@ impl PropertiesPanel {
                         let (x1, y1, x2, y2) = p.bounds();
                         (x2 - x1, y2 - y1, p.rotation)
                     },
+                    Shape::RasterImage(r) => (r.width_mm, r.height_mm, r.rotation),
                     _ => (0.0, 0.0, 0.0),
                 }
             } else {
@@ -155,14 +153,17 @@ impl PropertiesPanel {
 
             // Show/hide appropriate sections
             self.empty_label.set_visible(false);
-            self.cam_frame.set_visible(true);
-            self.ops_frame.set_visible(any_not_text);
+
+            let is_raster = matches!(shape_opt, Some(Shape::RasterImage(_)));
+            // CAM frame solo visible para shapes que no son imágenes
+            self.cam_frame.set_visible(!is_raster);
+            self.ops_frame.set_visible(!is_raster && any_not_text);
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
-                self.pos_frame.set_visible(true);
+                self.pos_frame.set_visible(false);
                 self.size_frame.set_visible(true);
-                self.rot_frame.set_visible(true);
+                self.rot_frame.set_visible(false);
                 // --- Object Center
                 let (x1, y1, x2, y2) = shape.bounds();
                 let center_x = (x1 + x2) / 2.0;
@@ -175,6 +176,34 @@ impl PropertiesPanel {
 
                 // Shape-specific properties
                 match &shape {
+
+                    Shape::RasterImage(r) => {
+                        self.corner_frame.set_visible(false);
+                        self.text_frame.set_visible(false);
+                        self.polygon_frame.set_visible(false);
+                        self.gear_frame.set_visible(false);
+                        self.sprocket_frame.set_visible(false);
+                        self.ops_frame.set_visible(false);
+                        self.cam_frame.set_visible(false);
+                        self.image_engraving_frame.set_visible(true);
+
+                        self.image_feed_rate_entry.set_text(&r.feed_rate.to_string());
+                        self.image_travel_rate_entry.set_text(&r.travel_rate.to_string());
+                        self.image_min_power_entry.set_text(&r.min_power.to_string());
+                        self.image_max_power_entry.set_text(&r.max_power.to_string());
+                        self.image_ppi_entry.set_text(&r.ppi.to_string());
+                        self.image_scan_direction_combo.set_active_id(Some(&r.scan_direction));
+                        self.image_bidirectional_check.set_active(r.bidirectional);
+                        self.image_invert_check.set_active(r.invert);
+                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
+                        //Force lock aspect ratio and disable the button so it cannot be changed
+                        self.lock_aspect_ratio.set_active(true);
+                        self.lock_aspect_ratio.set_sensitive(false);
+                        // Disable the rotation field
+                        self.rotation_entry.set_sensitive(false);
+                        self.rotation_entry.set_text("0.0");
+                    }
+
                     Shape::Rectangle(r) => {
                         // Disable input X and Y
                         self.pos_x_entry.set_sensitive(true);
@@ -185,9 +214,9 @@ impl PropertiesPanel {
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
                         self.set_entry_text_if_changed(
-                        &self.corner_radius_entry,
-                        r.corner_radius as f32,
-                        system,
+                            &self.corner_radius_entry,
+                            r.corner_radius as f32,
+                            system,
                         );
                         self.is_slot_check.set_active(r.is_slot);
                         self.rotation_entry.set_text(&format!("{:.1}", r.rotation));
@@ -344,8 +373,6 @@ impl PropertiesPanel {
                         self.set_entry_text_if_changed(&self.width_entry, t.width as f32, system);
                         self.set_entry_text_if_changed(&self.height_entry, t.height as f32, system);
                         self.rotation_entry.set_text(&format!("{:.1}", t.rotation.to_degrees()));
-
-
                     }
                     _ => {
                         self.corner_frame.set_visible(false);
@@ -366,6 +393,7 @@ impl PropertiesPanel {
                 self.polygon_frame.set_visible(false);
                 self.gear_frame.set_visible(false);
                 self.sprocket_frame.set_visible(false);
+                self.image_engraving_frame.set_visible(false);
 
                 // Calculate bounding box of all selected shapes
                 let designer_state = self.state.borrow();
@@ -435,6 +463,7 @@ impl PropertiesPanel {
             self.sprocket_frame.set_visible(false);
             self.cam_frame.set_visible(false);
             self.ops_frame.set_visible(false);
+            self.image_engraving_frame.set_visible(false);
             self.header.set_text(&t!("Properties"));
 
             // Clear entries
@@ -462,6 +491,7 @@ impl PropertiesPanel {
             self.raster_fill_entry.set_text("");
             self.lock_aspect_ratio.set_active(false);
             *self.updating.borrow_mut() = false;
+
         }
     }
 
@@ -490,6 +520,11 @@ impl PropertiesPanel {
             &self.offset_entry,
             &self.fillet_entry,
             &self.chamfer_entry,
+            &self.image_feed_rate_entry,
+            &self.image_travel_rate_entry,
+            &self.image_min_power_entry,
+            &self.image_max_power_entry,
+            &self.image_ppi_entry,
         ];
 
         for entry in entries {

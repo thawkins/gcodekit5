@@ -658,11 +658,11 @@ impl DxfImporter {
 
                         let mut builder = Path::builder();
 
-                        // Empezar en el primer vértice
+                        // Start at the first vertex
                         let start = polyline.vertices[0];
                         builder.begin(point(start.x as f32, start.y as f32));
 
-                        // Procesar cada segmento con su posible bulge
+                        // Process each segment with its potential bulge
                         for i in 0..polyline.vertices.len() - 1 {
                             let v1 = polyline.vertices[i];
                             let v2 = polyline.vertices[i + 1];
@@ -670,16 +670,16 @@ impl DxfImporter {
                             let p1 = point(v1.x as f32, v1.y as f32);
                             let p2 = point(v2.x as f32, v2.y as f32);
 
-                            // Obtener el bulge para este segmento (si existe)
+                            // Obtain the bulge for this segment (if it exists)
                             let bulge = if i < polyline.bulges.len() {
                                 polyline.bulges[i]
                             } else {
-                                0.0  // Sin bulge = línea recta
+                                0.0  // Without bulge = straight line
                             };
 
 
                             if bulge.abs() < 0.0001 {
-                                // Línea recta
+                                // Straight line
                                 builder.line_to(p2);
                             } else {
 

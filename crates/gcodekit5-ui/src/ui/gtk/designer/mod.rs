@@ -28,6 +28,8 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tracing::error;
+use gcodekit5_designer::engraving::image_engraver;
+use crate::ui::device_console_manager::get_console_manager;
 
 // Complex type due to GTK widget and callback fields.
 #[allow(clippy::type_complexity)]
@@ -136,16 +138,23 @@ impl DesignerView {
 
         // Empty state (shown when no shapes)
         let (
-            empty_box,
+             empty_box,
              empty_new_btn,
              empty_open_btn,
              empty_import_svg_btn,
              empty_import_dxf_btn,
              empty_import_stl_btn,
+             empty_import_image_btn,
         ) = Self::create_empty_state(&settings_controller);
 
         overlay.add_overlay(&empty_box);
         overlay.add_overlay(&floating_box);
+
+        // Connect the Import Image button to the empty state
+        let canvas_clone = canvas.clone();
+        empty_import_image_btn.connect_clicked(move |_| {
+            canvas_clone.import_raster_image();
+        });
 
         // Status Panel (Bottom Left)
         let (status_box, status_label_osd, units_badge) = Self::create_status_panel();
@@ -510,28 +519,110 @@ impl DesignerView {
         toolbox.connect_generate_clicked(move || {
             let mut state = canvas_gen.state.borrow_mut();
 
-            // Copy settings to avoid borrow issues
-            let feed_rate = state.tool_settings.feed_rate;
-            let spindle_speed = state.tool_settings.spindle_speed;
-            let tool_diameter = state.tool_settings.tool_diameter;
-            let cut_depth = state.tool_settings.cut_depth;
-            let start_depth = state.tool_settings.start_depth;
+            // Check if there is a selected image
+            let selected_image: Option<gcodekit5_designer::model::RasterImage> = {
+                let selected = state.canvas.selection_manager.selected_id();
+                if let Some(id) = selected {
+                    if let Some(obj) = state.canvas.get_shape(id) {
+                        if let Shape::RasterImage(ref img) = obj.shape {
+                            Some(img.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
 
-            // Update toolpath generator settings from state
-            state.toolpath_generator.set_feed_rate(feed_rate);
-            state.toolpath_generator.set_spindle_speed(spindle_speed);
-            state.toolpath_generator.set_tool_diameter(tool_diameter);
-            state.toolpath_generator.set_cut_depth(cut_depth);
-            state.toolpath_generator.set_start_depth(start_depth);
-            state.toolpath_generator.set_step_in(tool_diameter * 0.4); // Default stepover
+            if let Some(raster_image) = selected_image {
+                // It's an image: use ImageEngraver
+                drop(state); // Release borrow before using ImageEngraver
 
-            let gcode = state.generate_gcode();
-            drop(state);
+                // Prepare additional parameters
+                let params = image_engraver::EngravingParams {
+                    width_mm: raster_image.width_mm as f32,
+                    height_mm: None,
+                    feed_rate: raster_image.feed_rate as f32,
+                    travel_rate: raster_image.travel_rate as f32,
+                    min_power: raster_image.min_power as f32,
+                    max_power: raster_image.max_power as f32,
+                    ppi: raster_image.ppi as f32,
+                    scan_direction: match raster_image.scan_direction.as_str() {
+                        "vertical" => image_engraver::ScanDirection::Vertical,
+                        _ => image_engraver::ScanDirection::Horizontal,
+                    },
+                    bidirectional: raster_image.bidirectional,
+                    invert: raster_image.invert,
+                    mirror_x: false,
+                    mirror_y: false,
+                    rotation: image_engraver::RotationAngle::Degrees0,
+                    halftone: match raster_image.dithering.as_str() {
+                        "threshold" => image_engraver::HalftoneMethod::Threshold,
+                        "bayer" => image_engraver::HalftoneMethod::Bayer4x4,
+                        "floyd" => image_engraver::HalftoneMethod::FloydSteinberg,
+                        "atkinson" => image_engraver::HalftoneMethod::Atkinson,
+                        _ => image_engraver::HalftoneMethod::None,
+                    },
+                    offset_x: (raster_image.center.x - raster_image.width_mm / 2.0) as f32,
+                    offset_y: (raster_image.center.y - raster_image.height_mm / 2.0) as f32,
+                    power_scale: 1000.0,
+                    line_spacing: 1.0,
+                };
 
-            status_label_gen.set_text(&t!("G-Code generated"));
+                // Activate silent mode BEFORE generating G-code
+                let console_manager = get_console_manager();
+                console_manager.set_silent_mode(true);
 
-            if let Some(callback) = on_gen.borrow().as_ref() {
-                callback(gcode);
+                // Generate G-code with ImageEngraver
+                match image_engraver::ImageEngraver::from_raster_image(&raster_image, params) {
+                    Ok(engraver) => {
+                        match engraver.generate_gcode() {
+                            Ok(gcode) => {
+                                status_label_gen.set_text(&t!("G-Code generated for image"));
+                                if let Some(callback) = on_gen.borrow().as_ref() {
+                                    callback(gcode);
+                                }
+                            }
+                            Err(e) => {
+                                status_label_gen.set_text(&format!("Error: {}", e));
+                                error!("Failed to generate image G-code: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        status_label_gen.set_text(&format!("Error loading image: {}", e));
+                        error!("Failed to load image: {}", e);
+                    }
+                }
+                console_manager.set_silent_mode(false);
+            } else {
+                // Not an image: use the normal CNC generator
+                // Copy settings to avoid borrow issues
+                let feed_rate = state.tool_settings.feed_rate;
+                let spindle_speed = state.tool_settings.spindle_speed;
+                let tool_diameter = state.tool_settings.tool_diameter;
+                let cut_depth = state.tool_settings.cut_depth;
+                let start_depth = state.tool_settings.start_depth;
+
+                // Update toolpath generator settings from state
+                state.toolpath_generator.set_feed_rate(feed_rate);
+                state.toolpath_generator.set_spindle_speed(spindle_speed);
+                state.toolpath_generator.set_tool_diameter(tool_diameter);
+                state.toolpath_generator.set_cut_depth(cut_depth);
+                state.toolpath_generator.set_start_depth(start_depth);
+                state.toolpath_generator.set_step_in(tool_diameter * 0.4);
+
+                let gcode = state.generate_gcode();
+                drop(state);
+
+                status_label_gen.set_text(&t!("G-Code generated"));
+
+                if let Some(callback) = on_gen.borrow().as_ref() {
+                    callback(gcode);
+                }
             }
         });
 

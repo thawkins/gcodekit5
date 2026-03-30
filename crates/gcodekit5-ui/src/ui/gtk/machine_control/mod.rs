@@ -12,7 +12,7 @@ use gcodekit5_communication::{
 };
 use gcodekit5_core::units::{
     format_feed_rate, format_length, get_unit_label, parse_feed_rate, FeedRateUnits,
-    MeasurementSystem,
+        MeasurementSystem,
 };
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::glib;
@@ -31,10 +31,11 @@ use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
-use gcodekit5_core::{
-    thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption,
-};
+use gcodekit5_core::{thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption};
 use std::rc::Rc;
+use crate::ui::gtk::machine_control::direct_sender::DirectSender;
+
+mod direct_sender;
 
 fn set_button_icon_label(btn: &Button, icon: &str, label: &str) {
     let content = Box::new(Orientation::Horizontal, 6);
@@ -158,6 +159,7 @@ pub struct MachineControlView {
     pub current_units: ThreadSafe<MeasurementSystem>,
     pub last_overrides: ThreadSafe<OverrideState>,
     pub job_start_time: ThreadSafeOption<std::time::Instant>,
+    pub direct_sender: ThreadSafeOption<DirectSender>,
 }
 
 impl MachineControlView {
@@ -167,10 +169,13 @@ impl MachineControlView {
         editor: Option<Rc<GcodeEditor>>,
         visualizer: Option<Rc<GcodeVisualizer>>,
         settings_controller: Option<Rc<SettingsController>>,
+        //        direct_sender: ThreadSafeOption<DirectSender>,
+
     ) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
+        //        direct_sender;
 
         fn make_section(title: &str, child: &impl IsA<gtk4::Widget>) -> Box {
             let section = Box::new(Orientation::Vertical, 4);
@@ -183,6 +188,7 @@ impl MachineControlView {
             section.append(&header);
             section.append(child);
             section
+
         }
 
         // Helper function to disable connection-dependent buttons
@@ -991,11 +997,11 @@ impl MachineControlView {
         // Initialize units from settings if available
         let initial_units = if let Some(controller) = &settings_controller {
             controller
-                .persistence
-                .borrow()
-                .config()
-                .ui
-                .measurement_system
+            .persistence
+            .borrow()
+            .config()
+            .ui
+            .measurement_system
         } else {
             MeasurementSystem::Metric
         };
@@ -1016,7 +1022,7 @@ impl MachineControlView {
             for mm in presets_mm {
                 step_combo.append(
                     Some(&format!("{mm}")),
-                    &format!("{} {unit_label}", format_length(mm, initial_units)),
+                                  &format!("{} {unit_label}", format_length(mm, initial_units)),
                 );
             }
             step_combo.set_active_id(Some("1"));
@@ -1060,7 +1066,7 @@ impl MachineControlView {
                     for mm in presets_mm {
                         step_combo_clone.append(
                             Some(&format!("{mm}")),
-                            &format!("{} {unit_label}", format_length(mm, units)),
+                                                &format!("{} {unit_label}", format_length(mm, units)),
                         );
                     }
                     step_combo_clone.set_active_id(Some(&format!("{selected_mm}")));
@@ -1162,6 +1168,7 @@ impl MachineControlView {
                 spindle: 100,
             }),
             job_start_time: thread_safe_none(),
+            direct_sender: thread_safe_none(),
         };
 
         // Keep internal jog values in base units (mm, mm/min)
@@ -1307,9 +1314,9 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console_entry = view
-                .device_console
-                .as_ref()
-                .map(|c| c.command_entry.clone());
+            .device_console
+            .as_ref()
+            .map(|c| c.command_entry.clone());
             let console = view.device_console.clone();
 
             controller.connect_key_pressed(move |_, key, _, _| {
@@ -1328,12 +1335,12 @@ impl MachineControlView {
 
                 match ch {
                     '8' => send_jog('Y', step, &communicator, feed, &console),
-                    '2' => send_jog('Y', -step, &communicator, feed, &console),
-                    '4' => send_jog('X', -step, &communicator, feed, &console),
-                    '6' => send_jog('X', step, &communicator, feed, &console),
-                    '9' => send_jog('Z', step, &communicator, feed, &console),
-                    '3' => send_jog('Z', -step, &communicator, feed, &console),
-                    _ => return glib::Propagation::Proceed,
+                                           '2' => send_jog('Y', -step, &communicator, feed, &console),
+                                           '4' => send_jog('X', -step, &communicator, feed, &console),
+                                           '6' => send_jog('X', step, &communicator, feed, &console),
+                                           '9' => send_jog('Z', step, &communicator, feed, &console),
+                                           '3' => send_jog('Z', -step, &communicator, feed, &console),
+                                           _ => return glib::Propagation::Proceed,
                 }
 
                 glib::Propagation::Stop
@@ -1352,6 +1359,7 @@ impl MachineControlView {
             let communicator = view.communicator.clone();
             let is_paused = view.is_paused.clone();
             let console = view.device_console.clone();
+            let view_pause = view.clone();
             view.pause_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
                     c.append_log("> ! (Pause)\n");
@@ -1361,8 +1369,13 @@ impl MachineControlView {
                     let _ = comm.send(b"!");
                 }
                 *is_paused.lock() = true;
+
+                if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
+                    sender.pause();
+                }
             });
         }
+
         {
             let communicator = view.communicator.clone();
             let is_paused = view.is_paused.clone();
@@ -1370,6 +1383,7 @@ impl MachineControlView {
             let waiting_for_ack = view.waiting_for_ack.clone();
             let send_queue = view.send_queue.clone();
             let console = view.device_console.clone();
+            let view_resume = view.clone();
 
             view.resume_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
@@ -1381,7 +1395,12 @@ impl MachineControlView {
                 }
                 *is_paused.lock() = false;
 
-                // Kickstart if stalled (streaming, not waiting for ack, and has commands)
+                // Resume DirectSender if it exists - use view_resume
+                if let Some(sender) = view_resume.direct_sender.lock().as_ref() {
+                    sender.resume();
+                }
+
+                // Kickstart if stalled
                 if *is_streaming.lock() && !*waiting_for_ack.lock() {
                     let mut queue = send_queue.lock();
                     if let Some(cmd) = queue.pop_front() {
@@ -1397,6 +1416,8 @@ impl MachineControlView {
                 }
             });
         }
+
+
         {
             let communicator = view.communicator.clone();
             let is_streaming = view.is_streaming.clone();
@@ -1406,31 +1427,40 @@ impl MachineControlView {
             let status_bar = view.status_bar.clone();
             let job_start_time = view.job_start_time.clone();
             let console = view.device_console.clone();
+            let view_stop = view.clone();
+
             view.stop_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
                     c.append_log("> 0x18 (Stop)\n");
                 }
                 {
                     let mut comm = communicator.lock();
-                    // 0x18 = Ctrl-x = Soft Reset
                     let _ = comm.send(&[0x18]);
                 }
+
+                // Stop DirectSender if it exists - use view_stop
+                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
+                    sender.stop();
+                }
+
                 *is_streaming.lock() = false;
                 *is_paused.lock() = false;
                 *waiting_for_ack.lock() = false;
                 *job_start_time.lock() = None;
                 send_queue.lock().clear();
 
-                // Reset progress
                 if let Some(sb) = status_bar.as_ref() {
                     sb.set_progress(0.0, "", "");
                 }
             });
         }
+
+
         {
             let editor = view.editor.clone();
             let widget_for_dialog = view.widget.clone();
             let view_clone = view.clone();
+            let communicator_clone = view.communicator.clone();
 
             view.send_btn.connect_clicked(move |_| {
                 let mut content = String::new();
@@ -1440,11 +1470,11 @@ impl MachineControlView {
 
                 if content.trim().is_empty() {
                     let dialog = gtk4::MessageDialog::builder()
-                        .message_type(gtk4::MessageType::Error)
-                        .buttons(gtk4::ButtonsType::Ok)
-                        .text(t!("No G-Code to Send"))
-                        .secondary_text(t!("Please load or type G-Code into the editor first."))
-                        .build();
+                    .message_type(gtk4::MessageType::Error)
+                    .buttons(gtk4::ButtonsType::Ok)
+                    .text(t!("No G-Code to Send"))
+                    .secondary_text(t!("Please load or type G-Code into the editor first."))
+                    .build();
 
                     // Set transient parent if possible
                     if let Some(root) = widget_for_dialog.root() {
@@ -1459,57 +1489,45 @@ impl MachineControlView {
                     return;
                 }
 
-                view_clone.start_job(&content);
-            });
-        }
+                // Detect Image in Designer
+                let first_line = content.lines().next().unwrap_or("");
+                let is_image = first_line.trim() == "; GcodeKit5 Image Engraving";
 
-        // Machine State Controls
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            view.home_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> $H\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send_command("$H");
-                }
-            });
-        }
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            view.unlock_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> $X\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send_command("$X");
-                }
-            });
-        }
+                if is_image {
 
-        // WCS Controls
-        for (i, btn) in view.wcs_btns.iter().enumerate() {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let cmd = format!("G{}", 54 + i);
-            btn.connect_toggled(move |b| {
-                if !b.is_active() {
-                    return;
-                }
-                if let Some(c) = console.as_ref() {
-                    c.append_log(&format!("> {}\n", cmd));
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send_command(&cmd);
+                    let (sender, receiver) = DirectSender::new(
+                        communicator_clone.clone(),
+                        view_clone.is_streaming.clone(),
+                        view_clone.is_paused.clone(),
+                        view_clone.waiting_for_ack.clone(),
+                    );
+
+                    let console = view_clone.device_console.clone();
+
+                    // Use timeout_add_local instead of spawn_future_local
+                    // Check messages every 100ms without blocking
+                    let receiver = std::sync::Mutex::new(receiver);
+                    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+
+                        // Try to receive all pending messages
+                        let receiver_guard = receiver.lock().unwrap();
+                        while let Ok(message) = receiver_guard.try_recv() {
+                            if let Some(c) = console.as_ref() {
+                                c.append_log(&format!("{}\n", message));
+                            }
+                        }
+
+                        glib::ControlFlow::Continue
+                    });
+
+                    *view_clone.direct_sender.lock() = Some(sender.clone());
+                    sender.send_gcode(&content);
+                } else {
+                    view_clone.start_job(&content);
                 }
             });
         }
-
+        // ---
         // Zero Controls
         {
             let communicator = view.communicator.clone();
@@ -1517,10 +1535,10 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.x_zero_btn.connect_clicked(move |_| {
                 let p = wcs_btns
-                    .iter()
-                    .position(|b| b.is_active())
-                    .map(|i| i + 1)
-                    .unwrap_or(1);
+                .iter()
+                .position(|b| b.is_active())
+                .map(|i| i + 1)
+                .unwrap_or(1);
                 let cmd = format!("G10 L20 P{p} X0");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -1537,10 +1555,10 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.y_zero_btn.connect_clicked(move |_| {
                 let p = wcs_btns
-                    .iter()
-                    .position(|b| b.is_active())
-                    .map(|i| i + 1)
-                    .unwrap_or(1);
+                .iter()
+                .position(|b| b.is_active())
+                .map(|i| i + 1)
+                .unwrap_or(1);
                 let cmd = format!("G10 L20 P{p} Y0");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -1557,10 +1575,10 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.z_zero_btn.connect_clicked(move |_| {
                 let p = wcs_btns
-                    .iter()
-                    .position(|b| b.is_active())
-                    .map(|i| i + 1)
-                    .unwrap_or(1);
+                .iter()
+                .position(|b| b.is_active())
+                .map(|i| i + 1)
+                .unwrap_or(1);
                 let cmd = format!("G10 L20 P{p} Z0");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -1578,13 +1596,13 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.zero_all_btn.connect_clicked(move |_| {
                 let dialog = gtk4::MessageDialog::builder()
-                    .message_type(gtk4::MessageType::Question)
-                    .buttons(gtk4::ButtonsType::YesNo)
-                    .text(t!("Zero all work axes?"))
-                    .secondary_text(
-                        t!("This sets the active work coordinate system so the current X/Y/Z becomes 0."),
-                    )
-                    .build();
+                .message_type(gtk4::MessageType::Question)
+                .buttons(gtk4::ButtonsType::YesNo)
+                .text(t!("Zero all work axes?"))
+                .secondary_text(
+                    t!("This sets the active work coordinate system so the current X/Y/Z becomes 0."),
+                )
+                .build();
 
                 // Set transient parent if possible
                 if let Some(root) = widget_for_dialog.root() {
@@ -1600,10 +1618,10 @@ impl MachineControlView {
                 dialog.connect_response(move |d, resp| {
                     if resp == gtk4::ResponseType::Yes {
                         let p = wcs_btns
-                            .iter()
-                            .position(|b| b.is_active())
-                            .map(|i| i + 1)
-                            .unwrap_or(1);
+                        .iter()
+                        .position(|b| b.is_active())
+                        .map(|i| i + 1)
+                        .unwrap_or(1);
                         let cmd = format!("G10 L20 P{p} X0 Y0 Z0");
                         if let Some(c) = console.as_ref() { c.append_log(&format!("> {}\n", cmd)); }
                         { let mut comm = communicator.lock();
@@ -1768,8 +1786,8 @@ impl MachineControlView {
                     let params = ConnectionParams {
                         driver: ConnectionDriver::Serial,
                         port: port_name.to_string(),
-                        baud_rate: 115200,
-                        ..Default::default()
+                                         baud_rate: 115200,
+                                         ..Default::default()
                     };
 
                     // Perform synchronous connection (it's fast)
@@ -1804,7 +1822,7 @@ impl MachineControlView {
                                 console.append_log(&format!(
                                     "{} {}\n",
                                     t!("Connected to"),
-                                    port_name
+                                                            port_name
                                 ));
                             }
 
@@ -1844,7 +1862,6 @@ impl MachineControlView {
                                 let _ = comm.send(&[0x18]); // Ctrl-X (soft reset)
                             }
 
-                            // Delay info/settings queries a bit to let the controller reboot.
                             {
                                 let communicator_init = view_clone.communicator.clone();
                                 let console = view_clone.device_console.clone();
@@ -1995,11 +2012,11 @@ impl MachineControlView {
                                                             if !*is_streaming_poll.lock() {
                                                                 let secondary = format!("error:{} - {}", code, decoded);
                                                                 let dialog = gtk4::MessageDialog::builder()
-                                                                    .message_type(gtk4::MessageType::Error)
-                                                                    .buttons(gtk4::ButtonsType::Ok)
-                                                                    .text(t!("Controller error"))
-                                                                    .secondary_text(&secondary)
-                                                                    .build();
+                                                                .message_type(gtk4::MessageType::Error)
+                                                                .buttons(gtk4::ButtonsType::Ok)
+                                                                .text(t!("Controller error"))
+                                                                .secondary_text(&secondary)
+                                                                .build();
 
                                                                 dialog.connect_response(|d, _| d.close());
 
@@ -2024,78 +2041,78 @@ impl MachineControlView {
                                                 }
 
                                                 if is_ack || is_error {
-                                                     *waiting_for_ack_poll.lock() = false;
+                                                    *waiting_for_ack_poll.lock() = false;
 
-                                                     // If error, we might want to stop, but for now we continue
-                                                     // if is_error { ... logic to stop ... }
+                                                    // If error, we might want to stop, but for now we continue
+                                                    // if is_error { ... logic to stop ... }
 
-                                                     if *is_streaming_poll.lock()
-                                                         && !*is_paused_poll.lock() {
-                                                              let mut queue = send_queue_poll.lock();
-                                                              let total_lines_val = *total_lines_poll.lock();
-                                                              let remaining = queue.len();
-                                                              let sent = total_lines_val - remaining;
+                                                    if *is_streaming_poll.lock()
+                                                        && !*is_paused_poll.lock() {
+                                                            let mut queue = send_queue_poll.lock();
+                                                            let total_lines_val = *total_lines_poll.lock();
+                                                            let remaining = queue.len();
+                                                            let sent = total_lines_val - remaining;
 
-                                                              // Update progress bar
-                                                              if let Some(sb) = status_bar_poll.as_ref() {
-                                                                  let progress = if total_lines_val > 0 {
-                                                                      (sent as f64 / total_lines_val as f64) * 100.0
-                                                                  } else {
-                                                                      0.0
-                                                                  };
+                                                            // Update progress bar
+                                                            if let Some(sb) = status_bar_poll.as_ref() {
+                                                                let progress = if total_lines_val > 0 {
+                                                                    (sent as f64 / total_lines_val as f64) * 100.0
+                                                                } else {
+                                                                    0.0
+                                                                };
 
-                                                                  // Calculate actual elapsed time
-                                                                  let elapsed_secs = if let Some(start) = *job_start_time_poll.lock() {
-                                                                      start.elapsed().as_secs_f64()
-                                                                  } else {
-                                                                      0.0
-                                                                  };
+                                                                // Calculate actual elapsed time
+                                                                let elapsed_secs = if let Some(start) = *job_start_time_poll.lock() {
+                                                                    start.elapsed().as_secs_f64()
+                                                                } else {
+                                                                    0.0
+                                                                };
 
-                                                                  // Estimate remaining time based on average time per line so far
-                                                                  let remaining_secs = if sent > 0 && elapsed_secs > 0.0 {
-                                                                      let avg_per_line = elapsed_secs / sent as f64;
-                                                                      remaining as f64 * avg_per_line
-                                                                  } else {
-                                                                      0.0
-                                                                  };
+                                                                // Estimate remaining time based on average time per line so far
+                                                                let remaining_secs = if sent > 0 && elapsed_secs > 0.0 {
+                                                                    let avg_per_line = elapsed_secs / sent as f64;
+                                                                    remaining as f64 * avg_per_line
+                                                                } else {
+                                                                    0.0
+                                                                };
 
-                                                                  let format_time = |secs: f64| {
-                                                                      let h = (secs / 3600.0).floor();
-                                                                      let m = ((secs % 3600.0) / 60.0).floor();
-                                                                      let s = (secs % 60.0).floor();
-                                                                      format!("{:02}:{:02}:{:02}", h, m, s)
-                                                                  };
+                                                                let format_time = |secs: f64| {
+                                                                    let h = (secs / 3600.0).floor();
+                                                                    let m = ((secs % 3600.0) / 60.0).floor();
+                                                                    let s = (secs % 60.0).floor();
+                                                                    format!("{:02}:{:02}:{:02}", h, m, s)
+                                                                };
 
-                                                                  sb.set_progress(
-                                                                      progress,
-                                                                      &format_time(elapsed_secs),
-                                                                      &format_time(remaining_secs)
-                                                                  );
-                                                              }
+                                                                sb.set_progress(
+                                                                    progress,
+                                                                    &format_time(elapsed_secs),
+                                                                                &format_time(remaining_secs)
+                                                                );
+                                                            }
 
-                                                              if let Some(next_cmd) = queue.pop_front() {
-                                                                   if let Some(c) = device_console_poll.as_ref() {
-                                                                       c.append_log(&format!("> {}\n", next_cmd));
-                                                                   }
-                                                                   let _ = comm.send_command(&next_cmd);
-                                                                    *waiting_for_ack_poll.lock() = true;
-                                                              } else {
-                                                                   // Done streaming
-                                                                   *is_streaming_poll.lock() = false;
-                                                                   *is_paused_poll.lock() = false;
+                                                            if let Some(next_cmd) = queue.pop_front() {
+                                                                if let Some(c) = device_console_poll.as_ref() {
+                                                                    c.append_log(&format!("> {}\n", next_cmd));
+                                                                }
+                                                                let _ = comm.send_command(&next_cmd);
+                                                                *waiting_for_ack_poll.lock() = true;
+                                                            } else {
+                                                                // Done streaming
+                                                                *is_streaming_poll.lock() = false;
+                                                                *is_paused_poll.lock() = false;
 
-                                                                   // Don't clear job_start_time yet - wait for machine to be Idle
-                                                                   // *job_start_time_poll.lock() = None;
+                                                                // Don't clear job_start_time yet - wait for machine to be Idle
+                                                                // *job_start_time_poll.lock() = None;
 
-                                                                   if let Some(c) = device_console_poll.as_ref() {
-                                                                       c.append_log(&format!("{}\n", t!("Streaming Completed.")));
-                                                                   }
-                                                                   // Don't reset progress yet
-                                                                   // if let Some(sb) = status_bar_poll.as_ref() {
-                                                                   //    sb.set_progress(0.0, "", "");
-                                                                   // }
-                                                              }
-                                                         }
+                                                                if let Some(c) = device_console_poll.as_ref() {
+                                                                    c.append_log(&format!("{}\n", t!("Streaming Completed.")));
+                                                                }
+                                                                // Don't reset progress yet
+                                                                // if let Some(sb) = status_bar_poll.as_ref() {
+                                                                //    sb.set_progress(0.0, "", "");
+                                                                // }
+                                                            }
+                                                        }
                                                 }
 
                                                 // Parse GRBL status: <Idle|MPos:0.000,0.000,0.000|...>
@@ -2105,15 +2122,15 @@ impl MachineControlView {
                                                         conn_status_state_poll.set_text(&format!(
                                                             "{} {}",
                                                             t!("State:"),
-                                                            state
+                                                                                                 state
                                                         ));
                                                         state_label_poll.set_text(&state);
 
                                                         for cls in [
                                                             "state-idle",
-                                                            "state-run",
-                                                            "state-hold",
-                                                            "state-alarm",
+                                                    "state-run",
+                                                    "state-hold",
+                                                    "state-alarm",
                                                         ] {
                                                             state_label_poll.remove_css_class(cls);
                                                         }
@@ -2155,7 +2172,7 @@ impl MachineControlView {
                                                         unlock_btn_poll.set_sensitive(is_alarm);
                                                         if is_alarm {
                                                             disabled_reason_label_poll
-                                                                .set_text(&t!("ALARM: Unlock required."));
+                                                            .set_text(&t!("ALARM: Unlock required."));
                                                         } else {
                                                             disabled_reason_label_poll.set_text("");
                                                         }
@@ -2171,17 +2188,17 @@ impl MachineControlView {
                                                         world_x_poll.set_text(&format!(
                                                             "MX: {} {}",
                                                             format_length(mpos.x as f32, units),
-                                                            unit_label
+                                                                unit_label
                                                         ));
                                                         world_y_poll.set_text(&format!(
                                                             "MY: {} {}",
                                                             format_length(mpos.y as f32, units),
-                                                            unit_label
+                                                                unit_label
                                                         ));
                                                         world_z_poll.set_text(&format!(
                                                             "MZ: {} {}",
                                                             format_length(mpos.z as f32, units),
-                                                            unit_label
+                                                                unit_label
                                                         ));
 
                                                         device_status::update_machine_position(mpos);
@@ -2193,9 +2210,9 @@ impl MachineControlView {
                                                                 mpos.y as f32,
                                                                 mpos.z as f32,
                                                                 mpos.a.unwrap_or(0.0) as f32,
-                                                                mpos.b.unwrap_or(0.0) as f32,
-                                                                mpos.c.unwrap_or(0.0) as f32,
-                                                                units,
+                                                                            mpos.b.unwrap_or(0.0) as f32,
+                                                                            mpos.c.unwrap_or(0.0) as f32,
+                                                                            units,
                                                             );
                                                         }
                                                     }
@@ -2211,17 +2228,17 @@ impl MachineControlView {
                                                         x_dro_poll.set_text(&format!(
                                                             "{} {}",
                                                             format_length(wpos.x as f32, units),
-                                                            unit_label
+                                                                unit_label
                                                         ));
                                                         y_dro_poll.set_text(&format!(
                                                             "{} {}",
                                                             format_length(wpos.y as f32, units),
-                                                            unit_label
+                                                                unit_label
                                                         ));
                                                         z_dro_poll.set_text(&format!(
                                                             "{} {}",
                                                             format_length(wpos.z as f32, units),
-                                                            unit_label
+                                                                unit_label
                                                         ));
 
                                                         device_status::update_work_position(wpos);
@@ -2252,17 +2269,17 @@ impl MachineControlView {
                                                             x_dro_poll.set_text(&format!(
                                                                 "{} {}",
                                                                 format_length(wpos.x as f32, units),
-                                                                unit_label
+                                                                    unit_label
                                                             ));
                                                             y_dro_poll.set_text(&format!(
                                                                 "{} {}",
                                                                 format_length(wpos.y as f32, units),
-                                                                unit_label
+                                                                    unit_label
                                                             ));
                                                             z_dro_poll.set_text(&format!(
                                                                 "{} {}",
                                                                 format_length(wpos.z as f32, units),
-                                                                unit_label
+                                                                    unit_label
                                                             ));
 
                                                             device_status::update_work_position(wpos);
@@ -2279,8 +2296,8 @@ impl MachineControlView {
                                                         state_buffer_label_poll.set_text(&format!(
                                                             "{} {}/{}",
                                                             t!("Buffer:"),
-                                                            buffer.plan,
-                                                            buffer.rx
+                                                                                                  buffer.plan,
+                                                                                                  buffer.rx
                                                         ));
                                                         device_status::update_buffer_state(buffer);
                                                     }
@@ -2317,8 +2334,8 @@ impl MachineControlView {
                                                         state_feed_label_poll.set_text(&format!(
                                                             "{} {} {}",
                                                             t!("Feed:"),
-                                                            feed,
-                                                            units
+                                                                                                feed,
+                                                                                                units
                                                         ));
 
                                                         // Calculate adjusted feed
@@ -2346,7 +2363,7 @@ impl MachineControlView {
                                                         state_spindle_label_poll.set_text(&format!(
                                                             "{} {} S",
                                                             t!("Spindle:"),
-                                                            spindle_speed
+                                                                                                   spindle_speed
                                                         ));
 
                                                         // Calculate adjusted spindle
@@ -2369,7 +2386,7 @@ impl MachineControlView {
                                                         let units = *current_feed_units_poll.lock();
                                                         let feed_spindle = FeedSpindleState {
                                                             feed_rate: feed_rate as f64,
-                                                            spindle_speed: spindle_speed as u32,
+                                                    spindle_speed: spindle_speed as u32,
                                                         };
 
                                                         // Update status bar with feed/spindle
@@ -2414,7 +2431,9 @@ impl MachineControlView {
 
         view
     }
+
 }
 
 mod operations;
 mod overrides;
+

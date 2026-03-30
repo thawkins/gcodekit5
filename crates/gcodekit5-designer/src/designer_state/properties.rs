@@ -285,43 +285,39 @@ impl DesignerState {
                     new_obj.shape.translate(trans_x, trans_y);
 
                     match &mut new_obj.shape {
-// ---
-crate::model::Shape::Path(s) => {
-// 1. Obtenemos los límites reales del DXF
-    let (x1, _, x2, _) = s.bounds();
+                        crate::model::Shape::Path(s) => {
+                        // Obtain real limits from DXF
+                            let (x1, _, x2, _) = s.bounds();
 
-    // 2. Calculamos el CENTRO ACTUAL real del objeto
-    let current_center_x = (x1 + x2) / 2.0;
+                            // Calculate the actual CURRENT CENTER of the object
+                            let current_center_x = (x1 + x2) / 2.0;
 
-    // 3. El desplazamiento (dx) es la diferencia entre
-    // lo que pide el Inspector (center_x) y donde está el centro ahora
-    let dx = center_x - current_center_x;
+                            // The displacement (dx) is the difference between
+                            // what the Inspector (center_x) asks for and where the center
+                            let dx = center_x - current_center_x;
 
-    if dx.abs() > f64::EPSILON {
-        // Movemos físicamente todos los puntos esa distancia dx
-        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(dx, 0.0, 0.0));
-        s.sketch = s.sketch.transform(&translation);
-    }
-    // 1. Obtenemos los límites verticales
-    let (_, y1, _, y2) = s.bounds();
+                            if dx.abs() > f64::EPSILON {
+                                // Physically move all points that distance dx
+                                let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(dx, 0.0, 0.0));
+                                s.sketch = s.sketch.transform(&translation);
+                            }
+                            // Obtain the vertical limits
+                            let (_, y1, _, y2) = s.bounds();
 
-    // 2. Calculamos el CENTRO VERTICAL actual
-    let current_center_y = (y1 + y2) / 2.0;
+                            // Calculate the current VERTICAL CENTER
+                            let current_center_y = (y1 + y2) / 2.0;
 
-    // 3. El desplazamiento (dy) es: Destino (center_y) - Origen (centro actual)
-    let dy = center_y - current_center_y;
+                            // Displacement (dy) is: Destination (center_y) - Origin (current center)
+                            let dy = center_y - current_center_y;
 
-    if dy.abs() > f64::EPSILON {
-        // Movemos en el eje Y (segundo parámetro del Vector3)
-        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(0.0, dy, 0.0));
-        s.sketch = s.sketch.transform(&translation);
-    }
+                            if dy.abs() > f64::EPSILON {
+                                // Move on the Y axis (second parameter of Vector3)
+                                let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(0.0, dy, 0.0));
+                                s.sketch = s.sketch.transform(&translation);
+                            }
+                            s.rotation = rotation;
+                        }
 
-    s.rotation = rotation;
-}
-
-
-// ---
                         crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Circle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Line(s) => s.rotation = s.current_angle_degrees(),
@@ -331,7 +327,7 @@ crate::model::Shape::Path(s) => {
                         crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                         crate::model::Shape::Gear(s) => s.rotation += angle_delta,
                         crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-//                        crate::model::Shape::Polyline(s) => s.rotation += angle_delta,
+                        crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -373,7 +369,7 @@ crate::model::Shape::Path(s) => {
                         crate::model::Shape::Polygon(s) => s.rotation = rotation,
                         crate::model::Shape::Gear(s) => s.rotation = rotation,
                         crate::model::Shape::Sprocket(s) => s.rotation = rotation,
-//                        crate::model::Shape::Polyline(s) => s.rotation = rotation,
+                        crate::model::Shape::RasterImage(s) => s.rotation = rotation,
                     }
 
                     if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
@@ -824,7 +820,7 @@ crate::model::Shape::Path(s) => {
             crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
             crate::model::Shape::Gear(s) => s.rotation += angle_delta,
             crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-            //            crate::model::Shape::Polyline(s) => s.rotation += angle_delta,
+            crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
         }
     }
 

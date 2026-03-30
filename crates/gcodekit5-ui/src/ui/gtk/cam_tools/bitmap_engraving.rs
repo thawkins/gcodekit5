@@ -826,4 +826,3 @@ impl BitmapEngravingTool {
     }
 }
 
-// Vector Engraving Tool

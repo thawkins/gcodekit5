@@ -6,3 +6,4 @@ pub mod effects;
 pub mod gear_sprocket;
 pub mod geometry;
 pub mod text;
+pub mod image;
