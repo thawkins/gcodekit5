@@ -286,7 +286,7 @@ impl DesignerState {
 
                     match &mut new_obj.shape {
                         crate::model::Shape::Path(s) => {
-                        // Obtain real limits from DXF
+                            // Obtain real limits from DXF
                             let (x1, _, x2, _) = s.bounds();
 
                             // Calculate the actual CURRENT CENTER of the object
@@ -298,7 +298,9 @@ impl DesignerState {
 
                             if dx.abs() > f64::EPSILON {
                                 // Physically move all points that distance dx
-                                let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(dx, 0.0, 0.0));
+                                let translation = nalgebra::Matrix4::new_translation(
+                                    &nalgebra::Vector3::new(dx, 0.0, 0.0),
+                                );
                                 s.sketch = s.sketch.transform(&translation);
                             }
                             // Obtain the vertical limits
@@ -312,7 +314,9 @@ impl DesignerState {
 
                             if dy.abs() > f64::EPSILON {
                                 // Move on the Y axis (second parameter of Vector3)
-                                let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(0.0, dy, 0.0));
+                                let translation = nalgebra::Matrix4::new_translation(
+                                    &nalgebra::Vector3::new(0.0, dy, 0.0),
+                                );
                                 s.sketch = s.sketch.transform(&translation);
                             }
                             s.rotation = rotation;
@@ -701,21 +705,21 @@ impl DesignerState {
         use tracing::error;
 
         let selected: Vec<_> = self
-        .canvas
-        .shapes()
-        .filter(|s| s.selected)
-        .cloned()
-        .collect();
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .cloned()
+            .collect();
         if selected.is_empty() {
             return;
         }
 
         let (is_circular, center) =
-        if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-            (true, params.center)
-        } else {
-            (false, Point::new(0.0, 0.0))
-        };
+            if let crate::arrays::ArrayOperation::Circular(params) = &operation {
+                (true, params.center)
+            } else {
+                (false, Point::new(0.0, 0.0))
+            };
 
         let offsets = match crate::arrays::ArrayGenerator::generate(&operation) {
             Ok(offsets) => offsets,
@@ -766,7 +770,7 @@ impl DesignerState {
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                         id: obj.id,
                         old_state: obj.clone(),
-                                                                  new_state: new_original,
+                        new_state: new_original,
                     }));
                 } else {
                     let mut new_obj = obj.clone();
@@ -833,9 +837,11 @@ impl DesignerState {
                 match &mut obj.shape {
                     crate::model::Shape::Path(s) => {
                         // For imported objects: We move the physical points
-                        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(dx, 0.0, 0.0));
+                        let translation = nalgebra::Matrix4::new_translation(
+                            &nalgebra::Vector3::new(dx, 0.0, 0.0),
+                        );
                         s.sketch = s.sketch.transform(&translation);
-                    },
+                    }
                     _ => {
                         // For native objects: We use translate with the exact jump (0.0 on Y so that it doesn't jump)
                         obj.shape.translate(dx, 0.0);
@@ -853,9 +859,11 @@ impl DesignerState {
             if dy.abs() > f64::EPSILON {
                 match &mut obj.shape {
                     crate::model::Shape::Path(s) => {
-                        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(0.0, dy, 0.0));
+                        let translation = nalgebra::Matrix4::new_translation(
+                            &nalgebra::Vector3::new(0.0, dy, 0.0),
+                        );
                         s.sketch = s.sketch.transform(&translation);
-                    },
+                    }
                     _ => {
                         obj.shape.translate(0.0, dy);
                     }
@@ -869,13 +877,13 @@ impl DesignerState {
             match &mut obj.shape {
                 crate::model::Shape::Rectangle(r) => {
                     r.width = width;
-                },
+                }
                 crate::model::Shape::Ellipse(e) => {
                     e.rx = width / 2.0;
-                },
+                }
                 crate::model::Shape::Triangle(t) => {
                     t.width = width;
-                },
+                }
                 _ => {
                     let (x1, y1, x2, y2) = obj.shape.bounds();
                     let current_width = x2 - x1;
@@ -894,13 +902,13 @@ impl DesignerState {
             match &mut obj.shape {
                 crate::model::Shape::Rectangle(r) => {
                     r.height = height;
-                },
+                }
                 crate::model::Shape::Ellipse(e) => {
                     e.ry = height / 2.0;
-                },
+                }
                 crate::model::Shape::Triangle(t) => {
                     t.height = height;
-                },
+                }
                 _ => {
                     let (x1, y1, x2, y2) = obj.shape.bounds();
                     let current_height = y2 - y1;

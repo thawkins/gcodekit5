@@ -19,8 +19,8 @@ use super::{DesignerShape, Point, Property, PropertyValue};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignPath {
     #[serde(
-    serialize_with = "serialize_sketch",
-    deserialize_with = "deserialize_sketch"
+        serialize_with = "serialize_sketch",
+        deserialize_with = "deserialize_sketch"
     )]
     pub sketch: Sketch<()>,
     pub rotation: f64,
@@ -36,10 +36,10 @@ fn distance_to_line_segment(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64
     if dx == 0.0 && dy == 0.0 {
         let dx = px - x1;
         let dy = py - y1;
-        return (dx*dx + dy*dy).sqrt();
+        return (dx * dx + dy * dy).sqrt();
     }
 
-    let t = ((px - x1) * dx + (py - y1) * dy) / (dx*dx + dy*dy);
+    let t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
     let t_clamped = t.clamp(0.0, 1.0);
 
     let proj_x = x1 + t_clamped * dx;
@@ -47,7 +47,7 @@ fn distance_to_line_segment(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64
 
     let dx = px - proj_x;
     let dy = py - proj_y;
-    (dx*dx + dy*dy).sqrt()
+    (dx * dx + dy * dy).sqrt()
 }
 
 impl DesignPath {
@@ -61,16 +61,16 @@ impl DesignPath {
     }
 
     pub fn translate(&mut self, dx: f64, dy: f64) {
-        let transform = Transform::identity()
-        .then_translate(lyon::math::Vector::new(dx as f32, dy as f32));
+        let transform =
+            Transform::identity().then_translate(lyon::math::Vector::new(dx as f32, dy as f32));
         self.transform(&transform);
     }
 
     pub fn scale(&mut self, sx: f64, sy: f64, center: Point) {
         let transform = Transform::identity()
-        .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32))
-        .then_scale(sx as f32, sy as f32)
-        .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32));
+            .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32))
+            .then_scale(sx as f32, sy as f32)
+            .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32));
         self.transform(&transform);
     }
 
@@ -99,9 +99,12 @@ impl DesignPath {
                 lyon::path::Event::Line { to, .. } => {
                     if let Some(from) = prev_point {
                         let dist = distance_to_line_segment(
-                            from.x as f64, from.y as f64,
-                            to.x as f64, to.y as f64,
-                            point.x, point.y
+                            from.x as f64,
+                            from.y as f64,
+                            to.x as f64,
+                            to.y as f64,
+                            point.x,
+                            point.y,
                         );
                         min_distance = min_distance.min(dist);
                     }
@@ -111,9 +114,12 @@ impl DesignPath {
                     if close {
                         if let (Some(from), Some(to)) = (prev_point, first_point) {
                             let dist = distance_to_line_segment(
-                                from.x as f64, from.y as f64,
-                                to.x as f64, to.y as f64,
-                                point.x, point.y
+                                from.x as f64,
+                                from.y as f64,
+                                to.x as f64,
+                                to.y as f64,
+                                point.x,
+                                point.y,
                             );
                             min_distance = min_distance.min(dist);
                         }
@@ -195,7 +201,7 @@ impl DesignPath {
                 let p2 = points[i + 1];
                 let dx = p2.x - p1.x;
                 let dy = p2.y - p1.y;
-                let len = (dx*dx + dy*dy).sqrt();
+                let len = (dx * dx + dy * dy).sqrt();
 
                 if len > 1e-6 {
                     let thickness = 0.05;
@@ -283,7 +289,7 @@ impl DesignPath {
                     let p2 = points[i + 1];
                     let dx = p2.x - p1.x;
                     let dy = p2.y - p1.y;
-                    let len = (dx*dx + dy*dy).sqrt();
+                    let len = (dx * dx + dy * dy).sqrt();
 
                     if len > 1e-6 {
                         let thickness = 0.05;
@@ -363,10 +369,10 @@ impl DesignPath {
 
         fn is_cmd_token(s: &str) -> bool {
             s.len() == 1
-            && s.chars()
-            .next()
-            .map(|c| c.is_ascii_alphabetic())
-            .unwrap_or(false)
+                && s.chars()
+                    .next()
+                    .map(|c| c.is_ascii_alphabetic())
+                    .unwrap_or(false)
         }
 
         fn parse_f32(s: &str) -> Option<f32> {
@@ -636,11 +642,11 @@ impl DesignPath {
                         let (cp1_x, cp1_y, cp2_x, cp2_y, end_x, end_y) = if is_relative {
                             (
                                 current_x + x1,
-                             current_y + y1,
-                             current_x + x2,
-                             current_y + y2,
-                             current_x + x,
-                             current_y + y,
+                                current_y + y1,
+                                current_x + x2,
+                                current_y + y2,
+                                current_x + x,
+                                current_y + y,
                             )
                         } else {
                             (x1, y1, x2, y2, x, y)
@@ -654,8 +660,8 @@ impl DesignPath {
                         }
                         builder.cubic_bezier_to(
                             point(cp1_x, cp1_y),
-                                                point(cp2_x, cp2_y),
-                                                point(end_x, end_y),
+                            point(cp2_x, cp2_y),
+                            point(end_x, end_y),
                         );
                         current_x = end_x;
                         current_y = end_y;
@@ -695,8 +701,8 @@ impl DesignPath {
                         }
                         builder.cubic_bezier_to(
                             point(cp1.0, cp1.1),
-                                                point(cp2_x, cp2_y),
-                                                point(end_x, end_y),
+                            point(cp2_x, cp2_y),
+                            point(end_x, end_y),
                         );
                         current_x = end_x;
                         current_y = end_y;
@@ -804,8 +810,8 @@ impl DesignPath {
                             for (cp1, cp2, end) in cubics {
                                 builder.cubic_bezier_to(
                                     point(cp1.0, cp1.1),
-                                                        point(cp2.0, cp2.1),
-                                                        point(end.0, end.1),
+                                    point(cp2.0, cp2.1),
+                                    point(end.0, end.1),
                                 );
                             }
                         } else {
@@ -894,7 +900,7 @@ impl DesignPath {
 
 fn serialize_sketch<S>(sketch: &Sketch<()>, serializer: S) -> Result<S::Ok, S::Error>
 where
-S: Serializer,
+    S: Serializer,
 {
     let svg = sketch.to_svg();
     serializer.serialize_str(&svg)
@@ -902,7 +908,7 @@ S: Serializer,
 
 fn deserialize_sketch<'de, D>(deserializer: D) -> Result<Sketch<()>, D::Error>
 where
-D: Deserializer<'de>,
+    D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
     Sketch::from_svg(&s).map_err(serde::de::Error::custom)
@@ -981,7 +987,9 @@ impl DesignerShape for DesignPath {
                     lyon::path::Event::Line { to, .. } => y_before.push(to.y),
                     _ => {}
                 }
-                if y_before.len() > 5 { break; }
+                if y_before.len() > 5 {
+                    break;
+                }
             }
         }
 
@@ -991,10 +999,22 @@ impl DesignerShape for DesignPath {
 
         // Transform the sketch
         let m = Matrix4::new(
-            t.m11 as f64, t.m21 as f64, 0.0, t.m31 as f64,
-            t.m12 as f64, t.m22 as f64, 0.0, t.m32 as f64,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            t.m11 as f64,
+            t.m21 as f64,
+            0.0,
+            t.m31 as f64,
+            t.m12 as f64,
+            t.m22 as f64,
+            0.0,
+            t.m32 as f64,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
         );
         self.sketch = self.sketch.transform(&m);
 
@@ -1011,16 +1031,15 @@ impl DesignerShape for DesignPath {
                         builder.line_to(transformed);
                     }
                     lyon::path::Event::Quadratic { ctrl, to, .. } => {
-                        builder.quadratic_bezier_to(
-                            t.transform_point(ctrl),
-                                                    t.transform_point(to)
-                        );
+                        builder.quadratic_bezier_to(t.transform_point(ctrl), t.transform_point(to));
                     }
-                    lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => {
+                    lyon::path::Event::Cubic {
+                        ctrl1, ctrl2, to, ..
+                    } => {
                         builder.cubic_bezier_to(
                             t.transform_point(ctrl1),
-                                                t.transform_point(ctrl2),
-                                                t.transform_point(to)
+                            t.transform_point(ctrl2),
+                            t.transform_point(to),
                         );
                     }
                     lyon::path::Event::End { close, .. } => {
@@ -1042,7 +1061,9 @@ impl DesignerShape for DesignPath {
                         lyon::path::Event::Line { to, .. } => y_after.push(to.y),
                         _ => {}
                     }
-                    if y_after.len() > 5 { break; }
+                    if y_after.len() > 5 {
+                        break;
+                    }
                 }
             }
         }
@@ -1064,9 +1085,9 @@ impl DesignerShape for DesignPath {
     fn contains_point(&self, p: Point, tolerance: f64) -> bool {
         let (x1, y1, x2, y2) = self.bounds();
         p.x >= x1 - tolerance
-        && p.x <= x2 + tolerance
-        && p.y >= y1 - tolerance
-        && p.y <= y2 + tolerance
+            && p.x <= x2 + tolerance
+            && p.y >= y1 - tolerance
+            && p.y <= y2 + tolerance
     }
 
     fn resize(&mut self, handle: usize, dx: f64, dy: f64) {

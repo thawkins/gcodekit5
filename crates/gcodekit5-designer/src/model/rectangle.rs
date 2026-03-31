@@ -81,7 +81,7 @@ impl DesignerShape for DesignRectangle {
         let mut transform = Transform::identity();
         if self.rotation.abs() > 1e-6 {
             transform = transform
-            .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
         }
         transform = transform.then_translate(lyon::math::vector(
             self.center.x as f32,
@@ -102,11 +102,11 @@ impl DesignerShape for DesignRectangle {
         // Sketch::rectangle creates shape from (0,0) to (w,h).
         // We center it at (0,0) first so rotation works around the center.
         let center_fix =
-        Matrix4::new_translation(&Vector3::new(-self.width / 2.0, -self.height / 2.0, 0.0));
+            Matrix4::new_translation(&Vector3::new(-self.width / 2.0, -self.height / 2.0, 0.0));
 
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation =
-        Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
 
         sketch.transform(&(translation * rotation * center_fix))
     }
@@ -120,15 +120,18 @@ impl DesignerShape for DesignRectangle {
         let bb = lyon::algorithms::aabb::bounding_box(path.iter());
         (
             bb.min.x as f64,
-         bb.min.y as f64,
-         bb.max.x as f64,
-         bb.max.y as f64,
+            bb.min.y as f64,
+            bb.max.x as f64,
+            bb.max.y as f64,
         )
     }
 
     fn transform(&mut self, t: &Transform) {
         // 1. Transforming the CENTER
-        let p = t.transform_point(lyon::math::point(self.center.x as f32, self.center.y as f32));
+        let p = t.transform_point(lyon::math::point(
+            self.center.x as f32,
+            self.center.y as f32,
+        ));
         self.center = crate::model::Point::new(p.x as f64, p.y as f64);
 
         // 2. Extract the ROTATION from the matrix
@@ -150,7 +153,6 @@ impl DesignerShape for DesignRectangle {
             self.height *= sy;
         }
     }
-
 
     fn properties(&self) -> Vec<Property> {
         vec![

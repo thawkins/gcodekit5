@@ -37,9 +37,9 @@ impl DesignerShape for DesignEllipse {
         let mut builder = Path::builder();
         builder.add_ellipse(
             point(self.center.x as f32, self.center.y as f32),
-                            lyon::math::vector(self.rx as f32, self.ry as f32),
-                            lyon::math::Angle::radians(self.rotation.to_radians() as f32),
-                            lyon::path::Winding::Positive,
+            lyon::math::vector(self.rx as f32, self.ry as f32),
+            lyon::math::Angle::radians(self.rotation.to_radians() as f32),
+            lyon::path::Winding::Positive,
         );
         builder.build()
     }
@@ -58,7 +58,7 @@ impl DesignerShape for DesignEllipse {
         let sketch = Sketch::polygon(&points, None);
         let rotation = Matrix4::new_rotation(Vector3::new(0.0, 0.0, self.rotation.to_radians()));
         let translation =
-        Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
+            Matrix4::new_translation(&Vector3::new(self.center.x, self.center.y, 0.0));
         sketch.transform(&(translation * rotation))
     }
 

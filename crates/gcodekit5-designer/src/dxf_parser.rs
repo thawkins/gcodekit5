@@ -203,7 +203,6 @@ impl DxfEntity {
             DxfEntity::Ellipse(e) => e.color,
         }
     }
-
 }
 
 /// DXF file header containing document properties
@@ -360,7 +359,6 @@ impl DxfFile {
             }
         }
 
-
         self.header.extents_min = Point::new(
             self.header.extents_min.x * factor,
             self.header.extents_min.y * factor,
@@ -510,9 +508,9 @@ impl DxfParser {
 
         Ok(DxfLine {
             start,
-           end,
-           layer,
-           color,
+            end,
+            layer,
+            color,
         })
     }
 
@@ -552,9 +550,9 @@ impl DxfParser {
 
         Ok(DxfCircle {
             center,
-           radius,
-           layer,
-           color,
+            radius,
+            layer,
+            color,
         })
     }
 
@@ -598,11 +596,11 @@ impl DxfParser {
 
         Ok(DxfArc {
             center,
-           radius,
-           start_angle,
-           end_angle,
-           layer,
-           color,
+            radius,
+            start_angle,
+            end_angle,
+            layer,
+            color,
         })
     }
 
@@ -618,7 +616,9 @@ impl DxfParser {
             let code = lines[*index].trim();
             let value = lines.get(*index + 1).map(|v| v.trim()).unwrap_or("");
 
-            if code == "0" { break; } // End entity
+            if code == "0" {
+                break;
+            } // End entity
 
             match code {
                 "8" => layer = value.to_string(),
@@ -626,7 +626,7 @@ impl DxfParser {
                 "70" => {
                     let flags = value.parse::<i32>().unwrap_or(0);
                     closed = (flags & 1) != 0;
-                },
+                }
                 "10" => current_x = value.parse().ok(),
                 "20" => {
                     if let Some(x) = current_x {
@@ -636,22 +636,27 @@ impl DxfParser {
                         bulges.push(0.0);
                         current_x = None;
                     }
-                },
+                }
                 "42" => {
                     if let Ok(bulge_val) = value.parse::<f64>() {
-
                         if let Some(last_bulge) = bulges.last_mut() {
                             *last_bulge = bulge_val;
                         }
                     }
-                },
-                "90" => { /* Optional: You could use it to do Vec::with_capacity(n) */ },
+                }
+                "90" => { /* Optional: You could use it to do Vec::with_capacity(n) */ }
                 _ => {}
             }
             *index += 2;
         }
 
-        Ok(DxfPolyline { vertices, bulges, closed, layer, color })
+        Ok(DxfPolyline {
+            vertices,
+            bulges,
+            closed,
+            layer,
+            color,
+        })
     }
 
     /// Parse a POLYLINE entity
@@ -759,10 +764,10 @@ impl DxfParser {
 
         Ok(DxfPolyline {
             vertices,
-           bulges: vec![],
-           closed,
-           layer,
-           color,
+            bulges: vec![],
+            closed,
+            layer,
+            color,
         })
     }
 
@@ -806,11 +811,11 @@ impl DxfParser {
 
         Ok(DxfText {
             content,
-           position,
-           height,
-           rotation,
-           layer,
-           color,
+            position,
+            height,
+            rotation,
+            layer,
+            color,
         })
     }
 
@@ -856,12 +861,12 @@ impl DxfParser {
 
         Ok(DxfEllipse {
             center,
-           major_axis,
-           ratio,
-           start_angle,
-           end_angle,
-           layer,
-           color,
+            major_axis,
+            ratio,
+            start_angle,
+            end_angle,
+            layer,
+            color,
         })
     }
 

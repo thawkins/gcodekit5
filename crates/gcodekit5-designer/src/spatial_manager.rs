@@ -66,7 +66,7 @@ impl SpatialManager {
     pub fn insert(&mut self, id: u64, shape: &Shape) {
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.index
-        .insert(id, &Bounds::new(min_x, min_y, max_x, max_y));
+            .insert(id, &Bounds::new(min_x, min_y, max_x, max_y));
     }
 
     /// Inserts a shape into the spatial index using pre-calculated bounds.
@@ -98,7 +98,7 @@ impl SpatialManager {
     pub fn remove(&mut self, id: u64, shape: &Shape) {
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.index
-        .remove(id, &Bounds::new(min_x, min_y, max_x, max_y));
+            .remove(id, &Bounds::new(min_x, min_y, max_x, max_y));
     }
 
     /// Removes a shape from the spatial index using pre-calculated bounds.

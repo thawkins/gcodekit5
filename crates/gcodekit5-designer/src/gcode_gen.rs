@@ -51,15 +51,15 @@ impl ToolpathToGcode {
 
         // Get spindle speed and feed rate from first segment (all should have same parameters)
         let spindle_speed = toolpath
-        .segments
-        .first()
-        .map(|s| s.spindle_speed)
-        .unwrap_or(1000);
+            .segments
+            .first()
+            .map(|s| s.spindle_speed)
+            .unwrap_or(1000);
         let feed_rate = toolpath
-        .segments
-        .first()
-        .map(|s| s.feed_rate)
-        .unwrap_or(100.0);
+            .segments
+            .first()
+            .map(|s| s.feed_rate)
+            .unwrap_or(100.0);
 
         gcode.push_str(&self.generate_header(
             spindle_speed,
@@ -99,7 +99,10 @@ impl ToolpathToGcode {
 
         // KEY CHANGE: Use M4 for dynamic laser mode
         // To remove burn marks on 1-2mm curves
-        gcode.push_str(&format!("M4 S{}      ; Laser Dynamic Mode\n", spindle_speed));
+        gcode.push_str(&format!(
+            "M4 S{}      ; Laser Dynamic Mode\n",
+            spindle_speed
+        ));
 
         gcode.push('\n');
         gcode
@@ -108,7 +111,7 @@ impl ToolpathToGcode {
     /// Generates the G-code body (moves) for a toolpath.
     pub fn generate_body(&self, toolpath: &Toolpath, start_line_number: u32) -> String {
         self.generate_body_continuing(toolpath, start_line_number, self.safe_z)
-        .0
+            .0
     }
 
     /// Generates the G-code body continuing from a given Z position.
@@ -131,7 +134,6 @@ impl ToolpathToGcode {
         let mut first_cut_move = true;
 
         for segment in &toolpath.segments {
-
             if self.is_laser_2d {
                 if segment.segment_type == ToolpathSegmentType::RapidMove {
                     // Si es un salto G0, reseteamos el filtro para no perder precisión
@@ -151,7 +153,6 @@ impl ToolpathToGcode {
                     last_y = Some(segment.end.y);
                 }
             }
-
 
             match segment.segment_type {
                 ToolpathSegmentType::RapidMove => {
@@ -380,7 +381,6 @@ impl ToolpathToGcode {
                 String::new()
             };
             gcode.push_str(&format!("{}M5          ; Laser off\n", line_prefix));
-
         }
 
         (gcode, current_z)
@@ -409,4 +409,3 @@ impl Default for ToolpathToGcode {
         Self::new(Units::MM, 10.0)
     }
 }
-

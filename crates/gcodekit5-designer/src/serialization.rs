@@ -273,7 +273,7 @@ impl DesignFile {
             },
             shapes: Vec::new(),
             default_properties: None,
-                toolpath_params: ToolpathParameters::default(),
+            toolpath_params: ToolpathParameters::default(),
         }
     }
 
@@ -289,10 +289,10 @@ impl DesignFile {
     /// Load design from file
     pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content =
-        std::fs::read_to_string(path.as_ref()).context("Failed to read design file")?;
+            std::fs::read_to_string(path.as_ref()).context("Failed to read design file")?;
 
         let mut design: DesignFile =
-        serde_json::from_str(&content).context("Failed to parse design file")?;
+            serde_json::from_str(&content).context("Failed to parse design file")?;
 
         // Update modified timestamp
         design.metadata.modified = Utc::now();
@@ -302,7 +302,6 @@ impl DesignFile {
 
     /// Convert DrawingObject to ShapeData
     pub fn from_drawing_object(obj: &DrawingObject) -> ShapeData {
-
         // 1. We only use the bounds to calculate the center (cx, cy)
         let (x1, y1, x2, y2) = obj.shape.bounds();
         let cx = (x1 + x2) / 2.0;
@@ -376,17 +375,17 @@ impl DesignFile {
         };
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
-        if let Shape::Text(text_shape) = &obj.shape {
-            (
-                text_shape.text.clone(),
-             text_shape.font_size,
-             text_shape.font_family.clone(),
-             text_shape.bold,
-             text_shape.italic,
-            )
-        } else {
-            (String::new(), 0.0, String::new(), false, false)
-        };
+            if let Shape::Text(text_shape) = &obj.shape {
+                (
+                    text_shape.text.clone(),
+                    text_shape.font_size,
+                    text_shape.font_family.clone(),
+                    text_shape.bold,
+                    text_shape.italic,
+                )
+            } else {
+                (String::new(), 0.0, String::new(), false, false)
+            };
 
         let path_data = if let Shape::Path(path_shape) = &obj.shape {
             path_shape.to_svg_path()
@@ -526,7 +525,7 @@ impl DesignFile {
 
             "text" => {
                 let mut s =
-                TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }
@@ -597,27 +596,27 @@ impl DesignFile {
 
         Ok(DrawingObject {
             id: next_id as u64,
-           group_id: data.group_id,
-           name: if data.name.is_empty() {
-               default_name.to_string()
-           } else {
-               data.name.clone()
-           },
-           shape,
-           selected: data.selected,
-           operation_type,
-           use_custom_values: data.use_custom_values,
-           pocket_depth: data.pocket_depth,
-           start_depth: data.start_depth,
-           step_down: data.step_down,
-           step_in: data.step_in,
-           ramp_angle: data.ramp_angle,
-           pocket_strategy: data.pocket_strategy,
-           raster_fill_ratio: data.raster_fill_ratio,
-           offset: data.offset,
-           fillet: data.fillet,
-           chamfer: data.chamfer,
-           lock_aspect_ratio: data.lock_aspect_ratio,
+            group_id: data.group_id,
+            name: if data.name.is_empty() {
+                default_name.to_string()
+            } else {
+                data.name.clone()
+            },
+            shape,
+            selected: data.selected,
+            operation_type,
+            use_custom_values: data.use_custom_values,
+            pocket_depth: data.pocket_depth,
+            start_depth: data.start_depth,
+            step_down: data.step_down,
+            step_in: data.step_in,
+            ramp_angle: data.ramp_angle,
+            pocket_strategy: data.pocket_strategy,
+            raster_fill_ratio: data.raster_fill_ratio,
+            offset: data.offset,
+            fillet: data.fillet,
+            chamfer: data.chamfer,
+            lock_aspect_ratio: data.lock_aspect_ratio,
         })
     }
 }
