@@ -218,6 +218,30 @@ msgstr "Configuración de Herramientas…"
 msgid "Tool Parameters"
 msgstr "Parametros de la herramienta"
 
+msgid "Starting laser engraving:"
+msgstr "Iniciando grabado láser:"
+
+msgid "lines"
+msgstr "líneas"
+
+msgid "Work completed."
+msgstr "Trabajo finalizado."
+
+msgid "Work stopped."
+msgstr "Trabajo detenido."
+
+msgid "Stopping..."
+msgstr "Deteniendo..."
+
+msgid "Paused"
+msgstr "Pausado"
+
+msgid "Resuming"
+msgstr "Reanudando"
+
+msgid "Unlocking..."
+msgstr "Desbloqueando..."
+
 msgid "Stock Width"
 msgstr "Ancho en bruto"
 

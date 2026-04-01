@@ -1,3 +1,4 @@
+use crate::t;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
 use gcodekit5_core::ThreadSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,7 +60,7 @@ impl DirectSender {
         }
 
         let total_lines = lines.len();
-        self.send_progress(format!("Starting laser engraving: {} lines", total_lines));
+        self.send_progress(format!("{} {} {}", t!("Starting laser engraving:"), total_lines, t!("lines")));
 
         self.is_streaming.store(true, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);
@@ -76,6 +77,7 @@ impl DirectSender {
             let max_window: usize = 40; 
             let mut i = 0;
             let total = lines.len();
+            let mut last_percent: u32 = 0;
 
             while i < total && !stop_flag.load(Ordering::SeqCst) {
                 // SEND until the window is full
@@ -115,32 +117,42 @@ impl DirectSender {
                     lines_in_flight = lines_in_flight.saturating_sub(ok_count);
                 }
 
-                if i % 1000 == 0 {
-                    let _ = progress_tx.send(format!("* {:.1}%", (i as f64 / total as f64) * 100.0));
+                let percent = ((i as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u32;
+                if percent != last_percent {
+                    last_percent = percent;
+                    let _ = progress_tx.send(format!("* {}%", percent));
                 }
             }
+
+            if !stop_flag.load(Ordering::SeqCst) {
+                let _ = progress_tx.send("* 100%".to_string());
+                let _ = progress_tx.send(t!("Work completed.").to_string());
+            } else {
+                let _ = progress_tx.send(t!("Work stopped.").to_string());
+            }
+
             streaming_flag.store(false, Ordering::SeqCst);
         });
     }
 
 
     pub fn stop(&self) {
-        let _ = self.progress_tx.send("Stopping...".to_string());
+        let _ = self.progress_tx.send(t!("Stopping...").to_string());
         self.should_stop.store(true, Ordering::SeqCst);
     }
 
     pub fn pause(&self) {
-        let _ = self.progress_tx.send("Paused".to_string());
+        let _ = self.progress_tx.send(t!("Paused").to_string());
         self.is_paused.store(true, Ordering::SeqCst);
     }
 
     pub fn resume(&self) {
-        let _ = self.progress_tx.send("Resuming".to_string());
+        let _ = self.progress_tx.send(t!("Resuming").to_string());
         self.is_paused.store(false, Ordering::SeqCst);
     }
 
     pub fn unlock(&self) {
-        let _ = self.progress_tx.send("Unlocking...".to_string());
+        let _ = self.progress_tx.send(t!("Unlocking...").to_string());
 
         let comm = self.communicator.clone();
         let _ = thread::spawn(move || {

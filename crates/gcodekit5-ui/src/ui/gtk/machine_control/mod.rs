@@ -1562,6 +1562,7 @@ impl MachineControlView {
                     );
 
                     let console = view_clone.device_console.clone();
+                    let status_bar = view_clone.status_bar.clone();
 
                     // Use timeout_add_local instead of spawn_future_local
                     // Check messages every 100ms without blocking
@@ -1571,8 +1572,47 @@ impl MachineControlView {
                         // Try to receive all pending messages
                         let receiver_guard = receiver.lock().unwrap();
                         while let Ok(message) = receiver_guard.try_recv() {
-                            if let Some(c) = console.as_ref() {
-                                c.append_log(&format!("{}\n", message));
+                            if message.starts_with("*") {
+                                // Progress update from DirectSender
+                                if let Some(sb) = status_bar.as_ref() {
+                                    if let Ok(percent) = message
+                                        .trim_start_matches('*')
+                                        .trim()
+                                        .trim_end_matches('%')
+                                        .parse::<f64>()
+                                    {
+                                        sb.set_progress(percent, "", "");
+                                        if percent >= 100.0 {
+                                            sb.set_progress(0.0, "", "");
+                                        }
+                                    }
+                                }
+                            } else if message == t!("Work completed.") {
+                                if let Some(sb) = status_bar.as_ref() {
+                                    sb.set_progress(0.0, "", "");
+                                }
+                                if let Some(c) = console.as_ref() {
+                                    c.append_log(&format!("{}\n", t!("Work completed.")));
+                                }
+                            } else if message == t!("Work stopped.") {
+                                if let Some(sb) = status_bar.as_ref() {
+                                    sb.set_progress(0.0, "", "");
+                                }
+                                if let Some(c) = console.as_ref() {
+                                    c.append_log(&format!("{}\n", t!("Work stopped.")));
+                                }
+                            } else if message.starts_with("Starting laser engraving:") {
+                                if let Some(c) = console.as_ref() {
+                                    c.append_log(&format!("{}\n", message));
+                                }
+                            } else if let Some(c) = console.as_ref() {
+                                match message.as_str() {
+                                    "Stopping..." => c.append_log(&format!("{}\n", t!("Stopping..."))),
+                                    "Paused" => c.append_log(&format!("{}\n", t!("Paused"))),
+                                    "Resuming" => c.append_log(&format!("{}\n", t!("Resuming"))),
+                                    "Unlocking..." => c.append_log(&format!("{}\n", t!("Unlocking..."))),
+                                    _ => c.append_log(&format!("{}\n", message)),
+                                }
                             }
                         }
 
