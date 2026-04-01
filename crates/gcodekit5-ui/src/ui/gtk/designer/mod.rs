@@ -4,6 +4,7 @@
 //! including toolbox, canvas, properties panel, and layers panel.
 
 use crate::t;
+use crate::ui::device_console_manager::get_console_manager;
 use crate::ui::gtk::designer_canvas::DesignerCanvas;
 use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
@@ -11,6 +12,7 @@ use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use crate::ui::gtk::osd_format::format_zoom_center_cursor;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
 use gcodekit5_designer::designer_state::DesignerState;
+use gcodekit5_designer::engraving::image_engraver;
 use gcodekit5_designer::model::{DesignerShape, Shape};
 use gcodekit5_designer::serialization::DesignFile;
 use gcodekit5_designer::stock_removal::StockMaterial;
@@ -19,8 +21,8 @@ use gcodekit5_settings::controller::SettingsController;
 use gtk4::gdk::{Key, ModifierType};
 use gtk4::prelude::*;
 use gtk4::{
-    Adjustment, Box, EventControllerKey, GestureClick, Grid,
-    Label, Orientation, Overlay, Paned, Popover, ResponseType, Scrollbar,
+    Adjustment, Box, EventControllerKey, GestureClick, Grid, Label, Orientation, Overlay, Paned,
+    Popover, ResponseType, Scrollbar,
 };
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -28,8 +30,6 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tracing::error;
-use gcodekit5_designer::engraving::image_engraver;
-use crate::ui::device_console_manager::get_console_manager;
 
 // Complex type due to GTK widget and callback fields.
 #[allow(clippy::type_complexity)]
@@ -107,10 +107,10 @@ impl DesignerView {
         // Create canvas
         let canvas = DesignerCanvas::new(
             state.clone(),
-                                         Some(toolbox.clone()),
-                                         device_manager.clone(),
-                                         status_bar.clone(),
-                                         Some(settings_controller.clone()),
+            Some(toolbox.clone()),
+            device_manager.clone(),
+            status_bar.clone(),
+            Some(settings_controller.clone()),
         );
 
         // Create Grid for Canvas + Scrollbars
@@ -128,23 +128,23 @@ impl DesignerView {
         // Floating Controls (Bottom Right)
         let (
             floating_box,
-             float_zoom_in,
-             float_zoom_out,
-             float_fit,
-             float_reset,
-             float_fit_device,
-             scrollbars_btn,
+            float_zoom_in,
+            float_zoom_out,
+            float_fit,
+            float_reset,
+            float_fit_device,
+            scrollbars_btn,
         ) = Self::create_floating_controls(device_manager.is_some());
 
         // Empty state (shown when no shapes)
         let (
-             empty_box,
-             empty_new_btn,
-             empty_open_btn,
-             empty_import_svg_btn,
-             empty_import_dxf_btn,
-             empty_import_stl_btn,
-             empty_import_image_btn,
+            empty_box,
+            empty_new_btn,
+            empty_open_btn,
+            empty_import_svg_btn,
+            empty_import_dxf_btn,
+            empty_import_stl_btn,
+            empty_import_image_btn,
         ) = Self::create_empty_state(&settings_controller);
 
         overlay.add_overlay(&empty_box);
@@ -347,18 +347,18 @@ impl DesignerView {
         inspector_header.set_margin_top(6);
 
         let inspector_label = Label::builder()
-        .label(t!("Inspector"))
-        .css_classes(vec!["heading"])
-        .halign(gtk4::Align::Start)
-        .build();
+            .label(t!("Inspector"))
+            .css_classes(vec!["heading"])
+            .halign(gtk4::Align::Start)
+            .build();
         inspector_label.set_hexpand(true);
         inspector_header.append(&inspector_label);
 
         let props_hide_btn = gtk4::Button::builder()
-        .tooltip_text(t!("Hide Properties"))
-        .build();
+            .tooltip_text(t!("Hide Properties"))
+            .build();
         props_hide_btn
-        .update_property(&[gtk4::accessible::Property::Label(&t!("Hide Properties"))]);
+            .update_property(&[gtk4::accessible::Property::Label(&t!("Hide Properties"))]);
         {
             let child = Box::new(Orientation::Horizontal, 6);
             child.append(&gtk4::Image::from_icon_name("view-conceal-symbolic"));
@@ -389,10 +389,10 @@ impl DesignerView {
 
         // Floating unhide button (top-right of canvas)
         let props_show_btn = gtk4::Button::builder()
-        .tooltip_text(t!("Unhide Properties"))
-        .build();
+            .tooltip_text(t!("Unhide Properties"))
+            .build();
         props_show_btn
-        .update_property(&[gtk4::accessible::Property::Label(&t!("Unhide Properties"))]);
+            .update_property(&[gtk4::accessible::Property::Label(&t!("Unhide Properties"))]);
         {
             let child = Box::new(Orientation::Horizontal, 6);
             child.append(&gtk4::Image::from_icon_name("view-reveal-symbolic"));
@@ -494,7 +494,7 @@ impl DesignerView {
 
         // View controls (moved to helper function)
         let view_controls_expander =
-        Self::create_view_controls_expander(&state, &canvas, &settings_controller);
+            Self::create_view_controls_expander(&state, &canvas, &settings_controller);
         left_sidebar.append(&view_controls_expander);
 
         // Start status OSD update loop
@@ -502,8 +502,8 @@ impl DesignerView {
             status_label_osd,
             units_badge,
             empty_box.clone(),
-                                       canvas.clone(),
-                                       settings_controller.clone(),
+            canvas.clone(),
+            settings_controller.clone(),
         );
 
         let current_file = shared_none();
@@ -579,20 +579,18 @@ impl DesignerView {
 
                 // Generate G-code with ImageEngraver
                 match image_engraver::ImageEngraver::from_raster_image(&raster_image, params) {
-                    Ok(engraver) => {
-                        match engraver.generate_gcode() {
-                            Ok(gcode) => {
-                                status_label_gen.set_text(&t!("G-Code generated for image"));
-                                if let Some(callback) = on_gen.borrow().as_ref() {
-                                    callback(gcode);
-                                }
-                            }
-                            Err(e) => {
-                                status_label_gen.set_text(&format!("Error: {}", e));
-                                error!("Failed to generate image G-code: {}", e);
+                    Ok(engraver) => match engraver.generate_gcode() {
+                        Ok(gcode) => {
+                            status_label_gen.set_text(&t!("G-Code generated for image"));
+                            if let Some(callback) = on_gen.borrow().as_ref() {
+                                callback(gcode);
                             }
                         }
-                    }
+                        Err(e) => {
+                            status_label_gen.set_text(&format!("Error: {}", e));
+                            error!("Failed to generate image G-code: {}", e);
+                        }
+                    },
                     Err(e) => {
                         status_label_gen.set_text(&format!("Error loading image: {}", e));
                         error!("Failed to load image: {}", e);
@@ -631,28 +629,28 @@ impl DesignerView {
         let canvas_shape = canvas.clone();
         let layers_shape = layers.clone();
         toolbox
-        .fast_shape_gallery()
-        .connect_shape_selected(move |shape| {
-            let mut state = canvas_shape.state.borrow_mut();
-            state.add_shape_with_undo(shape);
-            drop(state);
+            .fast_shape_gallery()
+            .connect_shape_selected(move |shape| {
+                let mut state = canvas_shape.state.borrow_mut();
+                state.add_shape_with_undo(shape);
+                drop(state);
 
-            // Refresh layers panel
-            layers_shape.refresh(&canvas_shape.state);
-            canvas_shape.widget.queue_draw();
-        });
+                // Refresh layers panel
+                layers_shape.refresh(&canvas_shape.state);
+                canvas_shape.widget.queue_draw();
+            });
 
         let view = Rc::new(Self {
             widget: container,
             canvas: canvas.clone(),
-                           toolbox: toolbox.clone(),
-                           _properties: properties.clone(),
-                           layers: layers.clone(),
-                           status_label,
-                           _coord_label: coord_label,
-                           current_file,
-                           on_gcode_generated,
-                           settings_persistence: Some(settings_controller.persistence.clone()),
+            toolbox: toolbox.clone(),
+            _properties: properties.clone(),
+            layers: layers.clone(),
+            status_label,
+            _coord_label: coord_label,
+            current_file,
+            on_gcode_generated,
+            settings_persistence: Some(settings_controller.persistence.clone()),
         });
 
         // Empty state actions
@@ -785,7 +783,34 @@ impl DesignerView {
         }
     }
 
+    pub fn get_frame_bounds(&self) -> Option<(f64, f64, f64, f64)> {
+        let base_bounds = self.get_bounds()?;
+
+        let state = self.canvas.state.borrow();
+        let selected = state.canvas.selection_manager.selected_id();
+
+        if let Some(id) = selected {
+            if let Some(obj) = state.canvas.get_shape(id) {
+                if let Shape::RasterImage(ref img) = obj.shape {
+                    let original_offset_x = img.center.x - img.width_mm / 2.0;
+                    let original_offset_y = img.center.y - img.height_mm / 2.0;
+
+                    let effective_offset_x = original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
+                    let effective_offset_y = original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
+
+                    let dx = effective_offset_x - original_offset_x;
+                    let dy = effective_offset_y - original_offset_y;
+
+                    let (x1, y1, x2, y2) = base_bounds;
+                    return Some((x1 + dx, y1 + dy, x2 + dx, y2 + dy));
+                }
+            }
+        }
+
+        Some(base_bounds)
+    }
 }
+
 
 mod file_ops;
 mod ui_builders;

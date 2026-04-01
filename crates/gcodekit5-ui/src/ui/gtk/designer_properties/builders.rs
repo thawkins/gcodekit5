@@ -12,13 +12,13 @@ impl PropertiesPanel {
     pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let x_label = Label::new(Some(&t!("X:")));
         x_label.set_halign(gtk4::Align::Start);
@@ -52,13 +52,13 @@ impl PropertiesPanel {
     pub(crate) fn build_size_section() -> (Frame, Entry, Entry, CheckButton, Label, Label) {
         let frame = Self::create_section(&t!("Size"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let width_label = Label::new(Some(&t!("Width:")));
         width_label.set_halign(gtk4::Align::Start);
@@ -95,24 +95,24 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         width_entry,
-         height_entry,
-         lock_aspect_ratio,
-         width_unit_label,
-         height_unit_label,
+            width_entry,
+            height_entry,
+            lock_aspect_ratio,
+            width_unit_label,
+            height_unit_label,
         )
     }
 
     pub(crate) fn build_rotation_section() -> (Frame, Entry) {
         let frame = Self::create_section(&t!("Rotation:"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let rot_label = Label::new(Some(&t!("Angle:")));
         rot_label.set_halign(gtk4::Align::Start);
@@ -131,13 +131,13 @@ impl PropertiesPanel {
     pub(crate) fn build_corner_section() -> (Frame, Entry, CheckButton, Label) {
         let frame = Self::create_section(&t!("Corner"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let radius_label = Label::new(Some(&t!("Radius:")));
         radius_label.set_halign(gtk4::Align::Start);
@@ -173,13 +173,13 @@ impl PropertiesPanel {
     ) {
         let frame = Self::create_section(&t!("Text:"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let text_content_label = Label::new(Some(&t!("Content:")));
         text_content_label.set_halign(gtk4::Align::Start);
@@ -228,25 +228,25 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         text_entry,
-         font_family_combo,
-         font_bold_check,
-         font_italic_check,
-         font_size_entry,
-         font_size_unit_label,
+            text_entry,
+            font_family_combo,
+            font_bold_check,
+            font_italic_check,
+            font_size_entry,
+            font_size_unit_label,
         )
     }
 
     pub(crate) fn build_polygon_section() -> (Frame, Entry) {
         let frame = Self::create_section(&t!("Polygon"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let sides_label = Label::new(Some(&t!("Sides:")));
         sides_label.set_halign(gtk4::Align::Start);
@@ -263,13 +263,13 @@ impl PropertiesPanel {
     pub(crate) fn build_gear_section() -> (Frame, Entry, Entry, Entry) {
         let frame = Self::create_section(&t!("Gear"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let module_label = Label::new(Some(&t!("Module:")));
         module_label.set_halign(gtk4::Align::Start);
@@ -296,22 +296,22 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         gear_module_entry,
-         gear_teeth_entry,
-         gear_pressure_angle_entry,
+            gear_module_entry,
+            gear_teeth_entry,
+            gear_pressure_angle_entry,
         )
     }
 
     pub(crate) fn build_sprocket_section() -> (Frame, Entry, Entry, Entry) {
         let frame = Self::create_section(&t!("Sprocket"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let pitch_label = Label::new(Some(&t!("Pitch:")));
         pitch_label.set_halign(gtk4::Align::Start);
@@ -338,9 +338,9 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         sprocket_pitch_entry,
-         sprocket_teeth_entry,
-         sprocket_roller_diameter_entry,
+            sprocket_pitch_entry,
+            sprocket_teeth_entry,
+            sprocket_roller_diameter_entry,
         )
     }
 
@@ -348,13 +348,13 @@ impl PropertiesPanel {
     {
         let frame = Self::create_section(&t!("Geometry Operations"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         let offset_label = Label::new(Some(&t!("Offset:")));
         offset_label.set_halign(gtk4::Align::Start);
@@ -390,12 +390,12 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         offset_entry,
-         fillet_entry,
-         chamfer_entry,
-         offset_unit_label,
-         fillet_unit_label,
-         chamfer_unit_label,
+            offset_entry,
+            fillet_entry,
+            chamfer_entry,
+            offset_unit_label,
+            fillet_unit_label,
+            chamfer_unit_label,
         )
     }
 
@@ -416,13 +416,13 @@ impl PropertiesPanel {
     ) {
         let frame = Self::create_section(&t!("CAM Properties"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         // Operation Type
         let op_label = Label::new(Some(&t!("Operation:")));
@@ -515,41 +515,41 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         op_type_combo,
-         depth_entry,
-         step_down_entry,
-         step_in_entry,
-         ramp_angle_entry,
-         strategy_combo,
-         raster_fill_entry,
-         depth_unit_label,
-         step_down_unit_label,
-         step_in_unit_label,
+            op_type_combo,
+            depth_entry,
+            step_down_entry,
+            step_in_entry,
+            ramp_angle_entry,
+            strategy_combo,
+            raster_fill_entry,
+            depth_unit_label,
+            step_down_unit_label,
+            step_in_unit_label,
         )
     }
 
     pub(crate) fn build_image_engraving_section() -> (
         Frame,
-        Entry,  // feed_rate
-        Entry,  // travel_rate
-        Entry,  // min_power
-        Entry,  // max_power
-        Entry,  // ppi
+        Entry,        // feed_rate
+        Entry,        // travel_rate
+        Entry,        // min_power
+        Entry,        // max_power
+        Entry,        // ppi
         ComboBoxText, // scan_direction
         CheckButton,  // bidirectional
         CheckButton,  // invert
-        ComboBoxText,  // dithering
-        Entry, // halftone_threshold
+        ComboBoxText, // dithering
+        Entry,        // halftone_threshold
     ) {
         let frame = Self::create_section(&t!("Laser Engraving"));
         let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_start(8)
-        .margin_end(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
 
         // Feed Rate
         let feed_label = Label::new(Some(&t!("Feed Rate:")));
@@ -655,17 +655,16 @@ impl PropertiesPanel {
         frame.set_child(Some(&grid));
         (
             frame,
-         feed_entry,
-         travel_entry,
-         min_power_entry,
-         max_power_entry,
-         ppi_entry,
-         scan_combo,
-         bidir_check,
-         invert_check,
-         dither_combo,
-         halftone_entry,
+            feed_entry,
+            travel_entry,
+            min_power_entry,
+            max_power_entry,
+            ppi_entry,
+            scan_combo,
+            bidir_check,
+            invert_check,
+            dither_combo,
+            halftone_entry,
         )
     }
-
 }

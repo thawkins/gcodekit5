@@ -19,12 +19,12 @@ use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
+use gtk4::ComboBoxText;
 use gtk4::{
     Box, CheckButton, DropDown, Entry, EventControllerFocus, Expression, Frame, Label, Orientation,
     ScrolledWindow, StringList,
 };
 use std::rc::Rc;
-use gtk4::ComboBoxText;
 
 const MM_PER_PT: f64 = 25.4 / 72.0;
 
@@ -138,7 +138,6 @@ pub struct PropertiesPanel {
     pub(crate) image_invert_check: CheckButton,
     pub(crate) image_dithering_combo: ComboBoxText,
     pub(crate) image_halftone_threshold_entry: Entry,
-
 }
 
 impl PropertiesPanel {
@@ -156,32 +155,32 @@ impl PropertiesPanel {
             .build();
 
         let content = Box::new(Orientation::Vertical, 12);
-            content.set_margin_start(12);
-            content.set_margin_end(12);
-            content.set_margin_top(12);
-            content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
 
         // Header (kept for internal state, not shown in UI)
         let header = Label::new(Some(&t!("Properties")));
-            header.add_css_class("title-3");
-            header.add_css_class("heading");
-            header.set_halign(gtk4::Align::Start);
-            header.set_visible(false);
+        header.add_css_class("title-3");
+        header.add_css_class("heading");
+        header.set_halign(gtk4::Align::Start);
+        header.set_visible(false);
 
         let rotation_warning_label = Label::new(None);
-            rotation_warning_label.add_css_class("warning");
-            rotation_warning_label.set_halign(gtk4::Align::Start);
-            rotation_warning_label.set_margin_top(5);
-            rotation_warning_label.set_margin_bottom(5);
-            rotation_warning_label.set_visible(false);
-            rotation_warning_label.set_wrap(true);
+        rotation_warning_label.add_css_class("warning");
+        rotation_warning_label.set_halign(gtk4::Align::Start);
+        rotation_warning_label.set_margin_top(5);
+        rotation_warning_label.set_margin_bottom(5);
+        rotation_warning_label.set_visible(false);
+        rotation_warning_label.set_wrap(true);
 
-            content.append(&rotation_warning_label);
+        content.append(&rotation_warning_label);
 
         // Build all UI sections
         let (pos_frame, pos_x_entry, pos_y_entry, x_unit_label, y_unit_label) =
             Self::build_position_section();
-            content.append(&pos_frame);
+        content.append(&pos_frame);
 
         let (
             size_frame,
@@ -265,8 +264,7 @@ impl PropertiesPanel {
             image_dithering_combo,
             image_halftone_threshold_entry,
         ) = Self::build_image_engraving_section();
-            content.append(&image_engraving_frame);
-
+        content.append(&image_engraving_frame);
 
         // Empty state message
         let empty_label = Label::new(Some(&t!("Select a shape to edit its properties")));
@@ -719,6 +717,5 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
-
     }
 }

@@ -577,29 +577,29 @@ impl BitmapImageEngraver {
         Ok(())
     }
 
-fn scan_line(
-    &self,
-    gcode: &mut String,
-    image: &GrayImage,
-    y: u32,
-    y_pos: f32,
-    pixel_width: f32,
-    left_to_right: bool,
-) {
-    let width = image.width();
-    let mut in_burn = false;
-    let mut current_power = 0u32;
-    let mut segment_start = 0.0;
-    let mut segment_end = 0.0;
-    let mut first_segment_of_burst = true;
+    fn scan_line(
+        &self,
+        gcode: &mut String,
+        image: &GrayImage,
+        y: u32,
+        y_pos: f32,
+        pixel_width: f32,
+        left_to_right: bool,
+    ) {
+        let width = image.width();
+        let mut in_burn = false;
+        let mut current_power = 0u32;
+        let mut segment_start = 0.0;
+        let mut segment_end = 0.0;
+        let mut first_segment_of_burst = true;
 
-    let indices: Vec<u32> = if left_to_right {
-        (0..width).collect()
-    } else {
-        (0..width).rev().collect()
-    };
+        let indices: Vec<u32> = if left_to_right {
+            (0..width).collect()
+        } else {
+            (0..width).rev().collect()
+        };
 
-for &x in &indices {
+        for &x in &indices {
             let intensity = image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
             let mut power_value = (power * self.params.power_scale / 100.0).round() as u32;
@@ -618,50 +618,74 @@ for &x in &indices {
             let power_value = power_value.clamp(0, 1000);
             let x_pos = x as f32 * pixel_width;
 
-        if power_value > 0 {
-            if !in_burn {
-                in_burn = true;
-                current_power = power_value;
-                segment_start = x_pos;
-                segment_end = x_pos;
-                first_segment_of_burst = true;
-            } else if power_value == current_power {
-                segment_end = x_pos;
-            } else {
-                // Power change attached to the previous one: is_new_segment = first_segment_of_burst
-                self.emit_segment(gcode, segment_start, segment_end, y_pos, current_power, left_to_right, first_segment_of_burst);
+            if power_value > 0 {
+                if !in_burn {
+                    in_burn = true;
+                    current_power = power_value;
+                    segment_start = x_pos;
+                    segment_end = x_pos;
+                    first_segment_of_burst = true;
+                } else if power_value == current_power {
+                    segment_end = x_pos;
+                } else {
+                    // Power change attached to the previous one: is_new_segment = first_segment_of_burst
+                    self.emit_segment(
+                        gcode,
+                        segment_start,
+                        segment_end,
+                        y_pos,
+                        current_power,
+                        left_to_right,
+                        first_segment_of_burst,
+                    );
 
-                current_power = power_value;
-                segment_start = x_pos;
-                segment_end = x_pos;
-                first_segment_of_burst = false; // Los siguientes ya no necesitan G0
+                    current_power = power_value;
+                    segment_start = x_pos;
+                    segment_end = x_pos;
+                    first_segment_of_burst = false; // Los siguientes ya no necesitan G0
+                }
+            } else if in_burn {
+                self.emit_segment(
+                    gcode,
+                    segment_start,
+                    segment_end,
+                    y_pos,
+                    current_power,
+                    left_to_right,
+                    first_segment_of_burst,
+                );
+                gcode.push_str("M5\n");
+                in_burn = false;
+                current_power = 0;
             }
-        } else if in_burn {
-            self.emit_segment(gcode, segment_start, segment_end, y_pos, current_power, left_to_right, first_segment_of_burst);
+        }
+
+        if in_burn {
+            self.emit_segment(
+                gcode,
+                segment_start,
+                segment_end,
+                y_pos,
+                current_power,
+                left_to_right,
+                first_segment_of_burst,
+            );
             gcode.push_str("M5\n");
-            in_burn = false;
-            current_power = 0;
         }
     }
 
-    if in_burn {
-        self.emit_segment(gcode, segment_start, segment_end, y_pos, current_power, left_to_right, first_segment_of_burst);
-        gcode.push_str("M5\n");
-    }
-}
-
-fn emit_segment(
-    &self,
-    gcode: &mut String,
-    start: f32,
-    end: f32,
-    y_pos: f32,
-    power: u32,
-    left_to_right: bool,
-    is_new_segment: bool,
-) {
-    let pos_x = if left_to_right { start } else { end };
-    let target_x = if left_to_right { end } else { start };
+    fn emit_segment(
+        &self,
+        gcode: &mut String,
+        start: f32,
+        end: f32,
+        y_pos: f32,
+        power: u32,
+        left_to_right: bool,
+        is_new_segment: bool,
+    ) {
+        let pos_x = if left_to_right { start } else { end };
+        let target_x = if left_to_right { end } else { start };
 
         if is_new_segment {
             // Rapid positioning
@@ -675,7 +699,7 @@ fn emit_segment(
             // Continuation of the segment
             gcode.push_str(&format!("G1 X{:.3} S{}\n", target_x, power));
         }
-}
+    }
 
     fn generate_vertical_scan_with_progress<F>(
         &self,
@@ -758,9 +782,9 @@ fn emit_segment(
     fn intensity_to_power(&self, intensity: u8) -> f32 {
         let normalized = intensity as f32 / 255.0;
 
-            let gamma = 0.7;
-    let corrected = normalized.powf(gamma);
+        let gamma = 0.7;
+        let corrected = normalized.powf(gamma);
 
-    self.params.min_power + (corrected * (self.params.max_power - self.params.min_power))
+        self.params.min_power + (corrected * (self.params.max_power - self.params.min_power))
     }
 }

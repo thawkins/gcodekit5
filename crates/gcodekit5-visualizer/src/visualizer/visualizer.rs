@@ -4,12 +4,12 @@
 use super::toolpath_cache::ToolpathCache;
 use super::viewport::{Bounds, ViewportTransform};
 use gcodekit5_core::constants as core_constants;
+use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use tracing::{debug, trace};
-use gcodekit5_designer::toolpath::{Toolpath};
 use std::sync::{mpsc, Arc};
+use tracing::{debug, trace};
 
 const CANVAS_PADDING: f32 = core_constants::CANVAS_PADDING_PX as f32;
 const _CANVAS_PADDING_2X: f32 = 40.0;
@@ -105,7 +105,7 @@ impl CoordTransform {
         let screen_x = (x - self.min_x) * self.scale + CANVAS_PADDING + self.x_offset;
         // Flip Y axis: higher Y values should move up the screen (smaller screen_y)
         let screen_y =
-        self.height - ((y - self.min_y) * self.scale + CANVAS_PADDING - self.y_offset);
+            self.height - ((y - self.min_y) * self.scale + CANVAS_PADDING - self.y_offset);
         (safe_to_i32(screen_x), safe_to_i32(screen_y))
     }
 
@@ -234,8 +234,8 @@ impl Visualizer {
         let after_g = &line[1..];
         // Find end of number
         let end_idx = after_g
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(after_g.len());
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_g.len());
 
         if end_idx == 0 {
             return None;
@@ -519,7 +519,7 @@ impl Visualizer {
             let center = Point3D::new(current_pos.x + i, current_pos.y + j, current_pos.z);
 
             let radius =
-            ((current_pos.x - center.x).powi(2) + (current_pos.y - center.y).powi(2)).sqrt();
+                ((current_pos.x - center.x).powi(2) + (current_pos.y - center.y).powi(2)).sqrt();
             trace!("Arc: from=({:.2},{:.2}), to=({:.2},{:.2}), center=({:.2},{:.2}), radius={:.4}, cw={}", 
                    current_pos.x, current_pos.y, x, y, center.x, center.y, radius, clockwise);
 
@@ -777,7 +777,6 @@ impl Visualizer {
     pub fn get_sender(&self) -> mpsc::Sender<Vec<Toolpath>> {
         self.toolpath_sender.clone()
     }
-
 }
 
 impl Default for Visualizer {

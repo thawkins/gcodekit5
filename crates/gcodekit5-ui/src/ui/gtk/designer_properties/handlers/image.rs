@@ -256,8 +256,7 @@ pub fn setup_invert_handler(
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
 ) {
-
-// --- Invert
+    // --- Invert
     check.connect_toggled(move |check| {
         if *updating.borrow() {
             return;
@@ -275,7 +274,7 @@ pub fn setup_invert_handler(
                 }
             }
         }
-// ---
+        // ---
 
         drop(designer_state);
 

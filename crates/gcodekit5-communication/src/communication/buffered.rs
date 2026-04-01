@@ -206,18 +206,17 @@ impl BufferedCommunicatorWrapper {
         Ok(())
     }
 
-
     /// Send a command and track it in the buffer
     fn send_buffered_command(
         &mut self,
         command: &mut BufferedCommand,
     ) -> gcodekit5_core::Result<()> {
         self.communicator
-        .send_command(&command.command)
-        .map_err(|e| {
-            tracing::error!("Failed to send command: {}", e);
-            e
-        })?;
+            .send_command(&command.command)
+            .map_err(|e| {
+                tracing::error!("Failed to send command: {}", e);
+                e
+            })?;
 
         self.sent_buffer_size += command.command.len() + 1; // +1 for newline
         command.mark_sent();
@@ -252,8 +251,8 @@ impl BufferedCommunicatorWrapper {
             if command.can_retry() {
                 tracing::warn!(
                     "Command failed, retrying ({}/{})",
-                               command.retry_count,
-                               command.max_retries
+                    command.retry_count,
+                    command.max_retries
                 );
 
                 // Move failed command back to queue for retry

@@ -130,160 +130,160 @@ impl CamToolsView {
         // Compact dashboard: tool list (left) + details panel (right)
         // with search + category filtering.
         #[derive(Clone)]
-struct Tool {
-    page: &'static str,
-    title: String,
-    desc: String,
-    icon: &'static str,
-    category: String,
-}
-
-fn get_tools() -> Vec<Tool> {
-    vec![
-    Tool {
-        page: "tabbed_box",
-        title: t!("Tabbed Box Maker"),
-        desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
-        icon: "object-select-symbolic",
-        category: t!("generators"),
-    },
-    Tool {
-        page: "jigsaw",
-        title: t!("Jigsaw Puzzle Generator"),
-        desc: t!("Create custom jigsaw puzzle patterns from images"),
-        icon: "image-x-generic-symbolic",
-        category: t!("generators"),
-    },
-    Tool {
-        page: "laser_image",
-        title: t!("Laser Image Engraver"),
-        desc: t!("Convert raster images to G-code for laser engraving"),
-        icon: "camera-photo-symbolic",
-        category: t!("engraving"),
-    },
-    Tool {
-        page: "laser_vector",
-        title: t!("Laser Vector Engraver"),
-        desc: t!("Convert SVG and DXF vector files to G-code"),
-        icon: "insert-image-symbolic",
-        category: t!("engraving"),
-    },
-    Tool {
-        page: "feeds",
-        title: t!("Speeds and Feeds Calculator"),
-        desc: t!("Calculate cutting speeds and feeds for your materials"),
-        icon: "accessories-calculator-symbolic",
-        category: t!("calculators"),
-    },
-    Tool {
-        page: "surfacing",
-        title: t!("Spoilboard Surfacing"),
-        desc: t!("Generate surfacing toolpaths to flatten your spoilboard"),
-        icon: "view-refresh-symbolic",
-        category: t!("maintenance"),
-    },
-    Tool {
-        page: "grid",
-        title: t!("Create Spoilboard Grid"),
-        desc: t!("Generate grid patterns for spoilboard alignment"),
-        icon: "view-grid-symbolic",
-        category: t!("maintenance"),
-    },
-    Tool {
-        page: "gerber",
-        title: t!("Gerber to G-Code"),
-        desc: t!("Convert Gerber files to G-Code for PCB milling"),
-        icon: "media-floppy-symbolic",
-        category: t!("generators"),
-    },
-    Tool {
-        page: "drill_press",
-        title: t!("Drill Press"),
-        desc: t!("Emulate a drill press with peck drilling and helical cycles"),
-        icon: "input-mouse-symbolic",
-        category: t!("generators"),
-    }
-]
-}
-/*
-        #[derive(Clone, Copy)]
         struct Tool {
             page: &'static str,
-            title: &'static str,
-            desc: &'static str,
+            title: String,
+            desc: String,
             icon: &'static str,
-            category: &'static str,
+            category: String,
         }
 
-        const TOOLS: &[Tool] = &[
-            Tool {
-                page: "tabbed_box",
-                title: "Tabbed Box Maker",
-                desc: "Generate G-code for laser/CNC cut boxes with finger joints",
-                icon: "object-select-symbolic",
-                category: "generators",
-            },
-            Tool {
-                page: "jigsaw",
-                title: "Jigsaw Puzzle Generator",
-                desc: "Create custom jigsaw puzzle patterns from images",
-                icon: "image-x-generic-symbolic",
-                category: "generators",
-            },
-            Tool {
-                page: "laser_image",
-                title: "Laser Image Engraver",
-                desc: "Convert raster images to G-code for laser engraving",
-                icon: "camera-photo-symbolic",
-                category: "engraving",
-            },
-            Tool {
-                page: "laser_vector",
-                title: "Laser Vector Engraver",
-                desc: "Convert SVG and DXF vector files to G-code",
-                icon: "insert-image-symbolic",
-                category: "engraving",
-            },
-            Tool {
-                page: "feeds",
-                title: "Speeds and Feeds Calculator",
-                desc: "Calculate cutting speeds and feeds for your materials",
-                icon: "accessories-calculator-symbolic",
-                category: "calculators",
-            },
-            Tool {
-                page: "surfacing",
-                title: "Spoilboard Surfacing",
-                desc: "Generate surfacing toolpaths to flatten your spoilboard",
-                icon: "view-refresh-symbolic",
-                category: "maintenance",
-            },
-            Tool {
-                page: "grid",
-                title: "Create Spoilboard Grid",
-                desc: "Generate grid patterns for spoilboard alignment",
-                icon: "view-grid-symbolic",
-                category: "maintenance",
-            },
-            Tool {
-                page: "gerber",
-                title: "Gerber to G-Code",
-                desc: "Convert Gerber files to G-Code for PCB milling",
-                icon: "media-floppy-symbolic",
-                category: "generators",
-            },
-            Tool {
-                page: "drill_press",
-                title: "Drill Press",
-                desc: "Emulate a drill press with peck drilling and helical cycles",
-                icon: "input-mouse-symbolic",
-                category: "generators",
-            },
-        ];
-*/
+        fn get_tools() -> Vec<Tool> {
+            vec![
+                Tool {
+                    page: "tabbed_box",
+                    title: t!("Tabbed Box Maker"),
+                    desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
+                    icon: "object-select-symbolic",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "jigsaw",
+                    title: t!("Jigsaw Puzzle Generator"),
+                    desc: t!("Create custom jigsaw puzzle patterns from images"),
+                    icon: "image-x-generic-symbolic",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "laser_image",
+                    title: t!("Laser Image Engraver"),
+                    desc: t!("Convert raster images to G-code for laser engraving"),
+                    icon: "camera-photo-symbolic",
+                    category: t!("engraving"),
+                },
+                Tool {
+                    page: "laser_vector",
+                    title: t!("Laser Vector Engraver"),
+                    desc: t!("Convert SVG and DXF vector files to G-code"),
+                    icon: "insert-image-symbolic",
+                    category: t!("engraving"),
+                },
+                Tool {
+                    page: "feeds",
+                    title: t!("Speeds and Feeds Calculator"),
+                    desc: t!("Calculate cutting speeds and feeds for your materials"),
+                    icon: "accessories-calculator-symbolic",
+                    category: t!("calculators"),
+                },
+                Tool {
+                    page: "surfacing",
+                    title: t!("Spoilboard Surfacing"),
+                    desc: t!("Generate surfacing toolpaths to flatten your spoilboard"),
+                    icon: "view-refresh-symbolic",
+                    category: t!("maintenance"),
+                },
+                Tool {
+                    page: "grid",
+                    title: t!("Create Spoilboard Grid"),
+                    desc: t!("Generate grid patterns for spoilboard alignment"),
+                    icon: "view-grid-symbolic",
+                    category: t!("maintenance"),
+                },
+                Tool {
+                    page: "gerber",
+                    title: t!("Gerber to G-Code"),
+                    desc: t!("Convert Gerber files to G-Code for PCB milling"),
+                    icon: "media-floppy-symbolic",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "drill_press",
+                    title: t!("Drill Press"),
+                    desc: t!("Emulate a drill press with peck drilling and helical cycles"),
+                    icon: "input-mouse-symbolic",
+                    category: t!("generators"),
+                },
+            ]
+        }
+        /*
+                #[derive(Clone, Copy)]
+                struct Tool {
+                    page: &'static str,
+                    title: &'static str,
+                    desc: &'static str,
+                    icon: &'static str,
+                    category: &'static str,
+                }
+
+                const TOOLS: &[Tool] = &[
+                    Tool {
+                        page: "tabbed_box",
+                        title: "Tabbed Box Maker",
+                        desc: "Generate G-code for laser/CNC cut boxes with finger joints",
+                        icon: "object-select-symbolic",
+                        category: "generators",
+                    },
+                    Tool {
+                        page: "jigsaw",
+                        title: "Jigsaw Puzzle Generator",
+                        desc: "Create custom jigsaw puzzle patterns from images",
+                        icon: "image-x-generic-symbolic",
+                        category: "generators",
+                    },
+                    Tool {
+                        page: "laser_image",
+                        title: "Laser Image Engraver",
+                        desc: "Convert raster images to G-code for laser engraving",
+                        icon: "camera-photo-symbolic",
+                        category: "engraving",
+                    },
+                    Tool {
+                        page: "laser_vector",
+                        title: "Laser Vector Engraver",
+                        desc: "Convert SVG and DXF vector files to G-code",
+                        icon: "insert-image-symbolic",
+                        category: "engraving",
+                    },
+                    Tool {
+                        page: "feeds",
+                        title: "Speeds and Feeds Calculator",
+                        desc: "Calculate cutting speeds and feeds for your materials",
+                        icon: "accessories-calculator-symbolic",
+                        category: "calculators",
+                    },
+                    Tool {
+                        page: "surfacing",
+                        title: "Spoilboard Surfacing",
+                        desc: "Generate surfacing toolpaths to flatten your spoilboard",
+                        icon: "view-refresh-symbolic",
+                        category: "maintenance",
+                    },
+                    Tool {
+                        page: "grid",
+                        title: "Create Spoilboard Grid",
+                        desc: "Generate grid patterns for spoilboard alignment",
+                        icon: "view-grid-symbolic",
+                        category: "maintenance",
+                    },
+                    Tool {
+                        page: "gerber",
+                        title: "Gerber to G-Code",
+                        desc: "Convert Gerber files to G-Code for PCB milling",
+                        icon: "media-floppy-symbolic",
+                        category: "generators",
+                    },
+                    Tool {
+                        page: "drill_press",
+                        title: "Drill Press",
+                        desc: "Emulate a drill press with peck drilling and helical cycles",
+                        icon: "input-mouse-symbolic",
+                        category: "generators",
+                    },
+                ];
+        */
         fn apply_filters(list: &gtk4::ListBox, query: &str, category: &str) {
             let q = query.trim().to_lowercase();
-let tools = get_tools();
+            let tools = get_tools();
             let mut child = list.first_child();
             while let Some(w) = child {
                 child = w.next_sibling();
@@ -357,7 +357,7 @@ let tools = get_tools();
         let list = gtk4::ListBox::new();
         list.add_css_class("boxed-list");
 
-let tools = get_tools();
+        let tools = get_tools();
 
         for (idx, tool) in get_tools().iter().enumerate() {
             let row = gtk4::ListBoxRow::new();
@@ -379,12 +379,12 @@ let tools = get_tools();
             icon.set_valign(Align::Start);
 
             let v = Box::new(Orientation::Vertical, 2);
-//            let t = Label::new(Some(tool.title));
-let t = Label::new(Some(&tool.title));
+            //            let t = Label::new(Some(tool.title));
+            let t = Label::new(Some(&tool.title));
             t.set_xalign(0.0);
             t.add_css_class("heading");
 
-//            let d = Label::new(Some(tool.desc));
+            //            let d = Label::new(Some(tool.desc));
             let d = Label::new(Some(&tool.desc));
             d.set_xalign(0.0);
             d.set_wrap(true);

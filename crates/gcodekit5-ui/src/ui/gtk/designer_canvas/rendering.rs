@@ -15,31 +15,31 @@ impl DesignerCanvas {
         width: f64,
         height: f64,
         mouse_pos: (f64, f64),
-                       preview_start: Option<(f64, f64)>,
-                       preview_current: Option<(f64, f64)>,
-                       polyline_points: &[Point],
-                       preview_shapes: &[Shape],
-                       toolpaths: &[Toolpath],
-                       device_bounds: (f64, f64, f64, f64),
-                       style_context: &gtk4::StyleContext,
-                       grid_major_line_width: f64,
-                       grid_minor_line_width: f64,
+        preview_start: Option<(f64, f64)>,
+        preview_current: Option<(f64, f64)>,
+        polyline_points: &[Point],
+        preview_shapes: &[Shape],
+        toolpaths: &[Toolpath],
+        device_bounds: (f64, f64, f64, f64),
+        style_context: &gtk4::StyleContext,
+        grid_major_line_width: f64,
+        grid_minor_line_width: f64,
     ) {
         // Background handled by CSS
 
         let fg_color = style_context.color();
         let accent_color = style_context
-        .lookup_color("accent_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
+            .lookup_color("accent_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
         let success_color = style_context
-        .lookup_color("success_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
+            .lookup_color("success_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
         let warning_color = style_context
-        .lookup_color("warning_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(1.0, 1.0, 0.0, 1.0));
+            .lookup_color("warning_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(1.0, 1.0, 0.0, 1.0));
         let error_color = style_context
-        .lookup_color("error_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(1.0, 0.0, 0.0, 1.0));
+            .lookup_color("error_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(1.0, 0.0, 0.0, 1.0));
 
         // Setup coordinate system
         // Designer uses Y-up (Cartesian), Cairo uses Y-down
@@ -66,10 +66,10 @@ impl DesignerCanvas {
                 width,
                 height,
                 state.grid_spacing_mm.max(0.1),
-                            &fg_color,
-                            zoom,
-                            grid_major_line_width,
-                            grid_minor_line_width,
+                &fg_color,
+                zoom,
+                grid_major_line_width,
+                grid_minor_line_width,
             );
         }
 
@@ -99,9 +99,9 @@ impl DesignerCanvas {
                         ToolpathSegmentType::RapidMove => {
                             cr.set_source_rgba(
                                 warning_color.red() as f64,
-                                               warning_color.green() as f64,
-                                               warning_color.blue() as f64,
-                                               0.5,
+                                warning_color.green() as f64,
+                                warning_color.blue() as f64,
+                                0.5,
                             );
                             cr.set_dash(&[2.0 / zoom, 2.0 / zoom], 0.0);
                             cr.move_to(segment.start.x, segment.start.y);
@@ -111,9 +111,9 @@ impl DesignerCanvas {
                         ToolpathSegmentType::LinearMove => {
                             cr.set_source_rgba(
                                 success_color.red() as f64,
-                                               success_color.green() as f64,
-                                               success_color.blue() as f64,
-                                               0.7,
+                                success_color.green() as f64,
+                                success_color.blue() as f64,
+                                0.7,
                             );
                             cr.set_dash(&[], 0.0);
                             cr.move_to(segment.start.x, segment.start.y);
@@ -123,22 +123,22 @@ impl DesignerCanvas {
                         ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
                             cr.set_source_rgba(
                                 success_color.red() as f64,
-                                               success_color.green() as f64,
-                                               success_color.blue() as f64,
-                                               0.7,
+                                success_color.green() as f64,
+                                success_color.blue() as f64,
+                                0.7,
                             );
                             cr.set_dash(&[], 0.0);
 
                             if let Some(center) = segment.center {
                                 let radius = center.distance_to(&segment.start);
                                 let angle1 =
-                                (segment.start.y - center.y).atan2(segment.start.x - center.x);
+                                    (segment.start.y - center.y).atan2(segment.start.x - center.x);
                                 let angle2 =
-                                (segment.end.y - center.y).atan2(segment.end.x - center.x);
+                                    (segment.end.y - center.y).atan2(segment.end.x - center.x);
 
                                 cr.move_to(segment.start.x, segment.start.y); // Ensure we start at correct point
-                                // Note: Cairo adds a line from current point to start of arc if they differ.
-                                // But we just moved there.
+                                                                              // Note: Cairo adds a line from current point to start of arc if they differ.
+                                                                              // But we just moved there.
 
                                 if segment.segment_type == ToolpathSegmentType::ArcCW {
                                     cr.arc_negative(center.x, center.y, radius, angle1, angle2);
@@ -163,9 +163,9 @@ impl DesignerCanvas {
             let _ = cr.save();
             cr.set_source_rgba(
                 accent_color.red() as f64,
-                               accent_color.green() as f64,
-                               accent_color.blue() as f64,
-                               1.0,
+                accent_color.green() as f64,
+                accent_color.blue() as f64,
+                1.0,
             );
             cr.set_line_width(2.0 / zoom);
 
@@ -192,11 +192,11 @@ impl DesignerCanvas {
         }
 
         let selected_count = state
-        .canvas
-        .shape_store
-        .iter()
-        .filter(|o| o.selected)
-        .count();
+            .canvas
+            .shape_store
+            .iter()
+            .filter(|o| o.selected)
+            .count();
 
         // Draw Shapes
         for obj in state.canvas.shape_store.iter() {
@@ -206,25 +206,25 @@ impl DesignerCanvas {
             if obj.selected {
                 cr.set_source_rgba(
                     error_color.red() as f64,
-                                   error_color.green() as f64,
-                                   error_color.blue() as f64,
-                                   1.0,
+                    error_color.green() as f64,
+                    error_color.blue() as f64,
+                    1.0,
                 );
                 cr.set_line_width(3.0 / zoom);
             } else if obj.group_id.is_some() {
                 cr.set_source_rgba(
                     success_color.red() as f64,
-                                   success_color.green() as f64,
-                                   success_color.blue() as f64,
-                                   1.0,
+                    success_color.green() as f64,
+                    success_color.blue() as f64,
+                    1.0,
                 );
                 cr.set_line_width(2.0 / zoom);
             } else {
                 cr.set_source_rgba(
                     fg_color.red() as f64,
-                                   fg_color.green() as f64,
-                                   fg_color.blue() as f64,
-                                   fg_color.alpha() as f64,
+                    fg_color.green() as f64,
+                    fg_color.blue() as f64,
+                    fg_color.alpha() as f64,
                 );
                 cr.set_line_width(2.0 / zoom);
             }
@@ -244,9 +244,9 @@ impl DesignerCanvas {
                 let _ = cr.save();
                 cr.set_source_rgba(
                     warning_color.red() as f64,
-                                   warning_color.green() as f64,
-                                   warning_color.blue() as f64,
-                                   1.0,
+                    warning_color.green() as f64,
+                    warning_color.blue() as f64,
+                    1.0,
                 );
                 cr.set_line_width(2.0 / zoom);
                 Self::draw_shape_geometry(cr, &obj.get_effective_shape());
@@ -259,9 +259,9 @@ impl DesignerCanvas {
             let _ = cr.save();
             cr.set_source_rgba(
                 warning_color.red() as f64,
-                               warning_color.green() as f64,
-                               warning_color.blue() as f64,
-                               1.0,
+                warning_color.green() as f64,
+                warning_color.blue() as f64,
+                1.0,
             );
             cr.set_line_width(2.0 / zoom);
             Self::draw_shape_geometry(cr, shape);
@@ -296,9 +296,9 @@ impl DesignerCanvas {
                 // Draw dashed preview outline
                 cr.set_source_rgba(
                     accent_color.red() as f64,
-                                   accent_color.green() as f64,
-                                   accent_color.blue() as f64,
-                                   0.7,
+                    accent_color.green() as f64,
+                    accent_color.blue() as f64,
+                    0.7,
                 );
                 cr.set_line_width(2.0 / zoom);
                 cr.set_dash(&[5.0 / zoom, 5.0 / zoom], 0.0); // Dashed line
@@ -343,9 +343,9 @@ impl DesignerCanvas {
         // Minor grid lines (lighter) - configurable constant width
         cr.set_source_rgba(
             fg_color.red() as f64,
-                           fg_color.green() as f64,
-                           fg_color.blue() as f64,
-                           0.2,
+            fg_color.green() as f64,
+            fg_color.blue() as f64,
+            0.2,
         );
         cr.set_line_width(minor_line_width / zoom);
 
@@ -376,9 +376,9 @@ impl DesignerCanvas {
         // Major grid lines (darker) - configurable constant width
         cr.set_source_rgba(
             fg_color.red() as f64,
-                           fg_color.green() as f64,
-                           fg_color.blue() as f64,
-                           0.4,
+            fg_color.green() as f64,
+            fg_color.blue() as f64,
+            0.4,
         );
         cr.set_line_width(major_line_width / zoom);
 
@@ -403,9 +403,9 @@ impl DesignerCanvas {
         // Draw axes (thicker, darker) - only if they're visible - uses major line width
         cr.set_source_rgba(
             fg_color.red() as f64,
-                           fg_color.green() as f64,
-                           fg_color.blue() as f64,
-                           0.8,
+            fg_color.green() as f64,
+            fg_color.blue() as f64,
+            0.8,
         );
         cr.set_line_width(major_line_width / zoom);
 
@@ -483,9 +483,9 @@ impl DesignerCanvas {
 
                 (
                     ellipse.center.x - half_w,
-                 ellipse.center.y - half_h,
-                 ellipse.center.x + half_w,
-                 ellipse.center.y + half_h,
+                    ellipse.center.y - half_h,
+                    ellipse.center.x + half_w,
+                    ellipse.center.y + half_h,
                 )
             }
             Shape::Path(path_shape) => {
@@ -524,7 +524,6 @@ impl DesignerCanvas {
 
     fn draw_shape_geometry(cr: &gtk4::cairo::Context, shape: &Shape) {
         match shape {
-
             Shape::RasterImage(raster) => {
                 // Load the image from the data
                 if let Ok(img) = image::load_from_memory(&raster.image_data) {
@@ -538,10 +537,12 @@ impl DesignerCanvas {
                     let data = rgba.as_raw();
 
                     // Create image surface in Cairo
-                    use gtk4::cairo::ImageSurface;
                     use gtk4::cairo::Format;
+                    use gtk4::cairo::ImageSurface;
 
-                    if let Ok(mut surface) = ImageSurface::create(Format::ARgb32, img_w as i32, img_h as i32) {
+                    if let Ok(mut surface) =
+                        ImageSurface::create(Format::ARgb32, img_w as i32, img_h as i32)
+                    {
                         // Cairo expects ARGB, convert RGBA to ARGB
                         let stride = surface.stride() as usize;
                         {
@@ -592,7 +593,6 @@ impl DesignerCanvas {
                 cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
                 let _ = cr.stroke();
             }
-
 
             Shape::Rectangle(rect) => {
                 let _ = cr.save();
@@ -818,7 +818,6 @@ impl DesignerCanvas {
                 }
                 let _ = cr.stroke();
             }
-
         }
     }
 
@@ -849,7 +848,7 @@ impl DesignerCanvas {
         x: f64,
         y: f64,
         bounds: &(f64, f64, f64, f64),
-                                       zoom: f64,
+        zoom: f64,
     ) -> Option<ResizeHandle> {
         // Handles are drawn as ~8 screen pixels; in canvas units that's 8/zoom.
         let zoom = zoom.max(1e-6);
@@ -903,11 +902,11 @@ impl DesignerCanvas {
         // Get all selected objects and check if ALL have lock_aspect_ratio active
         let state = self.state.borrow();
         let selected_ids: Vec<u64> = state
-        .canvas
-        .shapes()
-        .filter(|s| s.selected)
-        .map(|s| s.id)
-        .collect();
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .map(|s| s.id)
+            .collect();
 
         // Check if ALL selected objects have lock_aspect_ratio = true
         let all_lock_aspect = if !selected_ids.is_empty() {
@@ -1126,7 +1125,6 @@ impl DesignerCanvas {
                     raster.width_mm *= sx.abs();
                     raster.height_mm *= sy.abs();
                 }
-
             }
         }
     }
@@ -1134,8 +1132,8 @@ impl DesignerCanvas {
     fn draw_resize_handles(
         cr: &gtk4::cairo::Context,
         bounds: &(f64, f64, f64, f64),
-                           zoom: f64,
-                           accent_color: &gtk4::gdk::RGBA,
+        zoom: f64,
+        accent_color: &gtk4::gdk::RGBA,
     ) {
         let handle_size = 8.0 / zoom;
         let half_size = handle_size / 2.0;
@@ -1161,9 +1159,9 @@ impl DesignerCanvas {
             // Draw accent border
             cr.set_source_rgba(
                 accent_color.red() as f64,
-                               accent_color.green() as f64,
-                               accent_color.blue() as f64,
-                               accent_color.alpha() as f64,
+                accent_color.green() as f64,
+                accent_color.blue() as f64,
+                accent_color.alpha() as f64,
             );
             cr.set_line_width(2.0 / zoom);
             cr.rectangle(cx - half_size, cy - half_size, handle_size, handle_size);

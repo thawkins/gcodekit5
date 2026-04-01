@@ -13,11 +13,11 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::vector_engraver::{VectorEngraver, VectorEngravingParameters};
 use gcodekit5_core::units;
 use gcodekit5_settings::SettingsController;
-use crate::t;
 
 struct VectorEngravingWidgets {
     feed_rate: Entry,
@@ -144,7 +144,7 @@ impl VectorEngravingTool {
 
         // Info overlay label
         let info_label = Label::builder()
-            .label (t! ("No file selected"))
+            .label(t!("No file selected"))
             .css_classes(vec!["caption", "dim-label"])
             .halign(Align::Start)
             .wrap(true)
@@ -178,26 +178,26 @@ impl VectorEngravingTool {
             .build();
         let num_passes = Entry::builder().text("1").valign(Align::Center).build();
         let (z_increment_row, z_step_down, z_increment_unit) =
-            create_dimension_row (&t!("Z Step Down:"), 0.5, &settings);
+            create_dimension_row(&t!("Z Step Down:"), 0.5, &settings);
         let invert_power = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
         let (desired_width_row, desired_width, desired_width_unit) =
-            create_dimension_row (&t!("Desired Width:"), 100.0, &settings);
+            create_dimension_row(&t!("Desired Width:"), 100.0, &settings);
         let (offset_x_row, offset_x, offset_x_unit) =
-            create_dimension_row ("Offset X:", 10.0, &settings);
+            create_dimension_row("Offset X:", 10.0, &settings);
         let (offset_y_row, offset_y, offset_y_unit) =
-            create_dimension_row ("Offset Y:", 10.0, &settings);
+            create_dimension_row("Offset Y:", 10.0, &settings);
         let enable_hatch = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
         let hatch_angle = Entry::builder().text("45").valign(Align::Center).build();
         let (hatch_spacing_row, hatch_spacing, hatch_spacing_unit) =
-            create_dimension_row (&t!("Hatch Spacing:"), 1.0, &settings);
+            create_dimension_row(&t!("Hatch Spacing:"), 1.0, &settings);
         let (hatch_tolerance_row, hatch_tolerance, hatch_tolerance_unit) =
-            create_dimension_row (&t!("Hatch Tolerance:"), 0.1, &settings);
+            create_dimension_row(&t!("Hatch Tolerance:"), 0.1, &settings);
         let cross_hatch = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -213,7 +213,9 @@ impl VectorEngravingTool {
             .build();
 
         // Groups
-        let file_group = PreferencesGroup::builder().title(&t!("Vector File")).build();
+        let file_group = PreferencesGroup::builder()
+            .title(&t!("Vector File"))
+            .build();
         let file_row = ActionRow::builder().title(&t!("File Path:")).build();
         let file_box = Box::new(Orientation::Horizontal, 6);
         file_box.append(&vector_path);
@@ -223,13 +225,17 @@ impl VectorEngravingTool {
         file_group.add(&file_row);
         scroll_content.append(&file_group);
 
-        let output_group = PreferencesGroup::builder().title(&t!("Output Settings")).build();
+        let output_group = PreferencesGroup::builder()
+            .title(&t!("Output Settings"))
+            .build();
         output_group.add(&desired_width_row);
         output_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
         output_group.add(&Self::create_row(&t!("Travel Rate:"), &travel_rate));
         scroll_content.append(&output_group);
 
-        let power_group = PreferencesGroup::builder().title(&t!("Laser Power")).build();
+        let power_group = PreferencesGroup::builder()
+            .title(&t!("Laser Power"))
+            .build();
         power_group.add(&Self::create_row(&t!("Cut Power (%):"), &cut_power));
         power_group.add(&Self::create_row(&t!("Engrave Power (%):"), &engrave_power));
         power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));
@@ -260,14 +266,18 @@ impl VectorEngravingTool {
         hatch_group.add(&cross_row);
         scroll_content.append(&hatch_group);
 
-        let dwell_group = PreferencesGroup::builder().title(&t!("Dwell Settings")).build();
+        let dwell_group = PreferencesGroup::builder()
+            .title(&t!("Dwell Settings"))
+            .build();
         let dwell_row = ActionRow::builder().title(&t!("Enable Dwell:")).build();
         dwell_row.add_suffix(&enable_dwell);
         dwell_group.add(&dwell_row);
         dwell_group.add(&Self::create_row(&t!("Dwell Time (s):"), &dwell_time));
         scroll_content.append(&dwell_group);
 
-        let offset_group = PreferencesGroup::builder().title(&t!("Work Offsets")).build();
+        let offset_group = PreferencesGroup::builder()
+            .title(&t!("Work Offsets"))
+            .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 

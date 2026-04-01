@@ -410,7 +410,6 @@ impl SerialCommunicator {
             }
         }
     }
-
 }
 
 impl Default for SerialCommunicator {

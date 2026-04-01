@@ -13,11 +13,11 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 use gcodekit5_core::units;
 use gcodekit5_settings::SettingsController;
-use crate::t;
 
 struct JigsawWidgets {
     width: Entry,
@@ -116,7 +116,8 @@ impl JigsawTool {
 
         // Widgets
         let (width_row, width, width_unit) = create_dimension_row(&t!("Width:"), 200.0, &settings);
-        let (height_row, height, height_unit) = create_dimension_row(&t!("Height:"), 150.0, &settings);
+        let (height_row, height, height_unit) =
+            create_dimension_row(&t!("Height:"), 150.0, &settings);
         let pieces_across = Entry::builder().text("4").valign(Align::Center).build();
         let pieces_down = Entry::builder().text("3").valign(Align::Center).build();
         let (kerf_row, kerf, kerf_unit) = create_dimension_row(&t!("Kerf:"), 0.5, &settings);
@@ -174,14 +175,18 @@ impl JigsawTool {
 
         scroll_content.append(&param_group);
 
-        let laser_group = PreferencesGroup::builder().title(&t!("Laser Settings")).build();
+        let laser_group = PreferencesGroup::builder()
+            .title(&t!("Laser Settings"))
+            .build();
         laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
         laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
         laser_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
         laser_group.add(&z_step_down_row);
         scroll_content.append(&laser_group);
 
-        let offset_group = PreferencesGroup::builder().title(&t!("Work Offsets")).build();
+        let offset_group = PreferencesGroup::builder()
+            .title(&t!("Work Offsets"))
+            .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
