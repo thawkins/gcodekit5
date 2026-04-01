@@ -446,37 +446,11 @@ impl ImageEngraver {
         pixel_width: f32,
         line_spacing: f32,
     ) -> Result<()> {
-        let height = self.image.height();
         let width = self.image.width();
         let mut top_to_bottom = true;
 
         for x in 0..width {
             let x_pos = x as f32 * line_spacing;
-
-            if x == 0 {
-                gcode.push_str(&format!("G0 X{:.3}\n", self.params.offset_x + x_pos));
-            } else {
-                gcode.push_str("M5\n");
-                if top_to_bottom {
-                    // Move to the top of the column
-                    gcode.push_str(&format!(
-                        "G0 X{:.3} Y{:.3} F{:.0}\n",
-                        self.params.offset_x + x_pos,
-                        self.params.offset_y,
-                        self.params.travel_rate
-                    ));
-                } else {
-                    let end_y = (height - 1) as f32 * pixel_width;
-                    // Move to the end of the column (below)
-                    gcode.push_str(&format!(
-                        "G0 X{:.3} Y{:.3} F{:.0}\n",
-                        self.params.offset_x + x_pos,
-                        self.params.offset_y + end_y,
-                        self.params.travel_rate
-                    ));
-                }
-            }
-
             self.scan_column(gcode, x, x_pos, pixel_width, top_to_bottom);
 
             if self.params.bidirectional {
@@ -533,24 +507,46 @@ impl ImageEngraver {
             return;
         }
 
-        let first = &merged[0];
-        // X fixed, Y variable
+        // Overscan configuration
+        let overscan_dist = 2.5;
+        let first_seg = &merged[0];
+        let last_seg = merged.last().unwrap();
+
+        let (entry_y, exit_y) = if top_to_bottom {
+            (first_seg.0 - overscan_dist, last_seg.1 + overscan_dist)
+        } else {
+            (first_seg.0 + overscan_dist, last_seg.1 - overscan_dist)
+        };
+
+        let x_abs = self.params.offset_x + x_pos;
+        let x_abs_fmt = format!("{:.2}", x_abs);
+
+        // Rapid move to overscan start
         gcode.push_str(&format!(
-            "G1 X{:.3} Y{:.3} S{} F{:.0} M4\n",
-            self.params.offset_x + x_pos,
-            first.1,
-            first.2,
+            "G0 X{} Y{:.2} F{:.0}\n",
+            x_abs_fmt,
+            entry_y,
+            self.params.travel_rate
+        ));
+
+        // Acceleration segment (S0) to first real engraving boundary
+        gcode.push_str(&format!(
+            "G1 X{} Y{:.2} S0 F{:.0} M4\n",
+            x_abs_fmt,
+            first_seg.1,
             self.params.feed_rate
         ));
 
-        for segment in &merged[1..] {
+        // Engraving segments, only Y and S changes (X is modal)
+        for segment in &merged {
             gcode.push_str(&format!(
-                "G1 X{:.3} Y{:.3} S{} F{:.0}\n",
-                self.params.offset_x + x_pos,
+                "Y{:.2} S{}\n",
                 segment.1,
-                segment.2,
-                self.params.feed_rate
+                segment.2
             ));
         }
+
+        // Brake segment to exit overscan (S0)
+        gcode.push_str(&format!("Y{:.2} S0\n", exit_y));
     }
 }
