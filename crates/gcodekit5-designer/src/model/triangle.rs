@@ -58,7 +58,7 @@ impl DesignerShape for DesignTriangle {
         let mut transform = Transform::identity();
         if self.rotation.abs() > 1e-6 {
             transform = transform
-            .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32));
         }
         transform = transform.then_translate(lyon::math::vector(
             self.center.x as f32,
@@ -69,7 +69,6 @@ impl DesignerShape for DesignTriangle {
     }
 
     fn as_csg(&self) -> Sketch<()> {
-
         let abs_w = self.width.abs();
         let abs_h = self.height.abs();
         let off_x = abs_w / 2.0;
@@ -80,15 +79,23 @@ impl DesignerShape for DesignTriangle {
         let p1_y = if self.height >= 0.0 { -off_y } else { off_y };
 
         let points = vec![
-            [p1_x, p1_y],      // Right angle
-            [-p1_x, p1_y],     // Horizontal end
-            [p1_x, -p1_y]      // Vertical end
+            [p1_x, p1_y],  // Right angle
+            [-p1_x, p1_y], // Horizontal end
+            [p1_x, -p1_y], // Vertical end
         ];
 
         let sketch: Sketch<()> = Sketch::polygon(&points, None);
 
-        let rotation = nalgebra::Matrix4::new_rotation(nalgebra::Vector3::new(0.0, 0.0, self.rotation.to_radians()));
-        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(self.center.x, self.center.y, 0.0));
+        let rotation = nalgebra::Matrix4::new_rotation(nalgebra::Vector3::new(
+            0.0,
+            0.0,
+            self.rotation.to_radians(),
+        ));
+        let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(
+            self.center.x,
+            self.center.y,
+            0.0,
+        ));
 
         sketch.transform(&(translation * rotation))
     }
@@ -99,9 +106,9 @@ impl DesignerShape for DesignTriangle {
         let half_h = (self.height / 2.0).abs();
         (
             self.center.x - half_w,
-         self.center.y - half_h,
-         self.center.x + half_w,
-         self.center.y + half_h,
+            self.center.y - half_h,
+            self.center.x + half_w,
+            self.center.y + half_h,
         )
     }
 

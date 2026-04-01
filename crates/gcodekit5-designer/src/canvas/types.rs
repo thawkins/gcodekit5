@@ -106,17 +106,15 @@ impl DrawingObject {
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
         match &self.shape {
-            Shape::Line(line) => {
-                line.distance_to_point(point) <= tolerance
-            },
-            Shape::Path(path) => {
-                path.distance_to_point(point) <= tolerance
-            },
+            Shape::Line(line) => line.distance_to_point(point) <= tolerance,
+            Shape::Path(path) => path.distance_to_point(point) <= tolerance,
             //For shapes with an area, you can keep the current method
             _ => {
                 let (x1, y1, x2, y2) = self.shape.bounds();
-                point.x >= x1 - tolerance && point.x <= x2 + tolerance &&
-                point.y >= y1 - tolerance && point.y <= y2 + tolerance
+                point.x >= x1 - tolerance
+                    && point.x <= x2 + tolerance
+                    && point.y >= y1 - tolerance
+                    && point.y <= y2 + tolerance
             }
         }
     }

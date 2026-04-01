@@ -8,11 +8,13 @@
 //! - Shape rendering with selection indicators
 
 #[allow(unused_imports)]
-use crate::model::{DesignerShape};
+use crate::model::DesignerShape;
 use crate::{font_manager, Canvas};
 use image::{Rgb, RgbImage};
 use rusttype::{point as rt_point, Scale};
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform, PixmapPaint};
+use tiny_skia::{
+    Color, FillRule, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform,
+};
 
 const HANDLE_SIZE: f32 = 18.0; // Increased from 12.0 for easier cursor positioning
 
@@ -105,9 +107,9 @@ pub fn render_canvas(
             crate::model::Shape::Rectangle(rect) => {
                 let rect_path = Rect::from_xywh(
                     (rect.center.x - rect.width / 2.0) as f32,
-                                                (rect.center.y - rect.height / 2.0) as f32,
-                                                rect.width as f32,
-                                                rect.height as f32,
+                    (rect.center.y - rect.height / 2.0) as f32,
+                    rect.width as f32,
+                    rect.height as f32,
                 );
                 if let Some(r) = rect_path {
                     let path = PathBuilder::from_rect(r);
@@ -141,14 +143,10 @@ pub fn render_canvas(
                 // 1. Create the unity circle
                 if let Some(p) = PathBuilder::from_circle(0.0, 0.0, 1.0) {
                     // 2. Create a specific transformation for this ellipse
-                    let mut ellipse_specific_transform = Transform::from_translate(
-                        ellipse.center.x as f32,
-                        ellipse.center.y as f32
-                    );
-                    ellipse_specific_transform = ellipse_specific_transform.pre_scale(
-                        ellipse.rx as f32,
-                        ellipse.ry as f32
-                    );
+                    let mut ellipse_specific_transform =
+                        Transform::from_translate(ellipse.center.x as f32, ellipse.center.y as f32);
+                    ellipse_specific_transform =
+                        ellipse_specific_transform.pre_scale(ellipse.rx as f32, ellipse.ry as f32);
 
                     // 3. Combine with the global transformation of the viewer (zoom/pan)
                     let final_transform = transform.post_concat(ellipse_specific_transform);
@@ -291,8 +289,6 @@ pub fn render_canvas(
             crate::model::Shape::RasterImage(raster) => {
                 use image::GenericImageView;
 
-
-
                 // Attempt to decode PNG image
                 match image::load_from_memory(&raster.image_data) {
                     Ok(img) => {
@@ -314,7 +310,14 @@ pub fn render_canvas(
                                     .post_scale(scale_x, scale_y);
 
                                 let paint = PixmapPaint::default();
-                                pixmap.draw_pixmap(0, 0, img_pixmap.as_ref(), &paint, transform, None);
+                                pixmap.draw_pixmap(
+                                    0,
+                                    0,
+                                    img_pixmap.as_ref(),
+                                    &paint,
+                                    transform,
+                                    None,
+                                );
                                 eprintln!("Image drawn");
                             }
                             None => eprintln!("Failed to create pixmap from data"),
@@ -325,7 +328,8 @@ pub fn render_canvas(
 
                 // Draw the border around the image
                 let (x1, y1, x2, y2) = raster.bounds();
-                let rect = Rect::from_xywh(x1 as f32, y1 as f32, (x2 - x1) as f32, (y2 - y1) as f32);
+                let rect =
+                    Rect::from_xywh(x1 as f32, y1 as f32, (x2 - x1) as f32, (y2 - y1) as f32);
                 if let Some(r) = rect {
                     let path = PathBuilder::from_rect(r);
                     let mut stroke_paint = Paint::default();
@@ -414,8 +418,8 @@ pub fn render_canvas(
             let rect = Rect::from_ltrb(
                 x1 as f32,
                 y1.min(y2) as f32, // Ensure min/max correct
-                                       x2 as f32,
-                                       y1.max(y2) as f32,
+                x2 as f32,
+                y1.max(y2) as f32,
             );
 
             if let Some(r) = rect {
@@ -450,9 +454,9 @@ pub fn render_canvas(
 
                     let h_rect = Rect::from_xywh(
                         (hx - size as f64 / 2.0) as f32,
-                                                 (hy - size as f64 / 2.0) as f32,
-                                                 size,
-                                                 size,
+                        (hy - size as f64 / 2.0) as f32,
+                        size,
+                        size,
                     );
                     if let Some(hr) = h_rect {
                         let h_path = PathBuilder::from_rect(hr);

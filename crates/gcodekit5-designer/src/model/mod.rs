@@ -57,10 +57,7 @@ impl Point {
     }
     /// Returns the midpoint between this point and another point
     pub fn midpoint(&self, other: &Point) -> Point {
-        Point::new(
-            (self.x + other.x) / 2.0,
-            (self.y + other.y) / 2.0,
-        )
+        Point::new((self.x + other.x) / 2.0, (self.y + other.y) / 2.0)
     }
 }
 
@@ -87,15 +84,16 @@ pub struct RasterImage {
     pub original_path: Option<std::path::PathBuf>,
     #[serde(skip)]
     pub image_data: Vec<u8>,
-    pub feed_rate: f64,        // mm/s
-    pub travel_rate: f64,      // mm/s
-    pub min_power: f64,        // %
-    pub max_power: f64,        // %
-    pub ppi: f64,              // dots per inch
+    pub feed_rate: f64,   // mm/s
+    pub travel_rate: f64, // mm/s
+    pub min_power: f64,   // %
+    pub max_power: f64,   // %
+    pub ppi: f64,         // dots per inch
     pub bidirectional: bool,
     pub invert: bool,
     pub scan_direction: String, // "horizontal" or "vertical"
     pub dithering: String,      // "none", "threshold", "floyd", "atkinson", "bayer"
+    pub halftone_threshold: u8,
 }
 
 impl Default for RasterImage {
@@ -117,6 +115,7 @@ impl Default for RasterImage {
             invert: true,
             scan_direction: "horizontal".to_string(),
             dithering: "none".to_string(),
+            halftone_threshold: 127,
         }
     }
 }
@@ -170,7 +169,10 @@ impl RasterImage {
 
     pub fn contains_point(&self, p: Point, tolerance: f64) -> bool {
         let (x1, y1, x2, y2) = self.bounds();
-        p.x >= x1 - tolerance && p.x <= x2 + tolerance && p.y >= y1 - tolerance && p.y <= y2 + tolerance
+        p.x >= x1 - tolerance
+            && p.x <= x2 + tolerance
+            && p.y >= y1 - tolerance
+            && p.y <= y2 + tolerance
     }
 
     pub fn resize(&mut self, _handle: usize, dx: f64, dy: f64) {
@@ -225,7 +227,6 @@ impl RasterImage {
         self.center.y = center.y + dx * sin + dy * cos;
     }
 
-
     pub fn properties(&self) -> Vec<Property> {
         vec![
             Property {
@@ -254,7 +255,6 @@ impl RasterImage {
             },
         ]
     }
-
 }
 
 pub trait DesignerShape {
@@ -300,7 +300,7 @@ pub enum ShapeType {
     Polygon,
     Gear,
     Sprocket,
-    RasterImage
+    RasterImage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -466,7 +466,6 @@ impl Shape {
         }
     }
 
-
     pub fn as_any(&self) -> &dyn std::any::Any {
         match self {
             Shape::Rectangle(s) => s,
@@ -516,5 +515,3 @@ pub fn rotate_point(p: Point, center: Point, angle_deg: f64) -> Point {
         y: center.y + dx * s + dy * c,
     }
 }
-
-

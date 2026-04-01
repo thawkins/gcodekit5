@@ -47,6 +47,7 @@ pub struct EngravingParams {
     pub mirror_y: bool,
     pub rotation: RotationAngle,
     pub halftone: HalftoneMethod,
+    pub halftone_threshold: u8,
     pub offset_x: f32,
     pub offset_y: f32,
     pub power_scale: f32,
@@ -70,6 +71,7 @@ impl Default for EngravingParams {
             mirror_y: false,
             rotation: RotationAngle::Degrees0,
             halftone: HalftoneMethod::None,
+            halftone_threshold: 127,
             offset_x: 10.0,
             offset_y: 10.0,
             power_scale: 1000.0,
@@ -103,9 +105,14 @@ impl ImageEngraver {
     }
 
     /// Create a new engraver from a designer RasterImage
-    pub fn from_raster_image(image: &crate::model::RasterImage, params: EngravingParams) -> Result<Self> {
-        let path = image.original_path.as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Image has no original path"))?;
+    pub fn from_raster_image(
+        image: &crate::model::RasterImage,
+        params: EngravingParams,
+    ) -> Result<Self> {
+        let path = image
+            .original_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Image has no original path"))?;
 
         let img = image::open(path).context("Failed to load image file")?;
         Self::from_image(img, params)
@@ -137,9 +144,9 @@ impl ImageEngraver {
         let output_width = (params.width_mm * params.pixels_per_mm()) as u32;
         let aspect_ratio = height as f32 / width as f32;
         let output_height = params
-        .height_mm
-        .map(|h| (h * params.pixels_per_mm()) as u32)
-        .unwrap_or((output_width as f32 * aspect_ratio) as u32);
+            .height_mm
+            .map(|h| (h * params.pixels_per_mm()) as u32)
+            .unwrap_or((output_width as f32 * aspect_ratio) as u32);
 
         gray = image::imageops::resize(
             &gray,
@@ -158,9 +165,9 @@ impl ImageEngraver {
 
         Ok(Self {
             image: gray,
-           params,
-           output_width,
-           output_height,
+            params,
+            output_width,
+            output_height,
         })
     }
 
@@ -168,7 +175,7 @@ impl ImageEngraver {
     pub fn output_size_mm(&self) -> (f32, f32) {
         (
             self.output_width as f32 / self.params.pixels_per_mm(),
-         self.output_height as f32 / self.params.pixels_per_mm(),
+            self.output_height as f32 / self.params.pixels_per_mm(),
         )
     }
 
@@ -176,10 +183,9 @@ impl ImageEngraver {
         let dot_size = 1;
 
         if dot_size > 1 {
-
         } else {
             match params.halftone {
-                HalftoneMethod::Threshold => Self::threshold(image, 127),
+                HalftoneMethod::Threshold => Self::threshold(image, params.halftone_threshold),
                 HalftoneMethod::Bayer4x4 => Self::bayer_dither(image),
                 HalftoneMethod::FloydSteinberg => Self::floyd_steinberg(image),
                 HalftoneMethod::Atkinson => Self::atkinson(image),
@@ -276,9 +282,9 @@ impl ImageEngraver {
         let normalized = intensity as f32 / 255.0;
         let gamma = 0.7;
         let corrected = normalized.powf(gamma);
-        let power = self.params.min_power + (corrected * (self.params.max_power - self.params.min_power));
+        let power =
+            self.params.min_power + (corrected * (self.params.max_power - self.params.min_power));
         ((power * self.params.power_scale / 100.0) as u32).clamp(0, 1000)
-
     }
 
     /// Generate G-code
@@ -286,18 +292,17 @@ impl ImageEngraver {
         let mut gcode = String::new();
 
         gcode.push_str("; GcodeKit5 Image Engraving\n");
-        gcode.push_str(&format!("; Feed Rate: {} \n", self.params.feed_rate, ));
-        gcode.push_str(&format!("; Max Power: {}% \n", self.params.max_power, ));
-        gcode.push_str("G90 G17 G40 G21\n"); // Absolute coordinates, XY Plane, Radio compensation off, Units mm, bsolute coordinates
+        gcode.push_str(&format!("; Feed Rate: {} \n", self.params.feed_rate,));
+        gcode.push_str(&format!("; Max Power: {}% \n", self.params.max_power,));
+        gcode.push_str("G90 G17 G40 G21\n"); // Absolute coordinates, XY Plane, Radius compensation off, Units mm, absolute coordinates
 
         gcode.push_str("M5\n");
         gcode.push_str(&format!(
-        "G0 X{:.2} Y{:.2}\n",
-        self.params.offset_x,
-        self.params.offset_y
-    ));
-    gcode.push_str(&format!("F{:.0}\n", self.params.feed_rate));
-    gcode.push('\n');
+            "G0 X{:.2} Y{:.2}\n",
+            self.params.offset_x, self.params.offset_y
+        ));
+        gcode.push_str(&format!("F{:.0}\n", self.params.feed_rate));
+        gcode.push('\n');
 
         let pixel_width = 1.0 / self.params.pixels_per_mm();
         let line_spacing = pixel_width;
@@ -317,29 +322,35 @@ impl ImageEngraver {
         Ok(gcode)
     }
 
-    fn generate_horizontal(&self, gcode: &mut String, pixel_width: f32, line_spacing: f32) -> Result<()> {
+    fn generate_horizontal(
+        &self,
+        gcode: &mut String,
+        pixel_width: f32,
+        line_spacing: f32,
+    ) -> Result<()> {
         let height = self.image.height();
-        let width = self.image.width();
         let mut left_to_right = true;
 
         for y_rev in 0..height {
             let y = height - 1 - y_rev;
             let y_pos = y_rev as f32 * line_spacing;
 
+            // Only do a G0 on the very first line to position
             if y_rev == 0 {
-                gcode.push_str(&format!("G0 Y{:.3}\n", self.params.offset_y + y_pos));
-            } else {
-                gcode.push_str("M5\n");
-                if left_to_right {
-                    // Move to the beginning of the line (left)
-                    gcode.push_str(&format!("G0 X{:.3} Y{:.3} F{:.0}\n", self.params.offset_x, self.params.offset_y + y_pos, self.params.travel_rate));
+                let start_x = if left_to_right {
+                    self.params.offset_x - 2.5
                 } else {
-                    let end_x = (width - 1) as f32 * pixel_width;
-                    // Move to the end of the line (right)
-                    gcode.push_str(&format!("G0 X{:.3} Y{:.3} F{:.0}\n", self.params.offset_x + end_x, self.params.offset_y + y_pos, self.params.travel_rate));
-                }
+                    self.params.offset_x + (self.image.width() as f32 * pixel_width) + 2.5
+                };
+                gcode.push_str(&format!(
+                    "G0 X{:.3} Y{:.3} F{:.0}\n",
+                    start_x,
+                    self.params.offset_y + y_pos,
+                    self.params.travel_rate
+                ));
             }
 
+            // Call scan_line (it handles Y stepping and overscan)
             self.scan_line(gcode, y, y_pos, pixel_width, left_to_right);
 
             if self.params.bidirectional {
@@ -349,11 +360,17 @@ impl ImageEngraver {
         Ok(())
     }
 
-    fn scan_line(&self, gcode: &mut String, y: u32, y_pos: f32, pixel_width: f32, left_to_right: bool) {
+    fn scan_line(
+        &self,
+        gcode: &mut String,
+        y: u32,
+        y_pos: f32,
+        pixel_width: f32,
+        left_to_right: bool,
+    ) {
         let width = self.image.width();
         let mut points: Vec<(f32, u32)> = Vec::with_capacity(width as usize);
 
-        // We scan along X (machine's X coordinate)
         let x_range: Vec<u32> = if left_to_right {
             (0..width).collect()
         } else {
@@ -371,45 +388,64 @@ impl ImageEngraver {
             return;
         }
 
-        // Merge segments with the same power
+        // Merge segments (your optimized current logic)
         let mut merged: Vec<(f32, f32, u32)> = Vec::new();
         let mut start_x = points[0].0;
         let mut current_power = points[0].1;
 
         for i in 1..points.len() {
             if points[i].1 != current_power {
-                merged.push((start_x, points[i-1].0, current_power));
+                merged.push((start_x, points[i - 1].0, current_power));
                 start_x = points[i].0;
                 current_power = points[i].1;
             }
         }
         merged.push((start_x, points.last().unwrap().0, current_power));
 
-        if merged.is_empty() {
-            return;
-        }
+        // --- OVERSCAN CONFIGURATION ---
+        let overscan_dist = 2.5; // mm for ramp up / ramp down (adjust as needed)
+        let y_coord = self.params.offset_y + y_pos;
+        let first_x = merged[0].0;
+        let last_x = merged.last().unwrap().1;
 
-        let first = &merged[0];
-        // Y fixed, X variable
+        // 2. CALCULATE ENTRY AND EXIT POINTS
+        let (entry_x, exit_x) = if left_to_right {
+            (first_x - overscan_dist, last_x + overscan_dist)
+        } else {
+            (first_x + overscan_dist, last_x - overscan_dist)
+        };
+
+        // RAPID MOVE TO OVERSCAN START
+        gcode.push_str(&format!("G0 X{:.2} Y{:.2}\n", entry_x, y_coord));
+
+        // 4. ACCELERATION SEGMENT (Laser at S0 to avoid burning)
+        // Here the machine starts from 0 and reaches feed_rate when it gets to first_x
         gcode.push_str(&format!(
-            // WITH speed
-            "G1 X{:.3} Y{:.3} S{} F{:.0} M4\n",
-            first.1, self.params.offset_y + y_pos, first.2, self.params.feed_rate
+            "G1 X{:.2} S0 F{:.0} M4\n",
+            first_x, self.params.feed_rate
         ));
 
-        for segment in &merged[1..] {
-            let x_str = format!("{:.2}", segment.1);
-            let x_clean = x_str
+        // ACTUAL ENGRAVING (Optimized segments)
+        for segment in &merged {
+            let x_clean = format!("{:.2}", segment.1)
                 .trim_end_matches('0')
-                .trim_end_matches('.');
-            gcode.push_str(&format!(
-                    "X{} S{}\n", // Remove G1, Y y F (Buffer space)
-                    x_clean, segment.2
-            ));
+                .trim_end_matches('.')
+                .to_string();
+
+            // Only send X and S to save buffer
+            gcode.push_str(&format!("X{} S{}\n", x_clean, segment.2));
         }
+
+        // BRAKE SEGMENT (Final overscan to avoid burned edges)
+        gcode.push_str(&format!("X{:.2} S0\n", exit_x));
     }
 
-    fn generate_vertical(&self, gcode: &mut String, pixel_width: f32, line_spacing: f32) -> Result<()> {
+    fn generate_vertical(
+        &self,
+        gcode: &mut String,
+        pixel_width: f32,
+        line_spacing: f32,
+    ) -> Result<()> {
         let height = self.image.height();
         let width = self.image.width();
         let mut top_to_bottom = true;
@@ -423,11 +459,21 @@ impl ImageEngraver {
                 gcode.push_str("M5\n");
                 if top_to_bottom {
                     // Move to the top of the column
-                    gcode.push_str(&format!("G0 X{:.3} Y{:.3} F{:.0}\n", self.params.offset_x + x_pos, self.params.offset_y, self.params.travel_rate));
+                    gcode.push_str(&format!(
+                        "G0 X{:.3} Y{:.3} F{:.0}\n",
+                        self.params.offset_x + x_pos,
+                        self.params.offset_y,
+                        self.params.travel_rate
+                    ));
                 } else {
                     let end_y = (height - 1) as f32 * pixel_width;
                     // Move to the end of the column (below)
-                    gcode.push_str(&format!("G0 X{:.3} Y{:.3} F{:.0}\n", self.params.offset_x + x_pos, self.params.offset_y + end_y, self.params.travel_rate));
+                    gcode.push_str(&format!(
+                        "G0 X{:.3} Y{:.3} F{:.0}\n",
+                        self.params.offset_x + x_pos,
+                        self.params.offset_y + end_y,
+                        self.params.travel_rate
+                    ));
                 }
             }
 
@@ -440,7 +486,14 @@ impl ImageEngraver {
         Ok(())
     }
 
-    fn scan_column(&self, gcode: &mut String, x: u32, x_pos: f32, pixel_width: f32, top_to_bottom: bool) {
+    fn scan_column(
+        &self,
+        gcode: &mut String,
+        x: u32,
+        x_pos: f32,
+        pixel_width: f32,
+        top_to_bottom: bool,
+    ) {
         let height = self.image.height();
         let mut points: Vec<(f32, u32)> = Vec::with_capacity(height as usize);
 
@@ -469,7 +522,7 @@ impl ImageEngraver {
 
         for i in 1..points.len() {
             if points[i].1 != current_power {
-                merged.push((start_y, points[i-1].0, current_power));
+                merged.push((start_y, points[i - 1].0, current_power));
                 start_y = points[i].0;
                 current_power = points[i].1;
             }
@@ -484,13 +537,19 @@ impl ImageEngraver {
         // X fixed, Y variable
         gcode.push_str(&format!(
             "G1 X{:.3} Y{:.3} S{} F{:.0} M4\n",
-            self.params.offset_x + x_pos, first.1, first.2, self.params.feed_rate
+            self.params.offset_x + x_pos,
+            first.1,
+            first.2,
+            self.params.feed_rate
         ));
 
         for segment in &merged[1..] {
             gcode.push_str(&format!(
                 "G1 X{:.3} Y{:.3} S{} F{:.0}\n",
-                self.params.offset_x + x_pos, segment.1, segment.2, self.params.feed_rate
+                self.params.offset_x + x_pos,
+                segment.1,
+                segment.2,
+                self.params.feed_rate
             ));
         }
     }

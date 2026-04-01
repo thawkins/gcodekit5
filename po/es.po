@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-03-21 01:26+0100\n"
+"PO-Revision-Date: 2026-03-31 00:59+0200\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
@@ -1163,3 +1163,26 @@ msgstr "Estrategia:"
 
 msgid "Raster Fill (%):"
 msgstr "Relleno Rasterizado (%):"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
+msgid "Select a shape to edit its properties"
+msgstr "Seleccione una forma para editar sus propiedades"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Laser Engraving"
+msgstr "Grabado Láser"
+
+msgid "Min Power:"
+msgstr "Potencia Min:"
+
+msgid "Max Power:"
+msgstr "Potencia Max:"
+
+msgid "Resolution:"
+msgstr "Resolución:"
+
+msgid "Dithering:"
+msgstr "Tramado:"
+
+msgid "Halftone Threshold:"
+msgstr "Umbral Semitonos:"

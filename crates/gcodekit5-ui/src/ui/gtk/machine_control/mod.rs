@@ -1362,18 +1362,77 @@ impl MachineControlView {
             let view_pause = view.clone();
             view.pause_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
-                    c.append_log("> ! (Pause)\n");
+                    c.append_log("> M5 (Laser off)\n");
                 }
+
+                let communicator = communicator.clone();
+                let console = console.clone();
+                let is_paused = is_paused.clone();
+                let view_pause = view_pause.clone();
+
+                // Send M5 and wait for ok
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send(b"!");
+                    let _ = comm.send_command("M5");
                 }
-                *is_paused.lock() = true;
 
-                if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
-                    sender.pause();
-                }
+                // Wait for GRBL to confirm M5 with ok
+                // Use a timeout to avoid blocking
+                let start = std::time::Instant::now();
+                let timeout = std::time::Duration::from_millis(500);
+
+                glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+                    let ok_received = {
+                        let mut comm = communicator.lock();
+                        match comm.receive() {
+                            Ok(data) if !data.is_empty() => {
+                                let resp = String::from_utf8_lossy(&data);
+                                resp.contains("ok")
+                            }
+                            _ => false
+                        }
+                    };
+
+                    if ok_received || start.elapsed() >= timeout {
+                        // Recibido ok o timeout, ahora enviar !
+                        if let Some(c) = console.as_ref() {
+                            c.append_log("> ! (Pause)\n");
+                        }
+                        {
+                            let mut comm = communicator.lock();
+                            let _ = comm.send(b"!");
+                        }
+                        *is_paused.lock() = true;
+                        if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
+                            sender.pause();
+                        }
+                        glib::ControlFlow::Break
+
+                    } else {
+                        glib::ControlFlow::Continue
+
+                    }
+                });
             });
+
+        // Unlock button handler
+        let communicator_unlock = view.communicator.clone();
+        let console_unlock = view.device_console.clone();
+        let direct_sender_unlock = view.direct_sender.clone();
+
+        view.unlock_btn.connect_clicked(move |_| {
+            if let Some(c) = console_unlock.as_ref() {
+                c.append_log("> $X (Unlock)\n");
+            }
+
+            if let Some(sender) = direct_sender_unlock.lock().as_ref() {
+                sender.unlock();
+            } else {
+                let mut comm = communicator_unlock.lock();
+                let _ = comm.send_command("$X");
+            }
+        });
+
         }
 
         {

@@ -59,7 +59,7 @@ pub enum MachineMode {
 
 impl Default for MachineMode {
     fn default() -> Self {
-        Self::Laser2D  // By default, Laser2D
+        Self::Laser2D // By default, Laser2D
     }
 }
 
@@ -203,7 +203,7 @@ impl DesignerState {
         self.gcode_generated = false;
     }
 
-/// Gets the current machine mode
+    /// Gets the current machine mode
     pub fn machine_mode(&self) -> MachineMode {
         self.tool_settings.machine_mode
     }
@@ -213,8 +213,6 @@ impl DesignerState {
         self.tool_settings.machine_mode = mode;
         self.gcode_generated = false;
     }
-
-
 }
 
 impl Default for DesignerState {

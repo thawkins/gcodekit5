@@ -70,80 +70,56 @@ impl DirectSender {
         let paused_flag = self.is_paused.clone();
         let stop_flag = self.should_stop.clone();
         let progress_tx = self.progress_tx.clone();
-        let start_time = std::time::Instant::now();
 
         thread::spawn(move || {
-            for (i, line) in lines.iter().enumerate() {
-                if stop_flag.load(Ordering::SeqCst) {
-                    let _ = progress_tx.send(format!("Arrested online {}/{}", i, total_lines));
-                    break;
+            let mut lines_in_flight: usize = 0;
+            let max_window: usize = 40; 
+            let mut i = 0;
+            let total = lines.len();
+
+            while i < total && !stop_flag.load(Ordering::SeqCst) {
+                // SEND until the window is full
+                while lines_in_flight < max_window && i < total {
+                    if paused_flag.load(Ordering::SeqCst) { break; }
+                    
+                    let cmd = format!("{}\n", lines[i]);
+                    let mut c = comm.lock();
+                    if c.send(cmd.as_bytes()).is_ok() {
+                        lines_in_flight += 1;
+                        i += 1;
+                    } else { break; }
                 }
 
-                while paused_flag.load(Ordering::SeqCst) && !stop_flag.load(Ordering::SeqCst) {
-                    thread::sleep(Duration::from_millis(10));
-                }
-
-                let send_result = {
-                    let mut comm = comm.lock();
-                    let cmd_with_newline = format!("{}\n", line);
-                    comm.send(cmd_with_newline.as_bytes())
-                };
-
-                match send_result {
-                    Ok(_) => {
-                        let mut retries = 0;
-                        let max_retries = 50;
-
-                        loop {
-                            if stop_flag.load(Ordering::SeqCst) { break; }
-
-                            let response = {
-                                let mut comm = comm.lock();
-                                comm.receive()
-                            };
-
-
-                            match response {
-                                Ok(data) if !data.is_empty() => {
-                                    let resp_str = String::from_utf8_lossy(&data);
-                                    if resp_str.contains("ok") { break; }
-                                    if resp_str.contains("error") {
-                                        let _ = progress_tx.send(format!("⚠️ Error: {}", resp_str));
-                                        break;
-                                    }
-                                }
-                                _ => {
-                                    retries += 1;
-                                    if retries >= max_retries {
-                                        break;
-                                    }
-                                    thread::sleep(Duration::from_micros(10));
-                                }
-                            }
-
+                // If the window is full, force waiting for a real 'ok'
+                let mut attempts = 0;
+                while lines_in_flight >= max_window && !stop_flag.load(Ordering::SeqCst) {
+                    {
+                        let mut c = comm.lock();
+                        if let Ok(data) = c.receive() {
+                            let resp = String::from_utf8_lossy(&data);
+                            let ok_count = resp.matches("ok").count();
+                            lines_in_flight = lines_in_flight.saturating_sub(ok_count);
                         }
-                        thread::sleep(Duration::from_micros(10));
                     }
-                    Err(e) => {
-                        let _ = progress_tx.send(format!("❌ Error: {}", e));
-                        break;
+                    
+                    attempts += 1;
+                    if attempts > 100 { // Si tras muchos intentos no hay 'ok', damos un respiro al CPU
+                        thread::sleep(Duration::from_millis(1));
+                        attempts = 0;
                     }
                 }
 
-                if i > 0 && i % 1000 == 0 {
-                    let progress = (i as f64 / total_lines as f64) * 100.0;
-                    let _ = progress_tx.send(format!("* {:.1}% ({}/{})",
-                                                      progress, i, total_lines));
+                // Read whatever has arrived even if the window is not full
+                if let Ok(data) = { let mut c = comm.lock(); c.receive() } {
+                    let ok_count = String::from_utf8_lossy(&data).matches("ok").count();
+                    lines_in_flight = lines_in_flight.saturating_sub(ok_count);
+                }
 
+                if i % 1000 == 0 {
+                    let _ = progress_tx.send(format!("* {:.1}%", (i as f64 / total as f64) * 100.0));
                 }
             }
-
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let _ = progress_tx.send(format!("✅ Completed in {:.1}s | {} lines", elapsed, total_lines));
-
             streaming_flag.store(false, Ordering::SeqCst);
-            paused_flag.store(false, Ordering::SeqCst);
-            stop_flag.store(false, Ordering::SeqCst);
         });
     }
 
@@ -162,6 +138,17 @@ impl DirectSender {
         let _ = self.progress_tx.send("Resuming".to_string());
         self.is_paused.store(false, Ordering::SeqCst);
     }
+
+    pub fn unlock(&self) {
+        let _ = self.progress_tx.send("Unlocking...".to_string());
+
+        let comm = self.communicator.clone();
+        let _ = thread::spawn(move || {
+            let mut comm = comm.lock();
+            let _ = comm.send_command("$X");
+        });
+    }
+
 }
 
 impl Clone for DirectSender {

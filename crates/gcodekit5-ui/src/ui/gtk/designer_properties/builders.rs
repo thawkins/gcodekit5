@@ -539,6 +539,7 @@ impl PropertiesPanel {
         CheckButton,  // bidirectional
         CheckButton,  // invert
         ComboBoxText,  // dithering
+        Entry, // halftone_threshold
     ) {
         let frame = Self::create_section(&t!("Laser Engraving"));
         let grid = gtk4::Grid::builder()
@@ -606,6 +607,14 @@ impl PropertiesPanel {
         let invert_label = Label::new(Some(&t!("Invert:")));
         let invert_check = CheckButton::new();
 
+        // Halftone_threshold
+        let halftone_label = Label::new(Some(&t!("Halftone Threshold:")));
+        let halftone_entry = Entry::new();
+        halftone_entry.set_placeholder_text(Some("0-255"));
+        halftone_entry.set_text("127"); // Valor por defecto
+        let halftone_range = Label::new(Some("(0-255)"));
+        halftone_range.add_css_class("dim-label");
+
         // Layout
         grid.attach(&feed_label, 0, 0, 1, 1);
         grid.attach(&feed_entry, 1, 0, 1, 1);
@@ -639,6 +648,10 @@ impl PropertiesPanel {
         grid.attach(&dither_label, 0, 8, 1, 1);
         grid.attach(&dither_combo, 1, 8, 1, 1);
 
+        grid.attach(&halftone_label, 0, 9, 1, 1);
+        grid.attach(&halftone_entry, 1, 9, 1, 1);
+        grid.attach(&halftone_range, 2, 9, 1, 1);
+
         frame.set_child(Some(&grid));
         (
             frame,
@@ -651,6 +664,7 @@ impl PropertiesPanel {
          bidir_check,
          invert_check,
          dither_combo,
+         halftone_entry,
         )
     }
 
