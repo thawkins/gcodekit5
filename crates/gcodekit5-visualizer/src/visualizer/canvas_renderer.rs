@@ -136,7 +136,6 @@ pub fn render_intensity_overlay(
     max_intensity: f32,
 ) -> Vec<String> {
     let mut layers = vec![String::new(); 10];
-
     // Pre-allocate some capacity
     let estimated_capacity = visualizer.get_command_count() * 10;
     for layer in &mut layers {

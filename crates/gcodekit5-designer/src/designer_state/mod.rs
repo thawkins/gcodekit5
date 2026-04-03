@@ -195,6 +195,7 @@ impl DesignerState {
 
     /// Sets the step-down for toolpath generation.
     pub fn set_step_down(&mut self, step: f64) {
+        let step = if step <= 0.0 { 0.1 } else { step };
         debug_assert!(
             step.is_finite() && step > 0.0,
             "step_down must be positive and finite, got {step}"

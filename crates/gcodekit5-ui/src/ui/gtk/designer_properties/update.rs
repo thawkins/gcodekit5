@@ -160,7 +160,7 @@ impl PropertiesPanel {
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
-                self.pos_frame.set_visible(false);
+                self.pos_frame.set_visible(true);
                 self.size_frame.set_visible(true);
                 self.rot_frame.set_visible(false);
                 // --- Object Center

@@ -77,16 +77,18 @@ impl DesignerView {
                                     if id > max_id {
                                         max_id = id;
                                     }
-                                    if let Ok(obj) =
-                                        DesignFile::to_drawing_object(&shape_data, id as i32)
-                                    {
+                                    // In open_file(), after to_drawing_object:
+                                    if let Ok(mut obj) = DesignFile::to_drawing_object(&shape_data, id as i32) {
+                                        // Ensure valid values
+                                        if obj.step_down <= 0.0 {
+                                            obj.step_down = 0.1; // default value
+                                        }
                                         state.canvas.restore_shape(obj);
                                         restored_shapes += 1;
                                     }
                                 }
 
                                 state.canvas.set_next_id(max_id + 1);
-
                                 state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
                                 state.tool_settings.spindle_speed =
                                     design.toolpath_params.spindle_speed as u32;

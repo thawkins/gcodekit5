@@ -6,7 +6,7 @@
 use crate::model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
-    DesignTriangle as Triangle,
+    DesignTriangle as Triangle, RasterImage,
 };
 use crate::shapes::OperationType;
 use anyhow::{Context, Result};
@@ -132,10 +132,12 @@ pub struct ShapeData {
     pub chamfer: f64,
     #[serde(default = "default_lock_aspect_ratio")]
     pub lock_aspect_ratio: bool,
+    #[serde(default)]
+    pub original_path: Option<String>,
 }
 
 fn default_lock_aspect_ratio() -> bool {
-    false // true
+    false
 }
 
 fn default_raster_fill_ratio() -> f64 {
@@ -280,9 +282,7 @@ impl DesignFile {
     /// Save design to file
     pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
         let json = serde_json::to_string_pretty(self).context("Failed to serialize design")?;
-
         std::fs::write(path.as_ref(), json).context("Failed to write design file")?;
-
         Ok(())
     }
 
@@ -290,13 +290,10 @@ impl DesignFile {
     pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content =
             std::fs::read_to_string(path.as_ref()).context("Failed to read design file")?;
-
         let mut design: DesignFile =
             serde_json::from_str(&content).context("Failed to parse design file")?;
-
         // Update modified timestamp
         design.metadata.modified = Utc::now();
-
         Ok(design)
     }
 
@@ -311,6 +308,7 @@ impl DesignFile {
         let (real_width, real_height) = match &obj.shape {
             Shape::Rectangle(r) => (r.width, r.height),
             Shape::Ellipse(e) => (e.rx * 2.0, e.ry * 2.0),
+            Shape::RasterImage(r) => (r.width_mm, r.height_mm),
             _ => (x2 - x1, y2 - y1),
         };
 
@@ -329,50 +327,6 @@ impl DesignFile {
         };
 
         let rotation = obj.shape.rotation();
-
-        ShapeData {
-            id: obj.id as i32,
-            group_id: obj.group_id,
-            name: obj.name.clone(),
-            shape_type: shape_type.to_string(),
-            x: cx,
-            y: cy,
-            width: real_width,
-            height: real_height,
-            rotation,
-            selected: obj.selected,
-            operation_type: format!("{:?}", obj.operation_type).to_lowercase(),
-            pocket_strategy: obj.pocket_strategy,
-            use_custom_values: obj.use_custom_values,
-            pocket_depth: obj.pocket_depth,
-            start_depth: obj.start_depth,
-            step_down: obj.step_down,
-            step_in: obj.step_in,
-            ramp_angle: obj.ramp_angle,
-            raster_fill_ratio: obj.raster_fill_ratio,
-            offset: obj.offset,
-            fillet: obj.fillet,
-            chamfer: obj.chamfer,
-            lock_aspect_ratio: obj.lock_aspect_ratio,
-            depth: obj.pocket_depth,
-            points: Vec::new(),
-            tab_size: 0.0,
-            thickness: 0.0,
-            path_data: String::new(),
-            text_content: String::new(),
-            font_family: String::new(),
-            font_size: 0.0,
-            font_bold: false,
-            font_italic: false,
-            corner_radius: 0.0,
-            is_slot: false,
-            sides: 0,
-            module: 0.0,
-            teeth: 0,
-            pressure_angle: 0.0,
-            pitch: 0.0,
-            roller_diameter: 0.0,
-        };
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
             if let Shape::Text(text_shape) = &obj.shape {
@@ -410,9 +364,6 @@ impl DesignFile {
         let mut pressure_angle = 0.0;
         let mut pitch = 0.0;
         let mut roller_diameter = 0.0;
-        let thickness = 0.0;
-        let depth = 0.0;
-        let tab_size = 0.0;
 
         match &obj.shape {
             Shape::Gear(g) => {
@@ -427,6 +378,11 @@ impl DesignFile {
             }
             _ => {}
         }
+        let original_path = if let Shape::RasterImage(raster) = &obj.shape {
+            raster.original_path.clone().map(|p| p.display().to_string())
+        } else {
+            None
+        };
 
         ShapeData {
             id: obj.id as i32,
@@ -437,7 +393,7 @@ impl DesignFile {
             width: real_width,
             height: real_height,
             points: Vec::new(),
-            selected: false,
+            selected: obj.selected,
             use_custom_values: obj.use_custom_values,
             operation_type: match obj.operation_type {
                 OperationType::Profile => "profile".to_string(),
@@ -456,7 +412,7 @@ impl DesignFile {
             group_id: obj.group_id,
             corner_radius,
             is_slot,
-            rotation: obj.shape.rotation(),
+            rotation,
             ramp_angle: obj.ramp_angle,
             pocket_strategy: obj.pocket_strategy,
             raster_fill_ratio: obj.raster_fill_ratio,
@@ -466,13 +422,14 @@ impl DesignFile {
             pressure_angle,
             pitch,
             roller_diameter,
-            thickness,
-            depth,
-            tab_size,
+            thickness: 0.0,
+            depth: obj.pocket_depth,
+            tab_size: 0.0,
             offset: obj.offset,
             fillet: obj.fillet,
             chamfer: obj.chamfer,
             lock_aspect_ratio: obj.lock_aspect_ratio,
+            original_path,
         }
     }
 
@@ -487,7 +444,7 @@ impl DesignFile {
             }
             "circle" => {
                 let radius = data.width.min(data.height) / 2.0;
-                let center = Point::new(data.x + radius, data.y + radius);
+                let center = Point::new(data.x, data.y);
                 Shape::Circle(Circle::new(center, radius))
             }
             "line" => {
@@ -496,21 +453,20 @@ impl DesignFile {
                 Shape::Line(Line::new(start, end))
             }
             "ellipse" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 Shape::Ellipse(Ellipse::new(center, data.width / 2.0, data.height / 2.0))
             }
             "triangle" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 Shape::Triangle(Triangle::new(center, data.width, data.height))
             }
             "polygon" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let radius = data.width.min(data.height) / 2.0;
                 Shape::Polygon(Polygon::new(center, radius, data.sides))
             }
-
             "polyline" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let radius = data.width.min(data.height) / 2.0;
                 let sides = 6;
                 let mut vertices = Vec::with_capacity(sides);
@@ -522,10 +478,8 @@ impl DesignFile {
                 }
                 Shape::Path(PathShape::from_points(&vertices, true))
             }
-
             "text" => {
-                let mut s =
-                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                let mut s = TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }
@@ -545,16 +499,53 @@ impl DesignFile {
                 }
             }
             "gear" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let mut gear = DesignGear::new(center, data.module, data.teeth);
                 gear.pressure_angle = data.pressure_angle;
                 Shape::Gear(gear)
             }
             "sprocket" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let mut sprocket = DesignSprocket::new(center, data.pitch, data.teeth);
                 sprocket.roller_diameter = data.roller_diameter;
                 Shape::Sprocket(sprocket)
+            }
+            "raster_image" => {
+                let center = Point::new(data.x, data.y);
+                let original_path = data.original_path.as_ref().map(std::path::PathBuf::from);
+
+                let (image_data, width_mm, height_mm) = if let Some(ref path) = original_path {
+                    if path.exists() {
+                        // Try to load the image while keeping the saved dimensions
+                        match crate::image_importer::ImageImporter::load_image_data_with_size(
+                            path,
+                            data.width,
+                            data.height
+                        ) {
+                            Ok((data, w, h)) => (data, w, h),
+                            Err(e) => {
+                                eprintln!("Warning: Could not load image {:?}: {}", path, e);
+                                (Vec::new(), data.width, data.height)
+                            }
+                        }
+                    } else {
+                        eprintln!("Warning: Image file not found: {:?}", path);
+                        (Vec::new(), data.width, data.height)
+                    }
+                } else {
+                    (Vec::new(), data.width, data.height)
+                };
+
+                let raster = RasterImage::new(
+                    data.id as u64,
+                    center,
+                    width_mm,
+                    height_mm,
+                    image_data,
+                    original_path,
+                );
+
+                Shape::RasterImage(raster)
             }
             _ => anyhow::bail!("Unknown shape type: {}", data.shape_type),
         };
