@@ -193,8 +193,24 @@ pub fn main() {
 
         // 1. Device Console
         let device_console = DeviceConsoleView::new();
-
         let status_bar = StatusBar::new();
+        device_manager.load().ok();
+
+        // Sync active device num_axes to global state
+        if let Some(profile) = device_manager.get_active_profile() {
+            crate::device_status::set_active_num_axes(profile.num_axes);
+
+            // Convert ControllerType to &str
+            let controller_type = format!("{:?}", profile.controller_type);
+            let device_name = &profile.name;
+            let device_type = format!("{:?}", profile.device_type);
+
+            status_bar.set_device_info(device_name, &controller_type, &device_type);
+        }
+
+        let device_controller = Rc::new(gcodekit5_devicedb::DeviceUiController::new(
+            device_manager.clone(),
+        ));
 
         // 3. G-Code Editor (Moved up to be available for MachineControl)
         let editor = Rc::new(GcodeEditor::new(Some(status_bar.clone())));
