@@ -642,7 +642,7 @@ impl BitmapImageEngraver {
                     current_power = power_value;
                     segment_start = x_pos;
                     segment_end = x_pos;
-                    first_segment_of_burst = false; // Los siguientes ya no necesitan G0
+                    first_segment_of_burst = false; // The following ones no longer need G0
                 }
             } else if in_burn {
                 self.emit_segment(

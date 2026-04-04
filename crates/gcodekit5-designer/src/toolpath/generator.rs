@@ -748,7 +748,7 @@ impl ToolpathGenerator {
     /// Converts a DXF bulge to an arc and steering center
     fn bulge_to_arc(&self, p1: Point, p2: Point, bulge: f64) -> (Point, bool) {
         let chord = p1.distance_to(&p2);
-        let angle = 4.0 * bulge.atan(); // Ángulo incluido del arco
+        let angle = 4.0 * bulge.atan(); // Included angle of the arc
 
         // Radius = (chord/2) / sin(angle/2)
         let radius = (chord / 2.0) / (angle / 2.0).sin();
@@ -1104,8 +1104,8 @@ impl ToolpathGenerator {
             match event {
                 lyon::path::Event::Begin { at } => {
                     let p = Point::new(at.x as f64, at.y as f64);
-                    // Siempre iniciar un nuevo subpath con un movimiento rápido desde la posición actual
-                    // (la posición actual puede ser la última posición del subpath anterior, pero eso está bien)
+                    // Always start a new subpath with a quick move from the current position.
+                    // (the current position can be the last position of the previous subpath, but that's fine)
                     segments.push(ToolpathSegment::new(
                         ToolpathSegmentType::RapidMove,
                         current_pos,
@@ -1151,7 +1151,7 @@ impl ToolpathGenerator {
                         ));
                     } else {
                         let mut last_p = current_pos;
-                        let steps = 16;
+                        let steps = 32; // Change
                         for i in 1..=steps {
                             let t = i as f64 / steps as f64;
                             let inv_t = 1.0 - t;
@@ -1197,7 +1197,7 @@ impl ToolpathGenerator {
                         ));
                     } else {
                         let mut last_p = current_pos;
-                        let steps = 10;
+                        let steps = 32; // Change
                         for i in 1..=steps {
                             let t = i as f64 / steps as f64;
                             let x = (1.0 - t).powi(2) * current_pos.x
