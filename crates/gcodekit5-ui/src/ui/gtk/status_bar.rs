@@ -318,4 +318,13 @@ impl StatusBar {
         let text = format!("{} | {} | {}", name, controller, device_type);
         self.device_info_label.set_text(&text);
     }
+
+    pub fn refresh_device_info(&self, device_manager: &gcodekit5_devicedb::DeviceManager) {
+        if let Some(profile) = device_manager.get_active_profile() {
+            let controller_type = format!("{:?}", profile.controller_type);
+            let device_name = &profile.name;
+            let device_type = format!("{:?}", profile.device_type);
+            self.set_device_info(device_name, &controller_type, &device_type);
+        }
+    }
 }

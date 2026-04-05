@@ -121,11 +121,8 @@ pub fn main() {
         if let Some(profile) = device_manager.get_active_profile() {
             crate::device_status::set_active_num_axes(profile.num_axes);
         }
-        let device_controller = Rc::new(gcodekit5_devicedb::DeviceUiController::new(
-            device_manager.clone(),
-        ));
-        // Designer state is now managed internally by DesignerView
 
+        // Designer state is now managed internally by DesignerView
         let window = ApplicationWindow::builder()
             .application(app)
             .title(t!("GCodeKit5"))
@@ -195,6 +192,14 @@ pub fn main() {
         let device_console = DeviceConsoleView::new();
         let status_bar = StatusBar::new();
         device_manager.load().ok();
+
+        // Refresh status bar active device
+        let status_bar_clone = status_bar.clone();
+        let device_manager_clone = device_manager.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
+            status_bar_clone.refresh_device_info(&device_manager_clone);
+            glib::ControlFlow::Continue
+        });
 
         // Sync active device num_axes to global state
         if let Some(profile) = device_manager.get_active_profile() {
