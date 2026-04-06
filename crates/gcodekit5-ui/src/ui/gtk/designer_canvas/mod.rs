@@ -299,8 +299,7 @@ impl DesignerCanvas {
                 | DesignerTool::Polygon
                 | DesignerTool::Polyline
                 | DesignerTool::Gear
-                | DesignerTool::Sprocket =>
-                widget_motion.set_cursor_from_name(Some("pencil")),
+                | DesignerTool::Sprocket => widget_motion.set_cursor_from_name(Some("pencil")),
             }
 
             widget_motion.queue_draw();
@@ -530,14 +529,20 @@ impl DesignerCanvas {
 
     /// Import a raster image (JPG, PNG, etc.) and convert it to toolpath
     pub fn import_raster_image(&self) {
-        use gtk4::FileChooserDialog;
         use gtk4::FileChooserAction;
+        use gtk4::FileChooserDialog;
         use gtk4::ResponseType;
 
         let dialog = FileChooserDialog::builder()
             .title("Import Image")
             .action(FileChooserAction::Open)
-            .transient_for(&self.widget.root().and_then(|r| r.downcast::<gtk4::Window>().ok()).unwrap())
+            .transient_for(
+                &self
+                    .widget
+                    .root()
+                    .and_then(|r| r.downcast::<gtk4::Window>().ok())
+                    .unwrap(),
+            )
             .build();
 
         let filter = gtk4::FileFilter::new();
@@ -601,6 +606,4 @@ impl DesignerCanvas {
             }
         });
     }
-
 }
-

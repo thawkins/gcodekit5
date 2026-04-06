@@ -12,7 +12,7 @@ use gcodekit5_communication::{
 };
 use gcodekit5_core::units::{
     format_feed_rate, format_length, get_unit_label, parse_feed_rate, FeedRateUnits,
-        MeasurementSystem,
+    MeasurementSystem,
 };
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::glib;
@@ -29,11 +29,13 @@ use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
+use crate::ui::gtk::machine_control::direct_sender::DirectSender;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
-use gcodekit5_core::{thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption};
+use gcodekit5_core::{
+    thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption,
+};
 use std::rc::Rc;
-use crate::ui::gtk::machine_control::direct_sender::DirectSender;
 
 mod direct_sender;
 
@@ -170,7 +172,6 @@ impl MachineControlView {
         visualizer: Option<Rc<GcodeVisualizer>>,
         settings_controller: Option<Rc<SettingsController>>,
         //        direct_sender: ThreadSafeOption<DirectSender>,
-
     ) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
@@ -188,7 +189,6 @@ impl MachineControlView {
             section.append(&header);
             section.append(child);
             section
-
         }
 
         // Helper function to disable connection-dependent buttons
@@ -997,11 +997,11 @@ impl MachineControlView {
         // Initialize units from settings if available
         let initial_units = if let Some(controller) = &settings_controller {
             controller
-            .persistence
-            .borrow()
-            .config()
-            .ui
-            .measurement_system
+                .persistence
+                .borrow()
+                .config()
+                .ui
+                .measurement_system
         } else {
             MeasurementSystem::Metric
         };
@@ -1022,7 +1022,7 @@ impl MachineControlView {
             for mm in presets_mm {
                 step_combo.append(
                     Some(&format!("{mm}")),
-                                  &format!("{} {unit_label}", format_length(mm, initial_units)),
+                    &format!("{} {unit_label}", format_length(mm, initial_units)),
                 );
             }
             step_combo.set_active_id(Some("1"));
@@ -1066,7 +1066,7 @@ impl MachineControlView {
                     for mm in presets_mm {
                         step_combo_clone.append(
                             Some(&format!("{mm}")),
-                                                &format!("{} {unit_label}", format_length(mm, units)),
+                            &format!("{} {unit_label}", format_length(mm, units)),
                         );
                     }
                     step_combo_clone.set_active_id(Some(&format!("{selected_mm}")));
@@ -1314,9 +1314,9 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console_entry = view
-            .device_console
-            .as_ref()
-            .map(|c| c.command_entry.clone());
+                .device_console
+                .as_ref()
+                .map(|c| c.command_entry.clone());
             let console = view.device_console.clone();
 
             controller.connect_key_pressed(move |_, key, _, _| {
@@ -1335,12 +1335,12 @@ impl MachineControlView {
 
                 match ch {
                     '8' => send_jog('Y', step, &communicator, feed, &console),
-                                           '2' => send_jog('Y', -step, &communicator, feed, &console),
-                                           '4' => send_jog('X', -step, &communicator, feed, &console),
-                                           '6' => send_jog('X', step, &communicator, feed, &console),
-                                           '9' => send_jog('Z', step, &communicator, feed, &console),
-                                           '3' => send_jog('Z', -step, &communicator, feed, &console),
-                                           _ => return glib::Propagation::Proceed,
+                    '2' => send_jog('Y', -step, &communicator, feed, &console),
+                    '4' => send_jog('X', -step, &communicator, feed, &console),
+                    '6' => send_jog('X', step, &communicator, feed, &console),
+                    '9' => send_jog('Z', step, &communicator, feed, &console),
+                    '3' => send_jog('Z', -step, &communicator, feed, &console),
+                    _ => return glib::Propagation::Proceed,
                 }
 
                 glib::Propagation::Stop
@@ -1389,7 +1389,7 @@ impl MachineControlView {
                                 let resp = String::from_utf8_lossy(&data);
                                 resp.contains("ok")
                             }
-                            _ => false
+                            _ => false,
                         }
                     };
 
@@ -1407,32 +1407,29 @@ impl MachineControlView {
                             sender.pause();
                         }
                         glib::ControlFlow::Break
-
                     } else {
                         glib::ControlFlow::Continue
-
                     }
                 });
             });
 
-        // Unlock button handler
-        let communicator_unlock = view.communicator.clone();
-        let console_unlock = view.device_console.clone();
-        let direct_sender_unlock = view.direct_sender.clone();
+            // Unlock button handler
+            let communicator_unlock = view.communicator.clone();
+            let console_unlock = view.device_console.clone();
+            let direct_sender_unlock = view.direct_sender.clone();
 
-        view.unlock_btn.connect_clicked(move |_| {
-            if let Some(c) = console_unlock.as_ref() {
-                c.append_log("> $X (Unlock)\n");
-            }
+            view.unlock_btn.connect_clicked(move |_| {
+                if let Some(c) = console_unlock.as_ref() {
+                    c.append_log("> $X (Unlock)\n");
+                }
 
-            if let Some(sender) = direct_sender_unlock.lock().as_ref() {
-                sender.unlock();
-            } else {
-                let mut comm = communicator_unlock.lock();
-                let _ = comm.send_command("$X");
-            }
-        });
-
+                if let Some(sender) = direct_sender_unlock.lock().as_ref() {
+                    sender.unlock();
+                } else {
+                    let mut comm = communicator_unlock.lock();
+                    let _ = comm.send_command("$X");
+                }
+            });
         }
 
         {
@@ -1476,7 +1473,6 @@ impl MachineControlView {
             });
         }
 
-
         {
             let communicator = view.communicator.clone();
             let is_streaming = view.is_streaming.clone();
@@ -1514,7 +1510,6 @@ impl MachineControlView {
             });
         }
 
-
         {
             let editor = view.editor.clone();
             let widget_for_dialog = view.widget.clone();
@@ -1529,11 +1524,11 @@ impl MachineControlView {
 
                 if content.trim().is_empty() {
                     let dialog = gtk4::MessageDialog::builder()
-                    .message_type(gtk4::MessageType::Error)
-                    .buttons(gtk4::ButtonsType::Ok)
-                    .text(t!("No G-Code to Send"))
-                    .secondary_text(t!("Please load or type G-Code into the editor first."))
-                    .build();
+                        .message_type(gtk4::MessageType::Error)
+                        .buttons(gtk4::ButtonsType::Ok)
+                        .text(t!("No G-Code to Send"))
+                        .secondary_text(t!("Please load or type G-Code into the editor first."))
+                        .build();
 
                     // Set transient parent if possible
                     if let Some(root) = widget_for_dialog.root() {
@@ -1553,7 +1548,6 @@ impl MachineControlView {
                 let is_image = first_line.trim() == "; GcodeKit5 Image Engraving";
 
                 if is_image {
-
                     let (sender, receiver) = DirectSender::new(
                         communicator_clone.clone(),
                         view_clone.is_streaming.clone(),
@@ -1562,17 +1556,60 @@ impl MachineControlView {
                     );
 
                     let console = view_clone.device_console.clone();
+                    let status_bar = view_clone.status_bar.clone();
 
                     // Use timeout_add_local instead of spawn_future_local
                     // Check messages every 100ms without blocking
                     let receiver = std::sync::Mutex::new(receiver);
                     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-
                         // Try to receive all pending messages
                         let receiver_guard = receiver.lock().unwrap();
                         while let Ok(message) = receiver_guard.try_recv() {
-                            if let Some(c) = console.as_ref() {
-                                c.append_log(&format!("{}\n", message));
+                            if message.starts_with("*") {
+                                // Progress update from DirectSender
+                                if let Some(sb) = status_bar.as_ref() {
+                                    if let Ok(percent) = message
+                                        .trim_start_matches('*')
+                                        .trim()
+                                        .trim_end_matches('%')
+                                        .parse::<f64>()
+                                    {
+                                        sb.set_progress(percent, "", "");
+                                        if percent >= 100.0 {
+                                            sb.set_progress(0.0, "", "");
+                                        }
+                                    }
+                                }
+                            } else if message == t!("Work completed.") {
+                                if let Some(sb) = status_bar.as_ref() {
+                                    sb.set_progress(0.0, "", "");
+                                }
+                                if let Some(c) = console.as_ref() {
+                                    c.append_log(&format!("{}\n", t!("Work completed.")));
+                                }
+                            } else if message == t!("Work stopped.") {
+                                if let Some(sb) = status_bar.as_ref() {
+                                    sb.set_progress(0.0, "", "");
+                                }
+                                if let Some(c) = console.as_ref() {
+                                    c.append_log(&format!("{}\n", t!("Work stopped.")));
+                                }
+                            } else if message.starts_with("Starting laser engraving:") {
+                                if let Some(c) = console.as_ref() {
+                                    c.append_log(&format!("{}\n", message));
+                                }
+                            } else if let Some(c) = console.as_ref() {
+                                match message.as_str() {
+                                    "Stopping..." => {
+                                        c.append_log(&format!("{}\n", t!("Stopping...")))
+                                    }
+                                    "Paused" => c.append_log(&format!("{}\n", t!("Paused"))),
+                                    "Resuming" => c.append_log(&format!("{}\n", t!("Resuming"))),
+                                    "Unlocking..." => {
+                                        c.append_log(&format!("{}\n", t!("Unlocking...")))
+                                    }
+                                    _ => c.append_log(&format!("{}\n", message)),
+                                }
                             }
                         }
 
@@ -1594,10 +1631,10 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.x_zero_btn.connect_clicked(move |_| {
                 let p = wcs_btns
-                .iter()
-                .position(|b| b.is_active())
-                .map(|i| i + 1)
-                .unwrap_or(1);
+                    .iter()
+                    .position(|b| b.is_active())
+                    .map(|i| i + 1)
+                    .unwrap_or(1);
                 let cmd = format!("G10 L20 P{p} X0");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -1614,10 +1651,10 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.y_zero_btn.connect_clicked(move |_| {
                 let p = wcs_btns
-                .iter()
-                .position(|b| b.is_active())
-                .map(|i| i + 1)
-                .unwrap_or(1);
+                    .iter()
+                    .position(|b| b.is_active())
+                    .map(|i| i + 1)
+                    .unwrap_or(1);
                 let cmd = format!("G10 L20 P{p} Y0");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -1634,10 +1671,10 @@ impl MachineControlView {
             let console = view.device_console.clone();
             view.z_zero_btn.connect_clicked(move |_| {
                 let p = wcs_btns
-                .iter()
-                .position(|b| b.is_active())
-                .map(|i| i + 1)
-                .unwrap_or(1);
+                    .iter()
+                    .position(|b| b.is_active())
+                    .map(|i| i + 1)
+                    .unwrap_or(1);
                 let cmd = format!("G10 L20 P{p} Z0");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -2490,9 +2527,7 @@ impl MachineControlView {
 
         view
     }
-
 }
 
 mod operations;
 mod overrides;
-

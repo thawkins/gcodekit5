@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::laser_engraver::{
     BitmapImageEngraver, EngravingParameters, HalftoneMethod, ImageTransformations, RotationAngle,
@@ -20,7 +21,6 @@ use gcodekit5_camtools::laser_engraver::{
 };
 use gcodekit5_core::units;
 use gcodekit5_settings::SettingsController;
-use crate::t;
 
 struct BitmapEngravingWidgets {
     width_mm: Entry,
@@ -219,13 +219,17 @@ impl BitmapEngravingTool {
         image_group.add(&image_row);
         scroll_content.append(&image_group);
 
-        let output_group = PreferencesGroup::builder().title(&t!("Output Settings")).build();
+        let output_group = PreferencesGroup::builder()
+            .title(&t!("Output Settings"))
+            .build();
         output_group.add(&width_mm_row);
         output_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
         output_group.add(&Self::create_row(&t!("Travel Rate:"), &travel_rate));
         scroll_content.append(&output_group);
 
-        let power_group = PreferencesGroup::builder().title(&t!("Laser Power")).build();
+        let power_group = PreferencesGroup::builder()
+            .title(&t!("Laser Power"))
+            .build();
         power_group.add(&Self::create_row(&t!("Min Power (%):"), &min_power));
         power_group.add(&Self::create_row(&t!("Max Power (%):"), &max_power));
         power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));
@@ -261,7 +265,9 @@ impl BitmapEngravingTool {
         halftone_group.add(&Self::create_row(&t!("Threshold:"), &halftone_threshold));
         scroll_content.append(&halftone_group);
 
-        let offset_group = PreferencesGroup::builder().title(&t!("Work Offsets")).build();
+        let offset_group = PreferencesGroup::builder()
+            .title(&t!("Work Offsets"))
+            .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
@@ -825,4 +831,3 @@ impl BitmapEngravingTool {
         }
     }
 }
-

@@ -90,17 +90,17 @@ impl LayersPanel {
 
         // Group button
         let group_btn = Button::builder()
-        .label(t!("Group"))
-        .icon_name("object-group-symbolic")
-        .build();
+            .label(t!("Group"))
+            .icon_name("object-group-symbolic")
+            .build();
         group_btn.set_tooltip_text(Some(&t!("Group (Ctrl+G)")));
         header.append(&group_btn);
 
         // Ungroup button
         let ungroup_btn = Button::builder()
-        .label(t!("Ungroup"))
-        .icon_name("object-ungroup-symbolic")
-        .build();
+            .label(t!("Ungroup"))
+            .icon_name("object-ungroup-symbolic")
+            .build();
         ungroup_btn.set_tooltip_text(Some(&t!("Ungroup (Ctrl+Shift+G)")));
         header.append(&ungroup_btn);
 
@@ -164,8 +164,8 @@ impl LayersPanel {
 
                     if shift {
                         let anchor = selection_anchor
-                        .get()
-                        .or_else(|| list_box_click.selected_rows().first().map(|r| r.index()));
+                            .get()
+                            .or_else(|| list_box_click.selected_rows().first().map(|r| r.index()));
                         if let Some(anchor_idx) = anchor {
                             let target_idx = row.index();
                             let (min_i, max_i) = if anchor_idx <= target_idx {
@@ -325,8 +325,8 @@ impl LayersPanel {
                 let canvas = &mut state_mut.canvas;
 
                 canvas
-                .selection_manager
-                .deselect_all(&mut canvas.shape_store);
+                    .selection_manager
+                    .deselect_all(&mut canvas.shape_store);
 
                 let mut first: Option<u64> = None;
                 for row in &rows {
@@ -426,11 +426,13 @@ impl LayersPanel {
         // 1. Save selected objects BEFORE rebuilding
         let selected_ids: Vec<u64> = {
             let state_ref = state.borrow();
-            state_ref.canvas.shape_store
-            .iter()
-            .filter(|obj| obj.selected)
-            .map(|obj| obj.id)
-            .collect()
+            state_ref
+                .canvas
+                .shape_store
+                .iter()
+                .filter(|obj| obj.selected)
+                .map(|obj| obj.id)
+                .collect()
         };
 
         // 2. Obtain shapes with their current position (index in draw_order)
@@ -445,36 +447,36 @@ impl LayersPanel {
             }
 
             state_ref
-            .canvas
-            .shape_store
-            .iter()
-            .map(|shape_obj| {
-                let shape_type = match &shape_obj.shape {
-                    gcodekit5_designer::model::Shape::Rectangle(_) => t!("Rect"),
-                 gcodekit5_designer::model::Shape::Circle(_) => t!("Circ"),
-                 gcodekit5_designer::model::Shape::Line(_) => t!("Line"),
-                 gcodekit5_designer::model::Shape::Ellipse(_) => t!("Ellip"),
-                 gcodekit5_designer::model::Shape::Path(_) => t!("Path"),
-                 gcodekit5_designer::model::Shape::Text(_) => t!("Text"),
-                 gcodekit5_designer::model::Shape::Triangle(_) => t!("Tri"),
-                 gcodekit5_designer::model::Shape::Polygon(_) => t!("Poly"),
-                 gcodekit5_designer::model::Shape::Gear(_) => t!("Gear"),
-                 gcodekit5_designer::model::Shape::Sprocket(_) => t!("Spro"),
-                 gcodekit5_designer::model::Shape::RasterImage(_) => t!("Image"),
-                };
+                .canvas
+                .shape_store
+                .iter()
+                .map(|shape_obj| {
+                    let shape_type = match &shape_obj.shape {
+                        gcodekit5_designer::model::Shape::Rectangle(_) => t!("Rect"),
+                        gcodekit5_designer::model::Shape::Circle(_) => t!("Circ"),
+                        gcodekit5_designer::model::Shape::Line(_) => t!("Line"),
+                        gcodekit5_designer::model::Shape::Ellipse(_) => t!("Ellip"),
+                        gcodekit5_designer::model::Shape::Path(_) => t!("Path"),
+                        gcodekit5_designer::model::Shape::Text(_) => t!("Text"),
+                        gcodekit5_designer::model::Shape::Triangle(_) => t!("Tri"),
+                        gcodekit5_designer::model::Shape::Polygon(_) => t!("Poly"),
+                        gcodekit5_designer::model::Shape::Gear(_) => t!("Gear"),
+                        gcodekit5_designer::model::Shape::Sprocket(_) => t!("Spro"),
+                        gcodekit5_designer::model::Shape::RasterImage(_) => t!("Image"),
+                    };
 
-                let position = positions.get(&shape_obj.id).copied().unwrap_or(0);
+                    let position = positions.get(&shape_obj.id).copied().unwrap_or(0);
 
-                (
-                    position,
-                 shape_obj.id,
-                 shape_obj.name.clone(),
-                 shape_obj.group_id,
-                 shape_type,
-                 shape_obj.operation_type,
-                )
-            })
-            .collect()
+                    (
+                        position,
+                        shape_obj.id,
+                        shape_obj.name.clone(),
+                        shape_obj.group_id,
+                        shape_type,
+                        shape_obj.operation_type,
+                    )
+                })
+                .collect()
         };
 
         // Ordenar por posición para mostrar en orden correcto
@@ -513,10 +515,8 @@ impl LayersPanel {
             position_entry.set_halign(gtk4::Align::Center);
             position_entry.set_css_classes(&["position-entry"]);
 
-
             position_entry.set_margin_top(0);
             position_entry.set_margin_bottom(0);
-
 
             let shape_id_for_move = shape_id;
             let list_box_clone = list_box.clone();
@@ -536,19 +536,20 @@ impl LayersPanel {
                         let target_idx = new_position - 1;
 
                         // Get the current position to see if it actually changes.
-                        let current_pos = state_mut.canvas.shape_store
-                        .draw_order()
-                        .iter()
-                        .position(|&id| id == shape_id_for_move);
+                        let current_pos = state_mut
+                            .canvas
+                            .shape_store
+                            .draw_order()
+                            .iter()
+                            .position(|&id| id == shape_id_for_move);
 
                         if let Some(current_idx) = current_pos {
                             if current_idx != target_idx {
-
                                 // Move the object to the new position
-                                state_mut.canvas.shape_store.move_to_position(
-                                    shape_id_for_move,
-                                    target_idx
-                                );
+                                state_mut
+                                    .canvas
+                                    .shape_store
+                                    .move_to_position(shape_id_for_move, target_idx);
 
                                 // Mark as modified
                                 state_mut.is_modified = true;
@@ -563,24 +564,28 @@ impl LayersPanel {
                         }
                     } else {
                         // If the number is invalid, restore the original value
-                        let current_pos = state_mut.canvas.shape_store
-                        .draw_order()
-                        .iter()
-                        .position(|&id| id == shape_id_for_move)
-                        .map(|p| (p + 1).to_string())
-                        .unwrap_or_else(|| "?".to_string());
+                        let current_pos = state_mut
+                            .canvas
+                            .shape_store
+                            .draw_order()
+                            .iter()
+                            .position(|&id| id == shape_id_for_move)
+                            .map(|p| (p + 1).to_string())
+                            .unwrap_or_else(|| "?".to_string());
 
                         entry.set_text(&current_pos);
                     }
                 } else {
                     // If it is not a valid number, restore the original value.
                     let state_borrow = state_clone.borrow();
-                    let current_pos = state_borrow.canvas.shape_store
-                    .draw_order()
-                    .iter()
-                    .position(|&id| id == shape_id_for_move)
-                    .map(|p| (p + 1).to_string())
-                    .unwrap_or_else(|| "?".to_string());
+                    let current_pos = state_borrow
+                        .canvas
+                        .shape_store
+                        .draw_order()
+                        .iter()
+                        .position(|&id| id == shape_id_for_move)
+                        .map(|p| (p + 1).to_string())
+                        .unwrap_or_else(|| "?".to_string());
 
                     entry.set_text(&current_pos);
                 }
@@ -611,8 +616,6 @@ impl LayersPanel {
             name_entry.set_height_request(14);
             name_entry.set_margin_top(0);
             name_entry.set_margin_bottom(0);
-
-
 
             let state_clone = state.clone();
             name_entry.connect_changed(move |entry| {

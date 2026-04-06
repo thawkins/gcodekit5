@@ -34,12 +34,15 @@ impl DesignerState {
             // Use state mode:
             match self.machine_mode() {
                 MachineMode::Laser2D => {
-                    gcode_gen = gcode_gen.with_laser_2d();
+                    gcode_gen = gcode_gen
+                        .with_laser_2d()
+                        .with_curve_tolerance(0.05)   // Adjust as needed (0.03 ~ 0.15)
+                        .with_min_point_distance(0.15);
                 }
                 MachineMode::Cnc3D => {}
             }
         }
-        // Store shape-to-toolpath mapping (plus whether we had to fall back from pocket->profile)
+        // Store shape-to-toolpath mapping
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
         // Collect shape IDs in reverse draw order (front to back) for G-code generation
@@ -327,12 +330,14 @@ impl DesignerState {
                 ));
                 gcode.push_str(&format!("; Strategy: {:?}\n", shape.pocket_strategy));
             } else {
-                gcode.push_str(&format!(
-                    "; Cut depth: {:.3}mm, Step down: {:.3}mm\n",
-                    shape.pocket_depth, shape.step_down
-                ));
+                if gcode_gen.is_laser_2d {
+                } else{
+                    gcode.push_str(&format!(
+                        "; Cut depth: {:.3}mm, Step down: {:.3}mm\n",
+                        shape.pocket_depth, shape.step_down
+                    ));
+                }
             }
-
             // Generate G-code for all toolpaths associated with this shape
             let mut current_z = gcode_gen.safe_z;
             // Init
@@ -371,12 +376,25 @@ impl DesignerState {
                     }
                 }
 
-                for toolpath in toolpaths {
-                    let (body_gcode, final_z) =
+                if gcode_gen.is_laser_2d {
+                    for toolpath in toolpaths {
+                        // Optimizes curves and joins collinear segments
+                        let optimized = gcode_gen.optimize_toolpath_for_laser(toolpath);
+                        let (body_gcode, final_z) =
+                        gcode_gen.generate_body_continuing(&optimized, line_number, current_z);
+                        gcode.push_str(&body_gcode);
+                        line_number += (optimized.segments.len() as u32) * 10;
+                        current_z = final_z;
+                    }
+                } else {
+                    // CNC mode without optimization
+                    for toolpath in toolpaths {
+                        let (body_gcode, final_z) =
                         gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
-                    gcode.push_str(&body_gcode);
-                    line_number += (toolpath.segments.len() as u32) * 10;
-                    current_z = final_z;
+                        gcode.push_str(&body_gcode);
+                        line_number += (toolpath.segments.len() as u32) * 10;
+                        current_z = final_z;
+                    }
                 }
             }
 

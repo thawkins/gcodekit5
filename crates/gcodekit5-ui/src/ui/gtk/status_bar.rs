@@ -10,6 +10,8 @@ use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
 
 use gcodekit5_core::{shared_none, SharedOption};
+use gtk4::pango::EllipsizeMode;
+
 
 #[derive(Clone)]
 // Complex type due to GTK widget and machine state fields.
@@ -31,6 +33,7 @@ pub struct StatusBar {
     progress_bar: ProgressBar,
     cancel_btn: Button,
     cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>>,
+    pub device_info_label: Label,
 }
 
 impl Default for StatusBar {
@@ -139,6 +142,13 @@ impl StatusBar {
         progress_bar.set_show_text(true);
         right_box.append(&progress_bar);
 
+        // Add active machine name to status bar
+        let device_info_label = Label::new(Some("No device selected"));
+        device_info_label.add_css_class("dim-label");
+        device_info_label.set_halign(Align::Start);
+        device_info_label.set_ellipsize(EllipsizeMode::End);
+        left_box.append(&device_info_label); // Add active machine name to status bar
+
         // Cancel (for long-running, cancellable UI tasks)
         // GTK callback closure type inherently complex.
         #[allow(clippy::type_complexity)]
@@ -181,6 +191,7 @@ impl StatusBar {
             progress_bar,
             cancel_btn,
             cancel_action,
+            device_info_label
         }
     }
 
@@ -301,5 +312,19 @@ impl StatusBar {
         let visible = self.cancel_action.borrow().is_some();
         self.cancel_btn.set_visible(visible);
         self.cancel_btn.set_sensitive(visible);
+    }
+
+    pub fn set_device_info(&self, name: &str, controller: &str, device_type: &str) {
+        let text = format!("{} | {} | {}", name, controller, device_type);
+        self.device_info_label.set_text(&text);
+    }
+
+    pub fn refresh_device_info(&self, device_manager: &gcodekit5_devicedb::DeviceManager) {
+        if let Some(profile) = device_manager.get_active_profile() {
+            let controller_type = format!("{:?}", profile.controller_type);
+            let device_name = &profile.name;
+            let device_type = format!("{:?}", profile.device_type);
+            self.set_device_info(device_name, &controller_type, &device_type);
+        }
     }
 }

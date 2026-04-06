@@ -80,6 +80,8 @@ impl Default for EngravingParams {
     }
 }
 
+pub const OVERSCAN_MM: f32 = 2.5;
+
 impl EngravingParams {
     /// Convert PPI to pixels per mm
     pub fn pixels_per_mm(&self) -> f32 {
@@ -296,10 +298,13 @@ impl ImageEngraver {
         gcode.push_str(&format!("; Max Power: {}% \n", self.params.max_power,));
         gcode.push_str("G90 G17 G40 G21\n"); // Absolute coordinates, XY Plane, Radius compensation off, Units mm, absolute coordinates
 
+        let start_offset_x = self.params.offset_x.max(OVERSCAN_MM);
+        let start_offset_y = self.params.offset_y.max(OVERSCAN_MM);
+
         gcode.push_str("M5\n");
         gcode.push_str(&format!(
             "G0 X{:.2} Y{:.2}\n",
-            self.params.offset_x, self.params.offset_y
+            start_offset_x, start_offset_y
         ));
         gcode.push_str(&format!("F{:.0}\n", self.params.feed_rate));
         gcode.push('\n');
@@ -330,6 +335,8 @@ impl ImageEngraver {
     ) -> Result<()> {
         let height = self.image.height();
         let mut left_to_right = true;
+        let offset_x = self.params.offset_x.max(OVERSCAN_MM);
+        let offset_y = self.params.offset_y.max(OVERSCAN_MM);
 
         for y_rev in 0..height {
             let y = height - 1 - y_rev;
@@ -338,14 +345,14 @@ impl ImageEngraver {
             // Only do a G0 on the very first line to position
             if y_rev == 0 {
                 let start_x = if left_to_right {
-                    self.params.offset_x - 2.5
+                    offset_x - OVERSCAN_MM
                 } else {
-                    self.params.offset_x + (self.image.width() as f32 * pixel_width) + 2.5
+                    offset_x + (self.image.width() as f32 * pixel_width) + OVERSCAN_MM
                 };
                 gcode.push_str(&format!(
                     "G0 X{:.3} Y{:.3} F{:.0}\n",
                     start_x,
-                    self.params.offset_y + y_pos,
+                    offset_y + y_pos,
                     self.params.travel_rate
                 ));
             }
@@ -370,6 +377,8 @@ impl ImageEngraver {
     ) {
         let width = self.image.width();
         let mut points: Vec<(f32, u32)> = Vec::with_capacity(width as usize);
+        let offset_x = self.params.offset_x.max(OVERSCAN_MM);
+        let offset_y = self.params.offset_y.max(OVERSCAN_MM);
 
         let x_range: Vec<u32> = if left_to_right {
             (0..width).collect()
@@ -380,7 +389,7 @@ impl ImageEngraver {
         for &x in &x_range {
             let intensity = self.image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
-            let x_pos = self.params.offset_x + x as f32 * pixel_width;
+            let x_pos = offset_x + x as f32 * pixel_width;
             points.push((x_pos, power));
         }
 
@@ -403,8 +412,8 @@ impl ImageEngraver {
         merged.push((start_x, points.last().unwrap().0, current_power));
 
         // --- OVERSCAN CONFIGURATION ---
-        let overscan_dist = 2.5; // mm for ramp up / ramp down (adjust as needed)
-        let y_coord = self.params.offset_y + y_pos;
+        let overscan_dist = OVERSCAN_MM; // mm for ramp up / ramp down (adjust as needed)
+        let y_coord = offset_y + y_pos;
         let first_x = merged[0].0;
         let last_x = merged.last().unwrap().1;
 
@@ -446,38 +455,22 @@ impl ImageEngraver {
         pixel_width: f32,
         line_spacing: f32,
     ) -> Result<()> {
-        let height = self.image.height();
         let width = self.image.width();
         let mut top_to_bottom = true;
+        let offset_x = self.params.offset_x.max(OVERSCAN_MM);
+        let offset_y = self.params.offset_y.max(OVERSCAN_MM);
 
         for x in 0..width {
             let x_pos = x as f32 * line_spacing;
-
-            if x == 0 {
-                gcode.push_str(&format!("G0 X{:.3}\n", self.params.offset_x + x_pos));
-            } else {
-                gcode.push_str("M5\n");
-                if top_to_bottom {
-                    // Move to the top of the column
-                    gcode.push_str(&format!(
-                        "G0 X{:.3} Y{:.3} F{:.0}\n",
-                        self.params.offset_x + x_pos,
-                        self.params.offset_y,
-                        self.params.travel_rate
-                    ));
-                } else {
-                    let end_y = (height - 1) as f32 * pixel_width;
-                    // Move to the end of the column (below)
-                    gcode.push_str(&format!(
-                        "G0 X{:.3} Y{:.3} F{:.0}\n",
-                        self.params.offset_x + x_pos,
-                        self.params.offset_y + end_y,
-                        self.params.travel_rate
-                    ));
-                }
-            }
-
-            self.scan_column(gcode, x, x_pos, pixel_width, top_to_bottom);
+            self.scan_column(
+                gcode,
+                x,
+                x_pos,
+                pixel_width,
+                top_to_bottom,
+                offset_x,
+                offset_y,
+            );
 
             if self.params.bidirectional {
                 top_to_bottom = !top_to_bottom;
@@ -493,6 +486,8 @@ impl ImageEngraver {
         x_pos: f32,
         pixel_width: f32,
         top_to_bottom: bool,
+        offset_x: f32,
+        offset_y: f32,
     ) {
         let height = self.image.height();
         let mut points: Vec<(f32, u32)> = Vec::with_capacity(height as usize);
@@ -507,7 +502,7 @@ impl ImageEngraver {
         for &y in &y_range {
             let intensity = self.image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
-            let y_pos = self.params.offset_y + y as f32 * pixel_width;
+            let y_pos = offset_y + y as f32 * pixel_width;
             points.push((y_pos, power));
         }
 
@@ -533,24 +528,63 @@ impl ImageEngraver {
             return;
         }
 
-        let first = &merged[0];
-        // X fixed, Y variable
+        // Overscan configuration
+        let overscan_dist = 2.5;
+        let first_seg = &merged[0];
+        let last_seg = merged.last().unwrap();
+
+        let (entry_y, exit_y) = if top_to_bottom {
+            (first_seg.0 - overscan_dist, last_seg.1 + overscan_dist)
+        } else {
+            (first_seg.0 + overscan_dist, last_seg.1 - overscan_dist)
+        };
+
+        let x_abs = offset_x + x_pos;
+        let x_abs_fmt = format!("{:.2}", x_abs);
+
+        // Rapid move to overscan start
         gcode.push_str(&format!(
-            "G1 X{:.3} Y{:.3} S{} F{:.0} M4\n",
-            self.params.offset_x + x_pos,
-            first.1,
-            first.2,
-            self.params.feed_rate
+            "G0 X{} Y{:.2} F{:.0}\n",
+            x_abs_fmt, entry_y, self.params.travel_rate
         ));
 
-        for segment in &merged[1..] {
-            gcode.push_str(&format!(
-                "G1 X{:.3} Y{:.3} S{} F{:.0}\n",
-                self.params.offset_x + x_pos,
-                segment.1,
-                segment.2,
-                self.params.feed_rate
-            ));
+        // Acceleration segment (S0) to first real engraving boundary
+        gcode.push_str(&format!(
+            "G1 X{} Y{:.2} S0 F{:.0} M4\n",
+            x_abs_fmt, first_seg.1, self.params.feed_rate
+        ));
+
+        // Engraving segments, only Y and S changes (X is modal)
+        for segment in &merged {
+            gcode.push_str(&format!("Y{:.2} S{}\n", segment.1, segment.2));
         }
+
+        // Brake segment to exit overscan (S0)
+        gcode.push_str(&format!("Y{:.2} S0\n", exit_y));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use image::{DynamicImage, GrayImage, Luma};
+
+    #[test]
+    fn engraver_with_zero_offset_never_generates_negative_overscan() -> Result<()> {
+        let img = DynamicImage::ImageLuma8(GrayImage::from_pixel(4, 4, Luma([128u8])));
+        let mut params = EngravingParams::default();
+        params.width_mm = 5.0;
+        params.offset_x = 0.0;
+        params.offset_y = 0.0;
+        params.scan_direction = ScanDirection::Horizontal;
+        params.bidirectional = false;
+
+        let engraver = ImageEngraver::from_image(img, params)?;
+        let gcode = engraver.generate_gcode()?;
+
+        assert!(!gcode.contains("X-"));
+        assert!(!gcode.contains("Y-"));
+        Ok(())
     }
 }

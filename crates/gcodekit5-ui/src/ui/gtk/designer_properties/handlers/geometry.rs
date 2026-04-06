@@ -48,7 +48,9 @@ pub fn setup_rotation_handler(
         let redraw_callback = redraw_callback.clone();
         let updating = updating.clone();
         move |entry| {
-            if *updating.borrow() { return; }
+            if *updating.borrow() {
+                return;
+            }
             if let Ok(val) = entry.text().parse::<f64>() {
                 entry.remove_css_class("entry-invalid");
                 let mut designer_state = state.borrow_mut();
@@ -65,7 +67,7 @@ pub fn setup_rotation_handler(
         }
     });
 
-   // ENTER
+    // ENTER
     rotation_entry.connect_activate({
         let redraw_callback = redraw_callback.clone();
         move |_| {
@@ -122,7 +124,7 @@ pub fn setup_is_slot_handler(
     is_slot_check: &CheckButton,
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
-                             updating: Shared<bool>,
+    updating: Shared<bool>,
 ) {
     is_slot_check.connect_toggled(move |check| {
         if *updating.borrow() {

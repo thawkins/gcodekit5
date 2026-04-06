@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::tabbed_box::{
     BoxParameters, BoxType, KeyDividerType, TabbedBoxMaker as Generator,
@@ -20,7 +21,6 @@ use gcodekit5_camtools::tabbed_box::{
 use gcodekit5_core::units;
 use gcodekit5_designer::{PathShape, Point, Shape};
 use gcodekit5_settings::SettingsController;
-use crate::t;
 
 struct TabbedBoxWidgets {
     width: Entry,
@@ -125,8 +125,10 @@ impl TabbedBoxMaker {
             .build();
 
         // Widgets
-        let (width_row, width, width_unit) = create_dimension_row(&t!("X (Width):"), 100.0, &settings);
-        let (depth_row, depth, depth_unit) = create_dimension_row(&t!("Y (Depth):"), 100.0, &settings);
+        let (width_row, width, width_unit) =
+            create_dimension_row(&t!("X (Width):"), 100.0, &settings);
+        let (depth_row, depth, depth_unit) =
+            create_dimension_row(&t!("Y (Depth):"), 100.0, &settings);
         let (height_row, height, height_unit) =
             create_dimension_row(&t!("H (Height):"), 100.0, &settings);
         let outside = CheckButton::builder()
@@ -135,7 +137,8 @@ impl TabbedBoxMaker {
             .build();
         let (thickness_row, thickness, thickness_unit) =
             create_dimension_row(&t!("Thickness:"), 3.0, &settings);
-        let (burn_row, burn, burn_unit) = create_dimension_row(&t!("Burn / Tool Dia:"), 0.1, &settings);
+        let (burn_row, burn, burn_unit) =
+            create_dimension_row(&t!("Burn / Tool Dia:"), 0.1, &settings);
         let finger_width = Entry::builder().text("2").valign(Align::Center).build();
         let space_width = Entry::builder().text("2").valign(Align::Center).build();
         let surrounding_spaces = Entry::builder().text("2").valign(Align::Center).build();
@@ -188,7 +191,9 @@ impl TabbedBoxMaker {
             .build();
 
         // Box Dimensions
-        let dim_group = PreferencesGroup::builder().title(&t!("Box Dimensions")).build();
+        let dim_group = PreferencesGroup::builder()
+            .title(&t!("Box Dimensions"))
+            .build();
         dim_group.add(&width_row);
         dim_group.add(&depth_row);
         dim_group.add(&height_row);
@@ -237,7 +242,9 @@ impl TabbedBoxMaker {
         scroll_content.append(&finger_group);
 
         // Laser Settings
-        let laser_group = PreferencesGroup::builder().title(&t!("Laser Settings")).build();
+        let laser_group = PreferencesGroup::builder()
+            .title(&t!("Laser Settings"))
+            .build();
         laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
         laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
         laser_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));

@@ -29,10 +29,10 @@ fn main() {
                 let mo_path = lang_dir.join("gcodekit5.mo");
 
                 let status = Command::new("msgfmt")
-                .arg("-o")
-                .arg(&mo_path)
-                .arg(&path)
-                .status();
+                    .arg("-o")
+                    .arg(&mo_path)
+                    .arg(&path)
+                    .status();
 
                 match status {
                     Ok(s) if s.success() => {}

@@ -220,6 +220,30 @@ msgstr ""
 msgid "Tool Parameters"
 msgstr ""
 
+msgid "Starting laser engraving:"
+msgstr ""
+
+msgid "lines"
+msgstr ""
+
+msgid "Work completed."
+msgstr ""
+
+msgid "Work stopped."
+msgstr ""
+
+msgid "Stopping..."
+msgstr ""
+
+msgid "Paused"
+msgstr ""
+
+msgid "Resuming"
+msgstr ""
+
+msgid "Unlocking..."
+msgstr ""
+
 msgid "Stock Width"
 msgstr ""
 

@@ -116,7 +116,6 @@ pub fn setup_width_activate_handler(
     let lock_aspect_check = lock_aspect_ratio.clone();
 
     width_entry.connect_activate(move |entry| {
-
         if *updating.borrow() {
             return;
         }
