@@ -154,7 +154,7 @@ impl DrawingObject {
             offset: 0.0,
             fillet: 0.0,
             chamfer: 0.0,
-            lock_aspect_ratio: false, // true,
+            lock_aspect_ratio: true, // lock default aspect ratio
         }
     }
 }

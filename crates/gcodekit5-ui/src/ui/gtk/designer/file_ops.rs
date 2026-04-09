@@ -261,11 +261,7 @@ impl DesignerView {
                 if enable_stl_import {
                     filter.add_pattern("*.stl");
                 }
-                filter.add_pattern("*.png");
-                filter.add_pattern("*.jpg");
-                filter.add_pattern("*.jpeg");
-                filter.add_pattern("*.bmp");
-                filter.add_pattern("*.gif");
+
                 dialog.add_filter(&filter);
 
                 let svg_filter = gtk4::FileFilter::new();
@@ -957,59 +953,5 @@ impl DesignerView {
         drop(state);
         self.layers.refresh(&self.canvas.state);
         self.canvas.widget.queue_draw();
-    }
-
-    pub fn import_image_file(&self) {
-        let title = t!("Import Image");
-        let open_label = t!("Open");
-        let cancel_label = t!("Cancel");
-
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(&title),
-            None::<&gtk4::Window>,
-            gtk4::FileChooserAction::Open,
-            &[
-                (&*open_label, gtk4::ResponseType::Accept),
-                (&*cancel_label, gtk4::ResponseType::Cancel),
-            ],
-        );
-
-        if let Some(root) = self.widget.root() {
-            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
-                dialog.set_transient_for(Some(window));
-            }
-        }
-
-        // Filter for image files
-        let img_filter = gtk4::FileFilter::new();
-        img_filter.set_name(Some("Image Files"));
-        img_filter.add_mime_type("image/jpeg");
-        img_filter.add_mime_type("image/png");
-        img_filter.add_mime_type("image/bmp");
-        img_filter.add_mime_type("image/tiff");
-        img_filter.add_mime_type("image/webp");
-        dialog.add_filter(&img_filter);
-
-        let all_filter = gtk4::FileFilter::new();
-        all_filter.set_name(Some("All Files"));
-        all_filter.add_pattern("*");
-        dialog.add_filter(&all_filter);
-
-        let canvas = self.canvas.clone();
-        let status_label = self.status_label.clone();
-
-        dialog.connect_response(move |dialog, response| {
-            if response == gtk4::ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        canvas.import_raster_image();
-                        status_label.set_text(&format!("Importing: {}", path.display()));
-                    }
-                }
-            }
-            dialog.destroy();
-        });
-
-        dialog.show();
     }
 }

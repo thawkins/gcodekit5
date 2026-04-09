@@ -81,7 +81,7 @@ impl PropertiesPanel {
         let lock_aspect_label = Label::new(Some(&t!("Lock Aspect:")));
         lock_aspect_label.set_halign(gtk4::Align::Start);
         let lock_aspect_ratio = CheckButton::new();
-        lock_aspect_ratio.set_active(false); // before true
+        lock_aspect_ratio.set_active(true);
 
         grid.attach(&width_label, 0, 0, 1, 1);
         grid.attach(&width_entry, 1, 0, 1, 1);

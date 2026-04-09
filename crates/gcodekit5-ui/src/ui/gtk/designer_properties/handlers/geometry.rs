@@ -47,6 +47,7 @@ pub fn setup_rotation_handler(
         let state = state.clone();
         let redraw_callback = redraw_callback.clone();
         let updating = updating.clone();
+
         move |entry| {
             if *updating.borrow() {
                 return;
@@ -56,7 +57,8 @@ pub fn setup_rotation_handler(
                 let mut designer_state = state.borrow_mut();
                 designer_state.set_selected_rotation(val);
                 drop(designer_state);
-                // Forzar iteración para que la UI no se quede atrás
+
+                // Force iteration so the UI doesn't fall behind
                 while gtk4::glib::MainContext::default().iteration(false) {}
                 if let Some(ref cb) = *redraw_callback.borrow() {
                     cb();

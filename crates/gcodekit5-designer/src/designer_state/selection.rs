@@ -86,7 +86,7 @@ impl DesignerState {
             // We look for that object in the shape_store
             // If get a 'borrow' error, try: self.canvas.shape_store.get_mut(id)
             if let Some(shape) = self.canvas.shape_store.get_mut(id) {
-                // 3. Cambiamos el valor real
+                // We changed the real value
                 shape.lock_aspect_ratio = locked;
             }
         }

@@ -162,7 +162,7 @@ impl PropertiesPanel {
                 // Single selection - show shape-specific properties
                 self.pos_frame.set_visible(true);
                 self.size_frame.set_visible(true);
-                self.rot_frame.set_visible(false);
+                self.rot_frame.set_visible(true);
                 // --- Object Center
                 let (x1, y1, x2, y2) = shape.bounds();
                 let center_x = (x1 + x2) / 2.0;
@@ -209,6 +209,8 @@ impl PropertiesPanel {
                         // Disable the rotation field
                         self.rotation_entry.set_sensitive(false);
                         self.rotation_entry.set_text("0.0");
+                        // No rotation
+                        self.rot_frame.set_visible(false)
                     }
 
                     Shape::Rectangle(r) => {
@@ -227,6 +229,7 @@ impl PropertiesPanel {
                         );
                         self.is_slot_check.set_active(r.is_slot);
                         self.rotation_entry.set_text(&format!("{:.1}", r.rotation));
+                        self.rotation_entry.set_sensitive(true);
                         self.set_entry_text_if_changed(&self.width_entry, r.width as f32, system);
                         self.set_entry_text_if_changed(&self.height_entry, r.height as f32, system);
                     }
@@ -237,6 +240,7 @@ impl PropertiesPanel {
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
+                        self.rot_frame.set_visible(false)
                     }
 
                     Shape::Ellipse(e) => {
@@ -266,6 +270,7 @@ impl PropertiesPanel {
 
                         self.rotation_entry
                             .set_text(&format!("{:.1}", e.rotation.to_degrees()));
+                        self.rotation_entry.set_sensitive(true);
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
@@ -300,6 +305,7 @@ impl PropertiesPanel {
                             }
                         }
                         self.rotation_entry.set_text("0.0");
+                        self.rotation_entry.set_sensitive(true);
                     }
                     Shape::Polygon(p) => {
                         let has_rotation = p.rotation.abs() > f64::EPSILON;
@@ -321,6 +327,7 @@ impl PropertiesPanel {
                         self.sides_entry.set_text(&p.sides.to_string());
                         self.rotation_entry
                             .set_text(&format!("{:.1}", p.rotation.to_degrees()));
+                        self.rotation_entry.set_sensitive(true);
                         self.height_entry.set_sensitive(false);
                     }
                     Shape::Gear(g) => {
@@ -334,6 +341,7 @@ impl PropertiesPanel {
                         self.gear_pressure_angle_entry
                             .set_text(&format!("{:.1}", g.pressure_angle.to_degrees()));
                         self.rotation_entry.set_text("0.0");
+                        self.rotation_entry.set_visible(false);
                     }
                     Shape::Sprocket(s) => {
                         self.corner_frame.set_visible(false);
@@ -347,6 +355,7 @@ impl PropertiesPanel {
                         self.sprocket_roller_diameter_entry
                             .set_text(&format!("{:.2}", s.roller_diameter));
                         self.rotation_entry.set_text("0.0");
+                        self.rotation_entry.set_visible(false);
                     }
 
                     Shape::Path(p) => {
@@ -408,13 +417,14 @@ impl PropertiesPanel {
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
+                        self.rotation_entry.set_sensitive(true);
                     }
                 }
             } else {
                 // Multi-selection - hide shape-specific properties, show common props
                 self.pos_frame.set_visible(true);
                 self.size_frame.set_visible(true);
-                self.rot_frame.set_visible(false);
+                self.rot_frame.set_visible(true);
                 self.corner_frame.set_visible(false);
                 self.text_frame.set_visible(false);
                 self.polygon_frame.set_visible(false);
@@ -606,11 +616,12 @@ impl PropertiesPanel {
             self.rotation_warning_label
                 .set_text("⚠️ Rotated object: Dimensions locked");
             self.rotation_warning_label.set_visible(true);
-
             entry_w.set_sensitive(false);
             entry_h.set_sensitive(false);
             entry_w.set_text(&format!("{:.2}", width));
             entry_h.set_text(&format!("{:.2}", height));
+            self.lock_aspect_ratio.set_active(true);
+            self.lock_aspect_ratio.set_sensitive(false);
         } else {
             entry_w.set_sensitive(true);
             entry_h.set_sensitive(true);
@@ -618,6 +629,7 @@ impl PropertiesPanel {
             self.set_entry_text_if_changed(entry_h, height as f32, system);
             self.rotation_warning_label.set_text("");
             self.rotation_warning_label.set_visible(false);
+            self.lock_aspect_ratio.set_sensitive(true);
         }
     }
 }

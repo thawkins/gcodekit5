@@ -613,7 +613,7 @@ pub fn main() {
 
         let designer_clone_image = designer.clone();
         import_image_action.connect_activate(move |_, _| {
-            designer_clone_image.import_image_file();
+            designer_clone_image.canvas.import_raster_image();
         });
         app.add_action(&import_image_action);
         app.set_accels_for_action("app.file_import_image", &["<Control><Shift>i"]);
@@ -834,6 +834,7 @@ pub fn main() {
                 set_enabled("file_save", is_designer || is_editor);
                 set_enabled("file_save_as", is_designer || is_editor);
                 set_enabled("file_import", is_designer);
+                set_enabled("file_import_image", is_designer);
                 set_enabled("file_export_gcode", is_designer);
                 set_enabled("file_export_svg", is_designer);
             }

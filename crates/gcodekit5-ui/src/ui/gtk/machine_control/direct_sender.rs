@@ -117,7 +117,7 @@ impl DirectSender {
 
                     attempts += 1;
                     if attempts > 100 {
-                        // Si tras muchos intentos no hay 'ok', damos un respiro al CPU
+                        // If after many attempts there is no 'ok', we give the CPU a break.
                         thread::sleep(Duration::from_millis(1));
                         attempts = 0;
                     }
