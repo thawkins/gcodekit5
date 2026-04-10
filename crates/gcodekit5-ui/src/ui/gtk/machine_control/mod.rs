@@ -171,12 +171,10 @@ impl MachineControlView {
         editor: Option<Rc<GcodeEditor>>,
         visualizer: Option<Rc<GcodeVisualizer>>,
         settings_controller: Option<Rc<SettingsController>>,
-        //        direct_sender: ThreadSafeOption<DirectSender>,
     ) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
-        //        direct_sender;
 
         fn make_section(title: &str, child: &impl IsA<gtk4::Widget>) -> Box {
             let section = Box::new(Orientation::Vertical, 4);
@@ -1548,6 +1546,13 @@ impl MachineControlView {
                 let is_image = first_line.trim() == "; GcodeKit5 Image Engraving";
 
                 if is_image {
+                    // Disable pause
+                    view_clone.pause_btn.set_sensitive(false);
+                    view_clone.resume_btn.set_sensitive(false);
+
+                    // Ensure stop visibility
+                    view_clone.stop_btn.set_sensitive(true);
+
                     let (sender, receiver) = DirectSender::new(
                         communicator_clone.clone(),
                         view_clone.is_streaming.clone(),
@@ -1561,6 +1566,10 @@ impl MachineControlView {
                     // Use timeout_add_local instead of spawn_future_local
                     // Check messages every 100ms without blocking
                     let receiver = std::sync::Mutex::new(receiver);
+
+                    let view_timeout = view_clone.clone();
+                    let is_streaming_timeout = view_clone.is_streaming.clone();
+
                     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                         // Try to receive all pending messages
                         let receiver_guard = receiver.lock().unwrap();
@@ -1583,11 +1592,14 @@ impl MachineControlView {
                                             // At the end, we clear the start time
                                             *job_start_time.lock() = None;
                                             sb.set_progress(0.0, "", "");
+                                            view_timeout.pause_btn.set_sensitive(true);
+                                            view_timeout.resume_btn.set_sensitive(true);
+                                            view_timeout.stop_btn.set_sensitive(false);
+                                            *is_streaming_timeout.lock() = false;
                                         }
-                                    }
+                                                                            }
                                 }
                             }
-
                         }
 
                         glib::ControlFlow::Continue
@@ -1597,6 +1609,57 @@ impl MachineControlView {
                     sender.send_gcode(&content);
                 } else {
                     view_clone.start_job(&content);
+                }
+            });
+        }
+
+        // Machine State Controls
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.home_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> $H\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("$H");
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            let view_unlock = view.clone();
+
+            view.unlock_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> $X\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("$X");
+                }
+                view_unlock.pause_btn.set_sensitive(true);
+                view_unlock.resume_btn.set_sensitive(true);
+            });
+        }
+
+        // WCS Controls
+        for (i, btn) in view.wcs_btns.iter().enumerate() {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            let cmd = format!("G{}", 54 + i);
+            btn.connect_toggled(move |b| {
+                if !b.is_active() {
+                    return;
+                }
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("> {}\n", cmd));
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command(&cmd);
                 }
             });
         }
@@ -2521,6 +2584,7 @@ impl MachineControlView {
         };
 
         sb.set_progress(percentage, &format_time(elapsed), &format_time(remaining));
+
     }
 }
 
