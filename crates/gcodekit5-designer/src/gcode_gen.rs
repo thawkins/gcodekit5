@@ -236,6 +236,7 @@ impl ToolpathToGcode {
         let mut laser_on = false;  // Initially OFF
         let mut last_feed_rate: Option<f64> = None;
         let mut last_point: Option<(f64, f64)> = None;
+        let mut line_g01 = true;
 
         let has_z = self.num_axes >= 3 && !self.is_laser_2d;
 
@@ -258,6 +259,7 @@ impl ToolpathToGcode {
                             self.fmt_coord(segment.end.y)
                     ));
 
+                    line_g01 = true;
                     last_point = None;
                     current_z = self.safe_z;
                     line_number += 10;
@@ -324,7 +326,16 @@ impl ToolpathToGcode {
                         gcode.push_str(&format!("{}M4 S{}       ; Laser ON\n", line_prefix, laser_power));
                         laser_on = true;
                         line_number += 10;
+                        line_g01 = true;
                     }
+
+                    // Determine whether to write "G01" or nothing.
+                    let cmd = if line_g01 {
+                        line_g01 = false; // Marked it as used
+                        "G01 "
+                    } else {
+                        ""
+                    };
 
                     // Only send feed rate if it changed
                     let feed_rate_cmd = if last_feed_rate.map_or(true, |fr| (fr - segment.feed_rate).abs() > 0.1) {
@@ -334,27 +345,21 @@ impl ToolpathToGcode {
                     String::new()
                 };
 
-                if has_z && (target_z - current_z).abs() > 0.001 {
-                    gcode.push_str(&format!(
-                        "{}{} X{} Y{} Z{}{}\n",
-                        line_prefix,
-                        "G01",
-                        self.fmt_coord(segment.end.x),
-                        self.fmt_coord(segment.end.y),
-                        self.fmt_coord(target_z),
-                        feed_rate_cmd
-                    ));
+                let coords = if has_z && (target_z - current_z).abs() > 0.001 {
                     current_z = target_z;
+                    format!("X{} Y{} Z{}", self.fmt_coord(segment.end.x), self.fmt_coord(segment.end.y), self.fmt_coord(target_z))
                 } else {
-                    gcode.push_str(&format!(
-                        "{}{} X{} Y{}{}\n",
-                        line_prefix,
-                        "G01",
-                        self.fmt_coord(segment.end.x),
-                        self.fmt_coord(segment.end.y),
-                        feed_rate_cmd
-                    ));
-                }
+                    format!("X{} Y{}", self.fmt_coord(segment.end.x), self.fmt_coord(segment.end.y))
+                };
+
+                gcode.push_str(&format!(
+                    "{}{}{}{}{}\n",
+                    self.get_line_prefix(line_number),
+                    line_prefix,
+                    cmd,
+                    coords,
+                    feed_rate_cmd
+                ));
 
                 line_number += 10;
             }
