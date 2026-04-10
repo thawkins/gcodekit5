@@ -171,12 +171,10 @@ impl MachineControlView {
         editor: Option<Rc<GcodeEditor>>,
         visualizer: Option<Rc<GcodeVisualizer>>,
         settings_controller: Option<Rc<SettingsController>>,
-        //        direct_sender: ThreadSafeOption<DirectSender>,
     ) -> Self {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
         widget.set_vexpand(true);
-        //        direct_sender;
 
         fn make_section(title: &str, child: &impl IsA<gtk4::Widget>) -> Box {
             let section = Box::new(Orientation::Vertical, 4);
@@ -1394,7 +1392,7 @@ impl MachineControlView {
                     };
 
                     if ok_received || start.elapsed() >= timeout {
-                        // Recibido ok o timeout, ahora enviar !
+                        // Received OK or timeout, now send!
                         if let Some(c) = console.as_ref() {
                             c.append_log("> ! (Pause)\n");
                         }
@@ -1548,6 +1546,13 @@ impl MachineControlView {
                 let is_image = first_line.trim() == "; GcodeKit5 Image Engraving";
 
                 if is_image {
+                    // Disable pause
+                    view_clone.pause_btn.set_sensitive(false);
+                    view_clone.resume_btn.set_sensitive(false);
+
+                    // Ensure stop visibility
+                    view_clone.stop_btn.set_sensitive(true);
+
                     let (sender, receiver) = DirectSender::new(
                         communicator_clone.clone(),
                         view_clone.is_streaming.clone(),
@@ -1555,60 +1560,44 @@ impl MachineControlView {
                         view_clone.waiting_for_ack.clone(),
                     );
 
-                    let console = view_clone.device_console.clone();
                     let status_bar = view_clone.status_bar.clone();
+                    let job_start_time = view_clone.job_start_time.clone();
 
                     // Use timeout_add_local instead of spawn_future_local
                     // Check messages every 100ms without blocking
                     let receiver = std::sync::Mutex::new(receiver);
+
+                    let view_timeout = view_clone.clone();
+                    let is_streaming_timeout = view_clone.is_streaming.clone();
+
                     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                         // Try to receive all pending messages
                         let receiver_guard = receiver.lock().unwrap();
                         while let Ok(message) = receiver_guard.try_recv() {
+
                             if message.starts_with("*") {
-                                // Progress update from DirectSender
                                 if let Some(sb) = status_bar.as_ref() {
-                                    if let Ok(percent) = message
-                                        .trim_start_matches('*')
-                                        .trim()
-                                        .trim_end_matches('%')
-                                        .parse::<f64>()
-                                    {
-                                        sb.set_progress(percent, "", "");
+                                    if let Ok(percent) = message.trim_start_matches('*').trim().trim_end_matches('%').parse::<f64>() {
+                                        // We call `update_progress` with only the percentage and `job_start_time`
+                                        // The parameters `sent_lines`, `total_lines`, and `remaining_lines` are passed as `None`
+                                        MachineControlView::update_progress(
+                                            &status_bar,
+                                            &job_start_time,
+                                            percent,
+                                            None,
+                                            None,
+                                            None,
+                                        );
                                         if percent >= 100.0 {
+                                            // At the end, we clear the start time
+                                            *job_start_time.lock() = None;
                                             sb.set_progress(0.0, "", "");
+                                            view_timeout.pause_btn.set_sensitive(true);
+                                            view_timeout.resume_btn.set_sensitive(true);
+                                            view_timeout.stop_btn.set_sensitive(false);
+                                            *is_streaming_timeout.lock() = false;
                                         }
-                                    }
-                                }
-                            } else if message == t!("Work completed.") {
-                                if let Some(sb) = status_bar.as_ref() {
-                                    sb.set_progress(0.0, "", "");
-                                }
-                                if let Some(c) = console.as_ref() {
-                                    c.append_log(&format!("{}\n", t!("Work completed.")));
-                                }
-                            } else if message == t!("Work stopped.") {
-                                if let Some(sb) = status_bar.as_ref() {
-                                    sb.set_progress(0.0, "", "");
-                                }
-                                if let Some(c) = console.as_ref() {
-                                    c.append_log(&format!("{}\n", t!("Work stopped.")));
-                                }
-                            } else if message.starts_with("Starting laser engraving:") {
-                                if let Some(c) = console.as_ref() {
-                                    c.append_log(&format!("{}\n", message));
-                                }
-                            } else if let Some(c) = console.as_ref() {
-                                match message.as_str() {
-                                    "Stopping..." => {
-                                        c.append_log(&format!("{}\n", t!("Stopping...")))
-                                    }
-                                    "Paused" => c.append_log(&format!("{}\n", t!("Paused"))),
-                                    "Resuming" => c.append_log(&format!("{}\n", t!("Resuming"))),
-                                    "Unlocking..." => {
-                                        c.append_log(&format!("{}\n", t!("Unlocking...")))
-                                    }
-                                    _ => c.append_log(&format!("{}\n", message)),
+                                                                            }
                                 }
                             }
                         }
@@ -1616,10 +1605,61 @@ impl MachineControlView {
                         glib::ControlFlow::Continue
                     });
 
-                    *view_clone.direct_sender.lock() = Some(sender.clone());
+                    *view_clone.job_start_time.lock() = Some(std::time::Instant::now());
                     sender.send_gcode(&content);
                 } else {
                     view_clone.start_job(&content);
+                }
+            });
+        }
+
+        // Machine State Controls
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            view.home_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> $H\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("$H");
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            let view_unlock = view.clone();
+
+            view.unlock_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> $X\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("$X");
+                }
+                view_unlock.pause_btn.set_sensitive(true);
+                view_unlock.resume_btn.set_sensitive(true);
+            });
+        }
+
+        // WCS Controls
+        for (i, btn) in view.wcs_btns.iter().enumerate() {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            let cmd = format!("G{}", 54 + i);
+            btn.connect_toggled(move |b| {
+                if !b.is_active() {
+                    return;
+                }
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("> {}\n", cmd));
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command(&cmd);
                 }
             });
         }
@@ -2139,54 +2179,28 @@ impl MachineControlView {
                                                 if is_ack || is_error {
                                                     *waiting_for_ack_poll.lock() = false;
 
-                                                    // If error, we might want to stop, but for now we continue
-                                                    // if is_error { ... logic to stop ... }
+                                                    if *is_streaming_poll.lock() && !*is_paused_poll.lock() {
+                                                        let mut queue = send_queue_poll.lock();
+                                                        let total_lines_val = *total_lines_poll.lock();
+                                                        let remaining = queue.len();
+                                                        let sent = total_lines_val - remaining;
 
-                                                    if *is_streaming_poll.lock()
-                                                        && !*is_paused_poll.lock() {
-                                                            let mut queue = send_queue_poll.lock();
-                                                            let total_lines_val = *total_lines_poll.lock();
-                                                            let remaining = queue.len();
-                                                            let sent = total_lines_val - remaining;
+                                                        let progress = if total_lines_val > 0 {
+                                                            (sent as f64 / total_lines_val as f64) * 100.0
+                                                        } else {
+                                                            0.0
+                                                        };
 
-                                                            // Update progress bar
-                                                            if let Some(sb) = status_bar_poll.as_ref() {
-                                                                let progress = if total_lines_val > 0 {
-                                                                    (sent as f64 / total_lines_val as f64) * 100.0
-                                                                } else {
-                                                                    0.0
-                                                                };
+                                                        Self::update_progress(
+                                                            &status_bar_poll,
+                                                            &job_start_time_poll,
+                                                            progress,
+                                                            Some(sent),
+                                                            Some(total_lines_val),
+                                                            Some(remaining),
+                                                        );
 
-                                                                // Calculate actual elapsed time
-                                                                let elapsed_secs = if let Some(start) = *job_start_time_poll.lock() {
-                                                                    start.elapsed().as_secs_f64()
-                                                                } else {
-                                                                    0.0
-                                                                };
-
-                                                                // Estimate remaining time based on average time per line so far
-                                                                let remaining_secs = if sent > 0 && elapsed_secs > 0.0 {
-                                                                    let avg_per_line = elapsed_secs / sent as f64;
-                                                                    remaining as f64 * avg_per_line
-                                                                } else {
-                                                                    0.0
-                                                                };
-
-                                                                let format_time = |secs: f64| {
-                                                                    let h = (secs / 3600.0).floor();
-                                                                    let m = ((secs % 3600.0) / 60.0).floor();
-                                                                    let s = (secs % 60.0).floor();
-                                                                    format!("{:02}:{:02}:{:02}", h, m, s)
-                                                                };
-
-                                                                sb.set_progress(
-                                                                    progress,
-                                                                    &format_time(elapsed_secs),
-                                                                                &format_time(remaining_secs)
-                                                                );
-                                                            }
-
-                                                            if let Some(next_cmd) = queue.pop_front() {
+                                                        if let Some(next_cmd) = queue.pop_front() {
                                                                 if let Some(c) = device_console_poll.as_ref() {
                                                                     c.append_log(&format!("> {}\n", next_cmd));
                                                                 }
@@ -2203,12 +2217,8 @@ impl MachineControlView {
                                                                 if let Some(c) = device_console_poll.as_ref() {
                                                                     c.append_log(&format!("{}\n", t!("Streaming Completed.")));
                                                                 }
-                                                                // Don't reset progress yet
-                                                                // if let Some(sb) = status_bar_poll.as_ref() {
-                                                                //    sb.set_progress(0.0, "", "");
-                                                                // }
                                                             }
-                                                        }
+                                                    }
                                                 }
 
                                                 // Parse GRBL status: <Idle|MPos:0.000,0.000,0.000|...>
@@ -2526,6 +2536,55 @@ impl MachineControlView {
         Self::setup_override_handlers(&view);
 
         view
+    }
+
+    // Update progress
+    fn update_progress(
+        status_bar: &Option<StatusBar>,
+        job_start_time: &ThreadSafeOption<std::time::Instant>,
+        percentage: f64,
+        sent_lines: Option<usize>,
+        total_lines: Option<usize>,
+        remaining_lines: Option<usize>,
+    ) {
+        let Some(sb) = status_bar.as_ref() else { return };
+        let start_opt = *job_start_time.lock();
+        let Some(start) = start_opt else {
+            sb.set_progress(percentage, "", "");
+            return;
+        };
+
+        let elapsed = start.elapsed().as_secs_f64();
+
+        let remaining = if let (Some(sent), Some(total)) = (sent_lines, total_lines) {
+            if sent > 0 && elapsed > 0.0 {
+                let avg_per_line = elapsed / sent as f64;
+                let remaining_lines = total - sent;
+                remaining_lines as f64 * avg_per_line
+            } else {
+                0.0
+            }
+        } else if let Some(_rem_lines) = remaining_lines {
+            if percentage > 0.0 && percentage < 100.0 {
+                (elapsed / percentage) * (100.0 - percentage)
+            } else {
+                0.0
+            }
+        } else if percentage > 0.0 && percentage < 100.0 {
+            (elapsed / percentage) * (100.0 - percentage)
+        } else {
+            0.0
+        };
+
+        let format_time = |secs: f64| {
+            let h = (secs / 3600.0).floor() as u32;
+            let m = ((secs % 3600.0) / 60.0).floor() as u32;
+            let s = (secs % 60.0).floor() as u32;
+            format!("{:02}:{:02}:{:02}", h, m, s)
+        };
+
+        sb.set_progress(percentage, &format_time(elapsed), &format_time(remaining));
+
     }
 }
 

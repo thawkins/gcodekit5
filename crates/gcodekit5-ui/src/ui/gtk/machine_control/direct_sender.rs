@@ -88,11 +88,11 @@ impl DirectSender {
 
             while i < total && !stop_flag.load(Ordering::SeqCst) {
                 // SEND until the window is full
+
                 while lines_in_flight < max_window && i < total {
                     if paused_flag.load(Ordering::SeqCst) {
                         break;
                     }
-
                     let cmd = format!("{}\n", lines[i]);
                     let mut c = comm.lock();
                     if c.send(cmd.as_bytes()).is_ok() {
@@ -117,7 +117,7 @@ impl DirectSender {
 
                     attempts += 1;
                     if attempts > 100 {
-                        // Si tras muchos intentos no hay 'ok', damos un respiro al CPU
+                        // If after many attempts there is no 'ok', we give the CPU a break.
                         thread::sleep(Duration::from_millis(1));
                         attempts = 0;
                     }
@@ -126,11 +126,22 @@ impl DirectSender {
                 // Read whatever has arrived even if the window is not full
                 if let Ok(data) = {
                     let mut c = comm.lock();
+                    // We use a non-blocking or fast read
                     c.receive()
                 } {
-                    let ok_count = String::from_utf8_lossy(&data).matches("ok").count();
-                    lines_in_flight = lines_in_flight.saturating_sub(ok_count);
+                    if !data.is_empty() { // We only process data if there is actually data.
+                        let resp = String::from_utf8_lossy(&data);
+
+                        if resp.contains("Grbl") || resp.contains("ALARM") {
+                            stop_flag.store(true, Ordering::SeqCst);
+                            break;
+                        }
+
+                        let ok_count = resp.matches("ok").count();
+                        lines_in_flight = lines_in_flight.saturating_sub(ok_count);
+                    }
                 }
+                thread::yield_now();
 
                 let percent = ((i as f64 / total as f64) * 100.0)
                     .round()

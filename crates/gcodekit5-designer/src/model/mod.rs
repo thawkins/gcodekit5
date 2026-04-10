@@ -499,7 +499,7 @@ impl Shape {
                 Shape::RasterImage(s) => s.rotation,
             },
             original_path: None,
-            lock_aspect_ratio: false,
+            lock_aspect_ratio: true,
         }
     }
 }
