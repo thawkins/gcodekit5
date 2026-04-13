@@ -65,11 +65,12 @@ use gtk4::{
 use std::rc::Rc;
 use std::sync::Arc;
 
-// Phase 4: Render cache for expensive computations
+// Render cache for expensive computations
 #[derive(Clone)]
 pub(crate) struct RenderCache {
     pub(crate) cache_hash: u64,
-    pub(crate) intensity_buckets: Vec<Vec<(f64, f64, f64, f64)>>,
+    // Cambiar el tipo para incluir la intensidad
+    pub(crate) intensity_buckets: Vec<Vec<(f64, f64, f64, f64, f32)>>,
     pub(crate) cutting_bounds: Option<(f32, f32, f32, f32, f32, f32)>,
     pub(crate) total_lines: usize,
     pub(crate) _rapid_lines: usize,

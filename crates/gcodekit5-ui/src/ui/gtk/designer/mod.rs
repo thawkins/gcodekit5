@@ -173,8 +173,8 @@ impl DesignerView {
         let v_scrollbar = Scrollbar::new(Orientation::Vertical, Some(&v_adjustment));
 
         // Default hidden (toggleable) to maximize canvas space
-        h_scrollbar.set_visible(false);
-        v_scrollbar.set_visible(false);
+        h_scrollbar.set_visible(true);
+        v_scrollbar.set_visible(true);
 
         canvas_grid.attach(&v_scrollbar, 1, 0, 1, 1);
         canvas_grid.attach(&h_scrollbar, 0, 1, 1, 1);

@@ -916,7 +916,7 @@ impl DesignerToolbox {
         frame_btn.add_css_class("flat");
         frame_btn.set_halign(gtk4::Align::Center);
 
-        // Connect functionality
+/*        // Connect functionality
         let state_clone = state.clone();
         frame_btn.connect_clicked(move |_| {
             let state = state_clone.borrow();
@@ -948,12 +948,12 @@ impl DesignerToolbox {
             };
 
             // G-code frame Generate
-            let gcode = generate_frame_gcode(x1, y1, x2, y2);
-            println!("Frame G-code:\n{}", gcode);
+//            let gcode = generate_frame_gcode(x1, y1, x2, y2);
+//            println!("Frame G-code:\n{}", gcode);
 
             // Add code to send to the editor or the machine
         });
-
+*/
         content_box.append(&stock_settings_btn);
 
         // Generate G-Code Button
