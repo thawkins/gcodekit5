@@ -62,13 +62,13 @@ pub fn generate_spur_gear(
             // Angle of involute at pitch radius
             let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
             let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
-                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+            .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
 
             let angle = tooth_center_angle - (PI / (2.0 * teeth as f64)) - phi_pitch + phi;
 
             tooth_points.push(Point::new(
                 center.x + r * angle.cos(),
-                center.y + r * angle.sin(),
+                                         center.y + r * angle.sin(),
             ));
         }
 
@@ -79,7 +79,7 @@ pub fn generate_spur_gear(
             let angle0 = (p0.y - center.y).atan2(p0.x - center.x);
             points.push(Point::new(
                 center.x + root_radius * angle0.cos(),
-                center.y + root_radius * angle0.sin(),
+                                   center.y + root_radius * angle0.sin(),
             ));
         }
 
@@ -98,13 +98,13 @@ pub fn generate_spur_gear(
 
             let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
             let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
-                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+            .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
 
             let angle = tooth_center_angle + (PI / (2.0 * teeth as f64)) + phi_pitch + phi;
 
             right_points.push(Point::new(
                 center.x + r * angle.cos(),
-                center.y + r * angle.sin(),
+                                         center.y + r * angle.sin(),
             ));
         }
         points.extend(right_points);
@@ -114,7 +114,7 @@ pub fn generate_spur_gear(
                 let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
                 points.push(Point::new(
                     center.x + root_radius * angle_last.cos(),
-                    center.y + root_radius * angle_last.sin(),
+                                       center.y + root_radius * angle_last.sin(),
                 ));
             }
         }
@@ -133,15 +133,15 @@ pub fn generate_spur_gear(
     if hole_radius > 0.0 {
         builder.add_circle(
             point(center.x as f32, center.y as f32),
-            hole_radius as f32,
-            lyon::path::Winding::Negative,
+                           hole_radius as f32,
+                           lyon::path::Winding::Negative,
         );
     }
 
     builder.build()
 }
 
-/// Generate a sprocket path (ANSI standard-ish)
+/// Generate Sprocket
 pub fn generate_sprocket(
     center: Point,
     pitch: f64,
@@ -150,45 +150,55 @@ pub fn generate_sprocket(
     hole_radius: f64,
 ) -> Path {
     let mut builder = Path::builder();
-
     let pitch_radius = pitch / (2.0 * (PI / teeth as f64).sin());
     let roller_radius = roller_diameter / 2.0;
-
-    // Simplified sprocket geometry: arcs for rollers and straight lines or arcs for teeth
-    let mut points = Vec::new();
     let angle_per_tooth = 2.0 * PI / teeth as f64;
+
+    // The standard outside radius is usually the pitch radius + a % of the roller.
+    // but truncated so that it does not end in a point.
+    let outer_radius = pitch_radius + (roller_radius * 0.6);
+
+    let mut points = Vec::new();
 
     for i in 0..teeth {
         let angle = i as f64 * angle_per_tooth;
 
-        // Roller center
-        let rc_x = center.x + pitch_radius * angle.cos();
-        let rc_y = center.y + pitch_radius * angle.sin();
+        // 1. VALLEY ARCH (Roller)
+        let steps = 8;
+        let arc_sweep = PI * 0.7;
 
-        // We'll approximate the sprocket with a series of points
-        // In a real sprocket, the tooth shape is more complex (seated curve)
-        // For now, let's do a simple version:
-        // 1. Arc around the roller
-        // 2. Tip of the tooth
-
-        let steps = 4;
         for j in 0..=steps {
-            let a = angle + PI + (j as f64 / steps as f64 - 0.5) * (PI * 0.8); // Arc around roller
+            let t = (j as f64 / steps as f64) - 0.5;
+            let a = angle + PI - (t * arc_sweep);
+            let rc_x = center.x + pitch_radius * angle.cos();
+            let rc_y = center.y + pitch_radius * angle.sin();
+
             points.push(Point::new(
                 rc_x + roller_radius * a.cos(),
-                rc_y + roller_radius * a.sin(),
+                                   rc_y + roller_radius * a.sin(),
             ));
         }
 
-        // Tip of tooth (between rollers)
-        let tip_angle = angle + angle_per_tooth / 2.0;
-        let tip_radius = pitch_radius + roller_radius * 0.8;
+        // 2. FLAT CREST (Outer Diameter)
+        // Instead of one point, we created two points on either side of the center of the tooth
+        let flat_width = 0.05; // Adjust this value for a wider or narrower ridge
+
+        // Punto 1 de la cresta (antes del centro)
+        let tip_1 = angle + angle_per_tooth * (0.5 - flat_width);
         points.push(Point::new(
-            center.x + tip_radius * tip_angle.cos(),
-            center.y + tip_radius * tip_angle.sin(),
+            center.x + outer_radius * tip_1.cos(),
+                               center.y + outer_radius * tip_1.sin(),
+        ));
+
+        // Point 2 of the ridge (after the center)
+        let tip_2 = angle + angle_per_tooth * (0.5 + flat_width);
+        points.push(Point::new(
+            center.x + outer_radius * tip_2.cos(),
+                               center.y + outer_radius * tip_2.sin(),
         ));
     }
 
+    // Closing the path and inserting points
     if !points.is_empty() {
         builder.begin(point(points[0].x as f32, points[0].y as f32));
         for p in points.iter().skip(1) {
@@ -200,8 +210,8 @@ pub fn generate_sprocket(
     if hole_radius > 0.0 {
         builder.add_circle(
             point(center.x as f32, center.y as f32),
-            hole_radius as f32,
-            lyon::path::Winding::Negative,
+                           hole_radius as f32,
+                           lyon::path::Winding::Negative,
         );
     }
 
@@ -325,14 +335,14 @@ pub fn generate_tabbed_box(
     // Left
     let left = generate_face(depth, height, [false, false, false, false]);
     let t_left =
-        lyon::math::Transform::translation((width + 10.0) as f32, (2.0 * depth + 20.0) as f32);
+    lyon::math::Transform::translation((width + 10.0) as f32, (2.0 * depth + 20.0) as f32);
     paths.push(left.transformed(&t_left));
 
     // Right
     let right = generate_face(depth, height, [false, false, false, false]);
     let t_right = lyon::math::Transform::translation(
         (width + depth + 20.0) as f32,
-        (2.0 * depth + 20.0) as f32,
+                                                     (2.0 * depth + 20.0) as f32,
     );
     paths.push(right.transformed(&t_right));
 
@@ -381,17 +391,17 @@ pub fn generate_helical_gear(
 
             let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
             let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
-                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+            .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
 
             let angle = tooth_center_angle - (PI / (2.0 * teeth as f64)) - phi_pitch + phi;
 
             // Add helical offset
             let helical_angle =
-                angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
+            angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
 
             tooth_points.push(Point::new(
                 center.x + r * helical_angle.cos(),
-                center.y + r * helical_angle.sin(),
+                                         center.y + r * helical_angle.sin(),
             ));
         }
 
@@ -400,7 +410,7 @@ pub fn generate_helical_gear(
             let angle0 = (p0.y - center.y).atan2(p0.x - center.x);
             points.push(Point::new(
                 center.x + root_radius * angle0.cos(),
-                center.y + root_radius * angle0.sin(),
+                                   center.y + root_radius * angle0.sin(),
             ));
         }
 
@@ -417,15 +427,15 @@ pub fn generate_helical_gear(
 
             let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
             let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
-                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+            .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
 
             let angle = tooth_center_angle + (PI / (2.0 * teeth as f64)) + phi_pitch + phi;
             let helical_angle =
-                angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
+            angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
 
             right_points.push(Point::new(
                 center.x + r * helical_angle.cos(),
-                center.y + r * helical_angle.sin(),
+                                         center.y + r * helical_angle.sin(),
             ));
         }
         points.extend(right_points);
@@ -435,7 +445,7 @@ pub fn generate_helical_gear(
                 let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
                 points.push(Point::new(
                     center.x + root_radius * angle_last.cos(),
-                    center.y + root_radius * angle_last.sin(),
+                                       center.y + root_radius * angle_last.sin(),
                 ));
             }
         }
@@ -452,8 +462,8 @@ pub fn generate_helical_gear(
     if hole_radius > 0.0 {
         builder.add_circle(
             point(center.x as f32, center.y as f32),
-            hole_radius as f32,
-            lyon::path::Winding::Negative,
+                           hole_radius as f32,
+                           lyon::path::Winding::Negative,
         );
     }
 
@@ -486,28 +496,28 @@ pub fn generate_timing_pulley(
         let tip_angle = tooth_center_angle;
         points.push(Point::new(
             center.x + outer_radius * tip_angle.cos(),
-            center.y + outer_radius * tip_angle.sin(),
+                               center.y + outer_radius * tip_angle.sin(),
         ));
 
         // Left flank
         let left_angle = tooth_center_angle - angle_per_tooth * 0.3;
         points.push(Point::new(
             center.x + root_radius * left_angle.cos(),
-            center.y + root_radius * left_angle.sin(),
+                               center.y + root_radius * left_angle.sin(),
         ));
 
         // Bottom of tooth
         let bottom_angle = tooth_center_angle - angle_per_tooth * 0.2;
         points.push(Point::new(
             center.x + root_radius * bottom_angle.cos(),
-            center.y + root_radius * bottom_angle.sin(),
+                               center.y + root_radius * bottom_angle.sin(),
         ));
 
         // Right flank
         let right_angle = tooth_center_angle + angle_per_tooth * 0.3;
         points.push(Point::new(
             center.x + root_radius * right_angle.cos(),
-            center.y + root_radius * right_angle.sin(),
+                               center.y + root_radius * right_angle.sin(),
         ));
     }
 
@@ -522,8 +532,8 @@ pub fn generate_timing_pulley(
     if hole_radius > 0.0 {
         builder.add_circle(
             point(center.x as f32, center.y as f32),
-            hole_radius as f32,
-            lyon::path::Winding::Negative,
+                           hole_radius as f32,
+                           lyon::path::Winding::Negative,
         );
     }
 
@@ -544,15 +554,15 @@ pub fn generate_slot(center: Point, length: f64, width: f64, corner_radius: f64)
             &lyon::math::Box2D::new(
                 point(
                     (center.x - half_length) as f32,
-                    (center.y - half_width) as f32,
+                      (center.y - half_width) as f32,
                 ),
                 point(
                     (center.x + half_length) as f32,
-                    (center.y + half_width) as f32,
+                      (center.y + half_width) as f32,
                 ),
             ),
             &lyon::path::builder::BorderRadii::new(cr as f32),
-            lyon::path::Winding::Positive,
+                                      lyon::path::Winding::Positive,
         );
     } else {
         // Rectangular slot
@@ -560,11 +570,11 @@ pub fn generate_slot(center: Point, length: f64, width: f64, corner_radius: f64)
             &lyon::math::Box2D::new(
                 point(
                     (center.x - half_length) as f32,
-                    (center.y - half_width) as f32,
+                      (center.y - half_width) as f32,
                 ),
                 point(
                     (center.x + half_length) as f32,
-                    (center.y + half_width) as f32,
+                      (center.y + half_width) as f32,
                 ),
             ),
             lyon::path::Winding::Positive,
@@ -627,8 +637,8 @@ pub fn generate_l_bracket(
     for hc in hole_centers {
         builder.add_circle(
             point(hc.x as f32, hc.y as f32),
-            hole_radius as f32,
-            lyon::path::Winding::Negative,
+                           hole_radius as f32,
+                           lyon::path::Winding::Negative,
         );
     }
 
@@ -697,8 +707,8 @@ pub fn generate_u_bracket(
     for hc in hole_centers {
         builder.add_circle(
             point(hc.x as f32, hc.y as f32),
-            hole_radius as f32,
-            lyon::path::Winding::Negative,
+                           hole_radius as f32,
+                           lyon::path::Winding::Negative,
         );
     }
 

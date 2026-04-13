@@ -179,7 +179,7 @@ impl DesignerCanvas {
                     }
 
                     Shape::RasterImage(_) => {
-                        // Las imágenes raster no generan toolpath en preview
+                        // Raster images do not generate a toolpath in preview.
                         Vec::new()
                     }
                 };
