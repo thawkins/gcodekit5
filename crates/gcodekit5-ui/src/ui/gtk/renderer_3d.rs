@@ -198,7 +198,148 @@ impl Drop for RenderBuffers {
         }
     }
 }
+// ---
+// En renderer_3d.rs, reemplazar la función existente con esta:
+pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
+    let mut rapid_vertices = Vec::new();
+    let mut cut_vertices = Vec::new();
 
+    for cmd in vis.commands() {
+        match cmd {
+            GCodeCommand::Move { from, to, rapid, intensity } => {
+                let vertices = if *rapid {
+                    &mut rapid_vertices
+                } else {
+                    &mut cut_vertices
+                };
+
+                let color = if *rapid {
+                    (0.5, 0.5, 0.5, 1.0) // Gris para movimientos rápidos
+                } else {
+                    let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
+                    (r, g, b, 1.0)
+                };
+
+                // Añadir vértices con color (formato: x, y, z, r, g, b, a)
+                vertices.push(from.x);
+                vertices.push(from.y);
+                vertices.push(from.z);
+                vertices.push(color.0);
+                vertices.push(color.1);
+                vertices.push(color.2);
+                vertices.push(color.3);
+
+                vertices.push(to.x);
+                vertices.push(to.y);
+                vertices.push(to.z);
+                vertices.push(color.0);
+                vertices.push(color.1);
+                vertices.push(color.2);
+                vertices.push(color.3);
+            }
+            GCodeCommand::Arc { from, to, center, clockwise, intensity } => {
+                let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
+                let color = (r, g, b, 1.0);
+
+                // Generar segmentos del arco con color
+                let segments = 32; // Número de segmentos para aproximar el arco
+                let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
+
+                let start_angle = (from.y - center.y).atan2(from.x - center.x);
+                let end_angle = (to.y - center.y).atan2(to.x - center.x);
+
+                let angle_range = if *clockwise {
+                    if end_angle > start_angle {
+                        end_angle - start_angle - 2.0 * std::f32::consts::PI
+                    } else {
+                        end_angle - start_angle
+                    }
+                } else {
+                    if end_angle < start_angle {
+                        end_angle - start_angle + 2.0 * std::f32::consts::PI
+                    } else {
+                        end_angle - start_angle
+                    }
+                };
+
+                let step = angle_range / segments as f32;
+
+                let mut prev_x = from.x;
+                let mut prev_y = from.y;
+                let mut prev_z = from.z;
+
+                for i in 1..=segments {
+                    let angle = start_angle + step * i as f32;
+                    let x = center.x + radius * angle.cos();
+                    let y = center.y + radius * angle.sin();
+                    let z = from.z + (to.z - from.z) * (i as f32 / segments as f32);
+
+                    cut_vertices.push(prev_x);
+                    cut_vertices.push(prev_y);
+                    cut_vertices.push(prev_z);
+                    cut_vertices.push(color.0);
+                    cut_vertices.push(color.1);
+                    cut_vertices.push(color.2);
+                    cut_vertices.push(color.3);
+
+                    cut_vertices.push(x);
+                    cut_vertices.push(y);
+                    cut_vertices.push(z);
+                    cut_vertices.push(color.0);
+                    cut_vertices.push(color.1);
+                    cut_vertices.push(color.2);
+                    cut_vertices.push(color.3);
+
+                    prev_x = x;
+                    prev_y = y;
+                    prev_z = z;
+                }
+            }
+            GCodeCommand::Dwell { .. } => {}
+        }
+    }
+
+    (rapid_vertices, cut_vertices)
+}
+
+// Versión original (sin colores por intensidad)
+pub fn generate_vertex_data_uniform(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
+    let mut rapid_vertices = Vec::new();
+    let mut cut_vertices = Vec::new();
+
+    // Colors
+    let rapid_color = [0.0, 0.8, 1.0, 1.0]; // Cyan (matches 2D)
+    let cut_color = [1.0, 1.0, 0.0, 1.0]; // Yellow (matches 2D)
+
+    for cmd in visualizer.commands() {
+        match cmd {
+            GCodeCommand::Move {
+                from, to, rapid, ..
+            } => {
+                if *rapid {
+                    push_line(&mut rapid_vertices, from, to, rapid_color);
+                } else {
+                    push_line(&mut cut_vertices, from, to, cut_color);
+                }
+            }
+            GCodeCommand::Arc {
+                from,
+                to,
+                center,
+                clockwise,
+                ..
+            } => {
+                push_arc(&mut cut_vertices, from, to, center, *clockwise, cut_color);
+            }
+            GCodeCommand::Dwell { .. } => {}
+        }
+    }
+
+    (rapid_vertices, cut_vertices)
+}
+
+
+/*
 pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
     let mut rapid_vertices = Vec::new();
     let mut cut_vertices = Vec::new();
@@ -236,6 +377,7 @@ pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
 
     (rapid_vertices, cut_vertices)
 }
+*/
 
 pub fn generate_bounds_data(
     min_x: f32,
