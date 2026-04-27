@@ -10,9 +10,9 @@ description = "Communication protocols (Serial, TCP, WebSocket) for GCodeKit4"
 
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 async-trait = "0.1"
-serialport = "4.3"
+serialport = "4.9"
 tracing = "0.1"
 anyhow = "1.0"
 thiserror = "2.0"
@@ -22,4 +22,4 @@ parking_lot = "0.12"
 uuid = { workspace = true }
 
 [dev-dependencies]
-proptest = "1.4"
+proptest = "1.11"
