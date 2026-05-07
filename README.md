@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender and CNC machine controller written in Rus
 
 [![Build Status](https://github.com/thawkins/gcodekit5/workflows/Build%20and%20Release/badge.svg)](https://github.com/thawkins/gcodekit5/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.50.2--alpha.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.54.0--alpha.2-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -132,10 +132,18 @@ This modular structure enables:
   - Selecting "Properties" with multiple shapes opens a "Multiple Shapes" dialog that applies pocket/text/toolpath settings to every selected object while keeping individual positions intact
 - **Toolpath Generation**: Convert designs to executable G-code
 - **NEW**: Frame button to generate Bounds Gcode
-- **Image Import**: Import raster files, jpg, png, bmp ...
-  - New features in the image engraving Inspector
-  - **NEW**: G-code generator optimized for raster images
-
+  - **Non-Destructive Geometry Operations**: Live-modify shapes without destruction
+    - **Offset**: Dynamic expansion/contraction of shapes
+    - **Fillet**: Rounded corners with adjustable radius
+    - **Chamfer**: Beveled edges with configurable angle
+    - Live tweaking - changes apply immediately on edit
+  - **Image Import**: Import raster files, jpg, png, bmp ...
+    - New features in the image engraving Inspector
+    - G-code generator optimized for raster images
+  - **Shape Editing**:
+    - User-editable shape names displayed in Layers list
+    - Rectangle rounded corners and Slot mode (auto-radius)
+    - Shape conversion (Convert to Path, Convert to Rectangle)
 ### 👁️ 2D Visualizer
 - **Real-time Rendering**: Instant visualization of G-code toolpaths
 - **Adaptive Grid System**:
@@ -199,6 +207,12 @@ This modular structure enables:
   - **Standard Library**: Includes common materials with tested parameters
 
 ### 🔨 CAM Tools
+- **Drill Press**: Manual hole drilling with helical interpolation
+  - **Peck Drilling**: Configurable peck depth for chip clearing
+  - **Helical Interpolation**: Cut holes larger than tool diameter
+  - **Unit-Aware**: Automatic Metric/Imperial parameter entry
+  - **Save/Load**: Persistent tool parameters to JSON files
+
 - **Tabbed Box Maker**: Generate laser/CNC cut boxes with finger joints
   - Inside/outside dimension modes
   - Configurable tab width and kerf compensation
@@ -237,6 +251,16 @@ This modular structure enables:
   - **Time Estimation**: Calculate engraving time before generating
   - **Background Processing**: Non-blocking G-code generation
   - **Smart Initialization**: Proper homing and coordinate system setup
+
+- **Spoilboard Surfacing**: Flatten CNC beds/spoilboards
+  - Automatic dimension loading from DeviceDB
+  - Configurable tool parameters (diameter, feed, speed, stepover)
+  - Proper G-code initialization sequence ($H, G54, G10)
+  - Imperial unit support (inches) based on user preference
+
+- **Speeds & Feeds Calculator**: Calculate optimal cutting parameters
+  - Material and tool data integration
+  - Automatic feed rate and spindle speed calculation
 
 ## Supported Controllers
 
@@ -525,11 +549,26 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 0.40.0-alpha.6
+**Current Version**: 0.41.0-alpha.1
 **Status**: Active Development
 **Stability**: Alpha (breaking changes may occur)
 
-### Recent Updates (v0.40.0-alpha.6)
+### Recent Updates (v0.41.0-alpha.1) - Non-Destructive Geometry
+- **Designer**: Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).
+- **Designer**: Geometry modifiers are now properties of the shape, allowing live tweaking.
+- **Designer**: Updated rendering, hit-testing, and G-code generation to use the "effective shape".
+- **UI**: Removed "Apply" buttons from Geometry Operations in the Properties Panel.
+- **UI**: Geometry operations now apply immediately on Enter or Focus Out.
+- **UI**: Geometry Operations frame is now context-sensitive (hidden for Text shapes).
+
+### Recent Updates (v0.41.0-alpha.0) - Drill Press CAMTool
+- **CAM Tools**: Added new "Drill Press" tool for manual hole drilling and helical interpolation.
+- **CAM Tools**: Support for peck drilling (chip clearing) with configurable depth.
+- **CAM Tools**: Support for helical interpolation for holes larger than the tool diameter.
+- **CAM Tools**: Unit-aware parameter entry (Metric/Imperial) with dynamic switching.
+- **CAM Tools**: Ability to save and load tool parameters to JSON files.
+
+### Recent Updates (v0.40.0-alpha.6) - UI Polish & Fixes
 - **Machine Control**: Fixed feedrate display jumping and spindle speed showing zero.
 - **Machine Control**: Fixed override controls (Feed/Spindle) not working correctly.
 - **Machine Control**: Added commanded vs actual feedrate/spindle speed tracking.

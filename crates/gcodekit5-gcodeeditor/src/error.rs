@@ -68,9 +68,6 @@ pub enum BufferError {
 /// Result type alias for editor operations.
 pub type EditorResult<T> = Result<T, EditorError>;
 
-/// Result type alias for buffer operations.
-pub type BufferResult<T> = Result<T, BufferError>;
-
 #[cfg(test)]
 mod tests {
     use super::*;

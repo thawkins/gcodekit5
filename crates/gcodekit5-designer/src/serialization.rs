@@ -379,7 +379,10 @@ impl DesignFile {
             _ => {}
         }
         let original_path = if let Shape::RasterImage(raster) = &obj.shape {
-            raster.original_path.clone().map(|p| p.display().to_string())
+            raster
+                .original_path
+                .clone()
+                .map(|p| p.display().to_string())
         } else {
             None
         };
@@ -479,7 +482,8 @@ impl DesignFile {
                 Shape::Path(PathShape::from_points(&vertices, true))
             }
             "text" => {
-                let mut s = TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                let mut s =
+                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }
@@ -520,7 +524,7 @@ impl DesignFile {
                         match crate::image_importer::ImageImporter::load_image_data_with_size(
                             path,
                             data.width,
-                            data.height
+                            data.height,
                         ) {
                             Ok((data, w, h)) => (data, w, h),
                             Err(e) => {

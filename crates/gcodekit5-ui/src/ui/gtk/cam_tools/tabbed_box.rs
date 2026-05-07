@@ -97,14 +97,14 @@ impl TabbedBoxMaker {
         sidebar.set_margin_end(24);
 
         let title_lbl = Label::builder()
-            .label(&t!("Tabbed Box Maker"))
+            .label(t!("Tabbed Box Maker"))
             .css_classes(vec!["title-3"])
             .wrap(true)
             .halign(Align::Start)
             .build();
 
         let desc_lbl = Label::builder()
-            .label(&t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."))
+            .label(t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."))
             .css_classes(vec!["body"])
             .wrap(true)
             .halign(Align::Start)
@@ -192,13 +192,13 @@ impl TabbedBoxMaker {
 
         // Box Dimensions
         let dim_group = PreferencesGroup::builder()
-            .title(&t!("Box Dimensions"))
+            .title(t!("Box Dimensions"))
             .build();
         dim_group.add(&width_row);
         dim_group.add(&depth_row);
         dim_group.add(&height_row);
 
-        let outside_row = ActionRow::builder().title(&t!("Outside Dims:")).build();
+        let outside_row = ActionRow::builder().title(t!("Outside Dims:")).build();
         outside_row.add_suffix(&outside);
         dim_group.add(&outside_row);
 
@@ -206,14 +206,14 @@ impl TabbedBoxMaker {
 
         // Box Configuration
         let config_group = PreferencesGroup::builder()
-            .title(&t!("Box Configuration"))
+            .title(t!("Box Configuration"))
             .build();
         config_group.add(&Self::create_row(&t!("Box Type:"), &box_type));
         config_group.add(&Self::create_row(&t!("Dividers X:"), &dividers_x));
         config_group.add(&Self::create_row(&t!("Dividers Y:"), &dividers_y));
         config_group.add(&Self::create_row(&t!("Divider Keying:"), &divider_keying));
 
-        let optimize_row = ActionRow::builder().title(&t!("Optimize Layout:")).build();
+        let optimize_row = ActionRow::builder().title(t!("Optimize Layout:")).build();
         optimize_row.add_suffix(&optimize_layout);
         config_group.add(&optimize_row);
 
@@ -221,7 +221,7 @@ impl TabbedBoxMaker {
 
         // Material Settings
         let mat_group = PreferencesGroup::builder()
-            .title(&t!("Material Settings"))
+            .title(t!("Material Settings"))
             .build();
         mat_group.add(&thickness_row);
         mat_group.add(&burn_row);
@@ -229,7 +229,7 @@ impl TabbedBoxMaker {
 
         // Finger Joint Settings
         let finger_group = PreferencesGroup::builder()
-            .title(&t!("Finger Joint Settings (multiples of thickness)"))
+            .title(t!("Finger Joint Settings (multiples of thickness)"))
             .build();
         finger_group.add(&Self::create_row(&t!("Finger Width:"), &finger_width));
         finger_group.add(&Self::create_row(&t!("Space Width:"), &space_width));
@@ -243,7 +243,7 @@ impl TabbedBoxMaker {
 
         // Laser Settings
         let laser_group = PreferencesGroup::builder()
-            .title(&t!("Laser Settings"))
+            .title(t!("Laser Settings"))
             .build();
         laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
         laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
@@ -253,13 +253,13 @@ impl TabbedBoxMaker {
 
         // Work Origin Offsets
         let offset_group = PreferencesGroup::builder()
-            .title(&t!("Work Origin Offsets"))
+            .title(t!("Work Origin Offsets"))
             .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title(&t!("Home Device Before Start"))
+            .title(t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -389,7 +389,7 @@ impl TabbedBoxMaker {
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
-                .title(&t!("Generating Box"))
+                .title(t!("Generating Box"))
                 .modal(true)
                 .default_width(400)
                 .default_height(150)

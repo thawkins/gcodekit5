@@ -413,14 +413,14 @@ impl DesignerCanvas {
             let mut designer_state = state_key.borrow_mut();
 
             match keyval {
-                gtk4::gdk::Key::Delete | gtk4::gdk::Key::BackSpace => {
+                gtk4::gdk::Key::Delete | gtk4::gdk::Key::BackSpace
                     // Delete selected shapes
                     if designer_state
                         .canvas
                         .selection_manager
                         .selected_id()
                         .is_some()
-                    {
+                    => {
                         designer_state.delete_selected();
                         drop(designer_state);
 
@@ -432,7 +432,6 @@ impl DesignerCanvas {
                         widget_key.queue_draw();
                         return glib::Propagation::Stop;
                     }
-                }
                 gtk4::gdk::Key::Escape => {
                     // Cancel polyline creation
                     let mut points = polyline_points_key.borrow_mut();
@@ -541,7 +540,10 @@ impl DesignerCanvas {
                     .widget
                     .root()
                     .and_then(|r| r.downcast::<gtk4::Window>().ok())
-                    .unwrap(),
+                    .unwrap_or_else(|| {
+                        tracing::warn!("Failed to get parent window for dialog");
+                        gtk4::Window::new()
+                    }),
             )
             .build();
 
@@ -598,7 +600,7 @@ impl DesignerCanvas {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    tracing::error!("Image import failed: {}", e);
                     if let Some(status_bar) = &status_bar {
                         status_bar.set_state(&format!("Import error: {}", e));
                     }

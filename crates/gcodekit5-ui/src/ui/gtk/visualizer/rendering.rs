@@ -6,6 +6,7 @@
 
 use super::*;
 
+use crate::ui::gtk::common::colors;
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::stock_removal::{SimulationResult, StockMaterial};
 use gcodekit5_devicedb::DeviceManager;
@@ -33,11 +34,11 @@ impl GcodeVisualizer {
         simulation_visualization: &Option<StockRemovalVisualization>,
         _stock_material: &Option<StockMaterial>,
         current_pos: (f32, f32, f32),
-                       device_manager: &Option<Arc<DeviceManager>>,
-                       grid_spacing_mm: f64,
-                       grid_major_line_width: f64,
-                       grid_minor_line_width: f64,
-                       style_context: &gtk4::StyleContext,
+        device_manager: &Option<Arc<DeviceManager>>,
+        grid_spacing_mm: f64,
+        grid_major_line_width: f64,
+        grid_minor_line_width: f64,
+        style_context: &gtk4::StyleContext,
     ) {
         // Phase 4: Calculate cache hash from visualizer state
         use std::collections::hash_map::DefaultHasher;
@@ -49,29 +50,30 @@ impl GcodeVisualizer {
         let new_hash = hasher.finish();
         let fg_color = style_context.color();
         let accent_color = style_context
-        .lookup_color("accent_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
+            .lookup_color("accent_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
         let success_color = style_context
-        .lookup_color("success_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
+            .lookup_color("success_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
         let warning_color = style_context
-        .lookup_color("warning_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 1.0, 1.0));
+            .lookup_color("warning_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 1.0, 1.0));
 
         // Clear background
         if show_intensity {
-            cr.set_source_rgb(1.0, 1.0, 1.0);
+            let bg = colors::to_rgb_f64(&colors::BACKGROUND_LIGHT);
+            cr.set_source_rgb(bg.0, bg.1, bg.2);
         } else {
-            cr.set_source_rgb(0.15, 0.15, 0.15);
+            let bg = colors::to_rgb_f64(&colors::BACKGROUND_DARK);
+            cr.set_source_rgb(bg.0, bg.1, bg.2);
         }
         let _ = cr.paint();
-
         // Determine Max S Value
         let max_s_value = if let Some(manager) = device_manager {
             manager
-            .get_active_profile()
-            .map(|p| p.max_s_value)
-            .unwrap_or(1000.0)
+                .get_active_profile()
+                .map(|p| p.max_s_value)
+                .unwrap_or(1000.0)
         } else {
             1000.0
         };
@@ -91,9 +93,9 @@ impl GcodeVisualizer {
                 cr,
                 vis,
                 grid_spacing_mm.max(0.1),
-                            &fg_color,
-                            grid_major_line_width,
-                            grid_minor_line_width,
+                &fg_color,
+                grid_major_line_width,
+                grid_minor_line_width,
             );
         }
 
@@ -110,9 +112,9 @@ impl GcodeVisualizer {
 
                     cr.set_source_rgba(
                         accent_color.red() as f64,
-                                       accent_color.green() as f64,
-                                       accent_color.blue() as f64,
-                                       1.0,
+                        accent_color.green() as f64,
+                        accent_color.blue() as f64,
+                        1.0,
                     );
                     cr.set_line_width(3.0 / vis.zoom_scale as f64);
 
@@ -124,25 +126,18 @@ impl GcodeVisualizer {
 
         // Draw Origin Axes (Full World Extent)
         let extent = core_constants::WORLD_EXTENT_MM;
-        cr.set_line_width(1.0 / vis.zoom_scale as f64);
-
-        // X Axis Red
-        cr.set_source_rgb(1.0, 0.0, 0.0);
-        cr.move_to(-extent, 0.0);
-        cr.line_to(extent, 0.0);
-        let _ = cr.stroke();
-
-        // Y Axis Green
-        cr.set_source_rgb(0.0, 1.0, 0.0);
-        cr.move_to(0.0, -extent);
-        cr.line_to(0.0, extent);
-        let _ = cr.stroke();
-
+        let line_width = 1.0 / vis.zoom_scale as f64;
+        crate::ui::gtk::common::rendering::draw_origin_axes(
+            cr,
+            extent,
+            vis.zoom_scale as f64,
+            line_width,
+        );
         // Draw Stock Removal - only draw cached result, don't regenerate
         if show_stock_removal {
             if let Some(cached_viz) = simulation_visualization {
                 static DRAW_COUNTER: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
+                    std::sync::atomic::AtomicU32::new(0);
                 let count = DRAW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let _ = count.is_multiple_of(10);
                 Self::draw_stock_removal_cached(cr, vis, cached_viz);
@@ -183,9 +178,9 @@ impl GcodeVisualizer {
             cr.new_path();
             cr.set_source_rgba(
                 warning_color.red() as f64,
-                               warning_color.green() as f64,
-                               warning_color.blue() as f64,
-                               0.5,
+                warning_color.green() as f64,
+                warning_color.blue() as f64,
+                0.5,
             );
 
             let mut line_counter = 0u32;
@@ -197,7 +192,6 @@ impl GcodeVisualizer {
                     ..
                 } = cmd
                 {
-
                     let line_min_x = from.x.min(to.x);
                     let line_max_x = from.x.max(to.x);
                     let line_min_y = from.y.min(to.y);
@@ -207,22 +201,20 @@ impl GcodeVisualizer {
                         || line_min_x > view_max_x
                         || line_max_y < view_min_y
                         || line_min_y > view_max_y
-                        {
-                            continue;
-                        }
+                    {
+                        continue;
+                    }
 
-                        line_counter += 1;
+                    line_counter += 1;
                     match lod_level {
-                        1 => {
-                            if !line_counter.is_multiple_of(2) {
+                        1
+                            if !line_counter.is_multiple_of(2) => {
                                 continue;
                             }
-                        }
-                        2 => {
-                            if !line_counter.is_multiple_of(4) {
+                        2
+                            if !line_counter.is_multiple_of(4) => {
                                 continue;
                             }
-                        }
                         _ => {}
                     }
 
@@ -232,7 +224,6 @@ impl GcodeVisualizer {
             }
             let _ = cr.stroke();
             cr.new_path();
-
         }
 
         // OPTIMIZATION: Batch cutting moves by intensity + LOD
@@ -240,9 +231,9 @@ impl GcodeVisualizer {
             cr.new_path();
             cr.set_source_rgba(
                 warning_color.red() as f64,
-                               warning_color.green() as f64,
-                               warning_color.blue() as f64,
-                               0.5,
+                warning_color.green() as f64,
+                warning_color.blue() as f64,
+                0.5,
             );
             cr.set_line_width(1.5 / vis.zoom_scale as f64);
 
@@ -272,183 +263,183 @@ impl GcodeVisualizer {
 
                 if cache.needs_rebuild(new_hash)
                     || cache.intensity_buckets.len() != INTENSITY_BUCKETS
-                    {
-                        cache.cache_hash = new_hash;
-                        cache.intensity_buckets = vec![Vec::new(); INTENSITY_BUCKETS];
-                        cache.total_lines = 0;
-                        cache.cut_lines = 0;
+                {
+                    cache.cache_hash = new_hash;
+                    cache.intensity_buckets = vec![Vec::new(); INTENSITY_BUCKETS];
+                    cache.total_lines = 0;
+                    cache.cut_lines = 0;
 
-                        // Use the detected intensity range of the display
-                        let max_s = if vis.max_intensity > vis.min_intensity {
-                            vis.max_intensity
-                        } else {
-                            max_s_value as f32
-                        };
-
-                        for cmd in vis.commands() {
-                            cache.total_lines += 1;
-                            if let GCodeCommand::Move {
-                                from,
-                                to,
-                                rapid: false,
-                                intensity,
-                            } = cmd
-                            {
-                                cache.cut_lines += 1;
-
-                                let s = intensity.unwrap_or(0.0);
-
-                                // Group by intensity directly
-                                let bucket_idx = if vis.use_intensity_colors && max_s > 0.0 {
-                                    ((s / max_s).clamp(0.0, 1.0) * (INTENSITY_BUCKETS - 1) as f32).round() as usize
-                                } else {
-                                    let gray = 1.0 - (s as f64 / max_s_value).clamp(0.0, 1.0);
-                                    ((gray * (INTENSITY_BUCKETS - 1) as f64).round() as usize)
-                                    .min(INTENSITY_BUCKETS - 1)
-                                };
-
-                                cache.intensity_buckets[bucket_idx].push((
-                                    from.x as f64,
-                                    from.y as f64,
-                                    to.x as f64,
-                                    to.y as f64,
-                                    s,
-                                ));
-                            }
-                        }
-                    }
-
-                    let mut line_counter = 0u32;
+                    // Use the detected intensity range of the display
                     let max_s = if vis.max_intensity > vis.min_intensity {
                         vis.max_intensity
                     } else {
                         max_s_value as f32
                     };
 
-                    // Draw straight lines with colors according to intensity
-                    for (bucket_idx, lines) in cache.intensity_buckets.iter().enumerate() {
-                        if lines.is_empty() {
-                            continue;
-                        }
-
-                        // Determine and apply the color for this bucket
-                        if vis.use_intensity_colors && max_s > 0.0 {
-                            // Calculate representative intensity for this bucket
-                            let bucket_intensity = (bucket_idx as f32 / (INTENSITY_BUCKETS - 1) as f32) * max_s;
-                            let (r, g, b) = vis.get_color_for_intensity(bucket_intensity);
-                            cr.set_source_rgb(r as f64, g as f64, b as f64);
-                        } else {
-                            let gray = (bucket_idx as f64) / ((INTENSITY_BUCKETS - 1) as f64);
-                            cr.set_source_rgb(gray, gray, gray);
-                        }
-
-                        cr.new_path();
-
-                        for (fx, fy, tx, ty, _intensity) in lines {
-                            let line_min_x = (*fx as f32).min(*tx as f32);
-                            let line_max_x = (*fx as f32).max(*tx as f32);
-                            let line_min_y = (*fy as f32).min(*ty as f32);
-                            let line_max_y = (*fy as f32).max(*ty as f32);
-
-                            if line_max_x < view_min_x
-                                || line_min_x > view_max_x
-                                || line_max_y < view_min_y
-                                || line_min_y > view_max_y
-                                {
-                                    continue;
-                                }
-
-                                line_counter += 1;
-                            match lod_level {
-                                1 => {
-                                    if !line_counter.is_multiple_of(2) {
-                                        continue;
-                                    }
-                                }
-                                2 => {
-                                    if !line_counter.is_multiple_of(4) {
-                                        continue;
-                                    }
-                                }
-                                _ => {}
-                            }
-
-                            cr.move_to(*fx, *fy);
-                            cr.line_to(*tx, *ty);
-                        }
-                        let _ = cr.stroke();
-                    }
-
-                    // Draw arcs with colors according to intensity
                     for cmd in vis.commands() {
-                        if let GCodeCommand::Arc {
+                        cache.total_lines += 1;
+                        if let GCodeCommand::Move {
                             from,
                             to,
-                            center,
-                            clockwise,
+                            rapid: false,
                             intensity,
                         } = cmd
                         {
-                            let radius =
-                            ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
-                            let arc_min_x = center.x - radius;
-                            let arc_max_x = center.x + radius;
-                            let arc_min_y = center.y - radius;
-                            let arc_max_y = center.y + radius;
+                            cache.cut_lines += 1;
 
-                            if arc_max_x < view_min_x
-                                || arc_min_x > view_max_x
-                                || arc_max_y < view_min_y
-                                || arc_min_y > view_max_y
-                                {
-                                    continue;
-                                }
+                            let s = intensity.unwrap_or(0.0);
 
-                                let s = intensity.unwrap_or(0.0);
-
-                            if vis.use_intensity_colors && max_s > 0.0 {
-                                let (r, g, b) = vis.get_color_for_intensity(s);
-                                cr.set_source_rgb(r as f64, g as f64, b as f64);
+                            // Group by intensity directly
+                            let bucket_idx = if vis.use_intensity_colors && max_s > 0.0 {
+                                ((s / max_s).clamp(0.0, 1.0) * (INTENSITY_BUCKETS - 1) as f32)
+                                    .round() as usize
                             } else {
                                 let gray = 1.0 - (s as f64 / max_s_value).clamp(0.0, 1.0);
-                                cr.set_source_rgb(gray, gray, gray);
-                            }
+                                ((gray * (INTENSITY_BUCKETS - 1) as f64).round() as usize)
+                                    .min(INTENSITY_BUCKETS - 1)
+                            };
 
-                            let radius = radius as f64;
-                            let start_angle = (from.y - center.y).atan2(from.x - center.x) as f64;
-                            let end_angle = (to.y - center.y).atan2(to.x - center.x) as f64;
-
-                            if *clockwise {
-                                cr.arc_negative(
-                                    center.x as f64,
-                                    center.y as f64,
-                                    radius,
-                                    start_angle,
-                                    end_angle,
-                                );
-                            } else {
-                                cr.arc(
-                                    center.x as f64,
-                                    center.y as f64,
-                                    radius,
-                                    start_angle,
-                                    end_angle,
-                                );
-                            }
-                            let _ = cr.stroke();
-                            cr.new_path();
+                            cache.intensity_buckets[bucket_idx].push(IntensityBucket::new(
+                                from.x as f64,
+                                from.y as f64,
+                                to.x as f64,
+                                to.y as f64,
+                                s,
+                            ));
                         }
                     }
-                    // Clean the path at the end of all arcs
+                }
+
+                let mut line_counter = 0u32;
+                let max_s = if vis.max_intensity > vis.min_intensity {
+                    vis.max_intensity
+                } else {
+                    max_s_value as f32
+                };
+
+                // Draw straight lines with colors according to intensity
+                for (bucket_idx, lines) in cache.intensity_buckets.iter().enumerate() {
+                    if lines.is_empty() {
+                        continue;
+                    }
+
+                    // Determine and apply the color for this bucket
+                    if vis.use_intensity_colors && max_s > 0.0 {
+                        // Calculate representative intensity for this bucket
+                        let bucket_intensity =
+                            (bucket_idx as f32 / (INTENSITY_BUCKETS - 1) as f32) * max_s;
+                        let (r, g, b) = vis.get_color_for_intensity(bucket_intensity);
+                        cr.set_source_rgb(r as f64, g as f64, b as f64);
+                    } else {
+                        let gray = (bucket_idx as f64) / ((INTENSITY_BUCKETS - 1) as f64);
+                        cr.set_source_rgb(gray, gray, gray);
+                    }
+
                     cr.new_path();
+
+                    for bucket in lines {
+                        let line_min_x = (bucket.from_x as f32).min(bucket.to_x as f32);
+                        let line_max_x = (bucket.from_x as f32).max(bucket.to_x as f32);
+                        let line_min_y = (bucket.from_y as f32).min(bucket.to_y as f32);
+                        let line_max_y = (bucket.from_y as f32).max(bucket.to_y as f32);
+
+                        if line_max_x < view_min_x
+                            || line_min_x > view_max_x
+                            || line_max_y < view_min_y
+                            || line_min_y > view_max_y
+                        {
+                            continue;
+                        }
+
+                        line_counter += 1;
+                        match lod_level {
+                            1
+                                if !line_counter.is_multiple_of(2) => {
+                                    continue;
+                                }
+                            2
+                                if !line_counter.is_multiple_of(4) => {
+                                    continue;
+                                }
+                            _ => {}
+                        }
+
+                        cr.move_to(bucket.from_x, bucket.from_y);
+                        cr.line_to(bucket.to_x, bucket.to_y);
+                    }
+                    let _ = cr.stroke();
+                }
+
+                // Draw arcs with colors according to intensity
+                for cmd in vis.commands() {
+                    if let GCodeCommand::Arc {
+                        from,
+                        to,
+                        center,
+                        clockwise,
+                        intensity,
+                    } = cmd
+                    {
+                        let radius =
+                            ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
+                        let arc_min_x = center.x - radius;
+                        let arc_max_x = center.x + radius;
+                        let arc_min_y = center.y - radius;
+                        let arc_max_y = center.y + radius;
+
+                        if arc_max_x < view_min_x
+                            || arc_min_x > view_max_x
+                            || arc_max_y < view_min_y
+                            || arc_min_y > view_max_y
+                        {
+                            continue;
+                        }
+
+                        let s = intensity.unwrap_or(0.0);
+
+                        if vis.use_intensity_colors && max_s > 0.0 {
+                            let (r, g, b) = vis.get_color_for_intensity(s);
+                            cr.set_source_rgb(r as f64, g as f64, b as f64);
+                        } else {
+                            let gray = 1.0 - (s as f64 / max_s_value).clamp(0.0, 1.0);
+                            cr.set_source_rgb(gray, gray, gray);
+                        }
+
+                        let radius = radius as f64;
+                        let start_angle = (from.y - center.y).atan2(from.x - center.x) as f64;
+                        let end_angle = (to.y - center.y).atan2(to.x - center.x) as f64;
+
+                        if *clockwise {
+                            cr.arc_negative(
+                                center.x as f64,
+                                center.y as f64,
+                                radius,
+                                start_angle,
+                                end_angle,
+                            );
+                        } else {
+                            cr.arc(
+                                center.x as f64,
+                                center.y as f64,
+                                radius,
+                                start_angle,
+                                end_angle,
+                            );
+                        }
+                        let _ = cr.stroke();
+                        cr.new_path();
+                    }
+                }
+                // Clean the path at the end of all arcs
+                cr.new_path();
             } else {
                 // Non-intensity mode: Single color + viewport culling + LOD
                 cr.new_path();
                 cr.set_source_rgba(
                     success_color.red() as f64,
-                                   success_color.green() as f64,
-                                   success_color.blue() as f64,
-                                   1.0,
+                    success_color.green() as f64,
+                    success_color.blue() as f64,
+                    1.0,
                 );
 
                 for cmd in vis.commands() {
@@ -502,14 +493,27 @@ impl GcodeVisualizer {
                         }
 
                         cr.new_path();
-                        let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt() as f64;
+                        let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2))
+                            .sqrt() as f64;
                         let start_angle = (from.y - center.y).atan2(from.x - center.x) as f64;
                         let end_angle = (to.y - center.y).atan2(to.x - center.x) as f64;
 
                         if *clockwise {
-                            cr.arc_negative(center.x as f64, center.y as f64, radius, start_angle, end_angle);
+                            cr.arc_negative(
+                                center.x as f64,
+                                center.y as f64,
+                                radius,
+                                start_angle,
+                                end_angle,
+                            );
                         } else {
-                            cr.arc(center.x as f64, center.y as f64, radius, start_angle, end_angle);
+                            cr.arc(
+                                center.x as f64,
+                                center.y as f64,
+                                radius,
+                                start_angle,
+                                end_angle,
+                            );
                         }
                         let _ = cr.stroke();
                     }
@@ -518,9 +522,9 @@ impl GcodeVisualizer {
                 // Uniform arches (green)
                 cr.set_source_rgba(
                     success_color.red() as f64,
-                                   success_color.green() as f64,
-                                   success_color.blue() as f64,
-                                   1.0,
+                    success_color.green() as f64,
+                    success_color.blue() as f64,
+                    1.0,
                 );
 
                 for cmd in vis.commands() {
@@ -533,14 +537,27 @@ impl GcodeVisualizer {
                     } = cmd
                     {
                         cr.new_path();
-                        let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt() as f64;
+                        let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2))
+                            .sqrt() as f64;
                         let start_angle = (from.y - center.y).atan2(from.x - center.x) as f64;
                         let end_angle = (to.y - center.y).atan2(to.x - center.x) as f64;
 
                         if *clockwise {
-                            cr.arc_negative(center.x as f64, center.y as f64, radius, start_angle, end_angle);
+                            cr.arc_negative(
+                                center.x as f64,
+                                center.y as f64,
+                                radius,
+                                start_angle,
+                                end_angle,
+                            );
                         } else {
-                            cr.arc(center.x as f64, center.y as f64, radius, start_angle, end_angle);
+                            cr.arc(
+                                center.x as f64,
+                                center.y as f64,
+                                radius,
+                                start_angle,
+                                end_angle,
+                            );
                         }
                         let _ = cr.stroke();
                     }
@@ -582,7 +599,7 @@ impl GcodeVisualizer {
                             ..
                         } => {
                             let radius =
-                            ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
+                                ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
                             bounds_min_x = bounds_min_x.min(center.x - radius);
                             bounds_max_x = bounds_max_x.max(center.x + radius);
                             bounds_min_y = bounds_min_y.min(center.y - radius);
@@ -609,26 +626,26 @@ impl GcodeVisualizer {
 
             if let Some((bounds_min_x, bounds_max_x, bounds_min_y, bounds_max_y, _, _)) =
                 cache.cutting_bounds
-                {
-                    cr.set_source_rgba(1.0, 1.0, 0.0, 0.5);
-                    cr.rectangle(
-                        bounds_min_x as f64,
-                        bounds_min_y as f64,
-                        (bounds_max_x - bounds_min_x) as f64,
-                                 (bounds_max_y - bounds_min_y) as f64,
-                    );
-                    let _ = cr.fill();
+            {
+                cr.set_source_rgba(1.0, 1.0, 0.0, 0.5);
+                cr.rectangle(
+                    bounds_min_x as f64,
+                    bounds_min_y as f64,
+                    (bounds_max_x - bounds_min_x) as f64,
+                    (bounds_max_y - bounds_min_y) as f64,
+                );
+                let _ = cr.fill();
 
-                    cr.set_source_rgb(1.0, 1.0, 0.0);
-                    cr.set_line_width(2.0 / vis.zoom_scale as f64);
-                    cr.rectangle(
-                        bounds_min_x as f64,
-                        bounds_min_y as f64,
-                        (bounds_max_x - bounds_min_x) as f64,
-                                 (bounds_max_y - bounds_min_y) as f64,
-                    );
-                    let _ = cr.stroke();
-                }
+                cr.set_source_rgb(1.0, 1.0, 0.0);
+                cr.set_line_width(2.0 / vis.zoom_scale as f64);
+                cr.rectangle(
+                    bounds_min_x as f64,
+                    bounds_min_y as f64,
+                    (bounds_max_x - bounds_min_x) as f64,
+                    (bounds_max_y - bounds_min_y) as f64,
+                );
+                let _ = cr.stroke();
+            }
         }
 
         // Draw Laser/Spindle Position
@@ -663,9 +680,9 @@ impl GcodeVisualizer {
         // Minor grid lines (lighter)
         cr.set_source_rgba(
             fg_color.red() as f64,
-                           fg_color.green() as f64,
-                           fg_color.blue() as f64,
-                           0.2,
+            fg_color.green() as f64,
+            fg_color.blue() as f64,
+            0.2,
         );
         cr.set_line_width(minor_line_width / vis.zoom_scale as f64);
 
@@ -692,9 +709,9 @@ impl GcodeVisualizer {
         // Major grid lines (darker)
         cr.set_source_rgba(
             fg_color.red() as f64,
-                           fg_color.green() as f64,
-                           fg_color.blue() as f64,
-                           0.4,
+            fg_color.green() as f64,
+            fg_color.blue() as f64,
+            0.4,
         );
         cr.set_line_width(major_line_width / vis.zoom_scale as f64);
 
@@ -766,14 +783,14 @@ impl GcodeVisualizer {
             let contours = generate_2d_contours(&result.height_map, z_height);
 
             let contours: Vec<Vec<(f32, f32)>> = contours
-            .into_iter()
-            .map(|contour| contour.into_iter().map(|p| (p.x, p.y)).collect())
-            .collect();
+                .into_iter()
+                .map(|contour| contour.into_iter().map(|p| (p.x, p.y)).collect())
+                .collect();
 
             contour_layers.push(ContourLayer {
                 _z_height: z_height,
                 color: (r, g, b),
-                                contours,
+                contours,
             });
         }
 

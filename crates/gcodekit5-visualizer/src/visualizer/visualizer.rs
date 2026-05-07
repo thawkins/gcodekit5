@@ -46,10 +46,10 @@ fn intensity_to_color(intensity: f32, max_intensity: f32) -> (f32, f32, f32) {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum MotionMode {
     None,
-    Rapid,   // G0
-    Linear,  // G1
-    ArcCW,   // G2
-    ArcCCW,  // G3
+    Rapid,  // G0
+    Linear, // G1
+    ArcCW,  // G2
+    ArcCCW, // G3
 }
 
 /// Structure for extracted parameters
@@ -160,7 +160,7 @@ impl CoordTransform {
         let screen_x = (x - self.min_x) * self.scale + CANVAS_PADDING + self.x_offset;
         // Flip Y axis: higher Y values should move up the screen (smaller screen_y)
         let screen_y =
-        self.height - ((y - self.min_y) * self.scale + CANVAS_PADDING - self.y_offset);
+            self.height - ((y - self.min_y) * self.scale + CANVAS_PADDING - self.y_offset);
         (safe_to_i32(screen_x), safe_to_i32(screen_y))
     }
 
@@ -366,13 +366,16 @@ impl Visualizer {
             }
 
             // Ignore empty lines and comments
-            if original_line.is_empty() || original_line.starts_with(';') || original_line.starts_with('(') {
+            if original_line.is_empty()
+                || original_line.starts_with(';')
+                || original_line.starts_with('(')
+            {
                 continue;
             }
 
             // Remove inline comments (after ';')
             let line_without_comment = match original_line.find(';') {
-                Some(idx) => &original_line[..idx].trim(),
+                Some(idx) => original_line[..idx].trim(),
                 None => original_line,
             };
 
@@ -448,8 +451,8 @@ impl Visualizer {
                         commands.push(GCodeCommand::Move {
                             from: current_pos,
                             to: Point3D::new(new_x, new_y, new_z),
-                                      rapid: true,
-                                      intensity: Some(self.current_intensity),
+                            rapid: true,
+                            intensity: Some(self.current_intensity),
                         });
                         bounds.update(current_pos.x, current_pos.y, current_pos.z);
                         bounds.update(new_x, new_y, new_z);
@@ -459,8 +462,8 @@ impl Visualizer {
                         commands.push(GCodeCommand::Move {
                             from: current_pos,
                             to: Point3D::new(new_x, new_y, new_z),
-                                      rapid: false,
-                                      intensity: Some(self.current_intensity),
+                            rapid: false,
+                            intensity: Some(self.current_intensity),
                         });
                         bounds.update(current_pos.x, current_pos.y, current_pos.z);
                         bounds.update(new_x, new_y, new_z);
@@ -472,8 +475,9 @@ impl Visualizer {
                             let center_y = current_pos.y + params.j.unwrap_or(0.0);
                             let center = Point3D::new(center_x, center_y, current_pos.z);
 
-                            let radius = ((current_pos.x - center_x).powi(2) +
-                            (current_pos.y - center_y).powi(2)).sqrt();
+                            let radius = ((current_pos.x - center_x).powi(2)
+                                + (current_pos.y - center_y).powi(2))
+                            .sqrt();
                             trace!("Arc: from=({:.2},{:.2}), to=({:.2},{:.2}), center=({:.2},{:.2}), radius={:.4}, cw={}",
                                    current_pos.x, current_pos.y, new_x, new_y, center_x, center_y, radius,
                                    motion_mode_for_line == MotionMode::ArcCW);
@@ -481,9 +485,9 @@ impl Visualizer {
                             commands.push(GCodeCommand::Arc {
                                 from: current_pos,
                                 to: Point3D::new(new_x, new_y, new_z),
-                                          center,
-                                          clockwise: motion_mode_for_line == MotionMode::ArcCW,
-                                          intensity: Some(self.current_intensity),
+                                center,
+                                clockwise: motion_mode_for_line == MotionMode::ArcCW,
+                                intensity: Some(self.current_intensity),
                             });
 
                             bounds.update(current_pos.x, current_pos.y, current_pos.z);
@@ -495,8 +499,8 @@ impl Visualizer {
                             commands.push(GCodeCommand::Move {
                                 from: current_pos,
                                 to: Point3D::new(new_x, new_y, new_z),
-                                          rapid: false,
-                                          intensity: Some(self.current_intensity),
+                                rapid: false,
+                                intensity: Some(self.current_intensity),
                             });
                             bounds.update(current_pos.x, current_pos.y, current_pos.z);
                             bounds.update(new_x, new_y, new_z);
@@ -629,8 +633,8 @@ impl Visualizer {
         let after_g = &line[1..];
         // Find end of number
         let end_idx = after_g
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(after_g.len());
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_g.len());
 
         if end_idx == 0 {
             return None;

@@ -7,6 +7,7 @@ pub mod editor;
 pub mod gtk_app;
 pub mod helpers;
 pub mod i18n;
+// pub mod platform; // Moved to ui::gtk::platform
 pub mod types;
 pub mod ui;
 
@@ -17,7 +18,7 @@ pub use gcodekit5_settings::{
 };
 
 pub use gcodekit5_gcodeeditor::{
-    EditorState, TextBuffer, TextChange, TextLine, UndoManager, Viewport,
+    EditorBridgeBackend, EditorError, EditorResult, TextBuffer, TextChange, UndoManager, Viewport,
 };
 
 pub use crate::types::{

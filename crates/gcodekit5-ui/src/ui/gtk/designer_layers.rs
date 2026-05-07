@@ -129,7 +129,7 @@ impl LayersPanel {
             let multi = ctrl || shift;
 
             let state_borrow = state_clone.borrow();
-            let world_point = state_borrow.canvas.pixel_to_world(x as f64, y as f64);
+            let world_point = state_borrow.canvas.pixel_to_world(x, y);
             let zoom = state_borrow.canvas.zoom();
             let tolerance = 15.0 / zoom;
             drop(state_borrow);

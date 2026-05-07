@@ -321,7 +321,7 @@ impl DesignerView {
 
         properties.set_redraw_callback(move || {
             let state = canvas_redraw.state.borrow();
-            let has_selection = state.canvas.selection_manager.selected_id().is_some();
+            let _has_selection = state.canvas.selection_manager.selected_id().is_some();
 
             let show_toolpaths = state.show_toolpaths;
             drop(state);
@@ -330,12 +330,6 @@ impl DesignerView {
             }
             canvas_redraw.widget.queue_draw();
             properties_ui.update_from_selection();
-
-            if !has_selection {
-                properties_ui.update_from_selection();
-            } else {
-                properties_ui.update_from_selection();
-            }
         });
 
         // Inspector header + hide button (matches DeviceConsole / Visualizer sidebar UX)
@@ -795,8 +789,10 @@ impl DesignerView {
                     let original_offset_x = img.center.x - img.width_mm / 2.0;
                     let original_offset_y = img.center.y - img.height_mm / 2.0;
 
-                    let effective_offset_x = original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
-                    let effective_offset_y = original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
+                    let effective_offset_x =
+                        original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
+                    let effective_offset_y =
+                        original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
 
                     let dx = effective_offset_x - original_offset_x;
                     let dy = effective_offset_y - original_offset_y;
@@ -810,7 +806,6 @@ impl DesignerView {
         Some(base_bounds)
     }
 }
-
 
 mod file_ops;
 mod ui_builders;

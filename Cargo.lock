@@ -167,7 +167,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "rand",
- "raw-window-handle",
+ "raw-window-handle 0.6.2",
  "serde",
  "serde_repr",
  "url",
@@ -1415,7 +1415,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1437,7 +1437,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-camtools"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1460,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-communication"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1478,7 +1478,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-core"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1496,7 +1496,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-designer"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1523,7 +1523,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-devicedb"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "gcodekit5-core",
@@ -1536,7 +1536,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-gcodeeditor"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "ropey",
  "thiserror 2.0.18",
@@ -1544,7 +1544,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-settings"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "dirs",
  "gcodekit5-core",
@@ -1556,7 +1556,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-ui"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1582,6 +1582,7 @@ dependencies = [
  "libloading",
  "lyon",
  "once_cell",
+ "raw-window-handle 0.5.2",
  "rfd",
  "ropey",
  "serde",
@@ -1590,11 +1591,12 @@ dependencies = [
  "tempfile",
  "tracing",
  "uuid",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
 name = "gcodekit5-visualizer"
-version = "0.54.0-alpha.1"
+version = "0.54.0-alpha.2"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3673,6 +3675,12 @@ dependencies = [
 
 [[package]]
 name = "raw-window-handle"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
+
+[[package]]
+name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
@@ -3768,7 +3776,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation",
  "pollster",
- "raw-window-handle",
+ "raw-window-handle 0.6.2",
  "urlencoding",
  "wasm-bindgen",
  "wasm-bindgen-futures",

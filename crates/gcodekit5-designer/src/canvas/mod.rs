@@ -239,7 +239,6 @@ impl Canvas {
     /// Selects a shape at the given point.
     /// If multi is true, toggles selection of the shape at point while keeping others.
     /// If multi is false, clears other selections and selects the shape at point.
-
     pub fn select_at(&mut self, point: &Point, tolerance: f64, multi: bool) -> Option<u64> {
         let margin = tolerance * 2.0;
         let query_bounds = Bounds::new(

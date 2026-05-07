@@ -1,11 +1,26 @@
-//! UI crate platform utilities
-use raw_window_handle::{HasRawWindowHandle, HasDisplayHandle, RawWindowHandle, RawDisplayHandle, Win32WindowHandle, Win32DisplayHandle};
-use std::path::PathBuf;
+//! # Windows Platform Support
+//!
+//! Windows-specific UI utilities for window handle management and native dialogs.
+//!
+//! ## Win32 Parent Handle
+//!
+//! This module provides `Win32ParentHandle` which wraps a valid non-zero HWND
+//! obtained from `GetForegroundWindow()`. This allows rfd dialogs to be properly
+//! parented to the application window on Windows.
 
-#[cfg(target_os = "windows")]
+#![cfg(target_os = "windows")]
+
+use raw_window_handle::{
+    HasDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32DisplayHandle,
+    Win32WindowHandle,
+};
+
+/// Wrapper for a valid Win32 window handle (HWND).
+///
+/// This struct ensures the HWND is non-zero and provides the necessary
+/// traits for rfd to use it as a parent window for file dialogs.
 pub struct Win32ParentHandle(pub std::num::NonZeroIsize);
 
-#[cfg(target_os = "windows")]
 // SAFETY: Win32ParentHandle wraps a valid non-zero HWND obtained from
 // GetForegroundWindow. The handle is valid for the lifetime of the window.
 unsafe impl HasRawWindowHandle for Win32ParentHandle {
@@ -33,41 +48,14 @@ unsafe impl HasDisplayHandle for Win32ParentHandle {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn get_foreground_hwnd() -> Option<Win32ParentHandle> {
+/// Get the HWND of the current foreground window.
+///
+/// Returns `None` if no window is currently in the foreground.
+/// Uses `GetForegroundWindow()` from the Win32 API.
+pub fn get_foreground_hwnd() -> Option<Win32ParentHandle> {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
     // SAFETY: GetForegroundWindow returns the HWND of the current foreground
     // window, or null if none. We check for null via NonZeroIsize.
     let hwnd_val = unsafe { GetForegroundWindow() } as isize;
     std::num::NonZeroIsize::new(hwnd_val).map(Win32ParentHandle)
-}
-
-pub fn pick_file_with_parent(dialog: rfd::FileDialog) -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-            if let Some(parent) = get_foreground_hwnd() {
-            return dialog.set_parent(&parent).pick_file();
-        }
-    }
-    dialog.pick_file()
-}
-
-pub fn save_file_with_parent(dialog: rfd::FileDialog) -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-            if let Some(parent) = get_foreground_hwnd() {
-            return dialog.set_parent(&parent).save_file();
-        }
-    }
-    dialog.save_file()
-}
-
-pub fn pick_folder_with_parent(dialog: rfd::FileDialog) -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-            if let Some(parent) = get_foreground_hwnd() {
-            return dialog.set_parent(&parent).pick_folder();
-        }
-    }
-    dialog.pick_folder()
 }

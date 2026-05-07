@@ -916,44 +916,44 @@ impl DesignerToolbox {
         frame_btn.add_css_class("flat");
         frame_btn.set_halign(gtk4::Align::Center);
 
-/*        // Connect functionality
-        let state_clone = state.clone();
-        frame_btn.connect_clicked(move |_| {
-            let state = state_clone.borrow();
+        /*        // Connect functionality
+                let state_clone = state.clone();
+                frame_btn.connect_clicked(move |_| {
+                    let state = state_clone.borrow();
 
-            // Get bounds from selection or entire canvas
-            let (x1, y1, x2, y2) = if let Some(bounds) = state.canvas.selection_bounds() {
-                bounds
-            } else {
-                // If there is no selection, use all objects
-                let mut min_x = f64::INFINITY;
-                let mut min_y = f64::INFINITY;
-                let mut max_x = f64::NEG_INFINITY;
-                let mut max_y = f64::NEG_INFINITY;
+                    // Get bounds from selection or entire canvas
+                    let (x1, y1, x2, y2) = if let Some(bounds) = state.canvas.selection_bounds() {
+                        bounds
+                    } else {
+                        // If there is no selection, use all objects
+                        let mut min_x = f64::INFINITY;
+                        let mut min_y = f64::INFINITY;
+                        let mut max_x = f64::NEG_INFINITY;
+                        let mut max_y = f64::NEG_INFINITY;
 
-                for obj in state.canvas.shape_store.iter() {
-                    let (ox1, oy1, ox2, oy2) = obj.get_total_bounds();
-                    min_x = min_x.min(ox1);
-                    min_y = min_y.min(oy1);
-                    max_x = max_x.max(ox2);
-                    max_y = max_y.max(oy2);
-                }
+                        for obj in state.canvas.shape_store.iter() {
+                            let (ox1, oy1, ox2, oy2) = obj.get_total_bounds();
+                            min_x = min_x.min(ox1);
+                            min_y = min_y.min(oy1);
+                            max_x = max_x.max(ox2);
+                            max_y = max_y.max(oy2);
+                        }
 
-                if min_x.is_finite() {
-                    (min_x, min_y, max_x, max_y)
-                } else {
-                    // Empty canvas, use default values
-                    (0.0, 0.0, 100.0, 100.0)
-                }
-            };
+                        if min_x.is_finite() {
+                            (min_x, min_y, max_x, max_y)
+                        } else {
+                            // Empty canvas, use default values
+                            (0.0, 0.0, 100.0, 100.0)
+                        }
+                    };
 
-            // G-code frame Generate
-//            let gcode = generate_frame_gcode(x1, y1, x2, y2);
-//            println!("Frame G-code:\n{}", gcode);
+                    // G-code frame Generate
+        //            let gcode = generate_frame_gcode(x1, y1, x2, y2);
+        //            println!("Frame G-code:\n{}", gcode);
 
-            // Add code to send to the editor or the machine
-        });
-*/
+                    // Add code to send to the editor or the machine
+                });
+        */
         content_box.append(&stock_settings_btn);
 
         // Generate G-Code Button

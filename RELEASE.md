@@ -1,3 +1,8 @@
+## [0.54.0-alpha.2] - 2026-05-07
+
+### Changed
+- **Version bump**: Incremented patch version to alpha.2
+
 ## [0.54.0-alpha.1] - 2026-05-06
 
 ### Added

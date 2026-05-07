@@ -849,15 +849,13 @@ impl VectorEngraver {
                         draw_line_segment(&mut img, x0, y0, x1, y1, color);
                         current_point = to;
                     }
-                    lyon::path::Event::End { close, .. } => {
-                        if close {
-                            let x0 = (current_point.x * scale + offset_x) as i32;
-                            let y0 = (current_point.y * scale + offset_y) as i32;
-                            let x1 = (start_point.x * scale + offset_x) as i32;
-                            let y1 = (start_point.y * scale + offset_y) as i32;
+                    lyon::path::Event::End { close, .. } if close => {
+                        let x0 = (current_point.x * scale + offset_x) as i32;
+                        let y0 = (current_point.y * scale + offset_y) as i32;
+                        let x1 = (start_point.x * scale + offset_x) as i32;
+                        let y1 = (start_point.y * scale + offset_y) as i32;
 
-                            draw_line_segment(&mut img, x0, y0, x1, y1, color);
-                        }
+                        draw_line_segment(&mut img, x0, y0, x1, y1, color);
                     }
                     _ => {}
                 }
@@ -1054,16 +1052,14 @@ impl VectorEngraver {
                                     power_value
                                 ));
                             }
-                            lyon::path::Event::End { close, .. } => {
-                                if close {
-                                    gcode.push_str(&format!(
-                                        "G1 X{:.3} Y{:.3} F{:.0} M3 S{} ; Close hatch\n",
-                                        start_point.x * scale,
-                                        start_point.y * scale,
-                                        self.params.feed_rate,
-                                        power_value
-                                    ));
-                                }
+                            lyon::path::Event::End { close, .. } if close => {
+                                gcode.push_str(&format!(
+                                    "G1 X{:.3} Y{:.3} F{:.0} M3 S{} ; Close hatch\n",
+                                    start_point.x * scale,
+                                    start_point.y * scale,
+                                    self.params.feed_rate,
+                                    power_value
+                                ));
                             }
                             _ => {}
                         }
@@ -1092,21 +1088,18 @@ impl VectorEngraver {
                                 power_value
                             ));
                         }
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                gcode.push_str(&format!(
-                                    "G1 X{:.3} Y{:.3} F{:.0} M3 S{} ; Close path\n",
-                                    start_point.x * scale,
-                                    start_point.y * scale,
-                                    self.params.feed_rate,
-                                    power_value
-                                ));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
+                                                    lyon::path::Event::End { close, .. } if close => {
+                                                        gcode.push_str(&format!(
+                                                            "G1 X{:.3} Y{:.3} F{:.0} M3 S{} ; Close path\n",
+                                                            start_point.x * scale,
+                                                            start_point.y * scale,
+                                                            self.params.feed_rate,
+                                                            power_value
+                                                        ));
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
                 // Turn laser off after finishing this object (hatches + outline)
                 gcode.push_str("M5 ; Laser off\n");
                 if self.params.enable_dwell {
