@@ -19,6 +19,7 @@ use gcodekit5_visualizer::visualizer::GCodeCommand;
 use gcodekit5_visualizer::{Camera3D, Visualizer};
 // use gcodekit5_designer::stock_removal::visualization::generate_2d_contours;
 use crate::t;
+use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::osd_format::format_zoom_center_cursor;
 use crate::ui::gtk::shaders::StockRemovalShaderProgram;
 use crate::ui::gtk::status_bar::StatusBar;
@@ -26,6 +27,37 @@ use gcodekit5_settings::controller::SettingsController;
 use gcodekit5_settings::manager::SettingsManager;
 use gcodekit5_visualizer::visualizer::{generate_surface_mesh, StockSimulator3D};
 use glam::Vec3;
+
+/// A bucket entry for intensity-based line batching in the visualizer.
+///
+/// This struct replaces the complex tuple type `Vec<Vec<(f64, f64, f64, f64, f32)>>`
+/// with named fields for better readability and maintainability.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct IntensityBucket {
+    /// Start X coordinate
+    pub from_x: f64,
+    /// Start Y coordinate
+    pub from_y: f64,
+    /// End X coordinate
+    pub to_x: f64,
+    /// End Y coordinate
+    pub to_y: f64,
+    /// Laser intensity/power value
+    pub intensity: f32,
+}
+
+impl IntensityBucket {
+    /// Create a new intensity bucket entry
+    pub fn new(from_x: f64, from_y: f64, to_x: f64, to_y: f64, intensity: f32) -> Self {
+        Self {
+            from_x,
+            from_y,
+            to_x,
+            to_y,
+            intensity,
+        }
+    }
+}
 
 // Stock removal visualization cache
 #[derive(Clone)]
@@ -69,8 +101,9 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct RenderCache {
     pub(crate) cache_hash: u64,
-    // Cambiar el tipo para incluir la intensidad
-    pub(crate) intensity_buckets: Vec<Vec<(f64, f64, f64, f64, f32)>>,
+    /// Intensity buckets for batching lines by laser intensity/power.
+    /// Each bucket contains lines with similar intensity values for efficient rendering.
+    pub(crate) intensity_buckets: Vec<Vec<IntensityBucket>>,
     pub(crate) cutting_bounds: Option<(f32, f32, f32, f32, f32, f32)>,
     pub(crate) total_lines: usize,
     pub(crate) _rapid_lines: usize,
@@ -241,13 +274,13 @@ impl GcodeVisualizer {
         container.set_vexpand(true);
 
         // Sidebar for controls (compact list + toolbar)
-        let sidebar = Box::new(Orientation::Vertical, 8);
+        let sidebar = Box::new(Orientation::Vertical, spacing::MEDIUM);
         sidebar.set_width_request(200);
         sidebar.add_css_class("visualizer-sidebar");
-        sidebar.set_margin_start(12);
-        sidebar.set_margin_end(12);
-        sidebar.set_margin_top(12);
-        sidebar.set_margin_bottom(12);
+        sidebar.set_margin_start(spacing::PANEL);
+        sidebar.set_margin_end(spacing::PANEL);
+        sidebar.set_margin_top(spacing::PANEL);
+        sidebar.set_margin_bottom(spacing::PANEL);
 
         // Top toolbar row
         let view_controls = Box::new(Orientation::Horizontal, 6);

@@ -572,7 +572,7 @@ pub fn update_visible_lines(window: &MainWindow, editor_bridge: &EditorBridge) {
     let mut visible_lines = Vec::new();
     for i in start_line..end_line {
         if let Some(content) = editor_bridge.get_line_at(i) {
-            visible_lines.push(crate::TextLine {
+            visible_lines.push(crate::editor::TextLine {
                 line_number: (i + 1) as i32,
                 content: content.clone(),
                 is_dirty: false,

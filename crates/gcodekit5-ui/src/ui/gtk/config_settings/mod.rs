@@ -67,6 +67,7 @@ impl From<&Setting> for ConfigSettingRow {
     }
 }
 
+use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::device_info::DeviceInfoView;
 use crate::ui::gtk::help_browser;
@@ -97,21 +98,21 @@ pub struct ConfigSettingsView {
 impl ConfigSettingsView {
     pub fn new(settings_controller: Rc<SettingsController>) -> Rc<Self> {
         // Outer container splits into left (Device Info) and right (Config Settings)
-        let outer = Box::new(Orientation::Horizontal, 10);
+        let outer = Box::new(Orientation::Horizontal, spacing::MEDIUM);
         outer.set_hexpand(true);
         outer.set_vexpand(true);
-        outer.set_margin_top(10);
-        outer.set_margin_bottom(10);
-        outer.set_margin_start(10);
-        outer.set_margin_end(10);
+        outer.set_margin_top(spacing::MEDIUM);
+        outer.set_margin_bottom(spacing::MEDIUM);
+        outer.set_margin_start(spacing::MEDIUM);
+        outer.set_margin_end(spacing::MEDIUM);
 
         // Left panel - Device Info (embedded)
         let left_panel = Box::new(Orientation::Vertical, 0);
         left_panel.set_width_request(320);
-        left_panel.set_margin_top(10);
-        left_panel.set_margin_bottom(10);
-        left_panel.set_margin_start(10);
-        left_panel.set_margin_end(10);
+        left_panel.set_margin_top(spacing::MEDIUM);
+        left_panel.set_margin_bottom(spacing::MEDIUM);
+        left_panel.set_margin_start(spacing::MEDIUM);
+        left_panel.set_margin_end(spacing::MEDIUM);
 
         // Create DeviceInfoView and add to left panel
         let device_info_view = DeviceInfoView::new();
@@ -121,16 +122,16 @@ impl ConfigSettingsView {
         let sep = Separator::new(Orientation::Vertical);
 
         // Right panel - Config Settings content
-        let container = Box::new(Orientation::Vertical, 10);
+        let container = Box::new(Orientation::Vertical, spacing::MEDIUM);
         container.set_hexpand(true);
         container.set_vexpand(true);
-        container.set_margin_top(10);
-        container.set_margin_bottom(10);
-        container.set_margin_start(10);
-        container.set_margin_end(10);
+        container.set_margin_top(spacing::MEDIUM);
+        container.set_margin_bottom(spacing::MEDIUM);
+        container.set_margin_start(spacing::MEDIUM);
+        container.set_margin_end(spacing::MEDIUM);
 
         // Toolbar
-        let toolbar = Box::new(Orientation::Horizontal, 10);
+        let toolbar = Box::new(Orientation::Horizontal, spacing::MEDIUM);
 
         let reload_btn = Button::with_label("Retrieve");
         reload_btn.set_tooltip_text(Some("Retrieve Settings from Device ($$)"));
@@ -197,10 +198,10 @@ impl ConfigSettingsView {
         container.append(&filter_bar);
 
         // Settings List Header
-        let header = Box::new(Orientation::Horizontal, 5);
+        let header = Box::new(Orientation::Horizontal, spacing::SMALL);
         header.add_css_class("list-header");
-        header.set_margin_start(5);
-        header.set_margin_end(5);
+        header.set_margin_start(spacing::SMALL);
+        header.set_margin_end(spacing::SMALL);
 
         let id_lbl = Label::new(Some("ID"));
         id_lbl.set_width_request(50);
@@ -252,10 +253,10 @@ impl ConfigSettingsView {
         container.append(&scroll);
 
         // Status Bar (right panel)
-        let status_bar = Box::new(Orientation::Horizontal, 10);
+        let status_bar = Box::new(Orientation::Horizontal, spacing::MEDIUM);
         status_bar.add_css_class("status-bar");
-        status_bar.set_margin_start(5);
-        status_bar.set_margin_end(5);
+        status_bar.set_margin_start(spacing::SMALL);
+        status_bar.set_margin_end(spacing::SMALL);
 
         let status_label = Label::new(Some("Not connected"));
         status_label.set_xalign(0.0);

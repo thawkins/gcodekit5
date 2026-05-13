@@ -532,7 +532,7 @@ pub fn main() {
                 // 4. Jump to the editor tab to view the code
                 stack_frame.set_visible_child_name("editor");
             } else {
-                println!("Empty canvas, there is nothing to frame.");
+                tracing::info!("Frame requested but canvas is empty - nothing to frame");
             }
         });
 
@@ -853,22 +853,28 @@ pub fn main() {
         }
 
         // Set Keyboard Shortcuts (Accelerators)
-        app.set_accels_for_action("app.file_new", &["<Control>n"]);
-        app.set_accels_for_action("app.file_open", &["<Control>o"]);
-        app.set_accels_for_action("app.file_save", &["<Control>s"]);
-        app.set_accels_for_action("app.file_save_as", &["<Control><Shift>s"]);
-        app.set_accels_for_action("app.file_run", &["<Control>r", "F5"]); // F5 also used for reset often, but Control-R is standard
-        app.set_accels_for_action("app.quit", &["<Control>q"]);
+        // Using centralized constants from common::accelerators module
+        use crate::ui::gtk::common::accelerators::StandardShortcuts;
 
-        app.set_accels_for_action("app.edit_undo", &["<Control>z"]);
-        app.set_accels_for_action("app.edit_redo", &["<Control>y", "<Control><Shift>z"]);
-        app.set_accels_for_action("app.edit_cut", &["<Control>x"]);
-        app.set_accels_for_action("app.edit_copy", &["<Control>c"]);
-        app.set_accels_for_action("app.edit_paste", &["<Control>v"]);
+        app.set_accels_for_action("app.file_new", &[StandardShortcuts::FILE_NEW]);
+        app.set_accels_for_action("app.file_open", &[StandardShortcuts::FILE_OPEN]);
+        app.set_accels_for_action("app.file_save", &[StandardShortcuts::FILE_SAVE]);
+        app.set_accels_for_action("app.file_save_as", &[StandardShortcuts::FILE_SAVE_AS]);
+        app.set_accels_for_action("app.file_run", &[StandardShortcuts::FILE_RUN, "F5"]);
+        app.set_accels_for_action("app.quit", &[StandardShortcuts::FILE_QUIT]);
 
-        app.set_accels_for_action("app.help_docs", &["F1"]);
-        app.set_accels_for_action("app.machine_home", &["<Control>h"]);
-        // app.set_accels_for_action("app.machine_reset", &["F5"]); // Disabled as F5 is mapped to Run now if desired, or keep F5 for refresh/reset? keeping both might be conflict using alternate for Run
+        app.set_accels_for_action("app.edit_undo", &[StandardShortcuts::EDIT_UNDO]);
+        app.set_accels_for_action(
+            "app.edit_redo",
+            &[StandardShortcuts::EDIT_REDO, "<Control><Shift>z"],
+        );
+        app.set_accels_for_action("app.edit_cut", &[StandardShortcuts::EDIT_CUT]);
+        app.set_accels_for_action("app.edit_copy", &[StandardShortcuts::EDIT_COPY]);
+        app.set_accels_for_action("app.edit_paste", &[StandardShortcuts::EDIT_PASTE]);
+
+        app.set_accels_for_action("app.help_docs", &[StandardShortcuts::HELP_DOCS]);
+        app.set_accels_for_action("app.machine_home", &[StandardShortcuts::MACHINE_HOME]);
+        // app.set_accels_for_action("app.machine_reset", &["F5"]);
 
         // Set initial tab based on settings
         let startup_tab = settings_persistence.borrow().config().ui.startup_tab;
@@ -983,7 +989,8 @@ fn load_resources() {
 
 fn load_css() {
     let provider = CssProvider::new();
-    provider.load_from_string(include_str!("ui/gtk/style.css"));
+    // GTK 0.9 uses load_from_data instead of load_from_string
+    provider.load_from_data(include_str!("ui/gtk/style.css"));
 
     let Some(display) = gtk4::gdk::Display::default() else {
         tracing::error!("Could not connect to a display");

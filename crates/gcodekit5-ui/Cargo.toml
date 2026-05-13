@@ -40,6 +40,10 @@ glow = "0.14"
 libloading = "0.8"
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+raw-window-handle = "0.5"
+windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
+
 [build-dependencies]
 chrono = "0.4"
 glib-build-tools = "0.20.0"

@@ -129,14 +129,15 @@ impl RasterImage {
         image_data: Vec<u8>,
         original_path: Option<std::path::PathBuf>,
     ) -> Self {
-        let mut default = Self::default();
-        default.id = id;
-        default.center = center;
-        default.width_mm = width_mm;
-        default.height_mm = height_mm;
-        default.image_data = image_data;
-        default.original_path = original_path;
-        default
+        Self {
+            id,
+            center,
+            width_mm,
+            height_mm,
+            image_data,
+            original_path,
+            ..Default::default()
+        }
     }
 
     pub fn bounds(&self) -> (f64, f64, f64, f64) {

@@ -12,7 +12,6 @@ use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
 use gcodekit5_core::{shared_none, SharedOption};
 use gtk4::pango::EllipsizeMode;
 
-
 #[derive(Clone)]
 // Complex type due to GTK widget and machine state fields.
 #[allow(clippy::type_complexity)]

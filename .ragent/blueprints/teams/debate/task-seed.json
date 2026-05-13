@@ -1,0 +1,28 @@
+[
+  {
+    "tool": "team_task_create",
+    "input": {
+      "team_name": "debate",
+      "title": "Initial analysis",
+      "description": "Analyse the target thoroughly and produce initial findings with supporting evidence. Share findings with critic and synthesizer via peer messages."
+    }
+  },
+  {
+    "tool": "team_task_create",
+    "input": {
+      "team_name": "debate",
+      "title": "Challenge findings",
+      "description": "Review the advocate's initial analysis. Identify weaknesses, logical gaps, alternative explanations, and missing evidence. Send challenges to the advocate and final assessment to the synthesizer.",
+      "depends_on": ["Initial analysis"]
+    }
+  },
+  {
+    "tool": "team_task_create",
+    "input": {
+      "team_name": "debate",
+      "title": "Produce consensus report",
+      "description": "Synthesise the advocate's findings and the critic's challenges into a balanced final report with confidence levels, resolved/unresolved points, and open questions.",
+      "depends_on": ["Challenge findings"]
+    }
+  }
+]

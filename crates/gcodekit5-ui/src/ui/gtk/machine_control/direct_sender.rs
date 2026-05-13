@@ -134,7 +134,8 @@ impl DirectSender {
                     // We use a non-blocking or fast read
                     c.receive()
                 } {
-                    if !data.is_empty() { // We only process data if there is actually data.
+                    if !data.is_empty() {
+                        // We only process data if there is actually data.
                         let resp = String::from_utf8_lossy(&data);
 
                         if resp.contains("Grbl") || resp.contains("ALARM") {

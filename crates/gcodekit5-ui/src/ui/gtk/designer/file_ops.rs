@@ -78,7 +78,9 @@ impl DesignerView {
                                         max_id = id;
                                     }
                                     // In open_file(), after to_drawing_object:
-                                    if let Ok(mut obj) = DesignFile::to_drawing_object(&shape_data, id as i32) {
+                                    if let Ok(mut obj) =
+                                        DesignFile::to_drawing_object(&shape_data, id as i32)
+                                    {
                                         // Ensure valid values
                                         if obj.step_down <= 0.0 {
                                             obj.step_down = 0.1; // default value

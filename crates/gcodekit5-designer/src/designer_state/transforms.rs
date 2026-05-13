@@ -28,14 +28,7 @@ impl DesignerState {
         self.push_command(cmd);
     }
 
-    /// Resizes the selected shape via handle drag.
-    /// handle: 0=TL, 1=TR, 2=BL, 3=BR, 4=Center (move)
-
-    /// Resizes the selected shape via handle drag.
-    /// handle: 0=TL, 1=TR, 2=BL, 3=BR, 4=Center (move)
-
     /// Snaps the selected shape to whole millimeters.
-
     pub fn snap_selected_to_mm(&mut self) {
         let updates = self.canvas.calculate_snapped_shapes();
         if updates.is_empty() {

@@ -206,7 +206,12 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
 
     for cmd in vis.commands() {
         match cmd {
-            GCodeCommand::Move { from, to, rapid, intensity } => {
+            GCodeCommand::Move {
+                from,
+                to,
+                rapid,
+                intensity,
+            } => {
                 let vertices = if *rapid {
                     &mut rapid_vertices
                 } else {
@@ -237,7 +242,13 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                 vertices.push(color.2);
                 vertices.push(color.3);
             }
-            GCodeCommand::Arc { from, to, center, clockwise, intensity } => {
+            GCodeCommand::Arc {
+                from,
+                to,
+                center,
+                clockwise,
+                intensity,
+            } => {
                 let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
                 let color = (r, g, b, 1.0);
 
@@ -337,7 +348,6 @@ pub fn generate_vertex_data_uniform(visualizer: &Visualizer) -> (Vec<f32>, Vec<f
 
     (rapid_vertices, cut_vertices)
 }
-
 
 /*
 pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {

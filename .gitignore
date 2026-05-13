@@ -1,6 +1,8 @@
 /target
 /target/temp
 assets/screenshots/*
+.ragent/codeindex/*
+.ragent/ragent.json
 
 # Node.js dependencies
 node_modules/

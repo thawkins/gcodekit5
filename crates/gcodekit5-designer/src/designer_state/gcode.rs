@@ -36,7 +36,7 @@ impl DesignerState {
                 MachineMode::Laser2D => {
                     gcode_gen = gcode_gen
                         .with_laser_2d()
-                        .with_curve_tolerance(0.05)   // Adjust as needed (0.03 ~ 0.15)
+                        .with_curve_tolerance(0.05) // Adjust as needed (0.03 ~ 0.15)
                         .with_min_point_distance(0.15);
                 }
                 MachineMode::Cnc3D => {}
@@ -421,7 +421,7 @@ impl DesignerState {
                 gcode.push_str(&format!("; Strategy: {:?}\n", shape.pocket_strategy));
             } else {
                 if gcode_gen.is_laser_2d {
-                } else{
+                } else {
                     gcode.push_str(&format!(
                         "; Cut depth: {:.3}mm, Step down: {:.3}mm\n",
                         shape.pocket_depth, shape.step_down
@@ -471,7 +471,7 @@ impl DesignerState {
                         // Optimizes curves and joins collinear segments
                         let optimized = gcode_gen.optimize_toolpath_for_laser(toolpath);
                         let (body_gcode, final_z) =
-                        gcode_gen.generate_body_continuing(&optimized, line_number, current_z);
+                            gcode_gen.generate_body_continuing(&optimized, line_number, current_z);
                         gcode.push_str(&body_gcode);
                         line_number += (optimized.segments.len() as u32) * 10;
                         current_z = final_z;
@@ -480,7 +480,7 @@ impl DesignerState {
                     // CNC mode without optimization
                     for toolpath in toolpaths {
                         let (body_gcode, final_z) =
-                        gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
+                            gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
                         gcode.push_str(&body_gcode);
                         line_number += (toolpath.segments.len() as u32) * 10;
                         current_z = final_z;
