@@ -255,7 +255,7 @@ impl RasterImage {
             },
         ]
     }
-}
+} // impl RasterImage
 
 pub trait DesignerShape {
     fn render(&self) -> Path;
@@ -498,6 +498,7 @@ impl Shape {
                 Shape::Sprocket(s) => s.rotation,
                 Shape::RasterImage(s) => s.rotation,
             },
+	    closed: false,
             original_path: None,
             lock_aspect_ratio: true,
         }

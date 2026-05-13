@@ -35,11 +35,9 @@ fn intensity_to_color(intensity: f32, max_intensity: f32) -> (f32, f32, f32) {
     if max_intensity <= 0.0 {
         return (0.5, 0.5, 0.5);
     }
-
     // Normalize intensity but inverted: 0 = white, 1 = black
-    let gray = 1.0 - (intensity / max_intensity).clamp(0.0, 1.0);
-
-    (gray, gray, gray)
+    let engraving_color = 1.0 - (intensity / max_intensity).clamp(0.0, 0.5);
+    (engraving_color/ 2.0, engraving_color, engraving_color/ 2.0)
 }
 
 /// New Gcode

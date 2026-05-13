@@ -191,7 +191,7 @@ impl StatusBar {
             progress_bar,
             cancel_btn,
             cancel_action,
-            device_info_label
+            device_info_label,
         }
     }
 

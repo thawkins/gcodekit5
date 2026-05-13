@@ -260,6 +260,29 @@ impl PropertiesPanel {
         (frame, sides_entry)
     }
 
+    pub(crate) fn build_path_section() -> (Frame, CheckButton) {
+        let frame = Self::create_section(&t!("Path"));
+        let grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let closed_label = Label::new(Some(&t!("Closed:")));
+        closed_label.set_halign(gtk4::Align::Start);
+        let path_closed_check = CheckButton::new();
+        path_closed_check.set_sensitive(true);
+
+        grid.attach(&closed_label, 0, 0, 1, 1);
+        grid.attach(&path_closed_check, 1, 0, 1, 1);
+
+        frame.set_child(Some(&grid));
+        (frame, path_closed_check)
+    }
+
     pub(crate) fn build_gear_section() -> (Frame, Entry, Entry, Entry) {
         let frame = Self::create_section(&t!("Gear"));
         let grid = gtk4::Grid::builder()

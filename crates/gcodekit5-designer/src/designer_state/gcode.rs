@@ -1,4 +1,4 @@
-//! G-code generation for designer state.
+//! G-code generation for designer state
 
 use super::DesignerState;
 use crate::canvas::DrawingObject;
@@ -45,13 +45,22 @@ impl DesignerState {
         // Store shape-to-toolpath mapping
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
+        // Obtener el ID del objeto seleccionado (si hay)
+        let selected_id = self.canvas.selection_manager.selected_id();
+
         // Collect shape IDs in reverse draw order (front to back) for G-code generation
-        let shape_ids: Vec<u64> = self.canvas.shape_store.draw_order_iter().rev().collect();
+        let shape_ids: Vec<u64> = self.canvas.shape_store.draw_order_iter().collect();
 
         for shape_id in shape_ids {
             let Some(shape_obj) = self.canvas.shape_store.get(shape_id) else {
                 continue;
             };
+
+            if let Some(sel_id) = selected_id {
+                if shape_obj.id != sel_id {
+                    continue;  // Saltar este shape, no está seleccionado
+                }
+            }
 
             self.toolpath_generator
                 .set_pocket_strategy(shape_obj.pocket_strategy);
@@ -308,6 +317,87 @@ impl DesignerState {
 
         // ------ Loop Shape --------
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
+
+            if let crate::model::Shape::RasterImage(raster) = &shape.shape {
+                // Generar G-code para raster
+                use crate::engraving::ImageEngraver;
+
+                if raster.image_data.is_empty() && raster.original_path.is_none() {
+                    eprintln!("Warning: RasterImage ID={} has no image data", shape.id);
+                    continue;
+                }
+
+                // Calcular esquina inferior izquierda
+                let start_x = raster.center.x - raster.width_mm / 2.0;
+                let start_y = raster.center.y - raster.height_mm / 2.0;
+
+                // Añadir comentarios
+                gcode.push_str(&format!("\n; Raster Image ID={}\n", shape.id));
+                gcode.push_str(&format!("; Name: {}\n", shape.name));
+                gcode.push_str(&format!("; Position: ({:.3}, {:.3})\n", start_x, start_y));
+                gcode.push_str(&format!("; Size: {:.2} x {:.2} mm\n", raster.width_mm, raster.height_mm));
+
+                // Crear parámetros y generar G-code
+                let params = crate::engraving::EngravingParams {
+                    width_mm: raster.width_mm as f32,
+                    height_mm: Some(raster.height_mm as f32),
+                    feed_rate: raster.feed_rate as f32,
+                    travel_rate: raster.travel_rate as f32,
+                    min_power: raster.min_power as f32,
+                    max_power: raster.max_power as f32,
+                    ppi: raster.ppi as f32,
+                    scan_direction: if raster.scan_direction == "vertical" {
+                        crate::engraving::ScanDirection::Vertical
+                    } else {
+                        crate::engraving::ScanDirection::Horizontal
+                    },
+                    bidirectional: raster.bidirectional,
+                    invert: raster.invert,
+                    mirror_x: false,
+                    mirror_y: false,
+                    rotation: crate::engraving::RotationAngle::Degrees0,
+                    halftone: crate::engraving::HalftoneMethod::None,
+                    halftone_threshold: 128,
+                    offset_x: start_x as f32,
+                    offset_y: start_y as f32,
+                    power_scale: 1000.0,
+                    line_spacing: 1.0,
+                };
+
+                let engraver_result = if let Some(path) = &raster.original_path {
+                    ImageEngraver::from_file(path, params)
+                } else if !raster.image_data.is_empty() {
+                    match image::load_from_memory(&raster.image_data) {
+                        Ok(img) => ImageEngraver::from_image(img, params),
+                        Err(e) => {
+                            eprintln!("Error loading image from memory: {}", e);
+                            continue;
+                        }
+                    }
+                } else {
+                    continue;
+                };
+
+                match engraver_result {
+                    Ok(engraver) => {
+                        match engraver.generate_gcode() {
+                            Ok(image_gcode) => {
+                                gcode.push_str(&image_gcode);
+                                gcode.push('\n');
+                            }
+                            Err(e) => {
+                                eprintln!("Error generating G-code for image ID={}: {}", shape.id, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error creating ImageEngraver for image ID={}: {}", shape.id, e);
+                    }
+                }
+
+                continue; // Saltar el procesamiento normal para este shape
+            }
+
             // Add shape metadata as comments
             gcode.push_str(&format!(
                 "\n; Shape ID={}, Type={:?}\n",

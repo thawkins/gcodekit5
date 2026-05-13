@@ -1,3 +1,5 @@
+//! direct_sender.rs // Improved file for raster engraving
+
 use crate::t;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
 use gcodekit5_core::ThreadSafe;
@@ -29,7 +31,7 @@ impl DirectSender {
         *is_paused.lock() = paused_flag.load(Ordering::SeqCst);
 
         let (tx, rx) = mpsc::channel();
-
+//        println!("DEBUG: DirectSender");
         (
             Self {
                 communicator,
@@ -151,14 +153,6 @@ impl DirectSender {
                     let _ = progress_tx.send(format!("* {}%", percent));
                 }
             }
-
-            if !stop_flag.load(Ordering::SeqCst) {
-                let _ = progress_tx.send("* 100%".to_string());
-                let _ = progress_tx.send(t!("Work completed.").to_string());
-            } else {
-                let _ = progress_tx.send(t!("Work stopped.").to_string());
-            }
-
             streaming_flag.store(false, Ordering::SeqCst);
         });
     }
@@ -186,6 +180,90 @@ impl DirectSender {
             let mut comm = comm.lock();
             let _ = comm.send_command("$X");
         });
+    }
+
+    /// Calcula el tiempo estimado de ejecución en segundos analizando el G-code
+    pub fn estimate_execution_time(gcode: &str) -> f64 {
+        let mut total_time = 0.0;
+        let mut current_feed = 0.0; // mm/min
+        let mut last_x = 0.0;
+        let mut last_y = 0.0;
+        let mut last_z = 0.0;
+        let mut is_absolute = true; // G90 por defecto
+
+        for line in gcode.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(';') {
+                continue;
+            }
+
+            // Detectar modo de posicionamiento
+            if line.contains("G90") {
+                is_absolute = true;
+            } else if line.contains("G91") {
+                is_absolute = false;
+            }
+
+            // Detectar velocidad de avance
+            if let Some(f_pos) = line.find('F') {
+                let f_end = line[f_pos+1..].find(|c: char| !c.is_ascii_digit() && c != '.')
+                    .map_or(line.len(), |idx| f_pos + 1 + idx);
+                if let Ok(feed) = line[f_pos+1..f_end].parse::<f64>() {
+                    current_feed = feed;
+                }
+            }
+
+            // Detectar movimiento lineal G0, G1
+            let is_move = line.contains("G0") || line.contains("G1") || line.contains("G00") || line.contains("G01");
+
+            if is_move {
+                let mut x = last_x;
+                let mut y = last_y;
+                let mut z = last_z;
+
+                // Extraer coordenadas
+                if let Some(x_pos) = line.find('X') {
+                    let x_end = line[x_pos+1..].find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+                        .map_or(line.len(), |idx| x_pos + 1 + idx);
+                    if let Ok(val) = line[x_pos+1..x_end].parse::<f64>() {
+                        x = if is_absolute { val } else { last_x + val };
+                    }
+                }
+
+                if let Some(y_pos) = line.find('Y') {
+                    let y_end = line[y_pos+1..].find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+                        .map_or(line.len(), |idx| y_pos + 1 + idx);
+                    if let Ok(val) = line[y_pos+1..y_end].parse::<f64>() {
+                        y = if is_absolute { val } else { last_y + val };
+                    }
+                }
+
+                if let Some(z_pos) = line.find('Z') {
+                    let z_end = line[z_pos+1..].find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+                        .map_or(line.len(), |idx| z_pos + 1 + idx);
+                    if let Ok(val) = line[z_pos+1..z_end].parse::<f64>() {
+                        z = if is_absolute { val } else { last_z + val };
+                    }
+                }
+
+                // Calcular distancia (convertir a f64 explícitamente)
+                let dx = x - last_x;
+                let dy = y - last_y;
+                let dz = z - last_z;
+                let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+
+                if distance > 0.0 && current_feed > 0.0 {
+                    // tiempo = distancia / velocidad (convertir mm/min a mm/seg)
+                    total_time += distance / (current_feed / 60.0);
+                }
+
+                last_x = x;
+                last_y = y;
+                last_z = z;
+            }
+        }
+
+        total_time
     }
 }
 

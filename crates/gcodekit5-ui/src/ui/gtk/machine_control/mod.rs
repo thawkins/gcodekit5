@@ -1528,88 +1528,98 @@ impl MachineControlView {
                         .secondary_text(t!("Please load or type G-Code into the editor first."))
                         .build();
 
-                    // Set transient parent if possible
-                    if let Some(root) = widget_for_dialog.root() {
-                        if let Ok(win) = root.downcast::<gtk4::Window>() {
-                            dialog.set_transient_for(Some(&win));
-                            dialog.set_modal(true);
+                        // Set transient parent if possible
+                        if let Some(root) = widget_for_dialog.root() {
+                            if let Ok(win) = root.downcast::<gtk4::Window>() {
+                                dialog.set_transient_for(Some(&win));
+                                dialog.set_modal(true);
+                            }
                         }
-                    }
 
-                    dialog.connect_response(|d, _| d.close());
-                    dialog.show();
-                    return;
+                        dialog.connect_response(|d, _| d.close());
+                        dialog.show();
+                        return;
                 }
 
-                // Detect Image in Designer
-                let first_line = content.lines().next().unwrap_or("");
-                let is_image = first_line.trim() == "; GcodeKit5 Image Engraving";
+                // Usar DirectSender para TODO (sin condición is_image)
+                let (sender, receiver) = DirectSender::new(
+                    communicator_clone.clone(),
+                    view_clone.is_streaming.clone(),
+                    view_clone.is_paused.clone(),
+                    view_clone.waiting_for_ack.clone(),
+                );
 
-                if is_image {
-                    // Disable pause
-                    view_clone.pause_btn.set_sensitive(false);
-                    view_clone.resume_btn.set_sensitive(false);
+                // Guardar el sender en direct_sender para pausa/stop
+                *view_clone.direct_sender.lock() = Some(sender.clone());
 
-                    // Ensure stop visibility
-                    view_clone.stop_btn.set_sensitive(true);
+                let status_bar = view_clone.status_bar.clone();
+                let job_start_time = view_clone.job_start_time.clone();
+                let view_timeout = view_clone.clone();
+                let is_streaming_timeout = view_clone.is_streaming.clone();
 
-                    let (sender, receiver) = DirectSender::new(
-                        communicator_clone.clone(),
-                        view_clone.is_streaming.clone(),
-                        view_clone.is_paused.clone(),
-                        view_clone.waiting_for_ack.clone(),
-                    );
+                let receiver = std::sync::Mutex::new(receiver);
+                let mut last_reported_percent = 0u32;
 
-                    let status_bar = view_clone.status_bar.clone();
-                    let job_start_time = view_clone.job_start_time.clone();
+                // Timeout para leer progreso
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    let receiver_guard = receiver.lock().unwrap();
+                    while let Ok(message) = receiver_guard.try_recv() {
+                        // println!("🔍 Mensaje recibido: '{}'", message);
 
-                    // Use timeout_add_local instead of spawn_future_local
-                    // Check messages every 100ms without blocking
-                    let receiver = std::sync::Mutex::new(receiver);
-
-                    let view_timeout = view_clone.clone();
-                    let is_streaming_timeout = view_clone.is_streaming.clone();
-
-                    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                        // Try to receive all pending messages
-                        let receiver_guard = receiver.lock().unwrap();
-                        while let Ok(message) = receiver_guard.try_recv() {
-
-                            if message.starts_with("*") {
-                                if let Some(sb) = status_bar.as_ref() {
-                                    if let Ok(percent) = message.trim_start_matches('*').trim().trim_end_matches('%').parse::<f64>() {
-                                        // We call `update_progress` with only the percentage and `job_start_time`
-                                        // The parameters `sent_lines`, `total_lines`, and `remaining_lines` are passed as `None`
-                                        MachineControlView::update_progress(
-                                            &status_bar,
-                                            &job_start_time,
-                                            percent,
-                                            None,
-                                            None,
-                                            None,
-                                        );
-                                        if percent >= 100.0 {
-                                            // At the end, we clear the start time
-                                            *job_start_time.lock() = None;
-                                            sb.set_progress(0.0, "", "");
-                                            view_timeout.pause_btn.set_sensitive(true);
-                                            view_timeout.resume_btn.set_sensitive(true);
-                                            view_timeout.stop_btn.set_sensitive(false);
-                                            *is_streaming_timeout.lock() = false;
-                                        }
-                                                                            }
+                        // Mostrar en consola del programa los porcentajes cada 10%
+                        if message.starts_with('*') {
+                            if let Some(percent_str) = message.split('*').nth(1) {
+                                let percent = percent_str.trim().trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
+                                let percent_int = percent as u32;
+                                if percent_int % 10 == 0 && percent_int != last_reported_percent {
+                                    last_reported_percent = percent_int;
+                                    if let Some(console) = view_timeout.device_console.as_ref() {
+                                        console.append_log(&format!("📊 Sent: {}%\n", percent_int));
+                                    }
                                 }
                             }
                         }
 
-                        glib::ControlFlow::Continue
-                    });
+                        // Mostrar barra de progreso
+                        if message.starts_with('*') {
+                            if let Some(sb) = status_bar.as_ref() {
+                                let percent_str = message.trim_start_matches('*').trim().trim_end_matches('%');
+                                if let Ok(percent) = percent_str.parse::<f64>() {
+                                    MachineControlView::update_progress(
+                                        &status_bar,
+                                        &job_start_time,
+                                        percent,
+                                        None,
+                                        None,
+                                        None,
+                                    );
+                                    if percent >= 100.0 {
+                                        sb.set_progress(0.0, "", "");
+                                        view_timeout.pause_btn.set_sensitive(true);
+                                        view_timeout.resume_btn.set_sensitive(true);
+                                        view_timeout.stop_btn.set_sensitive(false);
+                                        *is_streaming_timeout.lock() = false;
+                                    }
+                                }
+                            }
+                        }
 
-                    *view_clone.job_start_time.lock() = Some(std::time::Instant::now());
-                    sender.send_gcode(&content);
-                } else {
-                    view_clone.start_job(&content);
-                }
+                        if message.contains("Completed") || message.contains("completed") {
+                            if let Some(sb) = status_bar.as_ref() {
+                                sb.set_progress(0.0, "", "");
+                            }
+                            view_timeout.pause_btn.set_sensitive(true);
+                            view_timeout.resume_btn.set_sensitive(true);
+                            view_timeout.stop_btn.set_sensitive(false);
+                            *is_streaming_timeout.lock() = false;
+                        }
+
+                    }
+                    glib::ControlFlow::Continue
+                });
+
+                *view_clone.job_start_time.lock() = Some(std::time::Instant::now());
+                sender.send_gcode(&content);
             });
         }
 
@@ -2108,6 +2118,19 @@ impl MachineControlView {
                                                 let line = response_buffer[..idx].trim().to_string();
                                                 response_buffer.drain(..idx + 1);
 
+                                                // --- Tiempo total de trabajo
+                                                if line.contains("Program End") {
+                                                    let elapsed = job_start_time_poll.lock().map_or(0.0, |start| start.elapsed().as_secs_f64());
+                                                    let mins = (elapsed / 60.0).floor() as u32;
+                                                    let secs = (elapsed % 60.0) as u32;
+
+                                                    if let Some(c) = device_console_poll.as_ref() {
+                                                        c.append_log(&format!("✅ Work completed on: {}:{:02}\n", mins, secs));
+                                                    }
+                                                    *job_start_time_poll.lock() = None;
+                                                }
+                                                // ---
+
                                                 if line.is_empty() { continue; }
 
                                                 // Detect firmware version info
@@ -2263,11 +2286,18 @@ impl MachineControlView {
                                                         if state == "Idle" && !*is_streaming_poll.lock() {
                                                             let mut start_time = job_start_time_poll.lock();
                                                             if start_time.is_some() {
+
+                                                                let elapsed = start_time.map_or(0.0, |start| start.elapsed().as_secs_f64());
+                                                                let mins = (elapsed / 60.0).floor() as u32;
+                                                                let secs = (elapsed % 60.0) as u32;
+
                                                                 *start_time = None;
                                                                 if let Some(sb) = status_bar_poll.as_ref() {
                                                                     sb.set_progress(0.0, "", "");
                                                                 }
                                                                 if let Some(c) = device_console_poll.as_ref() {
+
+                                                                    c.append_log(&format!("✅ Work completed in: {}:{:02}\n", mins, secs));
                                                                     c.append_log(&format!("{}\n", t!("Job Finished.")));
                                                                 }
                                                             }

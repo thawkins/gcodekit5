@@ -1,4 +1,4 @@
-//! Serialization and deserialization for designer files.
+//! Serialization and deserialization for designer files
 //!
 //! Implements save/load functionality for .gck4 (GCodeKit4) design files
 //! using JSON format with complete design state preservation.
@@ -304,12 +304,20 @@ impl DesignFile {
         let cx = (x1 + x2) / 2.0;
         let cy = (y1 + y2) / 2.0;
 
-        // 2. We obtain the actual width and height of the object
+        // 2. We obtain the actual width and height of the object using shape-specific parameters
         let (real_width, real_height) = match &obj.shape {
             Shape::Rectangle(r) => (r.width, r.height),
+            Shape::Circle(c) => (c.radius * 2.0, c.radius * 2.0),
             Shape::Ellipse(e) => (e.rx * 2.0, e.ry * 2.0),
+            Shape::Triangle(t) => (t.width, t.height),
+            Shape::Polygon(p) => (p.radius * 2.0, p.radius * 2.0),
             Shape::RasterImage(r) => (r.width_mm, r.height_mm),
             _ => (x2 - x1, y2 - y1),
+        };
+
+        let shape_points = match &obj.shape {
+            Shape::Line(line) => vec![(line.start.x, line.start.y), (line.end.x, line.end.y)],
+            _ => Vec::new(),
         };
 
         let shape_type = match obj.shape.shape_type() {
@@ -379,7 +387,10 @@ impl DesignFile {
             _ => {}
         }
         let original_path = if let Shape::RasterImage(raster) = &obj.shape {
-            raster.original_path.clone().map(|p| p.display().to_string())
+            raster
+                .original_path
+                .clone()
+                .map(|p| p.display().to_string())
         } else {
             None
         };
@@ -392,7 +403,7 @@ impl DesignFile {
             y: cy,
             width: real_width,
             height: real_height,
-            points: Vec::new(),
+            points: shape_points,
             selected: obj.selected,
             use_custom_values: obj.use_custom_values,
             operation_type: match obj.operation_type {
@@ -437,7 +448,9 @@ impl DesignFile {
     pub fn to_drawing_object(data: &ShapeData, next_id: i32) -> Result<DrawingObject> {
         let shape: Shape = match data.shape_type.as_str() {
             "rectangle" => {
-                let mut rect = Rectangle::new(data.x, data.y, data.width, data.height);
+                let x = data.x - data.width / 2.0;
+                let y = data.y - data.height / 2.0;
+                let mut rect = Rectangle::new(x, y, data.width, data.height);
                 rect.corner_radius = data.corner_radius;
                 rect.is_slot = data.is_slot;
                 Shape::Rectangle(rect)
@@ -448,9 +461,19 @@ impl DesignFile {
                 Shape::Circle(Circle::new(center, radius))
             }
             "line" => {
-                let start = Point::new(data.x, data.y);
-                let end = Point::new(data.x + data.width, data.y + data.height);
-                Shape::Line(Line::new(start, end))
+                let mut line = if data.points.len() >= 2 {
+                    let start = Point::new(data.points[0].0, data.points[0].1);
+                    let end = Point::new(data.points[1].0, data.points[1].1);
+                    Line::new(start, end)
+                } else {
+                    let half_w = data.width / 2.0;
+                    let half_h = data.height / 2.0;
+                    let start = Point::new(data.x - half_w, data.y - half_h);
+                    let end = Point::new(data.x + half_w, data.y + half_h);
+                    Line::new(start, end)
+                };
+                line.rotation = data.rotation;
+                Shape::Line(line)
             }
             "ellipse" => {
                 let center = Point::new(data.x, data.y);
@@ -462,7 +485,7 @@ impl DesignFile {
             }
             "polygon" => {
                 let center = Point::new(data.x, data.y);
-                let radius = data.width.min(data.height) / 2.0;
+                let radius = data.width.max(data.height) / 2.0;
                 Shape::Polygon(Polygon::new(center, radius, data.sides))
             }
             "polyline" => {
@@ -479,7 +502,8 @@ impl DesignFile {
                 Shape::Path(PathShape::from_points(&vertices, true))
             }
             "text" => {
-                let mut s = TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                let mut s =
+                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }
@@ -520,7 +544,7 @@ impl DesignFile {
                         match crate::image_importer::ImageImporter::load_image_data_with_size(
                             path,
                             data.width,
-                            data.height
+                            data.height,
                         ) {
                             Ok((data, w, h)) => (data, w, h),
                             Err(e) => {

@@ -286,7 +286,21 @@ impl ImageEngraver {
         let corrected = normalized.powf(gamma);
         let power =
             self.params.min_power + (corrected * (self.params.max_power - self.params.min_power));
-        ((power * self.params.power_scale / 100.0) as u32).clamp(0, 1000)
+        let raw_power = ((power * self.params.power_scale / 100.0) as u32).clamp(0, 1000);
+        self.quantize_power(raw_power)
+    }
+
+    fn quantize_power(&self, power: u32) -> u32 {
+        if self.params.halftone != HalftoneMethod::None {
+            return power;
+        }
+
+        // Reduce command churn by quantizing grayscale power levels.
+        // This keeps tonal shading while avoiding one-pixel power changes.
+        const LEVELS: u32 = 64;
+        let step = (1000 + LEVELS / 2) / LEVELS; // ~16
+        let quantized = ((power + step / 2) / step) * step;
+        quantized.min(1000)
     }
 
     /// Generate G-code

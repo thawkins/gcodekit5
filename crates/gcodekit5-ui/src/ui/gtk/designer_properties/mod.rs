@@ -76,6 +76,10 @@ pub struct PropertiesPanel {
     pub(crate) polygon_frame: Frame,
     pub(crate) sides_entry: Entry,
 
+    // Path widgets
+    pub(crate) path_frame: Frame,
+    pub(crate) path_closed_check: CheckButton,
+
     // Gear widgets
     pub(crate) gear_frame: Frame,
     pub(crate) gear_module_entry: Entry,
@@ -213,6 +217,9 @@ impl PropertiesPanel {
         let (polygon_frame, sides_entry) = Self::build_polygon_section();
         content.append(&polygon_frame);
 
+        let (path_frame, path_closed_check) = Self::build_path_section();
+        content.append(&path_frame);
+
         let (gear_frame, gear_module_entry, gear_teeth_entry, gear_pressure_angle_entry) =
             Self::build_gear_section();
         content.append(&gear_frame);
@@ -305,6 +312,8 @@ impl PropertiesPanel {
             font_italic_check,
             font_size_entry,
             sides_entry,
+            path_frame,
+            path_closed_check,
             gear_module_entry,
             gear_teeth_entry,
             gear_pressure_angle_entry,
@@ -482,6 +491,12 @@ impl PropertiesPanel {
 
         handlers::geometry::setup_sides_handler(
             &self.sides_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+        handlers::geometry::setup_path_closed_handler(
+            &self.path_closed_check,
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),

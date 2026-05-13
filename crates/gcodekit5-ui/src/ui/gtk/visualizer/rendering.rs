@@ -33,11 +33,11 @@ impl GcodeVisualizer {
         simulation_visualization: &Option<StockRemovalVisualization>,
         _stock_material: &Option<StockMaterial>,
         current_pos: (f32, f32, f32),
-                       device_manager: &Option<Arc<DeviceManager>>,
-                       grid_spacing_mm: f64,
-                       grid_major_line_width: f64,
-                       grid_minor_line_width: f64,
-                       style_context: &gtk4::StyleContext,
+        device_manager: &Option<Arc<DeviceManager>>,
+        grid_spacing_mm: f64,
+        grid_major_line_width: f64,
+        grid_minor_line_width: f64,
+        style_context: &gtk4::StyleContext,
     ) {
         // Phase 4: Calculate cache hash from visualizer state
         use std::collections::hash_map::DefaultHasher;
@@ -49,14 +49,14 @@ impl GcodeVisualizer {
         let new_hash = hasher.finish();
         let fg_color = style_context.color();
         let accent_color = style_context
-        .lookup_color("accent_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
+            .lookup_color("accent_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
         let success_color = style_context
-        .lookup_color("success_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
+            .lookup_color("success_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
         let warning_color = style_context
-        .lookup_color("warning_color")
-        .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 1.0, 1.0));
+            .lookup_color("warning_color")
+            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 1.0, 1.0));
 
         // Clear background
         if show_intensity {
@@ -69,9 +69,9 @@ impl GcodeVisualizer {
         // Determine Max S Value
         let max_s_value = if let Some(manager) = device_manager {
             manager
-            .get_active_profile()
-            .map(|p| p.max_s_value)
-            .unwrap_or(1000.0)
+                .get_active_profile()
+                .map(|p| p.max_s_value)
+                .unwrap_or(1000.0)
         } else {
             1000.0
         };
@@ -91,9 +91,9 @@ impl GcodeVisualizer {
                 cr,
                 vis,
                 grid_spacing_mm.max(0.1),
-                            &fg_color,
-                            grid_major_line_width,
-                            grid_minor_line_width,
+                &fg_color,
+                grid_major_line_width,
+                grid_minor_line_width,
             );
         }
 
@@ -110,9 +110,9 @@ impl GcodeVisualizer {
 
                     cr.set_source_rgba(
                         accent_color.red() as f64,
-                                       accent_color.green() as f64,
-                                       accent_color.blue() as f64,
-                                       1.0,
+                        accent_color.green() as f64,
+                        accent_color.blue() as f64,
+                        1.0,
                     );
                     cr.set_line_width(3.0 / vis.zoom_scale as f64);
 
@@ -142,7 +142,7 @@ impl GcodeVisualizer {
         if show_stock_removal {
             if let Some(cached_viz) = simulation_visualization {
                 static DRAW_COUNTER: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
+                    std::sync::atomic::AtomicU32::new(0);
                 let count = DRAW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let _ = count.is_multiple_of(10);
                 Self::draw_stock_removal_cached(cr, vis, cached_viz);
@@ -183,9 +183,9 @@ impl GcodeVisualizer {
             cr.new_path();
             cr.set_source_rgba(
                 warning_color.red() as f64,
-                               warning_color.green() as f64,
-                               warning_color.blue() as f64,
-                               0.5,
+                warning_color.green() as f64,
+                warning_color.blue() as f64,
+                0.5,
             );
 
             let mut line_counter = 0u32;

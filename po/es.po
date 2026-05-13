@@ -1210,3 +1210,5 @@ msgstr "Tramado:"
 
 msgid "Halftone Threshold:"
 msgstr "Umbral Semitonos:"
+
+

@@ -222,6 +222,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.set_entry_text_if_changed(
                             &self.corner_radius_entry,
                             r.corner_radius as f32,
@@ -239,6 +240,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false)
                     }
@@ -284,6 +286,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.text_entry.set_text(&t.text);
                         self.font_size_entry
                             .set_text(&format_font_points(t.font_size));
@@ -324,6 +327,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(true);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.sides_entry.set_text(&p.sides.to_string());
                         self.rotation_entry
                             .set_text(&format!("{:.1}", p.rotation.to_degrees()));
@@ -336,6 +340,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(true);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.gear_module_entry.set_text(&format!("{:.2}", g.module));
                         self.gear_teeth_entry.set_text(&g.teeth.to_string());
                         self.gear_pressure_angle_entry
@@ -349,6 +354,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(true);
+                        self.path_frame.set_visible(false);
                         self.sprocket_pitch_entry
                             .set_text(&format!("{:.2}", s.pitch));
                         self.sprocket_teeth_entry.set_text(&s.teeth.to_string());
@@ -374,6 +380,8 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(true);
+                        self.path_closed_check.set_active(p.closed);
 
                         // No edit X Y
                         self.pos_x_entry.set_sensitive(true);
@@ -405,6 +413,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.set_entry_text_if_changed(&self.width_entry, t.width as f32, system);
                         self.set_entry_text_if_changed(&self.height_entry, t.height as f32, system);
                         self.rotation_entry
@@ -416,6 +425,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.path_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
                         self.rotation_entry.set_sensitive(true);
                     }
@@ -430,6 +440,7 @@ impl PropertiesPanel {
                 self.polygon_frame.set_visible(false);
                 self.gear_frame.set_visible(false);
                 self.sprocket_frame.set_visible(false);
+                self.path_frame.set_visible(false);
                 self.image_engraving_frame.set_visible(false);
 
                 // Calculate bounding box of all selected shapes
@@ -498,6 +509,7 @@ impl PropertiesPanel {
             self.polygon_frame.set_visible(false);
             self.gear_frame.set_visible(false);
             self.sprocket_frame.set_visible(false);
+            self.path_frame.set_visible(false);
             self.cam_frame.set_visible(false);
             self.ops_frame.set_visible(false);
             self.image_engraving_frame.set_visible(false);

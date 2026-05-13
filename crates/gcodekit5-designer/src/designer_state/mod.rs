@@ -156,14 +156,17 @@ impl DesignerState {
         self.canvas.set_mode(drawing_mode);
     }
 
-    /// Sets the feed rate for toolpath generation.
     pub fn set_feed_rate(&mut self, rate: f64) {
-        debug_assert!(
-            rate.is_finite() && rate > 0.0,
-            "feed_rate must be positive and finite, got {rate}"
-        );
-        self.tool_settings.feed_rate = rate;
-        self.toolpath_generator.set_feed_rate(rate);
+        // Si es inválido, usa un valor por defecto
+        let valid_rate = if rate.is_finite() && rate > 0.0 {
+            rate
+        } else {
+            // Valor por defecto seguro
+            1.0
+        };
+
+        self.tool_settings.feed_rate = valid_rate;
+        self.toolpath_generator.set_feed_rate(valid_rate);
         self.gcode_generated = false;
     }
 
@@ -176,14 +179,16 @@ impl DesignerState {
 
     /// Sets the tool diameter for toolpath generation.
     pub fn set_tool_diameter(&mut self, diameter: f64) {
-        debug_assert!(
-            diameter.is_finite() && diameter > 0.0,
-            "tool_diameter must be positive and finite, got {diameter}"
-        );
-        self.tool_settings.tool_diameter = diameter;
-        self.toolpath_generator.set_tool_diameter(diameter);
-        self.gcode_generated = false;
-    }
+    let valid_diameter = if diameter.is_finite() && diameter > 0.0 {
+        diameter
+    } else {
+        0.001
+    };
+
+    self.tool_settings.tool_diameter = valid_diameter;
+    self.toolpath_generator.set_tool_diameter(valid_diameter);
+    self.gcode_generated = false;
+}
 
     /// Sets the cut depth for toolpath generation.
     pub fn set_cut_depth(&mut self, depth: f64) {

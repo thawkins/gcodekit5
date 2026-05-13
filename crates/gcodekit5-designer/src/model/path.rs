@@ -24,6 +24,8 @@ pub struct DesignPath {
     )]
     pub sketch: Sketch<()>,
     pub rotation: f64,
+    #[serde(default)]
+    pub closed: bool,
     #[serde(skip)]
     pub original_path: Option<Path>,
     pub lock_aspect_ratio: bool,
@@ -55,6 +57,7 @@ impl DesignPath {
         Self {
             sketch,
             rotation: 0.0,
+            closed: false,
             original_path: None,
             lock_aspect_ratio: false,
         }
@@ -151,6 +154,7 @@ impl DesignPath {
             return Some(Self {
                 sketch,
                 rotation: 0.0,
+                closed: false,
                 original_path: None,
                 lock_aspect_ratio: true,
             });
@@ -163,6 +167,7 @@ impl DesignPath {
             return Self {
                 sketch: Sketch::new(),
                 rotation: 0.0,
+                closed: false,
                 original_path: None,
                 lock_aspect_ratio: false,
             };
@@ -226,6 +231,7 @@ impl DesignPath {
         Self {
             sketch,
             rotation: 0.0,
+            closed,
             original_path: Some(lyon_path),
             lock_aspect_ratio: false,
         }
@@ -313,9 +319,142 @@ impl DesignPath {
         Self {
             sketch: combined_sketch,
             rotation: 0.0,
+            closed: paths_info.iter().any(|(_, c)| *c),
             original_path: Some(path.clone()),
             lock_aspect_ratio: false,
         }
+    }
+
+    fn rebuild_sketch_from_original(&mut self) {
+        let Some(path) = &self.original_path else {
+            return;
+        };
+
+        let tolerance = 0.1;
+        let mut combined_sketch = Sketch::new();
+        let mut current_points: Vec<Point> = Vec::new();
+        let mut current_closed = false;
+
+        for event in path.iter().flattened(tolerance) {
+            match event {
+                lyon::path::Event::Begin { at } => {
+                    if !current_points.is_empty() {
+                        if current_closed && current_points.len() >= 3 {
+                            let pts: Vec<[f64; 2]> =
+                                current_points.iter().map(|p| [p.x, p.y]).collect();
+                            combined_sketch = combined_sketch.union(&Sketch::polygon(&pts, None));
+                        } else if current_points.len() >= 2 {
+                            for i in 0..current_points.len() - 1 {
+                                let p1 = current_points[i];
+                                let p2 = current_points[i + 1];
+                                let dx = p2.x - p1.x;
+                                let dy = p2.y - p1.y;
+                                let len = (dx * dx + dy * dy).sqrt();
+                                if len > 1e-6 {
+                                    let thickness = 0.05;
+                                    let perp_x = -dy / len * thickness;
+                                    let perp_y = dx / len * thickness;
+                                    let line_poly = vec![
+                                        [p1.x + perp_x, p1.y + perp_y],
+                                        [p1.x - perp_x, p1.y - perp_y],
+                                        [p2.x - perp_x, p2.y - perp_y],
+                                        [p2.x + perp_x, p2.y + perp_y],
+                                    ];
+                                    combined_sketch =
+                                        combined_sketch.union(&Sketch::polygon(&line_poly, None));
+                                }
+                            }
+                        }
+                    }
+
+                    current_points.clear();
+                    current_points.push(Point::new(at.x as f64, at.y as f64));
+                    current_closed = false;
+                }
+                lyon::path::Event::Line { to, .. } => {
+                    current_points.push(Point::new(to.x as f64, to.y as f64));
+                }
+                lyon::path::Event::End { close, .. } => {
+                    current_closed = close;
+                    if !current_points.is_empty() {
+                        if current_closed && current_points.len() >= 3 {
+                            let pts: Vec<[f64; 2]> =
+                                current_points.iter().map(|p| [p.x, p.y]).collect();
+                            combined_sketch = combined_sketch.union(&Sketch::polygon(&pts, None));
+                        } else if current_points.len() >= 2 {
+                            for i in 0..current_points.len() - 1 {
+                                let p1 = current_points[i];
+                                let p2 = current_points[i + 1];
+                                let dx = p2.x - p1.x;
+                                let dy = p2.y - p1.y;
+                                let len = (dx * dx + dy * dy).sqrt();
+                                if len > 1e-6 {
+                                    let thickness = 0.05;
+                                    let perp_x = -dy / len * thickness;
+                                    let perp_y = dx / len * thickness;
+                                    let line_poly = vec![
+                                        [p1.x + perp_x, p1.y + perp_y],
+                                        [p1.x - perp_x, p1.y - perp_y],
+                                        [p2.x - perp_x, p2.y - perp_y],
+                                        [p2.x + perp_x, p2.y + perp_y],
+                                    ];
+                                    combined_sketch =
+                                        combined_sketch.union(&Sketch::polygon(&line_poly, None));
+                                }
+                            }
+                        }
+                    }
+                    current_points.clear();
+                    current_closed = false;
+                }
+                _ => {}
+            }
+        }
+
+        self.sketch = combined_sketch;
+    }
+
+    pub fn set_closed(&mut self, closed: bool) {
+        if self.closed == closed {
+            return;
+        }
+
+        self.closed = closed;
+        let path = if let Some(original) = &self.original_path {
+            original.clone()
+        } else {
+            self.render()
+        };
+
+        let mut builder = Path::builder();
+        for event in path.iter() {
+            match event {
+                lyon::path::Event::Begin { at } => {
+                    builder.begin(at);
+                }
+                lyon::path::Event::Line { to, .. } => {
+                    builder.line_to(to);
+                }
+                lyon::path::Event::Quadratic { ctrl, to, .. } => {
+                    builder.quadratic_bezier_to(ctrl, to);
+                }
+                lyon::path::Event::Cubic {
+                    ctrl1, ctrl2, to, ..
+                } => {
+                    builder.cubic_bezier_to(ctrl1, ctrl2, to);
+                }
+                lyon::path::Event::End { .. } => {
+                    if closed {
+                        builder.close();
+                    } else {
+                        builder.end(false);
+                    }
+                }
+            }
+        }
+
+        self.original_path = Some(builder.build());
+        self.rebuild_sketch_from_original();
     }
 
     pub fn to_svg_path(&self) -> String {
