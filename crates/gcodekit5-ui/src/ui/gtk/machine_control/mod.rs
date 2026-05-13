@@ -1558,7 +1558,6 @@ impl MachineControlView {
                 let is_streaming_timeout = view_clone.is_streaming.clone();
 
                 let receiver = std::sync::Mutex::new(receiver);
-                let mut last_reported_percent = 0u32;
 
                 // Timeout para leer progreso
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
@@ -1566,18 +1565,11 @@ impl MachineControlView {
                     while let Ok(message) = receiver_guard.try_recv() {
                         // println!("🔍 Mensaje recibido: '{}'", message);
 
-                        // Mostrar en consola del programa los porcentajes cada 10%
-                        if message.starts_with('*') {
-                            if let Some(percent_str) = message.split('*').nth(1) {
-                                let percent = percent_str.trim().trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
-                                let percent_int = percent as u32;
-                                if percent_int % 10 == 0 && percent_int != last_reported_percent {
-                                    last_reported_percent = percent_int;
-                                    if let Some(console) = view_timeout.device_console.as_ref() {
-                                        console.append_log(&format!("📊 Sent: {}%\n", percent_int));
-                                    }
-                                }
+                        if message.starts_with('>') {
+                            if let Some(console) = view_timeout.device_console.as_ref() {
+                                console.append_log(&format!("{}\n", message));
                             }
+                            continue;
                         }
 
                         // Mostrar barra de progreso

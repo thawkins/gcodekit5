@@ -96,6 +96,9 @@ impl DirectSender {
                         break;
                     }
                     let cmd = format!("{}\n", lines[i]);
+
+                    let _ = progress_tx.send(format!("> {}", lines[i]));
+
                     let mut c = comm.lock();
                     if c.send(cmd.as_bytes()).is_ok() {
                         lines_in_flight += 1;

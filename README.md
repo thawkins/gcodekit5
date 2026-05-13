@@ -140,7 +140,6 @@ This modular structure enables:
   - Multiple images and vector objects can now be placed on the canvas, and G-code can be generated for all of them according to the order set in the Layers panel. Laser parameters for vector objects are set using the "Tool Settings" button, while image engraving parameters are set independently for each image in the object properties.
   - Polylines are now created closed, but a checkbox has been added to the properties to open/close them.
   - From Designer, all code is now sent via direct_sender.rs, improving engraving speed to match commercial programs.
-  - G-code output to the console has been removed to further improve engraving speed. For job tracking, the console now displays the percentage of data sent to the machine and the total time at job completion.
   - Image saving alongside vector objects has been integrated into "gckd" files.
 The object positioning issue when opening "gckd" files, where objects would shift from their original position, be saved by the center, and then retrieved by the vertex, has been fixed.
 The issue with polygons with odd-numbered sides, where the height and width differed, caused resizing when saving and opening, has been corrected.
