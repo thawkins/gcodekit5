@@ -60,7 +60,11 @@ impl ImageImporter {
 
     /// Load image preserving original dimensions from the saved data
     /// This respects the width/height stored in the design file
-    pub fn load_image_data_with_size(path: &Path, target_width_mm: f64, target_height_mm: f64) -> Result<(Vec<u8>, f64, f64)> {
+    pub fn load_image_data_with_size(
+        path: &Path,
+        target_width_mm: f64,
+        target_height_mm: f64,
+    ) -> Result<(Vec<u8>, f64, f64)> {
         let img = image::open(path)
             .with_context(|| format!("Failed to load image: {}", path.display()))?;
 

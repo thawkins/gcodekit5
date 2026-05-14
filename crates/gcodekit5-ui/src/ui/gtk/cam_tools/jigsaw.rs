@@ -65,7 +65,7 @@ impl JigsawTool {
         header.append(&back_btn);
 
         let title = Label::builder()
-            .label(&t!("Jigsaw Puzzle Generator"))
+            .label(t!("Jigsaw Puzzle Generator"))
             .css_classes(vec!["title-2"])
             .build();
         title.set_hexpand(true);
@@ -91,14 +91,14 @@ impl JigsawTool {
         sidebar.set_margin_end(24);
 
         let title_label = Label::builder()
-            .label(&t!("Jigsaw Puzzle Generator"))
+            .label(t!("Jigsaw Puzzle Generator"))
             .css_classes(vec!["title-3"])
             .halign(Align::Start)
             .build();
         sidebar.append(&title_label);
 
         let desc = Label::builder()
-            .label(&t!("Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."))
+            .label(t!("Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."))
             .css_classes(vec!["body"])
             .wrap(true)
             .halign(Align::Start)
@@ -142,7 +142,7 @@ impl JigsawTool {
 
         // Groups
         let dim_group = PreferencesGroup::builder()
-            .title(&t!("Puzzle Dimensions"))
+            .title(t!("Puzzle Dimensions"))
             .build();
         dim_group.add(&width_row);
         dim_group.add(&height_row);
@@ -150,20 +150,20 @@ impl JigsawTool {
         scroll_content.append(&dim_group);
 
         let grid_group = PreferencesGroup::builder()
-            .title(&t!("Grid Configuration"))
+            .title(t!("Grid Configuration"))
             .build();
         grid_group.add(&Self::create_row(&t!("Pieces Across:"), &pieces_across));
         grid_group.add(&Self::create_row(&t!("Pieces Down:"), &pieces_down));
         scroll_content.append(&grid_group);
 
         let param_group = PreferencesGroup::builder()
-            .title(&t!("Puzzle Parameters"))
+            .title(t!("Puzzle Parameters"))
             .build();
         param_group.add(&kerf_row);
         param_group.add(&Self::create_row(&t!("Tab Size (%):"), &tab_size));
         param_group.add(&Self::create_row(&t!("Jitter (%):"), &jitter));
 
-        let seed_row = ActionRow::builder().title(&t!("Random Seed:")).build();
+        let seed_row = ActionRow::builder().title(t!("Random Seed:")).build();
         let seed_box = Box::new(Orientation::Horizontal, 6);
         seed_box.append(&seed);
         let rand_btn = Button::builder()
@@ -176,7 +176,7 @@ impl JigsawTool {
         scroll_content.append(&param_group);
 
         let laser_group = PreferencesGroup::builder()
-            .title(&t!("Laser Settings"))
+            .title(t!("Laser Settings"))
             .build();
         laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
         laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
@@ -185,13 +185,13 @@ impl JigsawTool {
         scroll_content.append(&laser_group);
 
         let offset_group = PreferencesGroup::builder()
-            .title(&t!("Work Offsets"))
+            .title(t!("Work Offsets"))
             .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title(&t!("Home Device Before Start"))
+            .title(t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -303,7 +303,7 @@ impl JigsawTool {
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
-                .title(&t!("Generating Puzzle"))
+                .title(t!("Generating Puzzle"))
                 .modal(true)
                 .default_width(400)
                 .default_height(150)

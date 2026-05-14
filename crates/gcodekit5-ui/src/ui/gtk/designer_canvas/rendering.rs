@@ -1,6 +1,7 @@
 //! Rendering and drawing methods for the designer canvas
 
 use super::*;
+use crate::ui::gtk::common;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::{DesignerShape, Point, Shape};
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
@@ -79,7 +80,8 @@ impl DesignerCanvas {
         let height = max_y - min_y;
 
         let _ = cr.save();
-        cr.set_source_rgb(0.0, 0.0, 1.0); // Blue
+        let bounds_color = common::colors::to_rgb_f64(&common::colors::DEVICE_BOUNDS);
+        cr.set_source_rgb(bounds_color.0, bounds_color.1, bounds_color.2);
         cr.set_line_width(2.0 / zoom); // 2px wide on screen
         cr.rectangle(min_x, min_y, width, height);
         let _ = cr.stroke();
@@ -545,41 +547,44 @@ impl DesignerCanvas {
                     {
                         // Cairo expects ARGB, convert RGBA to ARGB
                         let stride = surface.stride() as usize;
-                        {
-                            let mut surface_data = surface.data().unwrap();
+                        match surface.data() {
+                            Ok(mut surface_data) => {
+                                for y in 0..img_h {
+                                    for x in 0..img_w {
+                                        let src_idx = ((y * img_w + x) * 4) as usize;
+                                        let dst_idx = (y as usize * stride) + (x as usize * 4);
 
-                            for y in 0..img_h {
-                                for x in 0..img_w {
-                                    let src_idx = ((y * img_w + x) * 4) as usize;
-                                    let dst_idx = (y as usize * stride) + (x as usize * 4);
+                                        let r = data[src_idx];
+                                        let g = data[src_idx + 1];
+                                        let b = data[src_idx + 2];
+                                        let a = data[src_idx + 3];
 
-                                    let r = data[src_idx];
-                                    let g = data[src_idx + 1];
-                                    let b = data[src_idx + 2];
-                                    let a = data[src_idx + 3];
-
-                                    // Cairo ARGB: A R G B
-                                    surface_data[dst_idx] = b;
-                                    surface_data[dst_idx + 1] = g;
-                                    surface_data[dst_idx + 2] = r;
-                                    surface_data[dst_idx + 3] = a;
+                                        // Cairo ARGB: A R G B
+                                        surface_data[dst_idx] = b;
+                                        surface_data[dst_idx + 1] = g;
+                                        surface_data[dst_idx + 2] = r;
+                                        surface_data[dst_idx + 3] = a;
+                                    }
                                 }
                             }
+                            Err(e) => {
+                                tracing::error!("Failed to get surface data: {}", e);
+                            }
                         }
-
                         surface.mark_dirty();
 
                         // Draw the scaled image
                         let _ = cr.save();
-                        let _ = cr.translate(x1, y1 + target_h);
-                        let _ = cr.scale(target_w / img_w as f64, -target_h / img_h as f64);
+                        cr.translate(x1, y1 + target_h);
+                        cr.scale(target_w / img_w as f64, -target_h / img_h as f64);
                         let _ = cr.set_source_surface(&surface, 0.0, 0.0);
                         let _ = cr.paint();
                         let _ = cr.restore();
 
                         // Draw border
-                        let _ = cr.rectangle(x1, y1, target_w, target_h);
-                        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                        cr.rectangle(x1, y1, target_w, target_h);
+                        let border_color = common::colors::to_rgb_f64(&common::colors::BLACK);
+                        cr.set_source_rgba(border_color.0, border_color.1, border_color.2, 1.0);
                         let _ = cr.stroke();
                         return;
                     }
@@ -588,9 +593,11 @@ impl DesignerCanvas {
                 // Fallback: rectángulo gris
                 let (x1, y1, x2, y2) = raster.bounds();
                 cr.rectangle(x1, y1, x2 - x1, y2 - y1);
-                cr.set_source_rgba(0.7, 0.7, 0.7, 0.5);
+                let gray = common::colors::to_rgba_f64(&common::colors::GRAY_70);
+                cr.set_source_rgba(gray.0, gray.1, gray.2, 0.5);
                 let _ = cr.fill();
-                cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                let black = common::colors::to_rgb_f64(&common::colors::BLACK);
+                cr.set_source_rgba(black.0, black.1, black.2, 1.0);
                 let _ = cr.stroke();
             }
 
@@ -757,11 +764,10 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
+                        lyon::path::Event::End { close, .. }
+                            if close => {
                                 cr.close_path();
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -774,11 +780,10 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
+                        lyon::path::Event::End { close, .. }
+                            if close => {
                                 cr.close_path();
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -791,11 +796,10 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
+                        lyon::path::Event::End { close, .. }
+                            if close => {
                                 cr.close_path();
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -808,11 +812,10 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
+                        lyon::path::Event::End { close, .. }
+                            if close => {
                                 cr.close_path();
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -822,25 +825,10 @@ impl DesignerCanvas {
     }
 
     fn draw_origin_crosshair(cr: &gtk4::cairo::Context, zoom: f64) {
-        let _ = cr.save();
-
         // Draw Origin Axes (Full World Extent)
         let extent = core_constants::WORLD_EXTENT_MM;
-        cr.set_line_width(1.0 / zoom); // Thinner line for full axes
-
-        // X Axis Red
-        cr.set_source_rgb(1.0, 0.0, 0.0);
-        cr.move_to(-extent, 0.0);
-        cr.line_to(extent, 0.0);
-        let _ = cr.stroke();
-
-        // Y Axis Green
-        cr.set_source_rgb(0.0, 1.0, 0.0);
-        cr.move_to(0.0, -extent);
-        cr.line_to(0.0, extent);
-        let _ = cr.stroke();
-
-        let _ = cr.restore();
+        let line_width = 1.0 / zoom; // Thinner line for full axes
+        crate::ui::gtk::common::rendering::draw_origin_axes(cr, extent, zoom, line_width);
     }
 
     pub(super) fn get_resize_handle_at(
@@ -1152,7 +1140,8 @@ impl DesignerCanvas {
 
         for (cx, cy) in corners {
             // Draw white fill
-            cr.set_source_rgb(1.0, 1.0, 1.0);
+            let white = common::colors::to_rgb_f64(&common::colors::WHITE);
+            cr.set_source_rgb(white.0, white.1, white.2);
             cr.rectangle(cx - half_size, cy - half_size, handle_size, handle_size);
             let _ = cr.fill();
 

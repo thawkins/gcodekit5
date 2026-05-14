@@ -1,0 +1,26 @@
+[
+  {
+    "tool": "team_task_create",
+    "input": {
+      "team_name": "code-review",
+      "title": "Audit authentication boundaries",
+      "description": "Confirm session/auth checks protect privileged actions and state transitions."
+    }
+  },
+  {
+    "tool": "team_task_create",
+    "input": {
+      "team_name": "code-review",
+      "title": "Audit command execution safety",
+      "description": "Review shell/tool invocation paths for injection or unsafe defaults."
+    }
+  },
+  {
+    "tool": "team_task_create",
+    "input": {
+      "team_name": "code-review",
+      "title": "Audit test coverage for team workflows",
+      "description": "Verify key team lifecycle behaviors have regression tests."
+    }
+  }
+]

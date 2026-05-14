@@ -1,8 +1,8 @@
 //! G-code generation from toolpaths.
 
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
-use gcodekit5_core::Units;
 use crate::model::Point;
+use gcodekit5_core::Units;
 
 /// G-code generator for converting toolpaths to G-code commands.
 pub struct ToolpathToGcode {
@@ -71,15 +71,15 @@ impl ToolpathToGcode {
         let mut gcode = String::new();
 
         let spindle_speed = toolpath
-        .segments
-        .first()
-        .map(|s| s.spindle_speed)
-        .unwrap_or(1000);
+            .segments
+            .first()
+            .map(|s| s.spindle_speed)
+            .unwrap_or(1000);
         let feed_rate = toolpath
-        .segments
-        .first()
-        .map(|s| s.feed_rate)
-        .unwrap_or(100.0);
+            .segments
+            .first()
+            .map(|s| s.feed_rate)
+            .unwrap_or(100.0);
 
         gcode.push_str(&self.generate_header(
             spindle_speed,
@@ -212,7 +212,7 @@ impl ToolpathToGcode {
     /// Generates the G-code body (moves) for a toolpath.
     pub fn generate_body(&self, toolpath: &Toolpath, start_line_number: u32) -> String {
         self.generate_body_continuing(toolpath, start_line_number, self.safe_z)
-        .0
+            .0
     }
 
     /// Generates the G-code body continuing from a given Z position.
@@ -233,7 +233,7 @@ impl ToolpathToGcode {
             .unwrap_or(1000);
 
         // State tracking to avoid redundant commands
-        let mut laser_on = false;  // Initially OFF
+        let mut laser_on = false; // Initially OFF
         let mut last_feed_rate: Option<f64> = None;
         let mut last_point: Option<(f64, f64)> = None;
         let mut line_g01 = true;
@@ -256,7 +256,7 @@ impl ToolpathToGcode {
                         "{}G00 X{} Y{}   ; Rapid move\n",
                         line_prefix,
                         self.fmt_coord(segment.end.x),
-                            self.fmt_coord(segment.end.y)
+                        self.fmt_coord(segment.end.y)
                     ));
 
                     line_g01 = true;
@@ -266,35 +266,34 @@ impl ToolpathToGcode {
                 }
 
                 ToolpathSegmentType::LinearMove => {
-                    // Handle start Z plunge if needed
-                    if has_z {
-                        if let Some(sz) = segment.start_z {
-                            if (current_z - sz).abs() > 0.01 {
-                                let line_prefix = self.get_line_prefix(line_number);
-                                gcode.push_str(&format!(
-                                    "{}G01 Z{} F{:.0}\n",
-                                    line_prefix,
-                                    self.fmt_coord(sz),
-                                        segment.feed_rate
-                                ));
-                                line_number += 10;
-                                current_z = sz;
-                            }
-                        } else if segment.z_depth.is_none() {
-                            if (current_z - toolpath.depth).abs() > 0.01 {
-                                let line_prefix = self.get_line_prefix(line_number);
-                                gcode.push_str(&format!(
-                                    "{}G01 Z{} F{:.0}\n",
-                                    line_prefix,
-                                    self.fmt_coord(toolpath.depth),
-                                        segment.feed_rate
-                                ));
-                                line_number += 10;
-                                current_z = toolpath.depth;
-                            }
-                        }
-                    }
-
+                                    // Handle start Z plunge if needed
+                                    if has_z {
+                                        if let Some(sz) = segment.start_z {
+                                            if (current_z - sz).abs() > 0.01 {
+                                                let line_prefix = self.get_line_prefix(line_number);
+                                                gcode.push_str(&format!(
+                                                    "{}G01 Z{} F{:.0}\n",
+                                                    line_prefix,
+                                                    self.fmt_coord(sz),
+                                                    segment.feed_rate
+                                                ));
+                                                line_number += 10;
+                                                current_z = sz;
+                                            }
+                                        } else if segment.z_depth.is_none()
+                                            && (current_z - toolpath.depth).abs() > 0.01
+                                        {
+                                            let line_prefix = self.get_line_prefix(line_number);
+                                            gcode.push_str(&format!(
+                                                "{}G01 Z{} F{:.0}\n",
+                                                line_prefix,
+                                                self.fmt_coord(toolpath.depth),
+                                                segment.feed_rate
+                                            ));
+                                            line_number += 10;
+                                            current_z = toolpath.depth;
+                                        }
+                                    }
                     let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
                         current_z
                     } else {
@@ -323,7 +322,10 @@ impl ToolpathToGcode {
 
                     if self.is_laser_2d && !laser_on {
                         let line_prefix = self.get_line_prefix(line_number);
-                        gcode.push_str(&format!("{}M4 S{}       ; Laser ON\n", line_prefix, laser_power));
+                        gcode.push_str(&format!(
+                            "{}M4 S{}       ; Laser ON\n",
+                            line_prefix, laser_power
+                        ));
                         laser_on = true;
                         line_number += 10;
                         line_g01 = true;
@@ -338,160 +340,174 @@ impl ToolpathToGcode {
                     };
 
                     // Only send feed rate if it changed
-                    let feed_rate_cmd = if last_feed_rate.map_or(true, |fr| (fr - segment.feed_rate).abs() > 0.1) {
-                    last_feed_rate = Some(segment.feed_rate);
-                    format!(" F{:.0}", segment.feed_rate)
-                } else {
-                    String::new()
-                };
+                    let feed_rate_cmd =
+                        if last_feed_rate.is_none_or(|fr| (fr - segment.feed_rate).abs() > 0.1) {
+                            last_feed_rate = Some(segment.feed_rate);
+                            format!(" F{:.0}", segment.feed_rate)
+                        } else {
+                            String::new()
+                        };
 
-                let coords = if has_z && (target_z - current_z).abs() > 0.001 {
-                    current_z = target_z;
-                    format!("X{} Y{} Z{}", self.fmt_coord(segment.end.x), self.fmt_coord(segment.end.y), self.fmt_coord(target_z))
-                } else {
-                    format!("X{} Y{}", self.fmt_coord(segment.end.x), self.fmt_coord(segment.end.y))
-                };
+                    let coords = if has_z && (target_z - current_z).abs() > 0.001 {
+                        current_z = target_z;
+                        format!(
+                            "X{} Y{} Z{}",
+                            self.fmt_coord(segment.end.x),
+                            self.fmt_coord(segment.end.y),
+                            self.fmt_coord(target_z)
+                        )
+                    } else {
+                        format!(
+                            "X{} Y{}",
+                            self.fmt_coord(segment.end.x),
+                            self.fmt_coord(segment.end.y)
+                        )
+                    };
 
-                gcode.push_str(&format!(
-                    "{}{}{}{}{}\n",
-                    self.get_line_prefix(line_number),
-                    line_prefix,
-                    cmd,
-                    coords,
-                    feed_rate_cmd
-                ));
+                    gcode.push_str(&format!(
+                        "{}{}{}{}{}\n",
+                        self.get_line_prefix(line_number),
+                        line_prefix,
+                        cmd,
+                        coords,
+                        feed_rate_cmd
+                    ));
 
-                line_number += 10;
-            }
+                    line_number += 10;
+                }
 
-            ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
-                // Handle Z plunge if needed
-                if has_z {
-                    if let Some(sz) = segment.start_z {
-                        if (current_z - sz).abs() > 0.01 {
-                            let line_prefix = self.get_line_prefix(line_number);
-                            gcode.push_str(&format!(
-                                "{}G01 Z{} F{:.0}\n",
-                                line_prefix,
-                                self.fmt_coord(sz),
+                ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
+                    // Handle Z plunge if needed
+                    if has_z {
+                        if let Some(sz) = segment.start_z {
+                            if (current_z - sz).abs() > 0.01 {
+                                let line_prefix = self.get_line_prefix(line_number);
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{} F{:.0}\n",
+                                    line_prefix,
+                                    self.fmt_coord(sz),
                                     segment.feed_rate
-                            ));
-                            line_number += 10;
-                            current_z = sz;
-                        }
-                    } else if segment.z_depth.is_none() {
-                        if (current_z - toolpath.depth).abs() > 0.01 {
+                                ));
+                                line_number += 10;
+                                current_z = sz;
+                            }
+                        } else if segment.z_depth.is_none()
+                            && (current_z - toolpath.depth).abs() > 0.01
+                        {
                             let line_prefix = self.get_line_prefix(line_number);
                             gcode.push_str(&format!(
                                 "{}G01 Z{} F{:.0}\n",
                                 line_prefix,
                                 self.fmt_coord(toolpath.depth),
-                                    segment.feed_rate
+                                segment.feed_rate
                             ));
                             line_number += 10;
                             current_z = toolpath.depth;
                         }
                     }
-                }
 
-                let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
-                    current_z
-                } else {
-                    toolpath.depth
-                });
+                    let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
+                        current_z
+                    } else {
+                        toolpath.depth
+                    });
 
-                let line_prefix = self.get_line_prefix(line_number);
-
-                // Reset last point for arcs
-                last_point = None;
-
-                // Turn on the laser
-                if self.is_laser_2d && !laser_on {
                     let line_prefix = self.get_line_prefix(line_number);
-                    gcode.push_str(&format!("{}M4 S{}       ; Laser ON\n", line_prefix, segment.spindle_speed));
-                    laser_on = true;
-                    line_number += 10;
-                }
 
-                let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
-                    "G02"
-                } else {
-                    "G03"
-                };
+                    // Reset last point for arcs
+                    last_point = None;
 
-                // Only send feed rate if it changed
-                let feed_rate_cmd = if last_feed_rate.map_or(true, |fr| (fr - segment.feed_rate).abs() > 0.1) {
-                    last_feed_rate = Some(segment.feed_rate);
-                    format!(" F{:.0}", segment.feed_rate)
-                } else {
-                    String::new()
-                };
-
-                if let Some(center) = segment.center {
-                    let i = center.x - segment.start.x;
-                    let j = center.y - segment.start.y;
-
-                    if has_z && (target_z - current_z).abs() > 0.001 {
+                    // Turn on the laser
+                    if self.is_laser_2d && !laser_on {
+                        let line_prefix = self.get_line_prefix(line_number);
                         gcode.push_str(&format!(
-                            "{}{} X{} Y{} Z{} I{} J{}{}\n",
-                            line_prefix,
-                            cmd,
-                            self.fmt_coord(segment.end.x),
+                            "{}M4 S{}       ; Laser ON\n",
+                            line_prefix, segment.spindle_speed
+                        ));
+                        laser_on = true;
+                        line_number += 10;
+                    }
+
+                    let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
+                        "G02"
+                    } else {
+                        "G03"
+                    };
+
+                    // Only send feed rate if it changed
+                    let feed_rate_cmd =
+                        if last_feed_rate.is_none_or(|fr| (fr - segment.feed_rate).abs() > 0.1) {
+                            last_feed_rate = Some(segment.feed_rate);
+                            format!(" F{:.0}", segment.feed_rate)
+                        } else {
+                            String::new()
+                        };
+
+                    if let Some(center) = segment.center {
+                        let i = center.x - segment.start.x;
+                        let j = center.y - segment.start.y;
+
+                        if has_z && (target_z - current_z).abs() > 0.001 {
+                            gcode.push_str(&format!(
+                                "{}{} X{} Y{} Z{} I{} J{}{}\n",
+                                line_prefix,
+                                cmd,
+                                self.fmt_coord(segment.end.x),
                                 self.fmt_coord(segment.end.y),
                                 self.fmt_coord(target_z),
                                 self.fmt_coord(i),
                                 self.fmt_coord(j),
                                 feed_rate_cmd
-                        ));
-                        current_z = target_z;
-                    } else {
-                        gcode.push_str(&format!(
-                            "{}{} X{} Y{} I{} J{}{}\n",
-                            line_prefix,
-                            cmd,
-                            self.fmt_coord(segment.end.x),
+                            ));
+                            current_z = target_z;
+                        } else {
+                            gcode.push_str(&format!(
+                                "{}{} X{} Y{} I{} J{}{}\n",
+                                line_prefix,
+                                cmd,
+                                self.fmt_coord(segment.end.x),
                                 self.fmt_coord(segment.end.y),
                                 self.fmt_coord(i),
                                 self.fmt_coord(j),
                                 feed_rate_cmd
-                        ));
-                    }
-                } else {
-                    // Fallback to linear if no center provided
-                    if has_z && (target_z - current_z).abs() > 0.001 {
-                        gcode.push_str(&format!(
-                            "{}G01 X{} Y{} Z{}{}\n",
-                            line_prefix,
-                            self.fmt_coord(segment.end.x),
-                            self.fmt_coord(segment.end.y),
-                            self.fmt_coord(target_z),
-                            feed_rate_cmd
-                        ));
-                        current_z = target_z;
+                            ));
+                        }
                     } else {
-                        gcode.push_str(&format!(
-                            "{}G01 X{} Y{}{}\n",
-                            line_prefix,
-                            self.fmt_coord(segment.end.x),
-                            self.fmt_coord(segment.end.y),
-                            feed_rate_cmd
-                        ));
+                        // Fallback to linear if no center provided
+                        if has_z && (target_z - current_z).abs() > 0.001 {
+                            gcode.push_str(&format!(
+                                "{}G01 X{} Y{} Z{}{}\n",
+                                line_prefix,
+                                self.fmt_coord(segment.end.x),
+                                self.fmt_coord(segment.end.y),
+                                self.fmt_coord(target_z),
+                                feed_rate_cmd
+                            ));
+                            current_z = target_z;
+                        } else {
+                            gcode.push_str(&format!(
+                                "{}G01 X{} Y{}{}\n",
+                                line_prefix,
+                                self.fmt_coord(segment.end.x),
+                                self.fmt_coord(segment.end.y),
+                                feed_rate_cmd
+                            ));
+                        }
                     }
-                }
 
-                line_number += 10;
+                    line_number += 10;
+                }
             }
         }
-    }
 
-    // Turn off laser at the end of the toolpath if it was on
-    if self.is_laser_2d && laser_on {
-        let line_prefix = self.get_line_prefix(line_number);
-        gcode.push_str(&format!("{}M5          ; Laser OFF\n", line_prefix));
-    }
+        // Turn off laser at the end of the toolpath if it was on
+        if self.is_laser_2d && laser_on {
+            let line_prefix = self.get_line_prefix(line_number);
+            gcode.push_str(&format!("{}M5          ; Laser OFF\n", line_prefix));
+        }
 
-    (gcode, current_z)
-}
+        (gcode, current_z)
+    }
 
     /// Generates the G-code footer.
     pub fn generate_footer(&self) -> String {

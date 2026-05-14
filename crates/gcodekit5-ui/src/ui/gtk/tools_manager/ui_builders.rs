@@ -21,13 +21,12 @@ impl ToolsManagerView {
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
 
         let grid = Grid::new();
-        grid.set_margin_top(10);
-        grid.set_margin_bottom(10);
-        grid.set_margin_start(10);
-        grid.set_margin_end(10);
-        grid.set_column_spacing(10);
-        grid.set_row_spacing(10);
-
+        grid.set_margin_top(spacing::MEDIUM);
+        grid.set_margin_bottom(spacing::MEDIUM);
+        grid.set_margin_start(spacing::MEDIUM);
+        grid.set_margin_end(spacing::MEDIUM);
+        grid.set_column_spacing(spacing::MEDIUM as u32);
+        grid.set_row_spacing(spacing::MEDIUM as u32);
         let mut row = 0;
 
         // ID

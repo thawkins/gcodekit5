@@ -16,8 +16,11 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::help_browser;
+use crate::ui::gtk::platform;
 use crate::ui::tools_manager_backend::{string_to_tool_material, ToolsManagerBackend};
+
 use gcodekit5_core::data::tools::{ShankType, Tool, ToolCoating, ToolId, ToolMaterial, ToolType};
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
 use gcodekit5_settings::manager::SettingsManager;
@@ -91,16 +94,16 @@ impl ToolsManagerView {
         widget.set_vexpand(true);
 
         // LEFT SIDEBAR
-        let sidebar = Box::new(Orientation::Vertical, 10);
+        let sidebar = Box::new(Orientation::Vertical, spacing::MEDIUM);
         sidebar.add_css_class("sidebar");
         sidebar.set_width_request(280);
-        sidebar.set_margin_top(10);
-        sidebar.set_margin_bottom(10);
-        sidebar.set_margin_start(10);
-        sidebar.set_margin_end(10);
+        sidebar.set_margin_top(spacing::MEDIUM);
+        sidebar.set_margin_bottom(spacing::MEDIUM);
+        sidebar.set_margin_start(spacing::MEDIUM);
+        sidebar.set_margin_end(spacing::MEDIUM);
 
-        let header_box = Box::new(Orientation::Horizontal, 10);
-        header_box.set_margin_start(5);
+        let header_box = Box::new(Orientation::Horizontal, spacing::MEDIUM);
+        header_box.set_margin_start(spacing::SMALL);
         let title = Label::new(Some("CNC Tools"));
         title.add_css_class("title-4");
         title.set_halign(Align::Start);
@@ -307,13 +310,13 @@ impl ToolsManagerView {
         right_panel_stack.add_named(&main_content, Some("edit"));
         right_panel_stack.set_visible_child_name("empty");
 
-        let right_sidebar = Box::new(Orientation::Vertical, 10);
+        let right_sidebar = Box::new(Orientation::Vertical, spacing::MEDIUM);
         right_sidebar.add_css_class("sidebar");
         right_sidebar.set_width_request(280);
-        right_sidebar.set_margin_top(10);
-        right_sidebar.set_margin_bottom(10);
-        right_sidebar.set_margin_start(10);
-        right_sidebar.set_margin_end(10);
+        right_sidebar.set_margin_top(spacing::MEDIUM);
+        right_sidebar.set_margin_bottom(spacing::MEDIUM);
+        right_sidebar.set_margin_start(spacing::MEDIUM);
+        right_sidebar.set_margin_end(spacing::MEDIUM);
 
         right_sidebar.append(&new_btn);
         right_sidebar.append(&actions_frame);
@@ -511,11 +514,11 @@ impl ToolsManagerView {
                 row.set_data(ROW_TOOL_ID_KEY, tool.id.0.clone());
             }
 
-            let row_box = Box::new(Orientation::Vertical, 4);
-            row_box.set_margin_top(6);
-            row_box.set_margin_bottom(6);
-            row_box.set_margin_start(10);
-            row_box.set_margin_end(10);
+            let row_box = Box::new(Orientation::Vertical, spacing::SMALL);
+            row_box.set_margin_top(spacing::BUTTON_INTERNAL);
+            row_box.set_margin_bottom(spacing::BUTTON_INTERNAL);
+            row_box.set_margin_start(spacing::MEDIUM);
+            row_box.set_margin_end(spacing::MEDIUM);
 
             let name_label = Label::new(Some(&tool.name));
             name_label.add_css_class("title-4");
@@ -1203,34 +1206,21 @@ impl ToolsManagerView {
     }
 
     fn export_custom_tools(&self) {
-        let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() else {
-            return;
-        };
-
-        // 1. Configuración del FileDialog moderno
-        let file_dialog = gtk4::FileDialog::builder()
-            .title("Export Custom Tools")
-            .accept_label("Exportar")
-            .build();
-
         let backend = self.backend.clone();
         let view = self.clone();
 
-        // 2. Asynchronous execution (replaces connect_response and show)
-        // We use gio::Cancellable::NONE to indicate that we do not want to cancel the operation.
-        file_dialog.save(Some(&window), gtk4::gio::Cancellable::NONE, move |result| {
-            // result is a Result<gio::File, glib::Error>
-            if let Ok(file) = result {
-                if let Some(path) = file.path() {
-                    let backend = backend.borrow();
-                    match backend.export_custom_tools(path) {
-                        Ok(_) => view.show_info_dialog("Export Complete", "Custom tools exported."),
-                        Err(e) => view.show_error_dialog("Export Failed", &e.to_string()),
-                    }
-                }
+        let dialog = rfd::FileDialog::new()
+            .set_title("Export Custom Tools")
+            .add_filter("JSON", &["json"]);
+
+        // Use the platform helper for proper parent window handling
+        if let Some(path) = platform::save_file_with_parent(dialog) {
+            let backend = backend.borrow();
+            match backend.export_custom_tools(path) {
+                Ok(_) => view.show_info_dialog("Export Complete", "Custom tools exported."),
+                Err(e) => view.show_error_dialog("Export Failed", &e.to_string()),
             }
-            // The dialog closes automatically; you don't need .destroy()
-        });
+        }
     }
 
     fn reset_custom_tools(&self) {

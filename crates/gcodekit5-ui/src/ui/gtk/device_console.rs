@@ -12,6 +12,7 @@ use gtk4::{
 use std::{borrow::Cow, rc::Rc};
 
 use crate::ui::gtk::command_history::CommandHistory;
+use crate::ui::gtk::common::spacing;
 use gcodekit5_core::{shared, Shared};
 
 #[derive(Clone)]
@@ -32,13 +33,13 @@ impl DeviceConsoleView {
         // ═════════════════════════════════════════════
         // MAIN AREA
         // ═════════════════════════════════════════════
-        let main_area = Box::new(Orientation::Vertical, 10);
+        let main_area = Box::new(Orientation::Vertical, spacing::MEDIUM);
         main_area.set_hexpand(true);
         main_area.set_vexpand(true);
-        main_area.set_margin_top(10);
-        main_area.set_margin_bottom(10);
-        main_area.set_margin_start(10);
-        main_area.set_margin_end(10);
+        main_area.set_margin_top(spacing::MEDIUM);
+        main_area.set_margin_bottom(spacing::MEDIUM);
+        main_area.set_margin_start(spacing::MEDIUM);
+        main_area.set_margin_end(spacing::MEDIUM);
 
         // Console Output
         let scroll = ScrolledWindow::new();

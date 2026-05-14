@@ -52,16 +52,13 @@ impl Default for ToolSettings {
 
 /// Machine operation mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum MachineMode {
+    #[default]
     Laser2D,
     Cnc3D,
 }
 
-impl Default for MachineMode {
-    fn default() -> Self {
-        Self::Laser2D // By default, Laser2D
-    }
-}
 
 /// Designer state for UI integration
 #[derive(Clone)]

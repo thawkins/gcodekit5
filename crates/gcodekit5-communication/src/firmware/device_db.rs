@@ -297,7 +297,7 @@ impl DeviceDatabase {
             .values()
             .filter(|d| d.last_connected.is_some())
             .collect();
-        devices.sort_by(|a, b| b.last_connected.cmp(&a.last_connected));
+        devices.sort_by_key(|b| std::cmp::Reverse(b.last_connected));
         devices.into_iter().take(count).collect()
     }
 

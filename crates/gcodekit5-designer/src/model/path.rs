@@ -89,11 +89,11 @@ impl DesignPath {
         let mut min_distance = f64::INFINITY;
 
         // Iterate over all segments of the path
-        let mut iter = path.iter().flattened(tolerance as f32);
+        let iter = path.iter().flattened(tolerance as f32);
         let mut first_point: Option<lyon::math::Point> = None;
         let mut prev_point: Option<lyon::math::Point> = None;
 
-        while let Some(event) = iter.next() {
+        for event in iter {
             match event {
                 lyon::path::Event::Begin { at } => {
                     first_point = Some(at);
@@ -278,7 +278,7 @@ impl DesignPath {
         // Build the sketch by combining all the paths
         let mut combined_sketch = Sketch::new();
 
-        for (_idx, (points, is_closed)) in paths_info.iter().enumerate() {
+        for (points, is_closed) in paths_info.iter() {
             if points.is_empty() {
                 continue;
             }

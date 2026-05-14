@@ -38,47 +38,21 @@ use gcodekit5_core::{
 use std::rc::Rc;
 
 mod direct_sender;
+mod state;
+mod ui_builders;
+
+pub use ui_builders::{create_dro, make_section};
 
 fn set_button_icon_label(btn: &Button, icon: &str, label: &str) {
-    let content = Box::new(Orientation::Horizontal, 6);
-    content.set_halign(Align::Center);
-    content.set_valign(Align::Center);
-
-    let img = Image::from_icon_name(icon);
-    img.set_pixel_size(16);
-
-    let lbl = Label::new(Some(label));
-    lbl.set_valign(Align::Center);
-
-    content.append(&img);
-    content.append(&lbl);
-
-    btn.set_child(Some(&content));
+    ui_builders::set_button_icon_label(btn, icon, label);
 }
 
 fn make_icon_label_button(icon: &str, label: &str) -> Button {
-    let btn = Button::new();
-    set_button_icon_label(&btn, icon, label);
-    btn
+    ui_builders::make_icon_label_button(icon, label)
 }
 
 fn make_icon_label_toggle(icon: &str, label: &str) -> ToggleButton {
-    let btn = ToggleButton::new();
-    let content = Box::new(Orientation::Horizontal, 6);
-    content.set_halign(Align::Center);
-    content.set_valign(Align::Center);
-
-    let img = Image::from_icon_name(icon);
-    img.set_pixel_size(16);
-
-    let lbl = Label::new(Some(label));
-    lbl.set_valign(Align::Center);
-
-    content.append(&img);
-    content.append(&lbl);
-
-    btn.set_child(Some(&content));
-    btn
+    ui_builders::make_icon_label_toggle(icon, label)
 }
 
 #[derive(Clone)]
@@ -134,6 +108,28 @@ pub struct MachineControlView {
     pub world_x: Label,
     pub world_y: Label,
     pub world_z: Label,
+    // Rotary axis DRO labels (A, B, C)
+    pub a_dro: Option<Label>,
+    pub b_dro: Option<Label>,
+    pub c_dro: Option<Label>,
+    pub world_a: Option<Label>,
+    pub world_b: Option<Label>,
+    pub world_c: Option<Label>,
+    // Rotary axis jog buttons
+    pub jog_a_pos: Option<Button>,
+    pub jog_a_neg: Option<Button>,
+    pub jog_b_pos: Option<Button>,
+    pub jog_b_neg: Option<Button>,
+    pub jog_c_pos: Option<Button>,
+    pub jog_c_neg: Option<Button>,
+    // Coolant controls
+    pub coolant_mist_btn: Option<Button>,
+    pub coolant_flood_btn: Option<Button>,
+    pub coolant_off_btn: Option<Button>,
+    // Probe controls
+    pub probe_single_btn: Option<Button>,
+    pub probe_continuous_btn: Option<Button>,
+    pub probe_to_surface_btn: Option<Button>,
     pub step_combo: ComboBoxText,
     pub step_label: Label,
     pub jog_feed_entry: gtk4::Entry,
@@ -176,69 +172,10 @@ impl MachineControlView {
         widget.set_hexpand(true);
         widget.set_vexpand(true);
 
-        fn make_section(title: &str, child: &impl IsA<gtk4::Widget>) -> Box {
-            let section = Box::new(Orientation::Vertical, 4);
-            section.add_css_class("mc-section");
-
-            let header = Label::new(Some(title));
-            header.add_css_class("mc-section-title");
-            header.set_halign(Align::Start);
-
-            section.append(&header);
-            section.append(child);
-            section
-        }
+        use crate::ui::gtk::machine_control::ui_builders::make_section;
 
         // Helper function to disable connection-dependent buttons
-        #[allow(clippy::too_many_arguments)]
-        fn set_controls_enabled(
-            send_btn: &Button,
-            stop_btn: &Button,
-            pause_btn: &Button,
-            resume_btn: &Button,
-            home_btn: &Button,
-            unlock_btn: &Button,
-            wcs_btns: &[ToggleButton],
-            x_zero_btn: &Button,
-            y_zero_btn: &Button,
-            z_zero_btn: &Button,
-            zero_all_btn: &Button,
-            goto_zero_btn: &Button,
-            step_combo: &ComboBoxText,
-            jog_feed_entry: &gtk4::Entry,
-            jog_x_pos: &Button,
-            jog_x_neg: &Button,
-            jog_y_pos: &Button,
-            jog_y_neg: &Button,
-            jog_z_pos: &Button,
-            jog_z_neg: &Button,
-            estop_btn: &Button,
-            enabled: bool,
-        ) {
-            send_btn.set_sensitive(enabled);
-            stop_btn.set_sensitive(enabled);
-            pause_btn.set_sensitive(enabled);
-            resume_btn.set_sensitive(enabled);
-            home_btn.set_sensitive(enabled);
-            unlock_btn.set_sensitive(enabled);
-            for btn in wcs_btns {
-                btn.set_sensitive(enabled);
-            }
-            x_zero_btn.set_sensitive(enabled);
-            y_zero_btn.set_sensitive(enabled);
-            z_zero_btn.set_sensitive(enabled);
-            zero_all_btn.set_sensitive(enabled);
-            goto_zero_btn.set_sensitive(enabled);
-            step_combo.set_sensitive(enabled);
-            jog_feed_entry.set_sensitive(enabled);
-            jog_x_pos.set_sensitive(enabled);
-            jog_x_neg.set_sensitive(enabled);
-            jog_y_pos.set_sensitive(enabled);
-            jog_y_neg.set_sensitive(enabled);
-            jog_z_pos.set_sensitive(enabled);
-            jog_z_neg.set_sensitive(enabled);
-            estop_btn.set_sensitive(enabled);
-        }
+        use crate::ui::gtk::machine_control::state::set_controls_enabled;
 
         // ═════════════════════════════════════════════
         // LEFT SIDEBAR
@@ -552,35 +489,7 @@ impl MachineControlView {
         work_title.add_css_class("dim-label");
         dro_box.append(&work_title);
 
-        let create_dro = |axis: &str, display: &str| -> (Box, Label, Button) {
-            let b = Box::new(Orientation::Horizontal, 8);
-            b.add_css_class("dro-axis");
-            b.set_height_request(38);
-
-            let l = Label::new(Some(display));
-            l.add_css_class("dro-label");
-            l.add_css_class("mc-dro-label");
-            l.set_width_request(52);
-
-            let v = Label::new(Some("0.000"));
-            v.add_css_class("dro-value");
-            v.add_css_class("mc-dro-value");
-            v.set_hexpand(true);
-            v.set_halign(Align::End);
-
-            let z = make_icon_label_button("edit-clear-symbolic", &t!("Zero"));
-            z.add_css_class("circular");
-            z.set_valign(Align::Center);
-            let tooltip = format!("{} {axis}", t!("Set work axis to zero"));
-            z.set_tooltip_text(Some(&tooltip));
-            let a11y_label = format!("{} {axis}", t!("Zero"));
-            z.update_property(&[AccessibleProperty::Label(&a11y_label)]);
-
-            b.append(&l);
-            b.append(&v);
-            b.append(&z);
-            (b, v, z)
-        };
+        let create_dro = crate::ui::gtk::machine_control::ui_builders::create_dro;
 
         let (x_box, x_dro, x_zero_btn) = create_dro("X", "WX");
         let (y_box, y_dro, y_zero_btn) = create_dro("Y", "WY");
@@ -590,6 +499,19 @@ impl MachineControlView {
         dro_box.append(&y_box);
         dro_box.append(&z_box);
 
+        // Rotary axis DRO displays (initially hidden, shown based on device capabilities)
+        let (a_box, a_dro, _a_zero_btn) = create_dro("A", "WA");
+        let (b_box, b_dro, _b_zero_btn) = create_dro("B", "WB");
+        let (c_box, c_dro, _c_zero_btn) = create_dro("C", "WC");
+
+        // Hide rotary axis DROs initially
+        a_box.set_visible(false);
+        b_box.set_visible(false);
+        c_box.set_visible(false);
+
+        dro_box.append(&a_box);
+        dro_box.append(&b_box);
+        dro_box.append(&c_box);
         // Right side: Zero All and Go to Work Zero buttons
         let zero_actions = Box::new(Orientation::Vertical, 8);
         zero_actions.set_valign(Align::Center);
@@ -637,6 +559,16 @@ impl MachineControlView {
         world_vals.append(&world_z);
         world_box.append(&world_vals);
 
+        // Rotary axis machine coordinates (initially hidden)
+        let world_a = Label::new(Some("MA: 0.000"));
+        let world_b = Label::new(Some("MB: 0.000"));
+        let world_c = Label::new(Some("MC: 0.000"));
+        world_a.set_visible(false);
+        world_b.set_visible(false);
+        world_c.set_visible(false);
+        world_vals.append(&world_a);
+        world_vals.append(&world_b);
+        world_vals.append(&world_c);
         main_area.append(&dro_container);
         main_area.append(&world_box);
 
@@ -1135,6 +1067,28 @@ impl MachineControlView {
             world_x,
             world_y,
             world_z,
+            // Rotary axis DRO and machine coordinates (initially None)
+            a_dro: Some(a_dro),
+            b_dro: Some(b_dro),
+            c_dro: Some(c_dro),
+            world_a: Some(world_a),
+            world_b: Some(world_b),
+            world_c: Some(world_c),
+            // Rotary axis jog buttons (initially None)
+            jog_a_pos: None,
+            jog_a_neg: None,
+            jog_b_pos: None,
+            jog_b_neg: None,
+            jog_c_pos: None,
+            jog_c_neg: None,
+            // Coolant controls (initially None)
+            coolant_mist_btn: None,
+            coolant_flood_btn: None,
+            coolant_off_btn: None,
+            // Probe controls (initially None)
+            probe_single_btn: None,
+            probe_continuous_btn: None,
+            probe_to_surface_btn: None,
             step_combo,
             step_label,
             jog_feed_entry,
@@ -2569,7 +2523,9 @@ impl MachineControlView {
         total_lines: Option<usize>,
         remaining_lines: Option<usize>,
     ) {
-        let Some(sb) = status_bar.as_ref() else { return };
+        let Some(sb) = status_bar.as_ref() else {
+            return;
+        };
         let start_opt = *job_start_time.lock();
         let Some(start) = start_opt else {
             sb.set_progress(percentage, "", "");
@@ -2606,7 +2562,6 @@ impl MachineControlView {
         };
 
         sb.set_progress(percentage, &format_time(elapsed), &format_time(remaining));
-
     }
 }
 

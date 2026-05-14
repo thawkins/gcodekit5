@@ -75,7 +75,7 @@ impl BitmapEngravingTool {
         header.append(&back_btn);
 
         let title = Label::builder()
-            .label(&t!("Laser Image Engraver"))
+            .label(t!("Laser Image Engraver"))
             .css_classes(vec!["title-2"])
             .build();
         title.set_hexpand(true);
@@ -108,7 +108,7 @@ impl BitmapEngravingTool {
         sidebar.append(&title_label);
 
         let desc = Label::builder()
-            .label(&t!("Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."))
+            .label(t!("Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."))
             .css_classes(vec!["body"])
             .wrap(true)
             .halign(Align::Start)
@@ -144,7 +144,7 @@ impl BitmapEngravingTool {
 
         // Create Widgets
         let image_path = Entry::builder()
-            .placeholder_text(&t!("No image selected"))
+            .placeholder_text(t!("No image selected"))
             .valign(Align::Center)
             .build();
         let (width_mm_row, width_mm, width_mm_unit) =
@@ -209,18 +209,18 @@ impl BitmapEngravingTool {
             .build();
 
         // Groups
-        let image_group = PreferencesGroup::builder().title(&t!("Image File")).build();
-        let image_row = ActionRow::builder().title(&t!("Image Path:")).build();
+        let image_group = PreferencesGroup::builder().title(t!("Image File")).build();
+        let image_row = ActionRow::builder().title(t!("Image Path:")).build();
         let image_box = Box::new(Orientation::Horizontal, 6);
         image_box.append(&image_path);
-        let load_image_btn = Button::builder().label(&t!("Browse...")).build();
+        let load_image_btn = Button::builder().label(t!("Browse...")).build();
         image_box.append(&load_image_btn);
         image_row.add_suffix(&image_box);
         image_group.add(&image_row);
         scroll_content.append(&image_group);
 
         let output_group = PreferencesGroup::builder()
-            .title(&t!("Output Settings"))
+            .title(t!("Output Settings"))
             .build();
         output_group.add(&width_mm_row);
         output_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
@@ -228,51 +228,51 @@ impl BitmapEngravingTool {
         scroll_content.append(&output_group);
 
         let power_group = PreferencesGroup::builder()
-            .title(&t!("Laser Power"))
+            .title(t!("Laser Power"))
             .build();
         power_group.add(&Self::create_row(&t!("Min Power (%):"), &min_power));
         power_group.add(&Self::create_row(&t!("Max Power (%):"), &max_power));
         power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));
         scroll_content.append(&power_group);
 
-        let scan_group = PreferencesGroup::builder().title(&t!("Scanning")).build();
+        let scan_group = PreferencesGroup::builder().title(t!("Scanning")).build();
         scan_group.add(&Self::create_row(&t!("Scan Direction:"), &scan_direction));
         scan_group.add(&Self::create_row(&t!("Pixels per mm:"), &pixels_per_mm));
         scan_group.add(&Self::create_row(&t!("Line Spacing:"), &line_spacing));
-        let bid_row = ActionRow::builder().title(&t!("Bidirectional:")).build();
+        let bid_row = ActionRow::builder().title(t!("Bidirectional:")).build();
         bid_row.add_suffix(&bidirectional);
         scan_group.add(&bid_row);
         scroll_content.append(&scan_group);
 
         let transform_group = PreferencesGroup::builder()
-            .title(&t!("Image Transformations"))
+            .title(t!("Image Transformations"))
             .build();
-        let invert_row = ActionRow::builder().title(&t!("Invert:")).build();
+        let invert_row = ActionRow::builder().title(t!("Invert:")).build();
         invert_row.add_suffix(&invert);
         transform_group.add(&invert_row);
-        let mirror_x_row = ActionRow::builder().title(&t!("Mirror X:")).build();
+        let mirror_x_row = ActionRow::builder().title(t!("Mirror X:")).build();
         mirror_x_row.add_suffix(&mirror_x);
         transform_group.add(&mirror_x_row);
-        let mirror_y_row = ActionRow::builder().title(&t!("Mirror Y:")).build();
+        let mirror_y_row = ActionRow::builder().title(t!("Mirror Y:")).build();
         mirror_y_row.add_suffix(&mirror_y);
         transform_group.add(&mirror_y_row);
         transform_group.add(&Self::create_row(&t!("Rotation:"), &rotation));
         scroll_content.append(&transform_group);
 
-        let halftone_group = PreferencesGroup::builder().title(&t!("Halftoning")).build();
+        let halftone_group = PreferencesGroup::builder().title(t!("Halftoning")).build();
         halftone_group.add(&Self::create_row(&t!("Method:"), &halftone));
         halftone_group.add(&Self::create_row(&t!("Dot Size:"), &halftone_dot_size));
         halftone_group.add(&Self::create_row(&t!("Threshold:"), &halftone_threshold));
         scroll_content.append(&halftone_group);
 
         let offset_group = PreferencesGroup::builder()
-            .title(&t!("Work Offsets"))
+            .title(t!("Work Offsets"))
             .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title(&t!("Home Device Before Start"))
+            .title(t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -462,7 +462,7 @@ impl BitmapEngravingTool {
 
             // Create progress dialog with progress bar and cancel button
             let progress_window = gtk4::Window::builder()
-                .title(&t!("Generating Engraving"))
+                .title(t!("Generating Engraving"))
                 .modal(true)
                 .default_width(400)
                 .default_height(150)

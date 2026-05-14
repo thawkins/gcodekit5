@@ -106,7 +106,7 @@ impl VectorEngravingTool {
         sidebar.append(&title_label);
 
         let desc = Label::builder()
-            .label(&t!("Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."))
+            .label(t!("Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."))
             .css_classes(vec!["body"])
             .wrap(true)
             .halign(Align::Start)
@@ -214,19 +214,19 @@ impl VectorEngravingTool {
 
         // Groups
         let file_group = PreferencesGroup::builder()
-            .title(&t!("Vector File"))
+            .title(t!("Vector File"))
             .build();
-        let file_row = ActionRow::builder().title(&t!("File Path:")).build();
+        let file_row = ActionRow::builder().title(t!("File Path:")).build();
         let file_box = Box::new(Orientation::Horizontal, 6);
         file_box.append(&vector_path);
-        let load_file_btn = Button::builder().label(&t!("Browse...")).build();
+        let load_file_btn = Button::builder().label(t!("Browse...")).build();
         file_box.append(&load_file_btn);
         file_row.add_suffix(&file_box);
         file_group.add(&file_row);
         scroll_content.append(&file_group);
 
         let output_group = PreferencesGroup::builder()
-            .title(&t!("Output Settings"))
+            .title(t!("Output Settings"))
             .build();
         output_group.add(&desired_width_row);
         output_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
@@ -234,55 +234,55 @@ impl VectorEngravingTool {
         scroll_content.append(&output_group);
 
         let power_group = PreferencesGroup::builder()
-            .title(&t!("Laser Power"))
+            .title(t!("Laser Power"))
             .build();
         power_group.add(&Self::create_row(&t!("Cut Power (%):"), &cut_power));
         power_group.add(&Self::create_row(&t!("Engrave Power (%):"), &engrave_power));
         power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));
-        let invert_row = ActionRow::builder().title(&t!("Invert Power:")).build();
+        let invert_row = ActionRow::builder().title(t!("Invert Power:")).build();
         invert_row.add_suffix(&invert_power);
         power_group.add(&invert_row);
         scroll_content.append(&power_group);
 
         let multipass_group = PreferencesGroup::builder()
-            .title(&t!("Multi-Pass Settings"))
+            .title(t!("Multi-Pass Settings"))
             .build();
-        let multi_row = ActionRow::builder().title(&t!("Multi-Pass:")).build();
+        let multi_row = ActionRow::builder().title(t!("Multi-Pass:")).build();
         multi_row.add_suffix(&multi_pass);
         multipass_group.add(&multi_row);
         multipass_group.add(&Self::create_row(&t!("Number of Passes:"), &num_passes));
         multipass_group.add(&z_increment_row);
         scroll_content.append(&multipass_group);
 
-        let hatch_group = PreferencesGroup::builder().title(&t!("Hatching")).build();
-        let hatch_row = ActionRow::builder().title(&t!("Enable Hatch:")).build();
+        let hatch_group = PreferencesGroup::builder().title(t!("Hatching")).build();
+        let hatch_row = ActionRow::builder().title(t!("Enable Hatch:")).build();
         hatch_row.add_suffix(&enable_hatch);
         hatch_group.add(&hatch_row);
         hatch_group.add(&Self::create_row(&t!("Hatch Angle (°):"), &hatch_angle));
         hatch_group.add(&hatch_spacing_row);
         hatch_group.add(&hatch_tolerance_row);
-        let cross_row = ActionRow::builder().title(&t!("Cross Hatch:")).build();
+        let cross_row = ActionRow::builder().title(t!("Cross Hatch:")).build();
         cross_row.add_suffix(&cross_hatch);
         hatch_group.add(&cross_row);
         scroll_content.append(&hatch_group);
 
         let dwell_group = PreferencesGroup::builder()
-            .title(&t!("Dwell Settings"))
+            .title(t!("Dwell Settings"))
             .build();
-        let dwell_row = ActionRow::builder().title(&t!("Enable Dwell:")).build();
+        let dwell_row = ActionRow::builder().title(t!("Enable Dwell:")).build();
         dwell_row.add_suffix(&enable_dwell);
         dwell_group.add(&dwell_row);
         dwell_group.add(&Self::create_row(&t!("Dwell Time (s):"), &dwell_time));
         scroll_content.append(&dwell_group);
 
         let offset_group = PreferencesGroup::builder()
-            .title(&t!("Work Offsets"))
+            .title(t!("Work Offsets"))
             .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title(&t!("Home Device Before Start"))
+            .title(t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);

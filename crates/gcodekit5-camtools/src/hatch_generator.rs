@@ -54,10 +54,8 @@ pub fn generate_hatch(path: &Path, angle_degrees: f32, spacing: f32, tolerance: 
             lyon::path::Event::Line { from, to } => {
                 segments.push((from, to));
             }
-            lyon::path::Event::End { last, close, .. } => {
-                if close {
-                    segments.push((last, start));
-                }
+            lyon::path::Event::End { last, close, .. } if close => {
+                segments.push((last, start));
             }
             _ => {}
         }

@@ -6,6 +6,7 @@
 
 pub mod cam_tools;
 pub mod command_history;
+pub mod common;
 pub mod designer;
 pub mod designer_canvas;
 pub mod designer_layers;
@@ -20,6 +21,7 @@ pub mod help_browser;
 pub mod machine_control;
 pub mod nav_cube;
 pub mod osd_format;
+pub mod platform;
 pub mod renderer_3d;
 pub mod settings;
 pub mod shaders;
