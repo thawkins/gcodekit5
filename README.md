@@ -141,8 +141,7 @@ This modular structure enables:
   - Polylines are now created closed, but a checkbox has been added to the properties to open/close them.
   - From Designer, all code is now sent via direct_sender.rs, improving engraving speed to match commercial programs.
   - Image saving alongside vector objects has been integrated into "gckd" files.
-The object positioning issue when opening "gckd" files, where objects would shift from their original position, be saved by the center, and then retrieved by the vertex, has been fixed.
-The issue with polygons with odd-numbered sides, where the height and width differed, caused resizing when saving and opening, has been corrected.
+The object positioning issue when opening "gckd" files.
   - The colors in the viewer have been changed when displaying images alongside vector objects to improve viewing.
   - The active machine name has been added to the status bar.
   - The import DXF and SVG files has been improved.
