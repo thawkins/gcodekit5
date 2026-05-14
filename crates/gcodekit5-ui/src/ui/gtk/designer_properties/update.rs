@@ -206,10 +206,8 @@ impl PropertiesPanel {
                         }
                         self.lock_aspect_ratio.set_active(true);
                         self.lock_aspect_ratio.set_sensitive(false);
-                        // Disable the rotation field
-                        self.rotation_entry.set_sensitive(false);
-                        self.rotation_entry.set_text("0.0");
                         // No rotation
+                        self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false)
                     }
 
@@ -248,7 +246,7 @@ impl PropertiesPanel {
                     Shape::Ellipse(e) => {
                         let has_rotation = e.rotation.abs() > f64::EPSILON;
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", e.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", e.rotation));
 
                         if has_rotation {
                             self.width_entry.set_sensitive(false);
@@ -270,8 +268,6 @@ impl PropertiesPanel {
                             );
                         }
 
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", e.rotation.to_degrees()));
                         self.rotation_entry.set_sensitive(true);
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
@@ -307,13 +303,12 @@ impl PropertiesPanel {
                                 }
                             }
                         }
-                        self.rotation_entry.set_text("0.0");
                         self.rotation_entry.set_sensitive(true);
                     }
                     Shape::Polygon(p) => {
                         let has_rotation = p.rotation.abs() > f64::EPSILON;
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", p.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", p.rotation));
 
                         if has_rotation {
                             self.sides_entry.set_sensitive(false);
@@ -330,7 +325,7 @@ impl PropertiesPanel {
                         self.path_frame.set_visible(false);
                         self.sides_entry.set_text(&p.sides.to_string());
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", p.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", p.rotation));
                         self.rotation_entry.set_sensitive(true);
                         self.height_entry.set_sensitive(false);
                     }
@@ -343,10 +338,11 @@ impl PropertiesPanel {
                         self.path_frame.set_visible(false);
                         self.gear_module_entry.set_text(&format!("{:.2}", g.module));
                         self.gear_teeth_entry.set_text(&g.teeth.to_string());
+                        // Ahora pressure_angle_deg ya está en grados
                         self.gear_pressure_angle_entry
-                            .set_text(&format!("{:.1}", g.pressure_angle.to_degrees()));
+                            .set_text(&format!("{:.1}", g.pressure_angle_deg));
                         self.rotation_entry.set_text("0.0");
-                        self.rotation_entry.set_visible(false);
+                        self.rot_frame.set_visible(false)
                     }
                     Shape::Sprocket(s) => {
                         self.corner_frame.set_visible(false);
@@ -361,7 +357,7 @@ impl PropertiesPanel {
                         self.sprocket_roller_diameter_entry
                             .set_text(&format!("{:.2}", s.roller_diameter));
                         self.rotation_entry.set_text("0.0");
-                        self.rotation_entry.set_visible(false);
+                        self.rot_frame.set_visible(false)
                     }
 
                     Shape::Path(p) => {
@@ -417,7 +413,7 @@ impl PropertiesPanel {
                         self.set_entry_text_if_changed(&self.width_entry, t.width as f32, system);
                         self.set_entry_text_if_changed(&self.height_entry, t.height as f32, system);
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", t.rotation.to_degrees()));
+                            .set_text(&format!("{:.1}", t.rotation));
                     }
                     _ => {
                         self.corner_frame.set_visible(false);

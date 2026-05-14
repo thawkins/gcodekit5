@@ -377,7 +377,7 @@ impl DesignFile {
             Shape::Gear(g) => {
                 teeth = g.teeth;
                 module = g.module;
-                pressure_angle = g.pressure_angle;
+                pressure_angle = g.pressure_angle_deg;
             }
             Shape::Sprocket(s) => {
                 teeth = s.teeth;
@@ -525,7 +525,7 @@ impl DesignFile {
             "gear" => {
                 let center = Point::new(data.x, data.y);
                 let mut gear = DesignGear::new(center, data.module, data.teeth);
-                gear.pressure_angle = data.pressure_angle;
+                gear.pressure_angle_deg = data.pressure_angle;
                 Shape::Gear(gear)
             }
             "sprocket" => {

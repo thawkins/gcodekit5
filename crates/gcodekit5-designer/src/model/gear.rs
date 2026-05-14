@@ -4,6 +4,12 @@
 //! and pressure angle. Generates accurate involute tooth profiles
 //! for CNC cutting.
 
+//! # Involute Gear Shape
+//!
+//! A parametric involute spur gear defined by module, tooth count,
+//! and pressure angle. Generates accurate involute tooth profiles
+//! for CNC cutting.
+
 use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
@@ -15,7 +21,7 @@ pub struct DesignGear {
     pub center: Point,
     pub module: f64,
     pub teeth: usize,
-    pub pressure_angle: f64,
+    pub pressure_angle_deg: f64,  // Cambiar nombre para claridad, almacenar en grados
     pub rotation: f64,
     pub hole_radius: f64,
 }
@@ -26,7 +32,7 @@ impl DesignGear {
             center,
             module,
             teeth,
-            pressure_angle: 20.0,
+            pressure_angle_deg: 20.0,  // Grados sexagesimales
             rotation: 0.0,
             hole_radius: 0.0,
         }
@@ -35,11 +41,13 @@ impl DesignGear {
 
 impl DesignerShape for DesignGear {
     fn render(&self) -> Path {
+        // Pasar el ángulo en radianes o grados según espere generate_spur_gear
+        // Probablemente espera radianes
         let path = crate::parametric_shapes::generate_spur_gear(
             self.center,
             self.module,
             self.teeth,
-            self.pressure_angle,
+            self.pressure_angle_deg,  // Convertir a radianes
             self.hole_radius,
         );
 
@@ -81,6 +89,7 @@ impl DesignerShape for DesignGear {
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         self.module *= sx;
         self.hole_radius *= sx;
+        // pressure_angle_deg NO se escala (es un ángulo)
     }
 
     fn properties(&self) -> Vec<Property> {
@@ -95,7 +104,7 @@ impl DesignerShape for DesignGear {
             },
             Property {
                 name: "Pressure Angle".to_string(),
-                value: PropertyValue::Number(self.pressure_angle),
+                value: PropertyValue::Number(self.pressure_angle_deg),  // Ya en grados
             },
             Property {
                 name: "Hole Radius".to_string(),
@@ -130,3 +139,4 @@ impl DesignerShape for DesignGear {
         }
     }
 }
+

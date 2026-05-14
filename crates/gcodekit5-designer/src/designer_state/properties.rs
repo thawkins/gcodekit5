@@ -459,13 +459,13 @@ impl DesignerState {
                 if let crate::model::Shape::Gear(gear) = &obj.shape {
                     if (gear.module - module).abs() > f64::EPSILON
                         || gear.teeth != teeth
-                        || (gear.pressure_angle - pressure_angle).abs() > f64::EPSILON
+                        || (gear.pressure_angle_deg - pressure_angle).abs() > f64::EPSILON
                     {
                         let mut new_obj = obj.clone();
                         if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
                             new_gear.module = module;
                             new_gear.teeth = teeth;
-                            new_gear.pressure_angle = pressure_angle;
+                            new_gear.pressure_angle_deg = pressure_angle;
                         }
 
                         commands.push(DesignerCommand::ChangeProperty(ChangeProperty {

@@ -615,6 +615,7 @@ impl PropertiesPanel {
 
         handlers::gear_sprocket::setup_sprocket_pitch_handler(
             &self.sprocket_pitch_entry,
+            &self.sprocket_roller_diameter_entry,
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
