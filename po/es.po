@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-03-31 00:59+0200\n"
+"PO-Revision-Date: 2026-05-15 17:54+0200\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
@@ -182,17 +182,20 @@ msgstr "Formas rapidas"
 msgid "Shape Gallery…"
 msgstr "Galería de formas…"
 
-msgid "Feed (Speed Laser)"
-msgstr "Alimentación o Velocidad del Laser"
+msgid "Machine Mode"
+msgstr "Tipo de Máquina"
 
-msgid "Feed Rate or Speed Laser"
-msgstr "Velocidad de alimentación o del Laser"
+msgid "Laser Speed"
+msgstr "Velocidad del Laser"
 
-msgid "Speed (Power Laser)"
-msgstr "Velocidad o Potencia del Laser"
+msgid "Feed Rate"
+msgstr "Avance"
 
-msgid "Spindle Speed or Power Laser %"
-msgstr "Velocidad de husillo o Potencia del laser"
+msgid "Laser Power"
+msgstr "Potencia del Laser"
+
+msgid "Spindle Speed"
+msgstr "Velocidad de husillo"
 
 msgid "Tool Dia"
 msgstr "Diam. de herramienta"
@@ -207,7 +210,7 @@ msgid "Target Cut Depth (positive)"
 msgstr "Profundidad de corte objetivo (positiva)"
 
 msgid "Step Down"
-msgstr "Pasada"
+msgstr "Profundidad de pasada"
 
 msgid "Depth per pass"
 msgstr "Profundidad de pasada"
@@ -798,13 +801,13 @@ msgid "Output Settings"
 msgstr "Configuración de salida"
 
 msgid "Feed Rate:"
-msgstr "Velocidad en trabajo:"
+msgstr "Avance:"
+
+msgid "Spindle Speed:"
+msgstr "Velocidad de husillo:"
 
 msgid "Travel Rate:"
 msgstr "Velocidad en vacío:"
-
-msgid "Laser Power"
-msgstr "Potencia de Láser"
 
 msgid "Cut Power (%):"
 msgstr "Potencia de corte (%):"
@@ -1174,10 +1177,10 @@ msgid "Depth:"
 msgstr "Profundidad:"
 
 msgid "Step Down:"
-msgstr "Bajar un paso:"
+msgstr "Profundidad de pasada:"
 
 msgid "Step In:"
-msgstr "Subir un paso:"
+msgstr "Paso lateral:"
 
 msgid "Ramp Angle:"
 msgstr "Ángulo de rampa:"
@@ -1210,5 +1213,3 @@ msgstr "Tramado:"
 
 msgid "Halftone Threshold:"
 msgstr "Umbral Semitonos:"
-
-

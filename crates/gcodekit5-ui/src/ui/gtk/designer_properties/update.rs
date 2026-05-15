@@ -1,6 +1,7 @@
 //! Selection update and focus tracking for the properties panel.
 
 use super::*;
+use gcodekit5_designer::designer_state::MachineMode;
 
 impl PropertiesPanel {
     pub(crate) fn set_entry_text_if_changed(
@@ -115,6 +116,10 @@ impl PropertiesPanel {
             lock_aspect,
         )) = selection_data
         {
+            // ---
+            let machine_mode = self.state.borrow().machine_mode();
+            let is_cnc = machine_mode == MachineMode::Cnc3D;
+            // ---
             let (w, h, rot) = if let Some(shape) = &shape_opt {
                 match shape {
                     Shape::Rectangle(r) => (r.width, r.height, r.rotation),
@@ -461,12 +466,14 @@ impl PropertiesPanel {
             }
 
             // Update CAM properties (common to all shapes)
+            self.op_type_combo.set_sensitive(is_cnc); // ---
             self.op_type_combo
                 .set_selected(if op_type == OperationType::Pocket {
                     1
                 } else {
                     0
                 });
+            self.depth_entry.set_sensitive(is_cnc); // ---
             self.set_entry_text_if_changed(&self.depth_entry, depth as f32, system);
             self.set_entry_text_if_changed(&self.step_down_entry, step_down, system);
             self.set_entry_text_if_changed(&self.step_in_entry, step_in, system);
