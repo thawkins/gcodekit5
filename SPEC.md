@@ -1,10 +1,39 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.41.0-alpha.1
-**Last Updated**: 2025-12-21
+**Version**: 0.55.0-alpha.1
+**Last Updated**: 2026-05-16
 **Status**: Alpha Release
 
-### Latest Release (v0.41.0-alpha.1) - Non-Destructive Geometry
+### Latest Release (v0.55.0-alpha.1) - 6-Axis Support, Touch Probe, Feeds & Speeds
+- ✅ **6-Axis Support** (per 6AXISPLAN.md)
+  - Machine Control Panel: Dynamic axis visibility based on axis count
+  - Rotary axis DRO containers with A/B/C zero buttons
+  - Machine limits display for all 6 axes
+  - G-Code Parser: A/B/C parameter extraction in visualizer
+  - `GcodeValidator` module with 6-axis validation, axis limits checking
+  - 5 test G-code files for 6-axis machines
+  - Visualizer: 6-axis bounds tracking, `RotaryPosition` type
+  - Settings: New `Machine` category with 6-axis configuration panel
+  - Firmware: Capability flags for 4/5/6 axis support across all 5 firmware types
+- ✅ **Touch Probe** (per PROBEPLAN.md)
+  - Core probe types: `ProbeType`, `ProbeRoutine`, `ProbeResult`, `ProbeReport`
+  - GRBL probe response parser (`[PRB:x,y,z:flag]`)
+  - Real-time probe pin tracking via status reports
+  - Probe routines: Z-Touch, Edge-Find, Corner-Find, Bore-Center, Boss-Center, Tool-Length
+  - WCS service: `WcsUpdateService`, `WcsUpdateConfig`, `PersistentProbeResults`
+  - UI probe dialogs integrated in CAM Tools panel
+- ✅ **Feeds & Speeds Calculator** (per FEEDSSPEEDS.md)
+  - New `calculator.rs` and `service.rs` modules
+  - Full integration with Tools and Materials databases
+  - UI dialog with tool/material selection and live calculation
+- ✅ **DeviceDB Templates**
+  - New `templates` module for device profile templates
+- ✅ **Documentation**
+  - `docs/user/6AXIS.md` — 6-axis user guide
+  - `docs/user/PROBING.md` — probing user guide
+  - `docs/UI_FIELDS_MISSING.md` — UI field tracking
+
+### Previous Release (v0.41.0-alpha.1) - Non-Destructive Geometry
 - ✅ **Designer**
   - Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).
   - Geometry modifiers are now properties of the shape, allowing live tweaking.

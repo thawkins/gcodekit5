@@ -1,0 +1,53 @@
+{
+  "name": "code-quality-review",
+  "lead_session_id": "b78be125-6e78-4bd4-ba61-c85b409a3f32",
+  "created_at": "2026-05-08T11:47:34.153450520Z",
+  "status": "active",
+  "members": [
+    {
+      "name": "security-reviewer",
+      "agent_id": "tm-001",
+      "session_id": "160cb694-05aa-4ce0-b5b0-98370085c911",
+      "agent_type": "general",
+      "status": "idle",
+      "current_task_id": null,
+      "plan_status": "none",
+      "created_at": "2026-05-08T11:47:36.075989367Z",
+      "last_spawn_error": null,
+      "spawn_prompt": "## Work Context\nReview the GCodeKit5 Rust codebase for quality issues, code smells, architectural concerns, and areas for improvement. Focus on:\n\n1. Code quality issues (duplication, complexity, unsafe code, unwrap/expect usage)\n2. Architecture and design patterns (module organization, coupling, cohesion)\n3. Performance concerns (unnecessary allocations, inefficient algorithms)\n4. Error handling practices\n5. Documentation coverage\n6. Test coverage\n7. Compliance with Rust best practices\n\nThe codebase is organized as a Cargo workspace with these crates:\n- crates/gcodekit5-core/ - Core types, traits, state management\n- crates/gcodekit5-camtools/ - CAM tools and G-code processing\n- crates/gcodekit5-designer/ - Visual design tools\n- crates/gcodekit5-gcodeeditor/ - G-Code text editor\n- crates/gcodekit5-communication/ - Serial, TCP, WebSocket protocols\n- crates/gcodekit5-ui/ - GTK4-based UI components\n- crates/gcodekit5-devicedb/ - Device profile management\n- crates/gcodekit5-settings/ - Application settings\n- crates/gcodekit5-visualizer/ - 2D/3D visualization\n\nWrite findings to docs/codequal.md (quality report) and docs/codeplan.md (remediation plan).\n\n## Your Role\nPerform a focused security review. Prioritize auth, secret handling, command execution boundaries, and injection risks. Report only high-signal issues with file paths and concrete fixes.",
+      "memory_scope": "none"
+    },
+    {
+      "name": "test-reviewer",
+      "agent_id": "tm-002",
+      "session_id": "e32fb988-28d1-40d5-a783-d45b4efd44cb",
+      "agent_type": "general",
+      "status": "idle",
+      "current_task_id": null,
+      "plan_status": "none",
+      "created_at": "2026-05-08T11:47:39.584523520Z",
+      "last_spawn_error": null,
+      "spawn_prompt": "## Work Context\nReview the GCodeKit5 Rust codebase for quality issues, code smells, architectural concerns, and areas for improvement. Focus on:\n\n1. Code quality issues (duplication, complexity, unsafe code, unwrap/expect usage)\n2. Architecture and design patterns (module organization, coupling, cohesion)\n3. Performance concerns (unnecessary allocations, inefficient algorithms)\n4. Error handling practices\n5. Documentation coverage\n6. Test coverage\n7. Compliance with Rust best practices\n\nThe codebase is organized as a Cargo workspace with these crates:\n- crates/gcodekit5-core/ - Core types, traits, state management\n- crates/gcodekit5-camtools/ - CAM tools and G-code processing\n- crates/gcodekit5-designer/ - Visual design tools\n- crates/gcodekit5-gcodeeditor/ - G-Code text editor\n- crates/gcodekit5-communication/ - Serial, TCP, WebSocket protocols\n- crates/gcodekit5-ui/ - GTK4-based UI components\n- crates/gcodekit5-devicedb/ - Device profile management\n- crates/gcodekit5-settings/ - Application settings\n- crates/gcodekit5-visualizer/ - 2D/3D visualization\n\nWrite findings to docs/codequal.md (quality report) and docs/codeplan.md (remediation plan).\n\n## Your Role\nAudit test coverage and failure modes. Identify missing edge cases, flaky patterns, and untested critical paths. Suggest exact tests to add with clear naming.",
+      "memory_scope": "none"
+    },
+    {
+      "name": "performance-reviewer",
+      "agent_id": "tm-003",
+      "session_id": "e4ece545-4a68-4a3b-8755-63f928f3143f",
+      "agent_type": "general",
+      "status": "idle",
+      "current_task_id": null,
+      "plan_status": "none",
+      "created_at": "2026-05-08T11:47:43.147198922Z",
+      "last_spawn_error": null,
+      "spawn_prompt": "## Work Context\nReview the GCodeKit5 Rust codebase for quality issues, code smells, architectural concerns, and areas for improvement. Focus on:\n\n1. Code quality issues (duplication, complexity, unsafe code, unwrap/expect usage)\n2. Architecture and design patterns (module organization, coupling, cohesion)\n3. Performance concerns (unnecessary allocations, inefficient algorithms)\n4. Error handling practices\n5. Documentation coverage\n6. Test coverage\n7. Compliance with Rust best practices\n\nThe codebase is organized as a Cargo workspace with these crates:\n- crates/gcodekit5-core/ - Core types, traits, state management\n- crates/gcodekit5-camtools/ - CAM tools and G-code processing\n- crates/gcodekit5-designer/ - Visual design tools\n- crates/gcodekit5-gcodeeditor/ - G-Code text editor\n- crates/gcodekit5-communication/ - Serial, TCP, WebSocket protocols\n- crates/gcodekit5-ui/ - GTK4-based UI components\n- crates/gcodekit5-devicedb/ - Device profile management\n- crates/gcodekit5-settings/ - Application settings\n- crates/gcodekit5-visualizer/ - 2D/3D visualization\n\nWrite findings to docs/codequal.md (quality report) and docs/codeplan.md (remediation plan).\n\n## Your Role\nReview performance hotspots and resource usage. Focus on expensive loops, repeated I/O, unnecessary allocations, and blocking calls. Propose measurable, low-risk optimizations.",
+      "memory_scope": "none"
+    }
+  ],
+  "settings": {
+    "max_teammates": 8,
+    "require_plan_approval": false,
+    "auto_claim_tasks": true,
+    "hooks": []
+  }
+}

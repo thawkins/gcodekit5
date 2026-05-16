@@ -1,0 +1,38 @@
+[
+  {
+    "message_id": "0d32cc2e-5064-4930-84ab-a7a93631f864",
+    "from": "tm-002",
+    "to": "lead",
+    "type": "message",
+    "content": "## Test Coverage Audit Complete (Task-003)\n\nI have completed the test coverage audit for GCodeKit5. Key findings:\n\n### Test Coverage by Crate\n- **gcodekit5-camtools**: Good (~30 tests) - Uses unwrap() in tests, needs error variant tests\n- **gcodekit5-communication**: Good (~150 tests) - **CRITICAL: Only 2 async tests** for complex async firmware controllers\n- **gcodekit5-designer**: Extensive (~160 tests) - Has property-based tests (proptest)\n- **gcodekit5-core**: Moderate (~40 tests) - Missing stress tests for event bus\n- **gcodekit5-gcodeeditor**: **CRITICAL: ~5% coverage** - No test files found, uses ropey without tests\n- **gcodekit5-ui**: Poor (~20%) - GTK tests can't run headless\n- **gcodekit5-devicedb**: Moderate (~25 tests)\n- **gcodekit5-settings**: Poor (~10%) - Missing tests\n- **gcodekit5-visualizer**: Moderate (~65 tests) - Unsafe GL code untested\n\n### Critical Gaps Identified\n1. **Async code paths**: Only 2 `#[tokio::test]` tests for complex concurrent firmware handling\n2. **gcodeeditor crate**: Virtually no tests for text buffer, undo/redo\n3. **Unsafe code**: ~80 unsafe blocks in UI/visualizer with no tests\n4. **Error handling**: Most error paths untested (tests use .expect()/panic!)\n5. **Edge cases**: Missing zero/max/empty boundary tests\n\n### Flaky Test Patterns Found\n1. Time-dependent tests using `sleep(Duration::from_millis(50))`\n2. File system tests without tempfile crate (cleanup issues)\n3. Global state sharing potential (static Mutex, GTK)\n\n### Recommendations\n**Priority 1 (Must Add):**\n- Add 20+ async tests for gcodekit5-communication\n- Create test suite for gcodekit5-gcodeeditor\n- Replace .expect() with proper error assertions\n\n**Priority 2 (Should Add):**\n- Property-based fuzz tests for parsers\n- Timeout/recovery tests for communication\n- Error variant tests for all crates\n\nI attempted to write docs/codequal.md but encountered file permission restrictions. The complete analysis is above - let me know if you need specific test recommendations formatted differently.",
+    "sent_at": "2026-05-08T11:55:30.116120619Z",
+    "read": true
+  },
+  {
+    "message_id": "5803e11b-96e2-4011-a3b8-0399f411f61a",
+    "from": "tm-003",
+    "to": "lead",
+    "type": "message",
+    "content": "I've completed the performance analysis of the codebase. Key findings:\n\n**Critical Issues (HIGH priority):**\n1. Regex compilation in hot paths - vector_engraver.rs compiles 7 regex patterns on every SVG parse instead of caching them with LazyLock. This is 10-50x slower than necessary.\n\n**Medium Issues:**\n2. Inefficient string building - format!() creates temporary Strings in G-code generators (spoilboard_grid, drill_press, jigsaw_puzzle). Should use write!() instead.\n3. Blocking file I/O in CAM tools - fs::read_to_string() in vector_engraver.rs:145 and others should use spawn_blocking for UI-facing code.\n\n**Good Practices Found:**\n- Proper async Tokio usage in communication crate\n- Safe unsafe code isolation (only in GL/GPU modules with safety comments)\n- Appropriate Arc/Mutex usage for shared state\n\nI've attempted to write findings to docs/codequal.md but encountered permission issues. Will need to coordinate with lead on how to deliver the report.",
+    "sent_at": "2026-05-08T11:56:08.820130206Z",
+    "read": true
+  },
+  {
+    "message_id": "c8ad1c56-25ee-4c98-bccf-063e733a168c",
+    "from": "tm-001",
+    "to": "lead",
+    "type": "message",
+    "content": "## Security Review Complete - Task-001\n\nI have completed the authentication boundaries audit for the GCodeKit5 codebase. No authentication system exists (which is by design for a desktop CNC controller), and no critical vulnerabilities were found.\n\n**Summary of Findings:**\n- **No auth/session system** - INFO severity, by design for local desktop app\n- **Build script command execution** - LOW severity - `build.rs` executes `msgfmt` with directory-listed paths\n- **G-Code command validation** - MEDIUM severity - Commands sent directly to CNC without validation\n- **JSON deserialization** - MEDIUM severity - External files parsed without size limits\n- **SVG path parsing** - MEDIUM severity - Regex-based parsing without input validation\n- **Unsafe code** - LOW severity - 30+ unsafe blocks for OpenGL, appropriately used\n- **Ignored results** - LOW severity - Machine control command failures silently ignored\n\n**High Priority Recommendations:**\n1. Implement G-Code validation layer before sending to controller\n2. Add file size limits and schema validation for JSON imports\n\n**Security-Relevant Files Identified:**\n- `crates/gcodekit5-ui/build.rs` (command execution)\n- `crates/gcodekit5-communication/src/firmware/grbl/controller.rs` (G-Code dispatch)\n- `crates/gcodekit5-ui/src/ui/gtk/machine_control/direct_sender.rs` (direct sending)\n- `crates/gcodekit5-designer/src/serialization.rs` (JSON deserialization)\n- `crates/gcodekit5-core/src/data/gtc_import.rs` (ZIP/JSON import)\n- `crates/gcodekit5-camtools/src/vector_engraver.rs` (SVG parsing)\n\nNote: File write permissions prevented creating docs/codequal.md and docs/codeplan.md. The lead should run the write commands or I can provide the markdown content for manual creation.",
+    "sent_at": "2026-05-08T12:02:26.069849363Z",
+    "read": true
+  },
+  {
+    "message_id": "43264ef7-bc47-4834-bc2b-ed0cb86a7e69",
+    "from": "tm-003",
+    "to": "lead",
+    "type": "message",
+    "content": "I've completed the performance analysis but am unable to write to the docs/analysis/ directory due to shell permission restrictions with special characters. Here's my complete summary:\n\n## Key Performance Findings\n\n### CRITICAL (HIGH Priority)\n**Regex Compilation in Hot Paths** - `crates/gcodekit5-camtools/src/vector_engraver.rs` lines 153-177 compile 7 regex patterns on EVERY SVG parse instead of caching them. For large SVGs, this is 10-50x slower than necessary. Should use LazyLock.\n\n### MEDIUM Priority\n1. **Inefficient String Building** - spoilboard_grid.rs, drill_press.rs use `push_str(&format!(...))` which allocates temp Strings. Should use `write!()` instead.\n2. **Synchronous File I/O** - vector_engraver.rs:145, gerber.rs:843 use blocking fs::read_to_string() which can cause UI stuttering. Should use tokio::task::spawn_blocking.\n\n### LOW Priority\n- Excessive cloning in tabbed_box/mod.rs and gerber.rs\n- No pre-allocation for collections in hot paths\n- Minor iterator optimization opportunities\n\n### Positive Findings\n- Proper async Tokio usage in communication crate\n- Safe unsafe code (only in GL modules with SAFETY comments)\n- Appropriate Arc/Mutex usage for shared state\n\n## Recommendations Priority\n1. Cache regex patterns with LazyLock (highest ROI)\n2. Replace format!+push_str with write! in G-code generators\n3. Wrap file I/O in spawn_blocking for UI code\n4. Review clones for borrowing opportunities\n\nReady to complete task once file write issue is resolved.",
+    "sent_at": "2026-05-08T12:05:51.482853333Z",
+    "read": false
+  }
+]

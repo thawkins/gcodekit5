@@ -1,29 +1,37 @@
-## [0.54.0-alpha.2] - 2026-05-07
-
-### Changed
-- **Version bump**: Incremented patch version to alpha.2
-
-## [0.54.0-alpha.1] - 2026-05-06
+## [0.55.0-alpha.1] - 2026-05-16
 
 ### Added
-- **Raster image import in Designer**: Full support for importing PNG, JPG, BMP, GIF, TIFF images
-  - Image integration into GCKD file format for persistent storage
-  - Halftone threshold controls for image preprocessing
-  - High-speed streaming with 40-line window and overscan for laser engraving
-- **Active machine display**: Machine name shown in status bar for quick identification
-- **Translations**: CAM Tools, designer tool icons, and partial UI translations
+- **Milestone 8 — Settings & Configuration** (per 6AXISPLAN.md)
+  - **New `Machine` settings category** in `SettingsCategory` enum for axis configuration
+  - **Machine settings panel** with complete 6-axis configuration support:
+    - Jog settings: Linear step size, rotary step size, jog feed rate
+    - Axis limits: X, Y, Z limits (mm) and A, B, C limits (degrees)
+    - Steps per degree: Configuration for A, B, C rotary axes
+    - Direction inversion: Toggle for all 6 axes (X, Y, Z, A, B, C)
+    - Rotary calibration: Offset values for A, B, C axes
+  - **SettingsPersistence** extended with:
+    - `add_machine_settings()`: Populates dialog with 6-axis machine settings
+    - `update_machine_settings()`: Saves machine settings from dialog to config
+  - **UI Settings panel** updated to include Machine tab
+  - **SettingsController** updated with Machine category mapping
+  - **ProbeSettings** fixed with proper `Default` implementation for validation
+  - All 35 settings crate tests passing
+
+### Added
+- **Milestone 9 — Firmware Support** (per 6AXISPLAN.md)
+  - **New capability flags** in `capabilities.rs`: `Axis4Support`, `Axis5Support`, `Axis6Support`
+  - **GRBL 6-axis status report parsing**: Verified 3/4/6-axis position parsing in `MachinePosition`, `WorkPosition`, `WorkCoordinateOffset`
+  - **grblHAL 6-axis support**: Already has `axes: 6` with `supports_axis()` for A/B/C
+  - **FluidNC 6-axis support**: Already has `axes: 6` with full axis support
+  - **TinyG 6-axis JSON parsing**: JSON responses already support 6 axes
+  - **Smoothieware 6-axis support**: Already has axis support up to 5-6 axes
+  - **g2core 6-axis support**: Native 6-axis with rotational axes support
+  - **6-axis capability detection**: New `Capability` enum variants for axis support
+  - **Unit tests** in `grbl/test.rs` covering:
+    - 3/4/6-axis machine position parsing
+    - 6-axis work position parsing
+    - 6-axis work coordinate offset parsing
+    - GRBL capabilities max_axes verification
 
 ### Changed
-- **Raster image viewer display**: Improved raster rendering quality and performance in Viewer
-- **Viewer optimization**: Performance improvements for rendering raster overlay data
-- **Vectorized G-code simplification**: Cleaner, more compact G-code output
-- **Path engraving improvements**: Better toolpath generation for vector paths
-- **Feed rate, terminal, and status bar**: Various UI/UX improvements
-- **GTK 4.14 compatibility**: Full sync with latest GTK4 API requirements
-
-### Fixed
-- Pause/stop management errors in Designer during streaming operations
-- Stop/Reset logic: new flow disabling pause in raster mode
-- Rotation, aspect ratio, and menu bugs in Designer
-- Polygon width properties and visibility
-- SVG and DXF import scaling and G-code generation quality
+- Updated `6AXISPLAN.md`: Milestone 9 marked as complete with all tasks done

@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.55.0-alpha.1] - 2026-05-16
 
 ### Added
 - **Milestone 8 — Settings & Configuration** (per 6AXISPLAN.md)

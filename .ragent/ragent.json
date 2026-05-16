@@ -108,8 +108,8 @@
     "office": false,
     "github": false,
     "gitlab": false,
-    "teams": false,
-    "agents": false,
+    "teams": true,
+    "agents": true,
     "plan": false,
     "codeindex": true
   },

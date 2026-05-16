@@ -19,7 +19,8 @@ fn test_six_axis_gcode_files_exist() {
     for file in test_files {
         assert!(Path::new(file).exists(), "Test file {} should exist", file);
 
-        let content = fs::read_to_string(file).expect(&format!("Should be able to read {}", file));
+        let content =
+            fs::read_to_string(file).unwrap_or_else(|_| panic!("Should be able to read {}", file));
 
         // Verify file has content
         assert!(
@@ -62,7 +63,7 @@ fn test_six_axis_gcode_patterns() {
 #[test]
 fn test_rotary_axis_ranges() {
     // Valid rotary angles
-    let valid_angles = vec![0.0, 45.0, 90.0, 180.0, 270.0, 360.0, 720.0, -180.0];
+    let valid_angles: Vec<f32> = vec![0.0, 45.0, 90.0, 180.0, 270.0, 360.0, 720.0, -180.0];
     for angle in valid_angles {
         // Rotary axes can be any value (continuous rotation)
         assert!(angle.is_finite(), "Angle {} should be finite", angle);

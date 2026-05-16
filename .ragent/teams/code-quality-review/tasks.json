@@ -1,0 +1,38 @@
+{
+  "team_name": "code-quality-review",
+  "tasks": [
+    {
+      "id": "task-001",
+      "title": "Audit authentication boundaries",
+      "description": "Confirm session/auth checks protect privileged actions and state transitions.",
+      "status": "completed",
+      "assigned_to": "tm-001",
+      "depends_on": [],
+      "created_at": "2026-05-08T11:47:34.162800392Z",
+      "claimed_at": "2026-05-08T11:47:54.003524487Z",
+      "completed_at": "2026-05-08T12:02:06.200171359Z"
+    },
+    {
+      "id": "task-002",
+      "title": "Audit command execution safety",
+      "description": "Review shell/tool invocation paths for injection or unsafe defaults.",
+      "status": "completed",
+      "assigned_to": "tm-003",
+      "depends_on": [],
+      "created_at": "2026-05-08T11:47:34.163024199Z",
+      "claimed_at": "2026-05-08T11:47:57.398619199Z",
+      "completed_at": "2026-05-08T12:06:07.251920169Z"
+    },
+    {
+      "id": "task-003",
+      "title": "Audit test coverage for team workflows",
+      "description": "Verify key team lifecycle behaviors have regression tests.",
+      "status": "completed",
+      "assigned_to": "tm-002",
+      "depends_on": [],
+      "created_at": "2026-05-08T11:47:34.163197959Z",
+      "claimed_at": "2026-05-08T11:48:07.434560319Z",
+      "completed_at": "2026-05-08T11:55:20.691610711Z"
+    }
+  ]
+}
