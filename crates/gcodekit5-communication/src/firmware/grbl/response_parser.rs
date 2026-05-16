@@ -30,6 +30,13 @@ pub enum GrblResponse {
     StatusMask(u8),
     /// Startup message or other text
     Message(String),
+    /// Probe result [PRB:x,y,z:flag]
+    ProbeResult {
+        /// Trigger position in machine coordinates.
+        position: CNCPoint,
+        /// Success flag (1 = triggered, 0 = not triggered).
+        success: bool,
+    },
 }
 
 impl fmt::Display for GrblResponse {
@@ -45,6 +52,11 @@ impl fmt::Display for GrblResponse {
             Self::BuildInfo(info) => write!(f, "build_info:{}", info),
             Self::StatusMask(mask) => write!(f, "status_mask:{}", mask),
             Self::Message(msg) => write!(f, "message:{}", msg),
+            Self::ProbeResult { position, success } => write!(
+                f,
+                "probe: X{:.3} Y{:.3} Z{:.3} success={}",
+                position.x, position.y, position.z, success
+            ),
         }
     }
 }
@@ -142,6 +154,11 @@ impl GrblResponseParser {
         // Check for version (starts with "Grbl ")
         if line.starts_with("Grbl ") {
             return Some(GrblResponse::Version(line.to_string()));
+        }
+
+        // Check for probe result [PRB:x,y,z:flag]
+        if line.starts_with("[PRB:") && line.ends_with(']') {
+            return self.parse_probe_result(line);
         }
 
         // Check for build info (starts with "[")
@@ -245,6 +262,22 @@ impl GrblResponseParser {
         let _numeric_value = value.parse::<f64>().ok();
 
         Some(GrblResponse::Setting { number, value })
+    }
+
+    /// Parse a probe result line `[PRB:x,y,z:flag]`
+    fn parse_probe_result(&self, line: &str) -> Option<GrblResponse> {
+        let inner = line.strip_prefix("[PRB:")?.strip_suffix("]")?;
+        let mut parts = inner.split(':');
+        let coords = parts.next()?;
+        let flag = parts.next();
+
+        let position = self.parse_position(coords, Units::MM)?;
+        let success = flag
+            .and_then(|f| f.trim().parse::<u8>().ok())
+            .map(|v| v != 0)
+            .unwrap_or(true); // default to true if flag missing
+
+        Some(GrblResponse::ProbeResult { position, success })
     }
 
     /// Get error description

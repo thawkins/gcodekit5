@@ -308,8 +308,14 @@ impl ControllerTrait for TinyGController {
         if !self.is_connected() {
             anyhow::bail!("TinyG controller not connected");
         }
-
-        Ok(gcodekit5_core::PartialPosition::default())
+        // TODO: Implement TinyG probe support (Milestone 2.4)
+        anyhow::bail!(
+            "{}: {}",
+            gcodekit5_core::ControllerError::ProbeNotSupported {
+                reason: "TinyG probe not yet implemented".to_string(),
+            },
+            "TinyG probe support is planned for a future release"
+        )
     }
 
     async fn probe_x(
@@ -319,8 +325,13 @@ impl ControllerTrait for TinyGController {
         if !self.is_connected() {
             anyhow::bail!("TinyG controller not connected");
         }
-
-        Ok(gcodekit5_core::PartialPosition::default())
+        anyhow::bail!(
+            "{}: {}",
+            gcodekit5_core::ControllerError::ProbeNotSupported {
+                reason: "TinyG probe not yet implemented".to_string(),
+            },
+            "TinyG probe support is planned for a future release"
+        )
     }
 
     async fn probe_y(
@@ -330,8 +341,13 @@ impl ControllerTrait for TinyGController {
         if !self.is_connected() {
             anyhow::bail!("TinyG controller not connected");
         }
-
-        Ok(gcodekit5_core::PartialPosition::default())
+        anyhow::bail!(
+            "{}: {}",
+            gcodekit5_core::ControllerError::ProbeNotSupported {
+                reason: "TinyG probe not yet implemented".to_string(),
+            },
+            "TinyG probe support is planned for a future release"
+        )
     }
 
     async fn set_feed_override(&mut self, _percentage: u16) -> anyhow::Result<()> {

@@ -764,10 +764,9 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. }
-                            if close => {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
+                        }
                         _ => {}
                     }
                 }
@@ -780,10 +779,9 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. }
-                            if close => {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
+                        }
                         _ => {}
                     }
                 }
@@ -796,10 +794,9 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. }
-                            if close => {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
+                        }
                         _ => {}
                     }
                 }
@@ -812,10 +809,9 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. }
-                            if close => {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
+                        }
                         _ => {}
                     }
                 }

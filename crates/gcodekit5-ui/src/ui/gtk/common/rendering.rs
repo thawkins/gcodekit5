@@ -219,6 +219,7 @@ pub fn draw_origin_axes(cr: &Context, extent: f64, zoom: f64, line_width: f64) {
 /// * `zoom` - Current zoom level
 /// * `line_width` - Line width on screen
 /// * `color` - Optional color (defaults to DEVICE_BOUNDS)
+#[allow(clippy::too_many_arguments)]
 pub fn draw_device_bounds(
     cr: &Context,
     min_x: f64,
@@ -255,6 +256,7 @@ pub fn draw_device_bounds(
 /// * `zoom` - Current zoom level
 /// * `handle_size` - Size of handles on screen
 /// * `color` - Handle color
+#[allow(clippy::too_many_arguments)]
 pub fn draw_selection_handles(
     cr: &Context,
     min_x: f64,

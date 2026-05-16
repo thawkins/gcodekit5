@@ -8,7 +8,8 @@ use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{mpsc, Arc};
+use std::rc::Rc;
+use std::sync::mpsc;
 use tracing::{debug, trace};
 
 const CANVAS_PADDING: f32 = core_constants::CANVAS_PADDING_PX as f32;
@@ -53,12 +54,20 @@ enum MotionMode {
 }
 
 /// Structure for extracted parameters
+/// Supports 6-axis coordinates (X, Y, Z linear + A, B, C rotary)
 struct ExtractedParams {
     x: Option<f32>,
     y: Option<f32>,
     z: Option<f32>,
+    // Rotary axis coordinates (4th, 5th, 6th axes)
+    a: Option<f32>,
+    b: Option<f32>,
+    c: Option<f32>,
+    // Arc center offsets
     i: Option<f32>,
     j: Option<f32>,
+    k: Option<f32>, // Arc center Z offset for helical arcs
+    // Feed and spindle
     s: Option<f32>,
     f: Option<f32>,
 }
@@ -69,19 +78,67 @@ impl ExtractedParams {
             x: None,
             y: None,
             z: None,
+            a: None,
+            b: None,
+            c: None,
             i: None,
             j: None,
+            k: None,
             s: None,
             f: None,
         }
     }
 
+    /// Check if this line has any linear or rotary axis movement
     fn has_movement(&self) -> bool {
-        self.x.is_some() || self.y.is_some() || self.z.is_some()
+        self.x.is_some()
+            || self.y.is_some()
+            || self.z.is_some()
+            || self.a.is_some()
+            || self.b.is_some()
+            || self.c.is_some()
     }
 
+    /// Check if this line has arc center parameters
     fn has_arc_params(&self) -> bool {
         self.i.is_some() && self.j.is_some()
+    }
+
+    /// Check if this line has any rotary axis movement
+    fn has_rotary_movement(&self) -> bool {
+        self.a.is_some() || self.b.is_some() || self.c.is_some()
+    }
+}
+
+/// 6-Axis position including rotary axes
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct RotaryPosition {
+    pub a: f32, // 4th axis (rotation around X)
+    pub b: f32, // 5th axis (rotation around Y)
+    pub c: f32, // 6th axis (rotation around Z)
+}
+
+impl RotaryPosition {
+    pub fn new(a: f32, b: f32, c: f32) -> Self {
+        Self { a, b, c }
+    }
+
+    pub fn from_optional(a: Option<f32>, b: Option<f32>, c: Option<f32>) -> Self {
+        Self {
+            a: a.unwrap_or(0.0),
+            b: b.unwrap_or(0.0),
+            c: c.unwrap_or(0.0),
+        }
+    }
+
+    /// Check if any rotary axis has non-zero value
+    pub fn has_movement(&self) -> bool {
+        self.a != 0.0 || self.b != 0.0 || self.c != 0.0
+    }
+
+    /// Get the magnitude of rotation (for visualization)
+    pub fn magnitude(&self) -> f32 {
+        (self.a.powi(2) + self.b.powi(2) + self.c.powi(2)).sqrt()
     }
 }
 
@@ -169,16 +226,26 @@ impl CoordTransform {
     }
 }
 
-/// Visualizer state
+/// Visualizer state with 6-axis support
 #[derive(Debug, Clone)]
 pub struct Visualizer {
+    // Linear axis bounds
     pub min_x: f32,
     pub max_x: f32,
     pub min_y: f32,
     pub max_y: f32,
     pub min_z: f32,
     pub max_z: f32,
+    // Rotary axis bounds (4th, 5th, 6th axes)
+    pub min_a: f32,
+    pub max_a: f32,
+    pub min_b: f32,
+    pub max_b: f32,
+    pub min_c: f32,
+    pub max_c: f32,
+    // Current position (including rotary)
     pub current_pos: Point3D,
+    pub current_rotary: RotaryPosition,
     pub current_intensity: f32,
     /// Zoom/scale factor for rendering (1.0 = 100%)
     pub zoom_scale: f32,
@@ -190,12 +257,14 @@ pub struct Visualizer {
     pub show_grid: bool,
     /// Scale factor: pixels per mm (default 1.0 = 1px:1mm)
     pub scale_factor: f32,
+    /// Whether to use different colors for rotary moves
+    pub color_rotary_moves: bool,
     toolpath_cache: ToolpathCache,
     viewport: ViewportTransform,
     /// Dirty flag — set when vertex data needs regeneration
     dirty: bool,
 
-    toolpath_receiver: Arc<mpsc::Receiver<Vec<Toolpath>>>,
+    toolpath_receiver: Rc<mpsc::Receiver<Vec<Toolpath>>>,
     toolpath_sender: mpsc::Sender<Vec<Toolpath>>,
     current_toolpaths: Vec<Toolpath>,
     /// Colors according to intensity
@@ -211,24 +280,35 @@ impl Visualizer {
         let (sender, receiver) = mpsc::channel();
 
         Self {
+            // Linear axis bounds
             min_x: -(core_constants::WORLD_EXTENT_MM as f32),
             max_x: core_constants::WORLD_EXTENT_MM as f32,
             min_y: -(core_constants::WORLD_EXTENT_MM as f32),
             max_y: core_constants::WORLD_EXTENT_MM as f32,
             min_z: 0.0,
-            max_z: 100.0, // Default Z range
+            max_z: 100.0,
+            // Rotary axis bounds (default to 0-360 degrees)
+            min_a: 0.0,
+            max_a: 360.0,
+            min_b: 0.0,
+            max_b: 360.0,
+            min_c: 0.0,
+            max_c: 360.0,
+            // Position tracking
             current_pos: Point3D::new(0.0, 0.0, 0.0),
+            current_rotary: RotaryPosition::default(),
             current_intensity: 0.0,
             zoom_scale: 1.0,
             x_offset: 0.0,
             y_offset: 0.0,
             show_grid: true,
             scale_factor: DEFAULT_SCALE_FACTOR,
+            color_rotary_moves: true, // Enable rotary color coding by default
             toolpath_cache: ToolpathCache::new(),
             viewport: ViewportTransform::new(CANVAS_PADDING),
             dirty: true,
 
-            toolpath_receiver: Arc::new(receiver),
+            toolpath_receiver: Rc::new(receiver),
             toolpath_sender: sender,
             current_toolpaths: Vec::new(),
 
@@ -435,8 +515,14 @@ impl Visualizer {
                 let new_x = params.x.unwrap_or(current_pos.x);
                 let new_y = params.y.unwrap_or(current_pos.y);
                 let new_z = params.z.unwrap_or(current_pos.z);
+                let _new_a = params.a.unwrap_or(self.current_rotary.a);
+                let _new_b = params.b.unwrap_or(self.current_rotary.b);
+                let _new_c = params.c.unwrap_or(self.current_rotary.c);
+                // Update rotary bounds
+                bounds.update_rotary(params.a, params.b, params.c);
 
-                // Determine the mode of movement for this line
+                // Track if this move involves rotary axes
+                let _has_rotary = params.has_rotary_movement(); // Determine the mode of movement for this line
                 let motion_mode_for_line = if has_gcode {
                     // Old style: the G command is on the same line
                     current_motion_mode
@@ -586,6 +672,27 @@ impl Visualizer {
         self.toolpath_cache.update(new_hash, commands);
         self.dirty = true;
 
+        // Update visualizer bounds from parsed bounds
+        (
+            self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z,
+        ) = bounds.finalize_with_padding(BOUNDS_PADDING_FACTOR);
+
+        // Update rotary bounds
+        if bounds.has_rotary_movement() {
+            let ((min_a, max_a), (min_b, max_b), (min_c, max_c)) = bounds.rotary_ranges();
+            self.min_a = min_a;
+            self.max_a = max_a;
+            self.min_b = min_b;
+            self.max_b = max_b;
+            self.min_c = min_c;
+            self.max_c = max_c;
+
+            debug!(
+                "Rotary bounds: A=[{:.2}°, {:.2}°], B=[{:.2}°, {:.2}°], C=[{:.2}°, {:.2}°]",
+                self.min_a, self.max_a, self.min_b, self.max_b, self.min_c, self.max_c
+            );
+        }
+
         debug!(
             "Bounds: x=[{:.2}, {:.2}], y=[{:.2}, {:.2}], z=[{:.2}, {:.2}]",
             self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z
@@ -613,15 +720,21 @@ impl Visualizer {
                     'X' => params.x = Some(value),
                     'Y' => params.y = Some(value),
                     'Z' => params.z = Some(value),
+                    // Rotary axis coordinates (4th, 5th, 6th axes)
+                    'A' => params.a = Some(value),
+                    'B' => params.b = Some(value),
+                    'C' => params.c = Some(value),
+                    // Arc center offsets
                     'I' => params.i = Some(value),
                     'J' => params.j = Some(value),
+                    'K' => params.k = Some(value), // Z offset for helical arcs
+                    // Feed and spindle
                     'S' => params.s = Some(value),
                     'F' => params.f = Some(value),
                     _ => {}
                 }
             }
         }
-
         params
     }
 
@@ -844,7 +957,7 @@ impl Visualizer {
     }
 
     pub fn update(&mut self) {
-        if let Some(receiver) = Arc::get_mut(&mut self.toolpath_receiver) {
+        if let Some(receiver) = Rc::get_mut(&mut self.toolpath_receiver) {
             while let Ok(toolpaths) = receiver.try_recv() {
                 self.current_toolpaths = toolpaths;
                 self.dirty = true;

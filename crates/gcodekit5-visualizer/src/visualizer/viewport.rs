@@ -1,6 +1,7 @@
 //! Shared viewport helpers for 2D visualizer rendering.
 
 /// Bounding box accumulator used while parsing toolpaths.
+/// Supports full 6-axis tracking including rotary axes (A, B, C).
 #[derive(Debug, Clone, Copy)]
 pub struct Bounds {
     pub min_x: f32,
@@ -9,6 +10,15 @@ pub struct Bounds {
     pub max_y: f32,
     pub min_z: f32,
     pub max_z: f32,
+    // Rotary axis bounds (4th, 5th, 6th axes)
+    pub min_a: f32,
+    pub max_a: f32,
+    pub min_b: f32,
+    pub max_b: f32,
+    pub min_c: f32,
+    pub max_c: f32,
+    // Track if rotary axes have been set
+    pub has_rotary: bool,
 }
 
 impl Default for Bounds {
@@ -26,16 +36,90 @@ impl Bounds {
             max_y: f32::MIN,
             min_z: f32::MAX,
             max_z: f32::MIN,
+            // Initialize rotary axis bounds
+            min_a: f32::MAX,
+            max_a: f32::MIN,
+            min_b: f32::MAX,
+            max_b: f32::MIN,
+            min_c: f32::MAX,
+            max_c: f32::MIN,
+            has_rotary: false,
         }
     }
 
-    pub fn update(&mut self, x: f32, y: f32, z: f32) {
+    /// Update bounds with X, Y, Z coordinates
+    pub fn update_xyz(&mut self, x: f32, y: f32, z: f32) {
         self.min_x = self.min_x.min(x);
         self.max_x = self.max_x.max(x);
         self.min_y = self.min_y.min(y);
         self.max_y = self.max_y.max(y);
         self.min_z = self.min_z.min(z);
         self.max_z = self.max_z.max(z);
+    }
+
+    /// Legacy alias for update_xyz - maintains backward compatibility
+    pub fn update(&mut self, x: f32, y: f32, z: f32) {
+        self.update_xyz(x, y, z);
+    }
+
+    /// Update bounds with rotary axis coordinates (A, B, C)
+    pub fn update_rotary(&mut self, a: Option<f32>, b: Option<f32>, c: Option<f32>) {
+        if let Some(a_val) = a {
+            self.min_a = self.min_a.min(a_val);
+            self.max_a = self.max_a.max(a_val);
+            self.has_rotary = true;
+        }
+        if let Some(b_val) = b {
+            self.min_b = self.min_b.min(b_val);
+            self.max_b = self.max_b.max(b_val);
+            self.has_rotary = true;
+        }
+        if let Some(c_val) = c {
+            self.min_c = self.min_c.min(c_val);
+            self.max_c = self.max_c.max(c_val);
+            self.has_rotary = true;
+        }
+    }
+
+    /// Check if bounds include any rotary axis movement
+    pub fn has_rotary_movement(&self) -> bool {
+        self.has_rotary
+            && (self.min_a != f32::MAX || self.min_b != f32::MAX || self.min_c != f32::MAX)
+    }
+
+    /// Get rotary axis ranges as (min, max) tuples
+    pub fn rotary_ranges(&self) -> ((f32, f32), (f32, f32), (f32, f32)) {
+        let a_range = if self.min_a == f32::MAX {
+            (0.0, 0.0)
+        } else {
+            (self.min_a, self.max_a)
+        };
+        let b_range = if self.min_b == f32::MAX {
+            (0.0, 0.0)
+        } else {
+            (self.min_b, self.max_b)
+        };
+        let c_range = if self.min_c == f32::MAX {
+            (0.0, 0.0)
+        } else {
+            (self.min_c, self.max_c)
+        };
+        (a_range, b_range, c_range)
+    }
+
+    /// Get maximum rotation magnitude across all rotary axes
+    pub fn max_rotary_range(&self) -> f32 {
+        let mut max_range = 0.0f32;
+        if self.min_a != f32::MAX {
+            max_range = max_range.max(self.max_a - self.min_a);
+        }
+        if self.min_b != f32::MAX {
+            max_range = max_range.max(self.max_b - self.min_b);
+        }
+        if self.min_c != f32::MAX {
+            max_range = max_range.max(self.max_c - self.min_c);
+        }
+        max_range
     }
 
     pub fn is_valid(&self) -> bool {

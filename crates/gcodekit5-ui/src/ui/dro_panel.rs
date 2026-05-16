@@ -91,22 +91,41 @@ pub struct MachinePosition {
     pub y: f32,
     /// Z axis position
     pub z: f32,
-    /// A axis position (optional rotary)
+    /// A axis position (rotary around X)
     pub a: f32,
+    /// B axis position (rotary around Y, 5th axis)
+    pub b: f32,
+    /// C axis position (rotary around Z, 6th axis)
+    pub c: f32,
 }
 
 impl MachinePosition {
     /// Create new machine position
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z, a: 0.0 }
+        Self { x, y, z, a: 0.0, b: 0.0, c: 0.0 }
     }
 
-    /// Get formatted string in given units
+    /// Get formatted string in given units (X, Y, Z only)
     pub fn formatted(&self, units: UnitSystem) -> String {
         let x = units.from_mm(self.x);
         let y = units.from_mm(self.y);
         let z = units.from_mm(self.z);
         format!("X:{:.2} Y:{:.2} Z:{:.2}", x, y, z)
+    }
+
+    /// Get formatted string for 6-axis display with conditional axes
+    /// axis_count: 3=XYZ, 4=XYZA, 5=XYZAB, 6=XYZABC
+    pub fn formatted_6axis(&self, units: UnitSystem, axis_count: u8) -> String {
+        let x = units.from_mm(self.x);
+        let y = units.from_mm(self.y);
+        let z = units.from_mm(self.z);
+        
+        match axis_count {
+            3 => format!("X:{:.2} Y:{:.2} Z:{:.2}", x, y, z),
+            4 => format!("X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}°", x, y, z, self.a),
+            5 => format!("X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}° B:{:.2}°", x, y, z, self.a, self.b),
+            _ => format!("X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}° B:{:.2}° C:{:.2}°", x, y, z, self.a, self.b, self.c),
+        }
     }
 }
 
@@ -119,22 +138,41 @@ pub struct WorkPosition {
     pub y: f32,
     /// Z axis offset
     pub z: f32,
-    /// A axis offset (optional rotary)
+    /// A axis offset (rotary around X)
     pub a: f32,
+    /// B axis offset (rotary around Y, 5th axis)
+    pub b: f32,
+    /// C axis offset (rotary around Z, 6th axis)
+    pub c: f32,
 }
 
 impl WorkPosition {
     /// Create new work position
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z, a: 0.0 }
+        Self { x, y, z, a: 0.0, b: 0.0, c: 0.0 }
     }
 
-    /// Get formatted string in given units
+    /// Get formatted string in given units (X, Y, Z only)
     pub fn formatted(&self, units: UnitSystem) -> String {
         let x = units.from_mm(self.x);
         let y = units.from_mm(self.y);
         let z = units.from_mm(self.z);
         format!("X:{:.2} Y:{:.2} Z:{:.2}", x, y, z)
+    }
+
+    /// Get formatted string for 6-axis display with conditional axes
+    /// axis_count: 3=XYZ, 4=XYZA, 5=XYZAB, 6=XYZABC
+    pub fn formatted_6axis(&self, units: UnitSystem, axis_count: u8) -> String {
+        let x = units.from_mm(self.x);
+        let y = units.from_mm(self.y);
+        let z = units.from_mm(self.z);
+        
+        match axis_count {
+            3 => format!("X:{:.2} Y:{:.2} Z:{:.2}", x, y, z),
+            4 => format!("X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}°", x, y, z, self.a),
+            5 => format!("X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}° B:{:.2}°", x, y, z, self.a, self.b),
+            _ => format!("X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}° B:{:.2}° C:{:.2}°", x, y, z, self.a, self.b, self.c),
+        }
     }
 
     /// Zero out all axes
@@ -143,15 +181,19 @@ impl WorkPosition {
         self.y = 0.0;
         self.z = 0.0;
         self.a = 0.0;
+        self.b = 0.0;
+        self.c = 0.0;
     }
 
     /// Zero a specific axis
     pub fn zero_axis(&mut self, axis: char) {
         match axis {
-            'X' => self.x = 0.0,
-            'Y' => self.y = 0.0,
-            'Z' => self.z = 0.0,
-            'A' => self.a = 0.0,
+            'X' | 'x' => self.x = 0.0,
+            'Y' | 'y' => self.y = 0.0,
+            'Z' | 'z' => self.z = 0.0,
+            'A' | 'a' => self.a = 0.0,
+            'B' | 'b' => self.b = 0.0,
+            'C' | 'c' => self.c = 0.0,
             _ => {}
         }
     }

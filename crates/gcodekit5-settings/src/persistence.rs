@@ -54,6 +54,9 @@ impl SettingsPersistence {
         // Advanced Settings
         self.add_advanced_settings(dialog);
 
+        // Machine Settings (6-axis configuration)
+        self.add_machine_settings(dialog);
+
         // Keyboard Shortcuts (from config if available)
         self.add_keyboard_shortcuts(dialog);
     }
@@ -74,6 +77,9 @@ impl SettingsPersistence {
 
         // Update advanced settings
         self.update_advanced_settings(dialog)?;
+
+        // Update machine settings
+        self.update_machine_settings(dialog)?;
 
         // Validate updated config
         self.config.validate()?;
@@ -387,6 +393,227 @@ impl SettingsPersistence {
         );
     }
 
+    /// Add machine settings to dialog
+    fn add_machine_settings(&self, dialog: &mut SettingsDialog) {
+        let machine = &self.config.machine;
+
+        // Jog Settings
+        dialog.add_setting(
+            Setting::new(
+                "jog_increment_linear",
+                "Jog Step Size (Linear)",
+                SettingValue::Float(machine.jog_increment),
+            )
+            .with_description("Default jog increment for linear axes (X/Y/Z) in mm")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "jog_increment_rotary",
+                "Jog Step Size (Rotary)",
+                SettingValue::Float(machine.jog_increment_rotary),
+            )
+            .with_description("Default jog increment for rotary axes (A/B/C) in degrees")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "jog_feed_rate",
+                "Jog Feed Rate",
+                SettingValue::Float(machine.jog_feed_rate),
+            )
+            .with_description("Default feed rate for jogging operations (units/min)")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        // Axis Limits
+        dialog.add_setting(
+            Setting::new(
+                "x_limit",
+                "X Axis Limit",
+                SettingValue::Float(machine.x_limit),
+            )
+            .with_description("Maximum travel limit for X axis (mm)")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "y_limit",
+                "Y Axis Limit",
+                SettingValue::Float(machine.y_limit),
+            )
+            .with_description("Maximum travel limit for Y axis (mm)")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "z_limit",
+                "Z Axis Limit",
+                SettingValue::Float(machine.z_limit),
+            )
+            .with_description("Maximum travel limit for Z axis (mm)")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        // Rotary Axis Limits (in degrees)
+        dialog.add_setting(
+                Setting::new(
+                    "a_limit",
+                    "A Axis Limit (Rotary)",
+                    SettingValue::Float(machine.a_limit),
+                )
+                .with_description("Maximum travel limit for A axis rotary table (degrees). Set to 0 to disable, 9999 for continuous rotation.")
+                .with_category(SettingsCategory::Machine),
+            );
+
+        dialog.add_setting(
+                Setting::new(
+                    "b_limit",
+                    "B Axis Limit (Rotary)",
+                    SettingValue::Float(machine.b_limit),
+                )
+                .with_description("Maximum travel limit for B axis trunnion (degrees). Set to 0 to disable, 9999 for continuous rotation.")
+                .with_category(SettingsCategory::Machine),
+            );
+
+        dialog.add_setting(
+                Setting::new(
+                    "c_limit",
+                    "C Axis Limit (Rotary)",
+                    SettingValue::Float(machine.c_limit),
+                )
+                .with_description("Maximum travel limit for C axis rotary table (degrees). Set to 0 to disable, 9999 for continuous rotation.")
+                .with_category(SettingsCategory::Machine),
+            );
+
+        // Steps per degree for rotary axes
+        dialog.add_setting(
+            Setting::new(
+                "steps_per_degree_a",
+                "Steps per Degree (A Axis)",
+                SettingValue::Float(*machine.steps_per_degree.get("A").unwrap_or(&80.0)),
+            )
+            .with_description("Stepper motor steps required for 1 degree of A axis rotation")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "steps_per_degree_b",
+                "Steps per Degree (B Axis)",
+                SettingValue::Float(*machine.steps_per_degree.get("B").unwrap_or(&80.0)),
+            )
+            .with_description("Stepper motor steps required for 1 degree of B axis rotation")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "steps_per_degree_c",
+                "Steps per Degree (C Axis)",
+                SettingValue::Float(*machine.steps_per_degree.get("C").unwrap_or(&80.0)),
+            )
+            .with_description("Stepper motor steps required for 1 degree of C axis rotation")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        // Axis Direction Inversion
+        dialog.add_setting(
+            Setting::new(
+                "invert_x",
+                "Invert X Axis Direction",
+                SettingValue::Boolean(*machine.axis_direction_invert.get("X").unwrap_or(&false)),
+            )
+            .with_description("Invert the direction of X axis movement")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "invert_y",
+                "Invert Y Axis Direction",
+                SettingValue::Boolean(*machine.axis_direction_invert.get("Y").unwrap_or(&false)),
+            )
+            .with_description("Invert the direction of Y axis movement")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "invert_z",
+                "Invert Z Axis Direction",
+                SettingValue::Boolean(*machine.axis_direction_invert.get("Z").unwrap_or(&false)),
+            )
+            .with_description("Invert the direction of Z axis movement")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "invert_a",
+                "Invert A Axis Direction",
+                SettingValue::Boolean(*machine.axis_direction_invert.get("A").unwrap_or(&false)),
+            )
+            .with_description("Invert the direction of A axis rotation")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "invert_b",
+                "Invert B Axis Direction",
+                SettingValue::Boolean(*machine.axis_direction_invert.get("B").unwrap_or(&false)),
+            )
+            .with_description("Invert the direction of B axis rotation")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "invert_c",
+                "Invert C Axis Direction",
+                SettingValue::Boolean(*machine.axis_direction_invert.get("C").unwrap_or(&false)),
+            )
+            .with_description("Invert the direction of C axis rotation")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        // Rotary Calibration Offsets
+        dialog.add_setting(
+            Setting::new(
+                "calibration_a",
+                "A Axis Calibration Offset",
+                SettingValue::Float(*machine.rotary_calibration.get("A").unwrap_or(&0.0)),
+            )
+            .with_description("Calibration offset for A axis (degrees)")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "calibration_b",
+                "B Axis Calibration Offset",
+                SettingValue::Float(*machine.rotary_calibration.get("B").unwrap_or(&0.0)),
+            )
+            .with_description("Calibration offset for B axis (degrees)")
+            .with_category(SettingsCategory::Machine),
+        );
+
+        dialog.add_setting(
+            Setting::new(
+                "calibration_c",
+                "C Axis Calibration Offset",
+                SettingValue::Float(*machine.rotary_calibration.get("C").unwrap_or(&0.0)),
+            )
+            .with_description("Calibration offset for C axis (degrees)")
+            .with_category(SettingsCategory::Machine),
+        );
+    }
+
     /// Add keyboard shortcuts to dialog
     fn add_keyboard_shortcuts(&self, dialog: &mut SettingsDialog) {
         // Define default keyboard shortcuts
@@ -573,6 +800,179 @@ impl SettingsPersistence {
         if let Some(setting) = dialog.get_setting("enable_stl_import") {
             if let Ok(value) = setting.value.as_str().parse::<bool>() {
                 self.config.ui.enable_stl_import = value;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Update machine settings in config from dialog
+    fn update_machine_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
+        // Jog settings
+        if let Some(setting) = dialog.get_setting("jog_increment_linear") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.jog_increment = value.max(0.001);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("jog_increment_rotary") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.jog_increment_rotary = value.max(0.001);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("jog_feed_rate") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.jog_feed_rate = value.max(1.0);
+            }
+        }
+
+        // Axis limits
+        if let Some(setting) = dialog.get_setting("x_limit") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.x_limit = value.max(1.0);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("y_limit") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.y_limit = value.max(1.0);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("z_limit") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.z_limit = value.max(1.0);
+            }
+        }
+
+        // Rotary axis limits
+        if let Some(setting) = dialog.get_setting("a_limit") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.a_limit = value.max(0.0);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("b_limit") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.b_limit = value.max(0.0);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("c_limit") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config.machine.c_limit = value.max(0.0);
+            }
+        }
+
+        // Steps per degree
+        if let Some(setting) = dialog.get_setting("steps_per_degree_a") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config
+                    .machine
+                    .steps_per_degree
+                    .insert("A".to_string(), value.max(1.0));
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("steps_per_degree_b") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config
+                    .machine
+                    .steps_per_degree
+                    .insert("B".to_string(), value.max(1.0));
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("steps_per_degree_c") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config
+                    .machine
+                    .steps_per_degree
+                    .insert("C".to_string(), value.max(1.0));
+            }
+        }
+
+        // Axis direction inversion
+        if let Some(setting) = dialog.get_setting("invert_x") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config
+                    .machine
+                    .axis_direction_invert
+                    .insert("X".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("invert_y") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config
+                    .machine
+                    .axis_direction_invert
+                    .insert("Y".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("invert_z") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config
+                    .machine
+                    .axis_direction_invert
+                    .insert("Z".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("invert_a") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config
+                    .machine
+                    .axis_direction_invert
+                    .insert("A".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("invert_b") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config
+                    .machine
+                    .axis_direction_invert
+                    .insert("B".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("invert_c") {
+            if let Ok(value) = setting.value.as_str().parse::<bool>() {
+                self.config
+                    .machine
+                    .axis_direction_invert
+                    .insert("C".to_string(), value);
+            }
+        }
+
+        // Rotary calibration offsets
+        if let Some(setting) = dialog.get_setting("calibration_a") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config
+                    .machine
+                    .rotary_calibration
+                    .insert("A".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("calibration_b") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config
+                    .machine
+                    .rotary_calibration
+                    .insert("B".to_string(), value);
+            }
+        }
+
+        if let Some(setting) = dialog.get_setting("calibration_c") {
+            if let Ok(value) = setting.value.as_str().parse::<f64>() {
+                self.config
+                    .machine
+                    .rotary_calibration
+                    .insert("C".to_string(), value);
             }
         }
 

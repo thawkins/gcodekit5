@@ -115,6 +115,10 @@ pub struct MachineControlView {
     pub world_a: Option<Label>,
     pub world_b: Option<Label>,
     pub world_c: Option<Label>,
+    // Rotary axis DRO containers (for visibility control)
+    pub a_dro_container: Option<gtk4::Box>,
+    pub b_dro_container: Option<gtk4::Box>,
+    pub c_dro_container: Option<gtk4::Box>,
     // Rotary axis jog buttons
     pub jog_a_pos: Option<Button>,
     pub jog_a_neg: Option<Button>,
@@ -122,6 +126,19 @@ pub struct MachineControlView {
     pub jog_b_neg: Option<Button>,
     pub jog_c_pos: Option<Button>,
     pub jog_c_neg: Option<Button>,
+    // Rotary axis zero buttons
+    pub a_zero_btn: Option<Button>,
+    pub b_zero_btn: Option<Button>,
+    pub c_zero_btn: Option<Button>,
+    // Machine limits display labels
+    pub limits_x: Option<Label>,
+    pub limits_y: Option<Label>,
+    pub limits_z: Option<Label>,
+    pub limits_a: Option<Label>,
+    pub limits_b: Option<Label>,
+    pub limits_c: Option<Label>,
+    // Axis count for dynamic UI
+    pub axis_count: std::rc::Rc<std::cell::Cell<u8>>,
     // Coolant controls
     pub coolant_mist_btn: Option<Button>,
     pub coolant_flood_btn: Option<Button>,
@@ -130,6 +147,12 @@ pub struct MachineControlView {
     pub probe_single_btn: Option<Button>,
     pub probe_continuous_btn: Option<Button>,
     pub probe_to_surface_btn: Option<Button>,
+    // Quick probe buttons (Milestone 6)
+    pub probe_z_btn: Option<Button>,
+    pub probe_x_neg_btn: Option<Button>,
+    pub probe_x_pos_btn: Option<Button>,
+    pub probe_y_neg_btn: Option<Button>,
+    pub probe_y_pos_btn: Option<Button>,
     pub step_combo: ComboBoxText,
     pub step_label: Label,
     pub jog_feed_entry: gtk4::Entry,
@@ -317,9 +340,89 @@ impl MachineControlView {
         wcs_box.append(&wcs_grid);
         sidebar.append(&make_section(&t!("Work Coordinates"), &wcs_box));
 
+        // Machine Limits Section (compact display for 6 axes)
+        let limits_box = Box::new(Orientation::Vertical, 4);
+
+        // Axis limits grid - shows min/max for each configured axis
+        let limits_grid = Grid::new();
+        limits_grid.set_column_spacing(8);
+        limits_grid.set_row_spacing(4);
+        limits_grid.set_halign(Align::Start);
+
+        // Create limit labels for all axes
+        let limits_title = Label::new(Some(&t!("Machine Limits:")));
+        limits_title.add_css_class("dim-label");
+        limits_title.set_halign(Align::Start);
+        limits_box.append(&limits_title);
+
+        // X axis limits
+        let limits_x_row = Box::new(Orientation::Horizontal, 8);
+        let limits_x_label = Label::new(Some("X:"));
+        limits_x_label.add_css_class("dim-label");
+        let limits_x = Label::new(Some("0.0 - 200.0"));
+        limits_x.add_css_class("mc-limits-value");
+        limits_x_row.append(&limits_x_label);
+        limits_x_row.append(&limits_x);
+        limits_grid.attach(&limits_x_row, 0, 0, 1, 1);
+
+        // Y axis limits
+        let limits_y_row = Box::new(Orientation::Horizontal, 8);
+        let limits_y_label = Label::new(Some("Y:"));
+        limits_y_label.add_css_class("dim-label");
+        let limits_y = Label::new(Some("0.0 - 200.0"));
+        limits_y.add_css_class("mc-limits-value");
+        limits_y_row.append(&limits_y_label);
+        limits_y_row.append(&limits_y);
+        limits_grid.attach(&limits_y_row, 0, 1, 1, 1);
+
+        // Z axis limits
+        let limits_z_row = Box::new(Orientation::Horizontal, 8);
+        let limits_z_label = Label::new(Some("Z:"));
+        limits_z_label.add_css_class("dim-label");
+        let limits_z = Label::new(Some("0.0 - 100.0"));
+        limits_z.add_css_class("mc-limits-value");
+        limits_z_row.append(&limits_z_label);
+        limits_z_row.append(&limits_z);
+        limits_grid.attach(&limits_z_row, 0, 2, 1, 1);
+
+        // A axis limits (rotary - hidden by default)
+        let limits_a_row = Box::new(Orientation::Horizontal, 8);
+        let limits_a_label = Label::new(Some("A:"));
+        limits_a_label.add_css_class("dim-label");
+        let limits_a = Label::new(Some("0.0° - 360.0°"));
+        limits_a.add_css_class("mc-limits-value");
+        limits_a_row.append(&limits_a_label);
+        limits_a_row.append(&limits_a);
+        limits_a_row.set_visible(false); // Hidden until axis_count >= 4
+        limits_grid.attach(&limits_a_row, 1, 0, 1, 1);
+
+        // B axis limits (rotary - hidden by default)
+        let limits_b_row = Box::new(Orientation::Horizontal, 8);
+        let limits_b_label = Label::new(Some("B:"));
+        limits_b_label.add_css_class("dim-label");
+        let limits_b = Label::new(Some("0.0° - 360.0°"));
+        limits_b.add_css_class("mc-limits-value");
+        limits_b_row.append(&limits_b_label);
+        limits_b_row.append(&limits_b);
+        limits_b_row.set_visible(false); // Hidden until axis_count >= 5
+        limits_grid.attach(&limits_b_row, 1, 1, 1, 1);
+
+        // C axis limits (rotary - hidden by default)
+        let limits_c_row = Box::new(Orientation::Horizontal, 8);
+        let limits_c_label = Label::new(Some("C:"));
+        limits_c_label.add_css_class("dim-label");
+        let limits_c = Label::new(Some("0.0° - 360.0°"));
+        limits_c.add_css_class("mc-limits-value");
+        limits_c_row.append(&limits_c_label);
+        limits_c_row.append(&limits_c);
+        limits_c_row.set_visible(false); // Hidden until axis_count >= 6
+        limits_grid.attach(&limits_c_row, 1, 2, 1, 1);
+
+        limits_box.append(&limits_grid);
+        sidebar.append(&make_section(&t!("Machine Limits"), &limits_box));
+
         // Transmission / Job controls
         let trans_box = Box::new(Orientation::Vertical, 4);
-
         let trans_row1 = Box::new(Orientation::Horizontal, 6);
 
         // Keep job control buttons aligned/same width.
@@ -500,9 +603,9 @@ impl MachineControlView {
         dro_box.append(&z_box);
 
         // Rotary axis DRO displays (initially hidden, shown based on device capabilities)
-        let (a_box, a_dro, _a_zero_btn) = create_dro("A", "WA");
-        let (b_box, b_dro, _b_zero_btn) = create_dro("B", "WB");
-        let (c_box, c_dro, _c_zero_btn) = create_dro("C", "WC");
+        let (a_box, a_dro, a_zero_btn) = create_dro("A", "WA");
+        let (b_box, b_dro, b_zero_btn) = create_dro("B", "WB");
+        let (c_box, c_dro, c_zero_btn) = create_dro("C", "WC");
 
         // Hide rotary axis DROs initially
         a_box.set_visible(false);
@@ -515,7 +618,6 @@ impl MachineControlView {
         // Right side: Zero All and Go to Work Zero buttons
         let zero_actions = Box::new(Orientation::Vertical, 8);
         zero_actions.set_valign(Align::Center);
-
         let zero_all_btn = make_icon_label_button("edit-clear-symbolic", &t!("Zero All Axes"));
         zero_all_btn.set_tooltip_text(Some(&t!("Set active work position to 0 for X/Y/Z")));
         zero_all_btn.add_css_class("destructive-action");
@@ -539,6 +641,45 @@ impl MachineControlView {
         goto_zero_row.append(&goto_zero_include_z);
         zero_actions.append(&goto_zero_row);
 
+        // Quick Probe Z button (Milestone 6)
+        let probe_z_btn = make_icon_label_button("input-touchpad-symbolic", &t!("Probe Z"));
+        probe_z_btn.set_tooltip_text(Some(&t!("Quick Z-touch probe at current XY position")));
+        probe_z_btn.add_css_class("suggested-action");
+        zero_actions.append(&probe_z_btn);
+
+        // Quick Edge Find buttons row (Milestone 6)
+        let edge_probe_row = Box::new(Orientation::Horizontal, 4);
+        edge_probe_row.set_halign(Align::Center);
+        edge_probe_row.set_tooltip_text(Some(&t!("Quick edge find in direction")));
+
+        let probe_x_neg_btn = Button::from_icon_name("go-previous-symbolic");
+        probe_x_neg_btn.set_tooltip_text(Some(&t!("Probe X- edge")));
+        let probe_x_pos_btn = Button::from_icon_name("go-next-symbolic");
+        probe_x_pos_btn.set_tooltip_text(Some(&t!("Probe X+ edge")));
+        let probe_y_neg_btn = Button::from_icon_name("go-down-symbolic");
+        probe_y_neg_btn.set_tooltip_text(Some(&t!("Probe Y- edge")));
+        let probe_y_pos_btn = Button::from_icon_name("go-up-symbolic");
+        probe_y_pos_btn.set_tooltip_text(Some(&t!("Probe Y+ edge")));
+
+        for btn in [
+            &probe_x_neg_btn,
+            &probe_x_pos_btn,
+            &probe_y_neg_btn,
+            &probe_y_pos_btn,
+        ] {
+            btn.set_size_request(32, 32);
+            btn.add_css_class("flat");
+        }
+
+        let edge_probe_label = Label::new(Some(&t!("Edge:")));
+        edge_probe_label.add_css_class("dim-label");
+        edge_probe_label.set_margin_end(4);
+        edge_probe_row.append(&edge_probe_label);
+        edge_probe_row.append(&probe_x_neg_btn);
+        edge_probe_row.append(&probe_x_pos_btn);
+        edge_probe_row.append(&probe_y_neg_btn);
+        edge_probe_row.append(&probe_y_pos_btn);
+        zero_actions.append(&edge_probe_row);
         dro_container.append(&dro_box);
         dro_container.append(&zero_actions);
 
@@ -1074,6 +1215,10 @@ impl MachineControlView {
             world_a: Some(world_a),
             world_b: Some(world_b),
             world_c: Some(world_c),
+            // Rotary axis DRO containers (for visibility control)
+            a_dro_container: Some(a_box),
+            b_dro_container: Some(b_box),
+            c_dro_container: Some(c_box),
             // Rotary axis jog buttons (initially None)
             jog_a_pos: None,
             jog_a_neg: None,
@@ -1081,14 +1226,32 @@ impl MachineControlView {
             jog_b_neg: None,
             jog_c_pos: None,
             jog_c_neg: None,
+            // Rotary axis zero buttons
+            a_zero_btn: Some(a_zero_btn),
+            b_zero_btn: Some(b_zero_btn),
+            c_zero_btn: Some(c_zero_btn),
+            // Machine limits display labels (initially None)
+            limits_x: Some(limits_x),
+            limits_y: Some(limits_y),
+            limits_z: Some(limits_z),
+            limits_a: Some(limits_a),
+            limits_b: Some(limits_b),
+            limits_c: Some(limits_c),
+            // Axis count for dynamic UI
+            axis_count: std::rc::Rc::new(std::cell::Cell::new(3)),
             // Coolant controls (initially None)
             coolant_mist_btn: None,
             coolant_flood_btn: None,
-            coolant_off_btn: None,
-            // Probe controls (initially None)
+            coolant_off_btn: None, // Probe controls (initially None)
             probe_single_btn: None,
             probe_continuous_btn: None,
             probe_to_surface_btn: None,
+            // Quick probe buttons (Milestone 6)
+            probe_z_btn: Some(probe_z_btn.clone()),
+            probe_x_neg_btn: Some(probe_x_neg_btn.clone()),
+            probe_x_pos_btn: Some(probe_x_pos_btn.clone()),
+            probe_y_neg_btn: Some(probe_y_neg_btn.clone()),
+            probe_y_pos_btn: Some(probe_y_pos_btn.clone()),
             step_combo,
             step_label,
             jog_feed_entry,
@@ -1171,9 +1334,18 @@ impl MachineControlView {
             &view.jog_z_pos,
             &view.jog_z_neg,
             &view.estop_btn,
+            // Rotary axis controls
+            view.a_zero_btn.as_ref(),
+            view.b_zero_btn.as_ref(),
+            view.c_zero_btn.as_ref(),
+            view.jog_a_pos.as_ref(),
+            view.jog_a_neg.as_ref(),
+            view.jog_b_pos.as_ref(),
+            view.jog_b_neg.as_ref(),
+            view.jog_c_pos.as_ref(),
+            view.jog_c_neg.as_ref(),
             false,
         );
-
         // Setup jog button handlers
         fn send_jog(
             axis: char,
@@ -1757,12 +1929,80 @@ impl MachineControlView {
             });
         }
 
+        // Quick Probe Z (Milestone 6)
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            probe_z_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> Quick Z-touch probe\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("G38.2 Z-20 F100");
+                }
+            });
+        }
+
+        // Quick Edge Find buttons (Milestone 6)
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            probe_x_neg_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> Probe X- edge\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("G38.2 X-10 F100");
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            probe_x_pos_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> Probe X+ edge\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("G38.2 X10 F100");
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            probe_y_neg_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> Probe Y- edge\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("G38.2 Y-10 F100");
+                }
+            });
+        }
+        {
+            let communicator = view.communicator.clone();
+            let console = view.device_console.clone();
+            probe_y_pos_btn.connect_clicked(move |_| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log("> Probe Y+ edge\n");
+                }
+                {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send_command("G38.2 Y10 F100");
+                }
+            });
+        }
+
         // Console Command Send
         if let Some(console) = view.device_console.as_ref() {
             let communicator = view.communicator.clone();
             let console_clone = console.clone();
             let entry_clone = console.command_entry.clone();
-
             // Helper function to send command from console
             let send_console_command = move || {
                 let cmd = entry_clone.text().to_string().trim().to_string();
@@ -1823,32 +2063,41 @@ impl MachineControlView {
                         // Update global device status
                         device_status::update_connection_status(false, None);
 
-                        // Disable all controls on disconnect
-                        set_controls_enabled(
-                            &view_clone.send_btn,
-                            &view_clone.stop_btn,
-                            &view_clone.pause_btn,
-                            &view_clone.resume_btn,
-                            &view_clone.home_btn,
-                            &view_clone.unlock_btn,
-                            &view_clone.wcs_btns,
-                            &view_clone.x_zero_btn,
-                            &view_clone.y_zero_btn,
-                            &view_clone.z_zero_btn,
-                            &view_clone.zero_all_btn,
-                            &view_clone.goto_zero_btn,
-                            &view_clone.step_combo,
-                            &view_clone.jog_feed_entry,
-                            &view_clone.jog_x_pos,
-                            &view_clone.jog_x_neg,
-                            &view_clone.jog_y_pos,
-                            &view_clone.jog_y_neg,
-                            &view_clone.jog_z_pos,
-                            &view_clone.jog_z_neg,
-                            &view_clone.estop_btn,
-                            false,
-                        );
-
+                                                  // Disable all controls on disconnect
+                                                  set_controls_enabled(
+                                                      &view_clone.send_btn,
+                                                      &view_clone.stop_btn,
+                                                      &view_clone.pause_btn,
+                                                      &view_clone.resume_btn,
+                                                      &view_clone.home_btn,
+                                                      &view_clone.unlock_btn,
+                                                      &view_clone.wcs_btns,
+                                                      &view_clone.x_zero_btn,
+                                                      &view_clone.y_zero_btn,
+                                                      &view_clone.z_zero_btn,
+                                                      &view_clone.zero_all_btn,
+                                                      &view_clone.goto_zero_btn,
+                                                      &view_clone.step_combo,
+                                                      &view_clone.jog_feed_entry,
+                                                      &view_clone.jog_x_pos,
+                                                      &view_clone.jog_x_neg,
+                                                      &view_clone.jog_y_pos,
+                                                      &view_clone.jog_y_neg,
+                                                      &view_clone.jog_z_pos,
+                                                      &view_clone.jog_z_neg,
+                                                      &view_clone.estop_btn,
+                                                      // Rotary axis controls
+                                                      view_clone.a_zero_btn.as_ref(),
+                                                      view_clone.b_zero_btn.as_ref(),
+                                                      view_clone.c_zero_btn.as_ref(),
+                                                      view_clone.jog_a_pos.as_ref(),
+                                                      view_clone.jog_a_neg.as_ref(),
+                                                      view_clone.jog_b_pos.as_ref(),
+                                                      view_clone.jog_b_neg.as_ref(),
+                                                      view_clone.jog_c_pos.as_ref(),
+                                                      view_clone.jog_c_neg.as_ref(),
+                                                      false,
+                                                  );
                         // Update StatusBar
                         if let Some(ref status_bar) = view_clone.status_bar {
                             status_bar.set_connected(false, "");
@@ -1920,32 +2169,41 @@ impl MachineControlView {
                                 ));
                             }
 
-                            // Enable all controls on successful connection
-                            set_controls_enabled(
-                                &view_clone.send_btn,
-                                &view_clone.stop_btn,
-                                &view_clone.pause_btn,
-                                &view_clone.resume_btn,
-                                &view_clone.home_btn,
-                                &view_clone.unlock_btn,
-                                &view_clone.wcs_btns,
-                                &view_clone.x_zero_btn,
-                                &view_clone.y_zero_btn,
-                                &view_clone.z_zero_btn,
-                                &view_clone.zero_all_btn,
-                                &view_clone.goto_zero_btn,
-                                &view_clone.step_combo,
-                                &view_clone.jog_feed_entry,
-                                &view_clone.jog_x_pos,
-                                &view_clone.jog_x_neg,
-                                &view_clone.jog_y_pos,
-                                &view_clone.jog_y_neg,
-                                &view_clone.jog_z_pos,
-                                &view_clone.jog_z_neg,
-                                &view_clone.estop_btn,
-                                true,
-                            );
-
+                                                          // Enable all controls on successful connection
+                                                          set_controls_enabled(
+                                                              &view_clone.send_btn,
+                                                              &view_clone.stop_btn,
+                                                              &view_clone.pause_btn,
+                                                              &view_clone.resume_btn,
+                                                              &view_clone.home_btn,
+                                                              &view_clone.unlock_btn,
+                                                              &view_clone.wcs_btns,
+                                                              &view_clone.x_zero_btn,
+                                                              &view_clone.y_zero_btn,
+                                                              &view_clone.z_zero_btn,
+                                                              &view_clone.zero_all_btn,
+                                                              &view_clone.goto_zero_btn,
+                                                              &view_clone.step_combo,
+                                                              &view_clone.jog_feed_entry,
+                                                              &view_clone.jog_x_pos,
+                                                              &view_clone.jog_x_neg,
+                                                              &view_clone.jog_y_pos,
+                                                              &view_clone.jog_y_neg,
+                                                              &view_clone.jog_z_pos,
+                                                              &view_clone.jog_z_neg,
+                                                              &view_clone.estop_btn,
+                                                              // Rotary axis controls
+                                                              view_clone.a_zero_btn.as_ref(),
+                                                              view_clone.b_zero_btn.as_ref(),
+                                                              view_clone.c_zero_btn.as_ref(),
+                                                              view_clone.jog_a_pos.as_ref(),
+                                                              view_clone.jog_a_neg.as_ref(),
+                                                              view_clone.jog_b_pos.as_ref(),
+                                                              view_clone.jog_b_neg.as_ref(),
+                                                              view_clone.jog_c_pos.as_ref(),
+                                                              view_clone.jog_c_neg.as_ref(),
+                                                              true,
+                                                          );
                             // Unlock button should initially be disabled until ALARM state is detected
                             view_clone.unlock_btn.set_sensitive(false);
 
@@ -2545,7 +2803,67 @@ impl MachineControlView {
 
         sb.set_progress(percentage, &format_time(elapsed), &format_time(remaining));
     }
-}
 
+    /// Update axis visibility based on device axis count
+    /// Shows/hides rotary axis controls (A, B, C) based on the configured axis count
+    pub fn update_axis_visibility(&self, count: u8) {
+        let count = count.clamp(3, 6);
+        self.axis_count.set(count);
+
+        // Show/hide A axis (4th axis)
+        let show_a = count >= 4;
+        if let Some(ref container) = self.a_dro_container {
+            container.set_visible(show_a);
+        }
+        if let Some(ref btn) = self.a_zero_btn {
+            btn.set_visible(show_a);
+        }
+
+        // Show/hide B axis (5th axis)
+        let show_b = count >= 5;
+        if let Some(ref container) = self.b_dro_container {
+            container.set_visible(show_b);
+        }
+        if let Some(ref btn) = self.b_zero_btn {
+            btn.set_visible(show_b);
+        }
+
+        // Show/hide C axis (6th axis)
+        let show_c = count >= 6;
+        if let Some(ref container) = self.c_dro_container {
+            container.set_visible(show_c);
+        }
+        if let Some(ref btn) = self.c_zero_btn {
+            btn.set_visible(show_c);
+        }
+
+        // Show/hide machine coordinate labels
+        if let Some(ref label) = self.world_a {
+            label.set_visible(show_a);
+        }
+        if let Some(ref label) = self.world_b {
+            label.set_visible(show_b);
+        }
+        if let Some(ref label) = self.world_c {
+            label.set_visible(show_c);
+        }
+
+        // Show/hide machine limits labels
+        if let Some(ref label) = self.limits_a {
+            label.set_visible(show_a);
+        }
+        if let Some(ref label) = self.limits_b {
+            label.set_visible(show_b);
+        }
+        if let Some(ref label) = self.limits_c {
+            label.set_visible(show_c);
+        }
+    }
+
+    /// Get the current axis count
+    pub fn get_axis_count(&self) -> u8 {
+        self.axis_count.get()
+    }
+}
 mod operations;
 mod overrides;

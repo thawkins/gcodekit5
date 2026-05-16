@@ -74,40 +74,70 @@ pub struct CoordinateOffset {
     pub y: f32,
     /// Z offset
     pub z: f32,
+    /// A axis (4th axis) offset
+    pub a: f32,
+    /// B axis (5th axis) offset
+    pub b: f32,
+    /// C axis (6th axis) offset
+    pub c: f32,
 }
 
 impl CoordinateOffset {
-    /// Create new coordinate offset
+    /// Create new coordinate offset for 3 axes
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z }
+        Self { x, y, z, a: 0.0, b: 0.0, c: 0.0 }
     }
 
-    /// Get offset as tuple
+    /// Create new coordinate offset for 6 axes
+    pub fn new_6axis(x: f32, y: f32, z: f32, a: f32, b: f32, c: f32) -> Self {
+        Self { x, y, z, a, b, c }
+    }
+
+    /// Get offset as tuple (x, y, z)
     pub fn as_tuple(&self) -> (f32, f32, f32) {
         (self.x, self.y, self.z)
     }
 
-    /// Get formatted string
+    /// Get full offset as 6-axis tuple
+    pub fn as_tuple_6axis(&self) -> (f32, f32, f32, f32, f32, f32) {
+        (self.x, self.y, self.z, self.a, self.b, self.c)
+    }
+
+    /// Get formatted string for 3 axes
     pub fn formatted(&self, units: &str) -> String {
         format!("X:{:.2} Y:{:.2} Z:{:.2} {}", self.x, self.y, self.z, units)
     }
 
-    /// Set offset value
+    /// Get formatted string for 6 axes
+    pub fn formatted_6axis(&self, units: &str) -> String {
+        format!(
+            "X:{:.2} Y:{:.2} Z:{:.2} A:{:.2}° B:{:.2}° C:{:.2}° {}",
+            self.x, self.y, self.z, self.a, self.b, self.c, units
+        )
+    }
+
+    /// Set offset value by axis
     pub fn set(&mut self, axis: char, value: f32) {
         match axis {
-            'X' => self.x = value,
-            'Y' => self.y = value,
-            'Z' => self.z = value,
+            'X' | 'x' => self.x = value,
+            'Y' | 'y' => self.y = value,
+            'Z' | 'z' => self.z = value,
+            'A' | 'a' => self.a = value,
+            'B' | 'b' => self.b = value,
+            'C' | 'c' => self.c = value,
             _ => {}
         }
     }
 
-    /// Get offset value
+    /// Get offset value by axis
     pub fn get(&self, axis: char) -> Option<f32> {
         match axis {
-            'X' => Some(self.x),
-            'Y' => Some(self.y),
-            'Z' => Some(self.z),
+            'X' | 'x' => Some(self.x),
+            'Y' | 'y' => Some(self.y),
+            'Z' | 'z' => Some(self.z),
+            'A' | 'a' => Some(self.a),
+            'B' | 'b' => Some(self.b),
+            'C' | 'c' => Some(self.c),
             _ => None,
         }
     }
@@ -140,19 +170,50 @@ impl WorkCoordinateSystem {
         }
     }
 
-    /// Set offset
+    /// Set offset for 3 axes (X, Y, Z)
     pub fn set_offset(&mut self, x: f32, y: f32, z: f32) {
-        self.offset = CoordinateOffset::new(x, y, z);
+        self.offset.x = x;
+        self.offset.y = y;
+        self.offset.z = z;
     }
 
-    /// Get current position with offset
+    /// Set full 6-axis offset
+    pub fn set_offset_6axis(&mut self, x: f32, y: f32, z: f32, a: f32, b: f32, c: f32) {
+        self.offset = CoordinateOffset::new_6axis(x, y, z, a, b, c);
+    }
+
+    /// Get current position with offset (3 axes)
     pub fn apply_offset(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
         (x + self.offset.x, y + self.offset.y, z + self.offset.z)
     }
 
-    /// Remove offset from position
+    /// Get current position with full 6-axis offset
+    pub fn apply_offset_6axis(&self, x: f32, y: f32, z: f32, a: f32, b: f32, c: f32) -> (f32, f32, f32, f32, f32, f32) {
+        (
+            x + self.offset.x,
+            y + self.offset.y,
+            z + self.offset.z,
+            a + self.offset.a,
+            b + self.offset.b,
+            c + self.offset.c,
+        )
+    }
+
+    /// Remove offset from position (3 axes)
     pub fn remove_offset(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
         (x - self.offset.x, y - self.offset.y, z - self.offset.z)
+    }
+
+    /// Remove offset from position (6 axes)
+    pub fn remove_offset_6axis(&self, x: f32, y: f32, z: f32, a: f32, b: f32, c: f32) -> (f32, f32, f32, f32, f32, f32) {
+        (
+            x - self.offset.x,
+            y - self.offset.y,
+            z - self.offset.z,
+            a - self.offset.a,
+            b - self.offset.b,
+            c - self.offset.c,
+        )
     }
 }
 
@@ -165,6 +226,12 @@ pub enum ZeroType {
     Y,
     /// Zero Z axis only
     Z,
+    /// Zero A axis only (4th axis)
+    A,
+    /// Zero B axis only (5th axis)
+    B,
+    /// Zero C axis only (6th axis)
+    C,
     /// Zero all axes
     All,
 }
@@ -175,7 +242,51 @@ impl std::fmt::Display for ZeroType {
             Self::X => write!(f, "Zero X"),
             Self::Y => write!(f, "Zero Y"),
             Self::Z => write!(f, "Zero Z"),
+            Self::A => write!(f, "Zero A"),
+            Self::B => write!(f, "Zero B"),
+            Self::C => write!(f, "Zero C"),
             Self::All => write!(f, "Zero All"),
+        }
+    }
+}
+
+impl ZeroType {
+    /// Get G-code command for setting this axis to zero (G92)
+    pub fn to_g92_command(&self) -> &'static str {
+        match self {
+            Self::X => "G92 X0",
+            Self::Y => "G92 Y0",
+            Self::Z => "G92 Z0",
+            Self::A => "G92 A0",
+            Self::B => "G92 B0",
+            Self::C => "G92 C0",
+            Self::All => "G92 X0 Y0 Z0 A0 B0 C0",
+        }
+    }
+
+    /// Get G-code command for setting this axis to zero (G10)
+    pub fn to_g10_command(&self) -> &'static str {
+        match self {
+            Self::X => "G10 L20 P0 X0",
+            Self::Y => "G10 L20 P0 Y0",
+            Self::Z => "G10 L20 P0 Z0",
+            Self::A => "G10 L20 P0 A0",
+            Self::B => "G10 L20 P0 B0",
+            Self::C => "G10 L20 P0 C0",
+            Self::All => "G10 L20 P0 X0 Y0 Z0 A0 B0 C0",
+        }
+    }
+
+    /// Get axis character if single axis
+    pub fn axis_char(&self) -> Option<char> {
+        match self {
+            Self::X => Some('X'),
+            Self::Y => Some('Y'),
+            Self::Z => Some('Z'),
+            Self::A => Some('A'),
+            Self::B => Some('B'),
+            Self::C => Some('C'),
+            Self::All => None,
         }
     }
 }
@@ -187,10 +298,14 @@ pub struct CoordinateSystemPanel {
     pub systems: HashMap<CoordinateSystemId, WorkCoordinateSystem>,
     /// Active/current WCS
     pub active_system: CoordinateSystemId,
-    /// Current machine position
+    /// Current machine position (x, y, z)
     pub current_position: (f32, f32, f32),
+    /// Current machine position (a, b, c) for rotary axes
+    pub current_rotary_position: (f32, f32, f32),
     /// Unit system (mm or in)
     pub units: String,
+    /// Axis count (3, 4, 5, or 6)
+    pub axis_count: u8,
 }
 
 impl CoordinateSystemPanel {
@@ -206,8 +321,20 @@ impl CoordinateSystemPanel {
             systems,
             active_system: CoordinateSystemId::G54,
             current_position: (0.0, 0.0, 0.0),
+            current_rotary_position: (0.0, 0.0, 0.0),
             units: "mm".to_string(),
+            axis_count: 3,
         }
+    }
+
+    /// Set axis count and enable/disable rotary axis support
+    pub fn set_axis_count(&mut self, count: u8) {
+        self.axis_count = count.min(6).max(3);
+    }
+
+    /// Check if rotary axes are available
+    pub fn has_rotary_axes(&self) -> bool {
+        self.axis_count >= 4
     }
 
     /// Select coordinate system
@@ -230,10 +357,17 @@ impl CoordinateSystemPanel {
         self.systems.get_mut(&self.active_system)
     }
 
-    /// Set offset in active system
+    /// Set offset in active system (3 axes)
     pub fn set_active_offset(&mut self, x: f32, y: f32, z: f32) {
         if let Some(system) = self.get_active_system_mut() {
             system.set_offset(x, y, z);
+        }
+    }
+
+    /// Set full 6-axis offset in active system
+    pub fn set_active_offset_6axis(&mut self, x: f32, y: f32, z: f32, a: f32, b: f32, c: f32) {
+        if let Some(system) = self.get_active_system_mut() {
+            system.set_offset_6axis(x, y, z, a, b, c);
         }
     }
 
@@ -250,10 +384,38 @@ impl CoordinateSystemPanel {
     /// Zero all axes in active system
     pub fn zero_all_axes(&mut self) -> bool {
         if let Some(system) = self.get_active_system_mut() {
-            system.set_offset(0.0, 0.0, 0.0);
+            system.set_offset_6axis(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
             true
         } else {
             false
+        }
+    }
+
+    /// Zero specific axes by ZeroType
+    pub fn zero_by_type(&mut self, zero_type: ZeroType) -> bool {
+        match zero_type {
+            ZeroType::All => self.zero_all_axes(),
+            _ => {
+                if let Some(axis) = zero_type.axis_char() {
+                    self.zero_axis(axis)
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Get G-code command for zero operation
+    pub fn get_zero_gcode(&self, zero_type: ZeroType) -> Option<&'static str> {
+        match zero_type {
+            ZeroType::All => Some("G92 X0 Y0 Z0 A0 B0 C0"),
+            ZeroType::X => Some("G92 X0"),
+            ZeroType::Y => Some("G92 Y0"),
+            ZeroType::Z => Some("G92 Z0"),
+            ZeroType::A if self.axis_count >= 4 => Some("G92 A0"),
+            ZeroType::B if self.axis_count >= 5 => Some("G92 B0"),
+            ZeroType::C if self.axis_count >= 6 => Some("G92 C0"),
+            _ => None,
         }
     }
 
@@ -262,6 +424,25 @@ impl CoordinateSystemPanel {
         let (cx, cy, cz) = self.current_position;
         if let Some(system) = self.get_active_system_mut() {
             system.set_offset(x - cx, y - cy, z - cz);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Set 6-axis work position
+    pub fn set_work_position_6axis(
+        &mut self,
+        x: f32, y: f32, z: f32,
+        a: f32, b: f32, c: f32
+    ) -> bool {
+        let (cx, cy, cz) = self.current_position;
+        let (ca, cb, cc) = self.current_rotary_position;
+        if let Some(system) = self.get_active_system_mut() {
+            system.set_offset_6axis(
+                x - cx, y - cy, z - cz,
+                a - ca, b - cb, c - cc
+            );
             true
         } else {
             false
@@ -278,12 +459,32 @@ impl CoordinateSystemPanel {
         }
     }
 
-    /// Update current machine position
+    /// Go to zero (6-axis)
+    pub fn go_to_zero_6axis(&self) -> (f32, f32, f32, f32, f32, f32) {
+        if let Some(system) = self.get_active_system() {
+            let (x, y, z, a, b, c) = system.offset.as_tuple_6axis();
+            (-x, -y, -z, -a, -b, -c)
+        } else {
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        }
+    }
+
+    /// Update current machine position (3 axes)
     pub fn update_position(&mut self, x: f32, y: f32, z: f32) {
         self.current_position = (x, y, z);
     }
 
-    /// Get work position from machine position
+    /// Update current machine position (6 axes)
+    pub fn update_position_6axis(
+        &mut self,
+        x: f32, y: f32, z: f32,
+        a: f32, b: f32, c: f32
+    ) {
+        self.current_position = (x, y, z);
+        self.current_rotary_position = (a, b, c);
+    }
+
+    /// Get work position from machine position (3 axes)
     pub fn get_work_position(&self) -> (f32, f32, f32) {
         if let Some(system) = self.get_active_system() {
             system.remove_offset(
@@ -293,6 +494,29 @@ impl CoordinateSystemPanel {
             )
         } else {
             self.current_position
+        }
+    }
+
+    /// Get work position from machine position (6 axes)
+    pub fn get_work_position_6axis(&self) -> (f32, f32, f32, f32, f32, f32) {
+        if let Some(system) = self.get_active_system() {
+            system.remove_offset_6axis(
+                self.current_position.0,
+                self.current_position.1,
+                self.current_position.2,
+                self.current_rotary_position.0,
+                self.current_rotary_position.1,
+                self.current_rotary_position.2,
+            )
+        } else {
+            (
+                self.current_position.0,
+                self.current_position.1,
+                self.current_position.2,
+                self.current_rotary_position.0,
+                self.current_rotary_position.1,
+                self.current_rotary_position.2,
+            )
         }
     }
 

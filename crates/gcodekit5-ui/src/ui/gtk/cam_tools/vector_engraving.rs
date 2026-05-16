@@ -213,9 +213,7 @@ impl VectorEngravingTool {
             .build();
 
         // Groups
-        let file_group = PreferencesGroup::builder()
-            .title(t!("Vector File"))
-            .build();
+        let file_group = PreferencesGroup::builder().title(t!("Vector File")).build();
         let file_row = ActionRow::builder().title(t!("File Path:")).build();
         let file_box = Box::new(Orientation::Horizontal, 6);
         file_box.append(&vector_path);
@@ -233,9 +231,7 @@ impl VectorEngravingTool {
         output_group.add(&Self::create_row(&t!("Travel Rate:"), &travel_rate));
         scroll_content.append(&output_group);
 
-        let power_group = PreferencesGroup::builder()
-            .title(t!("Laser Power"))
-            .build();
+        let power_group = PreferencesGroup::builder().title(t!("Laser Power")).build();
         power_group.add(&Self::create_row(&t!("Cut Power (%):"), &cut_power));
         power_group.add(&Self::create_row(&t!("Engrave Power (%):"), &engrave_power));
         power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));

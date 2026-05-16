@@ -10,6 +10,7 @@ pub mod data;
 pub mod error;
 pub mod event_bus;
 pub mod gcode;
+pub mod probe;
 pub mod types;
 pub mod units;
 
@@ -24,16 +25,23 @@ pub use data::{
     MachineStatusSnapshot, PartialPosition, Position, Units,
 };
 
+pub use probe::{
+    Axis as ProbeAxis, Corner, Direction as ProbeDirection, ProbePinState, ProbeReport,
+    ProbeResult, ProbeRoutine, ProbeType,
+};
+
 pub use error::{ConnectionError, ControllerError, Error, FirmwareError, GcodeError, Result};
 
 pub use gcode::{
-    CommandId, CommandListener, CommandListenerHandle, CommandNumberGenerator, CommandResponse,
-    CommandState, GcodeCommand, NoOpCommandListener,
+    AxisLimits, CommandId, CommandListener, CommandListenerHandle, CommandNumberGenerator,
+    CommandResponse, CommandState, GcodeCommand, GcodeValidator, GcodeValidatorConfig,
+    NoOpCommandListener, ValidationReport, ValidationResult,
 };
 
 // Re-export event bus for convenience
 pub use event_bus::{
-    event_bus, AppEvent, EventBus, EventBusConfig, EventCategory, EventFilter, SubscriptionId,
+    event_bus, AppEvent, EventBus, EventBusConfig, EventCategory, EventFilter, MachineEvent,
+    SubscriptionId,
 };
 
 // Re-export type aliases for convenience

@@ -207,14 +207,12 @@ impl GcodeVisualizer {
 
                     line_counter += 1;
                     match lod_level {
-                        1
-                            if !line_counter.is_multiple_of(2) => {
-                                continue;
-                            }
-                        2
-                            if !line_counter.is_multiple_of(4) => {
-                                continue;
-                            }
+                        1 if !line_counter.is_multiple_of(2) => {
+                            continue;
+                        }
+                        2 if !line_counter.is_multiple_of(4) => {
+                            continue;
+                        }
                         _ => {}
                     }
 
@@ -353,14 +351,12 @@ impl GcodeVisualizer {
 
                         line_counter += 1;
                         match lod_level {
-                            1
-                                if !line_counter.is_multiple_of(2) => {
-                                    continue;
-                                }
-                            2
-                                if !line_counter.is_multiple_of(4) => {
-                                    continue;
-                                }
+                            1 if !line_counter.is_multiple_of(2) => {
+                                continue;
+                            }
+                            2 if !line_counter.is_multiple_of(4) => {
+                                continue;
+                            }
                             _ => {}
                         }
 

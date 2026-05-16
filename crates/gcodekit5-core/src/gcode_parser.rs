@@ -22,6 +22,7 @@ pub enum GCodeSegmentType {
     Linear,
     ArcCW,
     ArcCCW,
+    Probe,
 }
 
 pub fn parse_gcode_to_toolpaths(gcode: &str) -> Result<Vec<GCodeToolpath>, String> {

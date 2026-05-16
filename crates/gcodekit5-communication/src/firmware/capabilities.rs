@@ -39,6 +39,12 @@ pub enum Capability {
     SettingsWritable,
     /// Supports network/WiFi connectivity
     NetworkConnectivity,
+    /// Supports 4th axis (A axis / rotary)
+    Axis4Support,
+    /// Supports 5th axis (B axis / trunnion)
+    Axis5Support,
+    /// Supports 6th axis (C axis / rotary table)
+    Axis6Support,
 }
 
 impl std::fmt::Display for Capability {
@@ -60,6 +66,9 @@ impl std::fmt::Display for Capability {
             Self::EStop => write!(f, "E-Stop"),
             Self::SettingsWritable => write!(f, "Settings Writable"),
             Self::NetworkConnectivity => write!(f, "Network Connectivity"),
+            Self::Axis4Support => write!(f, "4th Axis Support (A)"),
+            Self::Axis5Support => write!(f, "5th Axis Support (B)"),
+            Self::Axis6Support => write!(f, "6th Axis Support (C)"),
         }
     }
 }

@@ -105,6 +105,7 @@ impl SettingsWindow {
     fn setup_pages(&self) {
         self.add_page(SettingsCategory::General, "General");
         self.add_page(SettingsCategory::Controller, "Controller");
+        self.add_page(SettingsCategory::Machine, "Machine");
         self.add_page(SettingsCategory::UserInterface, "User Interface");
         self.add_page(SettingsCategory::FileProcessing, "File Processing");
         self.add_page(SettingsCategory::KeyboardShortcuts, "Shortcuts");

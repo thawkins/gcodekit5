@@ -1,3 +1,205 @@
+## [Unreleased]
+
+### Added
+- **Milestone 8 — Settings & Configuration** (per 6AXISPLAN.md)
+  - **New `Machine` settings category** in `SettingsCategory` enum for axis configuration
+  - **Machine settings panel** with complete 6-axis configuration support:
+    - Jog settings: Linear step size, rotary step size, jog feed rate
+    - Axis limits: X, Y, Z limits (mm) and A, B, C limits (degrees)
+    - Steps per degree: Configuration for A, B, C rotary axes
+    - Direction inversion: Toggle for all 6 axes (X, Y, Z, A, B, C)
+    - Rotary calibration: Offset values for A, B, C axes
+  - **SettingsPersistence** extended with:
+    - `add_machine_settings()`: Populates dialog with 6-axis machine settings
+    - `update_machine_settings()`: Saves machine settings from dialog to config
+  - **UI Settings panel** updated to include Machine tab
+  - **SettingsController** updated with Machine category mapping
+  - **ProbeSettings** fixed with proper `Default` implementation for validation
+  - All 35 settings crate tests passing
+
+### Added
+- **Milestone 9 — Firmware Support** (per 6AXISPLAN.md)
+  - **New capability flags** in `capabilities.rs`: `Axis4Support`, `Axis5Support`, `Axis6Support`
+  - **GRBL 6-axis status report parsing**: Verified 3/4/6-axis position parsing in `MachinePosition`, `WorkPosition`, `WorkCoordinateOffset`
+  - **grblHAL 6-axis support**: Already has `axes: 6` with `supports_axis()` for A/B/C
+  - **FluidNC 6-axis support**: Already has `axes: 6` with full axis support
+  - **TinyG 6-axis JSON parsing**: JSON responses already support 6 axes
+  - **Smoothieware 6-axis support**: Already has axis support up to 5-6 axes
+  - **g2core 6-axis support**: Native 6-axis with rotational axes support
+  - **6-axis capability detection**: New `Capability` enum variants for axis support
+  - **Unit tests** in `grbl/test.rs` covering:
+    - 3/4/6-axis machine position parsing
+    - 6-axis work position parsing
+    - 6-axis work coordinate offset parsing
+    - GRBL capabilities max_axes verification
+
+### Changed
+- Updated `6AXISPLAN.md`: Milestone 9 marked as complete with all tasks done
+
+## [0.55.0-alpha.7] - 2026-05-08
+
+### Added
+- **Milestone 7 — Visualizer Enhancement** (per 6AXISPLAN.md)
+  - **6-Axis Bounds Tracking**: Extended `Bounds` struct in `viewport.rs` to track rotary axis ranges:
+    - Added `min_a`, `max_a`, `min_b`, `max_b`, `min_c`, `max_c` fields
+    - Added `has_rotary` flag to track if rotary axes are present
+    - Added `update_rotary()` method for A/B/C axis tracking
+    - Added `has_rotary_movement()` and `rotary_ranges()` helper methods
+    - Added `max_rotary_range()` for computing rotation magnitude
+  - **Visualizer 6-Axis State**: Extended `Visualizer` struct with rotary support:
+    - Added `min_a/max_a`, `min_b/max_b`, `min_c/max_c` bounds fields
+    - Added `current_rotary: RotaryPosition` for tracking A/B/C values
+    - Added `color_rotary_moves` flag for rotary-specific coloring
+    - Updated G-code parsing to extract and track rotary coordinates
+  - **Rotary Position Struct**: New `RotaryPosition` type for 6-axis support:
+    - Tracks A (4th), B (5th), C (6th) axis values
+    - `has_movement()` check for non-zero rotation
+    - `magnitude()` for computing total rotation amount
+  - **6-Axis Parameter Extraction**: Enhanced `ExtractedParams` to parse A/B/C coordinates
+  - **Rotary Bounds Integration**: Updated `parse_gcode()` to:
+    - Track rotary bounds during parsing via `bounds.update_rotary()`
+    - Store rotary ranges in visualizer state after parsing
+    - Log rotary bounds for debugging (A/B/C min/max degrees)
+  - **Backward Compatibility**: Maintained `update()` method as alias for `update_xyz()`
+
+### Changed
+- Updated visualizer to support full 6-axis coordinate tracking
+- Extended G-code parser to extract rotary axis coordinates (A, B, C)
+
+## [0.55.0-alpha.6] - 2026-05-08
+
+### Added
+- **Milestone 6 — G-Code Parser & Streaming** (per 6AXISPLAN.md)
+  - **6-Axis G-code parsing support in visualizer**: Extended `ExtractedParams` struct to parse A, B, C rotary axis coordinates
+    - Added `a`, `b`, `c` fields for rotary axis tracking
+    - Added `k` field for helical arc Z-offset support
+    - Updated `extract_all_params()` to recognize A/B/C/K parameters
+    - Enhanced `has_movement()` to include rotary axes
+    - Added `has_rotary_movement()` helper method
+  - **New `GcodeValidator` module** in `gcodekit5-core::gcode::validator`:
+    - Complete 6-axis G-code validation with `GcodeValidatorConfig`
+    - Axis count validation (3/4/5/6 axis machine compatibility)
+    - Axis limit checking for all 6 axes (X, Y, Z, A, B, C)
+    - Feed rate and spindle speed limit validation
+    - `ValidationReport` with line-by-line error/warning tracking
+    - 8 unit tests covering validation edge cases
+  - **5 Test G-code files** for 6-axis machines:
+    - `test_6axis_basic.nc`: Basic 6-axis movement patterns and simultaneous motion
+    - `test_6axis_helical.nc`: Helical interpolation with rotary axis coordination
+    - `test_4axis_rotary.nc`: 4-axis XYZA rotary table operations
+    - `test_5axis_simultaneous.nc`: Full 5-axis simultaneous machining patterns
+    - `test_6axis_validation.nc`: Edge cases and validation scenarios
+  - **Buffer calculation compatibility**: Existing character-counting streaming protocol already handles variable-length lines correctly
+  - **Arc command support**: G2/G3 arcs with rotary axis (helical arcs) parsing verified
+  - **Public API exports**: `GcodeValidator`, `GcodeValidatorConfig`, `ValidationReport`, `ValidationResult`, `AxisLimits`
+
+### Changed
+- Updated visualizer to support A/B/C parameter extraction in G-code parsing
+- Extended gcode module exports to include validator types
+
+## [0.55.0-alpha.5] - 2026-05-08
+
+### Added
+- **Milestone 5 — Machine Control Panel** (per 6AXISPLAN.md)
+  - **6-axis support in MachineControlView**: Added `axis_count` field with `Rc<Cell<u8>>` for dynamic visibility
+  - **Rotary axis DRO containers**: `a_dro_container`, `b_dro_container`, `c_dro_container` for visibility control
+  - **Rotary axis zero buttons**: `a_zero_btn`, `b_zero_btn`, `c_zero_btn` with full wiring
+  - **Machine limits display section**: New sidebar section showing axis limits for all 6 axes
+    - X, Y, Z limits: Shows min/max travel in millimeters
+    - A, B, C limits: Shows min/max rotation in degrees (0°-360°)
+    - Dynamic visibility: Rotary limits hidden until `axis_count >= 4/5/6`
+  - **`update_axis_visibility()` method**: Centralized control for showing/hiding rotary axis UI elements
+    - Shows A axis when `axis_count >= 4`
+    - Shows B axis when `axis_count >= 5`
+    - Shows C axis when `axis_count >= 6`
+  - **Enhanced `set_controls_enabled()`**: Extended to support rotary axis controls
+    - Now handles optional rotary jog buttons (A±, B±, C±)
+    - Now handles optional rotary zero buttons
+    - Backward compatible with basic 3-axis setups via `set_controls_enabled_basic()`
+  - **State management for 6 axes**: All rotary controls properly wired in connection/disconnection handlers
+
+## [0.55.0-alpha.4] - 2026-05-08
+
+### Added
+- **Milestone 4 — WCS & Offset Integration** (per PROBEPLAN.md)
+  - **New module** `gcodekit5-camtools::wcs_service` with complete WCS update functionality
+  - **`WcsUpdateService`** — Processes probe reports and generates G-code commands:
+    - G10 L2 P<n> commands for persistent WCS offsets (G54-G59)
+    - G92 commands for temporary offsets
+    - G43.1 commands for tool-length offsets
+  - **`WcsUpdateConfig`** — Configuration struct for WCS update behavior:
+    - `auto_update_wcs` — Toggle automatic WCS updates
+    - `target_wcs` — Target coordinate system (54-59 for G54-G59)
+    - `use_temporary_offset` — Use G92 instead of G10
+    - `apply_tool_length` — Enable G43.1 for tool length probes
+    - `preview_before_apply` — Show preview dialog before applying
+  - **`generate_preview()`** — Creates human-readable preview of proposed offset changes
+  - **Position computation** — All probe routine types supported:
+    - Z-touch: Sets Z surface position
+    - Edge-find: Sets edge position on single axis
+    - Corner-find: Sets corner intersection (X+Y)
+    - Bore-center: Computes center from 4-point chord intersection
+    - Boss-center: Computes center from 4-point external probe
+    - Tool-length: Calculates tool length from setter plate trigger
+  - **`PersistentProbeResults`** — Serializable storage for probe results per WCS
+  - **`PersistedProbeReport`** — Stores computed position, G-code commands, timestamp
+  - **`build_complete_gcode()`** — Generates full G-code snippet including setup
+  - **6 unit tests** for WCS service:
+    - Default configuration
+    - Z-touch report processing
+    - Preview generation
+    - Tool-length command generation
+    - G92 temporary offset
+    - Persistent results storage
+  - **`ProbeSettings`** struct in `gcodekit5-settings::config`:
+    - Default probe parameters (safe_height, feed rates, backoff)
+    - WCS auto-update preferences
+    - Setter plate position configuration
+    - Persistent results storage
+
+## [0.55.0-alpha.3] - 2026-05-08
+
+### Added
+- **Milestone 3 — Probe Routines (Core Logic)** (per PROBEPLAN.md)
+  - **New module** `gcodekit5-camtools::probe_routines` with `ProbeRoutineEngine`
+  - **Z-Touch routine** — Generates G38.2 probe sequence with optional slow re-probe for accuracy
+  - **Edge-Find routine** — Single-axis edge detection with backoff and re-probe
+  - **Corner-Find routine** — Two-axis corner location (X-min/Y-min, X-max/Y-max, etc.)
+  - **Bore-Center routine** — 4-point internal diameter probe with center calculation via chord intersection
+  - **Boss-Center routine** — 4-point external diameter probe (same math as bore-center)
+  - **Tool-Length routine** — Tool length measurement using a fixed setter plate
+  - **Result computation** — `compute_result()` calculates WCS offsets/center coordinates from trigger positions
+  - **Parameter defaults** module (`probe_routines::defaults`) with sensible defaults:
+    - Safe height: 5.0 mm
+    - Max probe depth: 20.0 mm
+    - Fast feed: 100.0 mm/min
+    - Slow feed: 25.0 mm/min
+    - Backoff: 2.0 mm
+    - Probe distance: 10.0 mm
+  - **Parameter validation** — Bounds checking with descriptive error messages
+  - **6 unit tests** covering:
+    - Z-touch G-code generation
+    - Edge-find G-code generation
+    - Bore-center computation (4-point chord intersection)
+    - Corner-find computation (2-edge intersection)
+    - Tool-length calculation
+    - Parameter validation
+
+## [0.55.0-alpha.1] - 2026-05-08
+
+### Added
+- **Milestone 1 — Touch Probe Foundation** (per PROBEPLAN.md)
+  - **Core probe types** (`gcodekit5-core::probe`): `ProbeType`, `ProbeRoutine`, `ProbeResult`, `ProbeReport`, `ProbePinState`
+  - **GRBL probe response parser** — parses `[PRB:x,y,z:flag]` into `GrblResponse::ProbeResult`
+  - **Real-time probe pin tracking** — detects `Pn:P` in GRBL status reports, emits `ProbePinChanged` event via event bus
+  - **Extended error types** — `ProbeTimeout`, `ProbeUnexpectedTrigger`, `ProbeStuck`, `ProbeNotSupported`
+  - **GCodeSegmentType::Probe** — new variant for toolpath visualizer support
+  - **`FullStatus.probe_pin`** field and `StatusParser::parse_probe_pin()` helper
+  - **Unit tests** for probe response parsing and status pin detection (7 new tests, all passing)
+
+### Changed
+- `GrblControllerState` now tracks `probe_pin: Option<bool>` for live pin-state monitoring
+
 ## [0.54.0-alpha.2] - 2026-05-07
 
 ### Changed

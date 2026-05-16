@@ -266,34 +266,34 @@ impl ToolpathToGcode {
                 }
 
                 ToolpathSegmentType::LinearMove => {
-                                    // Handle start Z plunge if needed
-                                    if has_z {
-                                        if let Some(sz) = segment.start_z {
-                                            if (current_z - sz).abs() > 0.01 {
-                                                let line_prefix = self.get_line_prefix(line_number);
-                                                gcode.push_str(&format!(
-                                                    "{}G01 Z{} F{:.0}\n",
-                                                    line_prefix,
-                                                    self.fmt_coord(sz),
-                                                    segment.feed_rate
-                                                ));
-                                                line_number += 10;
-                                                current_z = sz;
-                                            }
-                                        } else if segment.z_depth.is_none()
-                                            && (current_z - toolpath.depth).abs() > 0.01
-                                        {
-                                            let line_prefix = self.get_line_prefix(line_number);
-                                            gcode.push_str(&format!(
-                                                "{}G01 Z{} F{:.0}\n",
-                                                line_prefix,
-                                                self.fmt_coord(toolpath.depth),
-                                                segment.feed_rate
-                                            ));
-                                            line_number += 10;
-                                            current_z = toolpath.depth;
-                                        }
-                                    }
+                    // Handle start Z plunge if needed
+                    if has_z {
+                        if let Some(sz) = segment.start_z {
+                            if (current_z - sz).abs() > 0.01 {
+                                let line_prefix = self.get_line_prefix(line_number);
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{} F{:.0}\n",
+                                    line_prefix,
+                                    self.fmt_coord(sz),
+                                    segment.feed_rate
+                                ));
+                                line_number += 10;
+                                current_z = sz;
+                            }
+                        } else if segment.z_depth.is_none()
+                            && (current_z - toolpath.depth).abs() > 0.01
+                        {
+                            let line_prefix = self.get_line_prefix(line_number);
+                            gcode.push_str(&format!(
+                                "{}G01 Z{} F{:.0}\n",
+                                line_prefix,
+                                self.fmt_coord(toolpath.depth),
+                                segment.feed_rate
+                            ));
+                            line_number += 10;
+                            current_z = toolpath.depth;
+                        }
+                    }
                     let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
                         current_z
                     } else {

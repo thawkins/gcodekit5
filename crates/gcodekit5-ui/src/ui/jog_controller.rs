@@ -17,6 +17,18 @@ pub enum JogDirection {
     ZPos,
     /// Move Z negative
     ZNeg,
+    /// Rotate A positive (4th axis - around X)
+    APos,
+    /// Rotate A negative (4th axis - around X)
+    ANeg,
+    /// Rotate B positive (5th axis - around Y)
+    BPos,
+    /// Rotate B negative (5th axis - around Y)
+    BNeg,
+    /// Rotate C positive (6th axis - around Z)
+    CPos,
+    /// Rotate C negative (6th axis - around Z)
+    CNeg,
 }
 
 impl JogDirection {
@@ -26,14 +38,17 @@ impl JogDirection {
             Self::XPos | Self::XNeg => 'X',
             Self::YPos | Self::YNeg => 'Y',
             Self::ZPos | Self::ZNeg => 'Z',
+            Self::APos | Self::ANeg => 'A',
+            Self::BPos | Self::BNeg => 'B',
+            Self::CPos | Self::CNeg => 'C',
         }
     }
 
     /// Get direction multiplier
     pub fn multiplier(&self) -> f64 {
         match self {
-            Self::XNeg | Self::YNeg | Self::ZNeg => -1.0,
-            Self::XPos | Self::YPos | Self::ZPos => 1.0,
+            Self::XNeg | Self::YNeg | Self::ZNeg | Self::ANeg | Self::BNeg | Self::CNeg => -1.0,
+            Self::XPos | Self::YPos | Self::ZPos | Self::APos | Self::BPos | Self::CPos => 1.0,
         }
     }
 
@@ -46,11 +61,22 @@ impl JogDirection {
             Self::YNeg => "Y-",
             Self::ZPos => "Z+",
             Self::ZNeg => "Z-",
+            Self::APos => "A+",
+            Self::ANeg => "A-",
+            Self::BPos => "B+",
+            Self::BNeg => "B-",
+            Self::CPos => "C+",
+            Self::CNeg => "C-",
         }
+    }
+
+    /// Check if this is a rotary axis direction
+    pub fn is_rotary(&self) -> bool {
+        matches!(self, Self::APos | Self::ANeg | Self::BPos | Self::BNeg | Self::CPos | Self::CNeg)
     }
 }
 
-/// Jog step size
+/// Jog step size for linear axes (mm/inches)
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum JogStepSize {
     /// 0.001 mm/in
@@ -68,7 +94,7 @@ pub enum JogStepSize {
 }
 
 impl JogStepSize {
-    /// Get step size value
+    /// Get step size value in mm/inches
     pub fn value(&self) -> f64 {
         match self {
             Self::Micro => 0.001,
@@ -102,6 +128,76 @@ impl JogStepSize {
             Self::Large => "10.0",
             Self::Huge => "100.0",
         }
+    }
+
+    /// Get unit label
+    pub fn unit_label(&self) -> &str {
+        "mm"
+    }
+}
+
+/// Rotary jog step size (degrees)
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum RotaryJogStepSize {
+    /// 0.1 degrees - fine adjustment
+    Fine = 0,
+    /// 0.5 degrees - small moves
+    Small = 1,
+    /// 1.0 degrees - standard
+    Medium = 2,
+    /// 5.0 degrees - moderate
+    Large = 3,
+    /// 10.0 degrees - coarse
+    Coarse = 4,
+    /// 45.0 degrees - large moves
+    XLarge = 5,
+    /// 90.0 degrees - quadrant moves
+    Huge = 6,
+}
+
+impl RotaryJogStepSize {
+    /// Get step size value in degrees
+    pub fn value(&self) -> f64 {
+        match self {
+            Self::Fine => 0.1,
+            Self::Small => 0.5,
+            Self::Medium => 1.0,
+            Self::Large => 5.0,
+            Self::Coarse => 10.0,
+            Self::XLarge => 45.0,
+            Self::Huge => 90.0,
+        }
+    }
+
+    /// Get all rotary step sizes
+    pub fn all() -> Vec<Self> {
+        vec![
+            Self::Fine,
+            Self::Small,
+            Self::Medium,
+            Self::Large,
+            Self::Coarse,
+            Self::XLarge,
+            Self::Huge,
+        ]
+    }
+
+    /// Get description
+    pub fn description(&self) -> &str {
+        match self {
+            Self::Fine => "0.1°",
+            Self::Small => "0.5°",
+            Self::Medium => "1.0°",
+            Self::Large => "5.0°",
+            Self::Coarse => "10.0°",
+            Self::XLarge => "45.0°",
+            Self::Huge => "90.0°",
+        }
+    }
+
+    /// Get unit label
+    pub fn unit_label(&self) -> &str {
+        "°"
     }
 }
 
@@ -153,13 +249,20 @@ impl ShortcutMap {
     /// Create default keyboard shortcuts
     pub fn default_shortcuts() -> Self {
         let mut map = std::collections::HashMap::new();
-        // Arrow keys
+        // Linear axis shortcuts (numpad-style)
         map.insert('8', JogDirection::YPos); // Up
         map.insert('2', JogDirection::YNeg); // Down
         map.insert('4', JogDirection::XNeg); // Left
         map.insert('6', JogDirection::XPos); // Right
         map.insert('9', JogDirection::ZPos); // Page Up
         map.insert('3', JogDirection::ZNeg); // Page Down
+        // Rotary axis shortcuts (letter keys)
+        map.insert('q', JogDirection::ANeg); // Q = A-
+        map.insert('w', JogDirection::APos); // W = A+
+        map.insert('a', JogDirection::BNeg); // A = B-
+        map.insert('s', JogDirection::BPos); // S = B+
+        map.insert('z', JogDirection::CNeg); // Z = C-
+        map.insert('x', JogDirection::CPos); // X = C+
 
         Self { shortcuts: map }
     }
@@ -177,6 +280,15 @@ impl ShortcutMap {
     /// Get direction for key
     pub fn get(&self, key: char) -> Option<JogDirection> {
         self.shortcuts.get(&key).copied()
+    }
+
+    /// Get all rotary axis shortcuts
+    pub fn rotary_shortcuts(&self) -> Vec<(char, JogDirection)> {
+        self.shortcuts
+            .iter()
+            .filter(|(_, d)| d.is_rotary())
+            .map(|(&k, &v)| (k, v))
+            .collect()
     }
 }
 

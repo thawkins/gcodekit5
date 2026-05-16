@@ -305,8 +305,10 @@ impl Default for FileProcessingSettings {
 /// Machine preference settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MachineSettings {
-    /// Default jog increment in mm
+    /// Default jog increment in mm (linear axes)
     pub jog_increment: f64,
+    /// Default jog increment in degrees (rotary axes)
+    pub jog_increment_rotary: f64,
     /// Default jog feed rate in units/min
     pub jog_feed_rate: f64,
     /// Machine X limit (max)
@@ -315,10 +317,24 @@ pub struct MachineSettings {
     pub y_limit: f64,
     /// Machine Z limit (max)
     pub z_limit: f64,
+    /// Machine A limit (max degrees)
+    pub a_limit: f64,
+    /// Machine B limit (max degrees)
+    pub b_limit: f64,
+    /// Machine C limit (max degrees)
+    pub c_limit: f64,
     /// Default unit (mm or in)
     pub default_unit: String,
     /// Homing direction per axis (true = negative, false = positive)
     pub homing_direction: HashMap<String, bool>,
+    /// Direction inversion per axis (true = inverted)
+    pub axis_direction_invert: HashMap<String, bool>,
+    /// Steps per degree for rotary axes (A, B, C)
+    pub steps_per_degree: HashMap<String, f64>,
+    /// Rotary axis calibration offsets (degrees)
+    pub rotary_calibration: HashMap<String, f64>,
+    /// Rotary axis backlash compensation (degrees)
+    pub rotary_backlash: HashMap<String, f64>,
 }
 
 impl Default for MachineSettings {
@@ -327,15 +343,109 @@ impl Default for MachineSettings {
         homing.insert("X".to_string(), true);
         homing.insert("Y".to_string(), true);
         homing.insert("Z".to_string(), true);
+        homing.insert("A".to_string(), true);
+        homing.insert("B".to_string(), true);
+        homing.insert("C".to_string(), true);
+
+        let mut direction_invert = HashMap::new();
+        direction_invert.insert("X".to_string(), false);
+        direction_invert.insert("Y".to_string(), false);
+        direction_invert.insert("Z".to_string(), false);
+        direction_invert.insert("A".to_string(), false);
+        direction_invert.insert("B".to_string(), false);
+        direction_invert.insert("C".to_string(), false);
+
+        let mut steps_per_deg = HashMap::new();
+        steps_per_deg.insert("A".to_string(), 80.0); // Common NEMA 23 stepper with 8:1 gearbox
+        steps_per_deg.insert("B".to_string(), 80.0);
+        steps_per_deg.insert("C".to_string(), 80.0);
+
+        let mut rotary_cal = HashMap::new();
+        rotary_cal.insert("A".to_string(), 0.0);
+        rotary_cal.insert("B".to_string(), 0.0);
+        rotary_cal.insert("C".to_string(), 0.0);
+
+        let mut rotary_back = HashMap::new();
+        rotary_back.insert("A".to_string(), 0.0);
+        rotary_back.insert("B".to_string(), 0.0);
+        rotary_back.insert("C".to_string(), 0.0);
 
         Self {
             jog_increment: 1.0,
+            jog_increment_rotary: 1.0,
             jog_feed_rate: 1000.0,
             x_limit: 200.0,
             y_limit: 200.0,
             z_limit: 100.0,
+            a_limit: 360.0,
+            b_limit: 360.0,
+            c_limit: 360.0,
             default_unit: "mm".to_string(),
             homing_direction: homing,
+            axis_direction_invert: direction_invert,
+            steps_per_degree: steps_per_deg,
+            rotary_calibration: rotary_cal,
+            rotary_backlash: rotary_back,
+        }
+    }
+}
+
+/// Probe settings for WCS auto-update and persistent storage.
+///
+/// Stores probe default parameters and last probe results for each WCS.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProbeSettings {
+    /// Default safe height for probe operations (mm).
+    pub default_safe_height: f64,
+    /// Default fast feed rate for probing (units/min).
+    pub default_fast_feed: f64,
+    /// Default slow feed rate for accuracy re-probe (units/min).
+    pub default_slow_feed: f64,
+    /// Default backoff distance after initial probe (mm).
+    pub default_backoff: f64,
+    /// Default maximum probe depth (mm).
+    pub default_max_depth: f64,
+    /// Auto-update WCS after successful probe.
+    pub auto_update_wcs: bool,
+    /// Target WCS for probe results (54-59 for G54-G59, 0 for G92).
+    pub target_wcs: u8,
+    /// Use temporary G92 offset instead of persistent G10.
+    pub use_temporary_offset: bool,
+    /// Apply tool-length offset via G43.1 for tool length probes.
+    pub apply_tool_length: bool,
+    /// Preview probe results before applying WCS update.
+    pub preview_before_apply: bool,
+    /// Setter plate X position (machine coordinates).
+    pub setter_plate_x: f64,
+    /// Setter plate Y position (machine coordinates).
+    pub setter_plate_y: f64,
+    /// Setter plate Z position (machine coordinates).
+    pub setter_plate_z: f64,
+}
+
+impl ProbeSettings {
+    /// Create new probe settings with defaults.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for ProbeSettings {
+    fn default() -> Self {
+        Self {
+            default_safe_height: 10.0,
+            default_fast_feed: 100.0,
+            default_slow_feed: 20.0,
+            default_backoff: 2.0,
+            default_max_depth: -10.0,
+            auto_update_wcs: true,
+            target_wcs: 54,
+            use_temporary_offset: false,
+            apply_tool_length: false,
+            preview_before_apply: true,
+            setter_plate_x: 0.0,
+            setter_plate_y: 0.0,
+            setter_plate_z: 0.0,
         }
     }
 }
@@ -370,6 +480,9 @@ pub struct Config {
     pub file_processing: FileProcessingSettings,
     /// Machine preferences
     pub machine: MachineSettings,
+    /// Probe settings and persistent results
+    #[serde(default)]
+    pub probe: ProbeSettings,
     /// Recent files list
     pub recent_files: Vec<PathBuf>,
     /// Last Path
@@ -462,6 +575,33 @@ impl Config {
         if self.machine.x_limit <= 0.0 || self.machine.y_limit <= 0.0 || self.machine.z_limit <= 0.0
         {
             return Err(Error::other("Machine limits must be > 0".to_string()));
+        }
+
+        // Validate rotary axis limits (can be 0 if axis is not used)
+        if self.machine.a_limit < 0.0 || self.machine.b_limit < 0.0 || self.machine.c_limit < 0.0 {
+            return Err(Error::other("Rotary axis limits must be >= 0".to_string()));
+        }
+
+        // Validate steps per degree
+        for (axis, steps) in &self.machine.steps_per_degree {
+            if *steps <= 0.0 {
+                return Err(Error::other(format!(
+                    "Steps per degree for axis {} must be > 0",
+                    axis
+                )));
+            }
+        }
+        // Validate probe settings
+        if self.probe.default_fast_feed <= 0.0 {
+            return Err(Error::other("Probe fast feed rate must be > 0".to_string()));
+        }
+
+        if self.probe.default_slow_feed <= 0.0 {
+            return Err(Error::other("Probe slow feed rate must be > 0".to_string()));
+        }
+
+        if self.probe.default_safe_height < 0.0 {
+            return Err(Error::other("Probe safe height must be >= 0".to_string()));
         }
 
         Ok(())

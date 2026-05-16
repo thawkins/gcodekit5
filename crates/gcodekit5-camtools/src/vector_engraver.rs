@@ -1088,18 +1088,18 @@ impl VectorEngraver {
                                 power_value
                             ));
                         }
-                                                    lyon::path::Event::End { close, .. } if close => {
-                                                        gcode.push_str(&format!(
-                                                            "G1 X{:.3} Y{:.3} F{:.0} M3 S{} ; Close path\n",
-                                                            start_point.x * scale,
-                                                            start_point.y * scale,
-                                                            self.params.feed_rate,
-                                                            power_value
-                                                        ));
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            gcode.push_str(&format!(
+                                "G1 X{:.3} Y{:.3} F{:.0} M3 S{} ; Close path\n",
+                                start_point.x * scale,
+                                start_point.y * scale,
+                                self.params.feed_rate,
+                                power_value
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
                 // Turn laser off after finishing this object (hatches + outline)
                 gcode.push_str("M5 ; Laser off\n");
                 if self.params.enable_dwell {

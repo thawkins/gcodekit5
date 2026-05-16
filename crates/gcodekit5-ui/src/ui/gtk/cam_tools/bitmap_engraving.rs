@@ -227,9 +227,7 @@ impl BitmapEngravingTool {
         output_group.add(&Self::create_row(&t!("Travel Rate:"), &travel_rate));
         scroll_content.append(&output_group);
 
-        let power_group = PreferencesGroup::builder()
-            .title(t!("Laser Power"))
-            .build();
+        let power_group = PreferencesGroup::builder().title(t!("Laser Power")).build();
         power_group.add(&Self::create_row(&t!("Min Power (%):"), &min_power));
         power_group.add(&Self::create_row(&t!("Max Power (%):"), &max_power));
         power_group.add(&Self::create_row(&t!("Power Scale (S):"), &power_scale));

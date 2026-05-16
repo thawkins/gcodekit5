@@ -8,8 +8,13 @@ use crate::firmware::grbl::status_parser::StatusParser;
 use crate::firmware::grbl::{GrblCommunicator, GrblCommunicatorConfig};
 use async_trait::async_trait;
 use gcodekit5_core::{thread_safe_rw, ThreadSafeRw, ThreadSafeRwMap};
-use gcodekit5_core::{ControllerState, ControllerStatus, PartialPosition};
+use gcodekit5_core::{ControllerState, ControllerStatus, PartialPosition, ProbeResult};
 use gcodekit5_core::{ControllerTrait, OverrideState};
+
+/// Default timeout for probe operations in milliseconds.
+const DEFAULT_PROBE_TIMEOUT_MS: u64 = 30_000;
+/// Retract distance when probe fails to trigger (mm).
+const PROBE_FAILSAFE_RETRACT_MM: f64 = 5.0;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,6 +40,12 @@ pub struct GrblControllerState {
     pub is_streaming: bool,
     /// Status poll rate (milliseconds)
     pub poll_rate_ms: u64,
+    /// Probe result sender — populated when a probe command is in flight.
+    #[allow(dead_code)]
+    pub probe_result_tx:
+        std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<ProbeResult>>>>,
+    /// Whether a probe cycle is currently in progress.
+    pub probe_in_progress: bool,
 }
 
 impl Default for GrblControllerState {
@@ -47,6 +58,8 @@ impl Default for GrblControllerState {
             work_position: gcodekit5_core::Position::default(),
             is_streaming: false,
             poll_rate_ms: 100,
+            probe_result_tx: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            probe_in_progress: false,
         }
     }
 }
@@ -96,6 +109,92 @@ impl GrblController {
 
     // Initialize the controller and query its capabilities
     // fn initialize(&self) -> anyhow::Result<()> { ... } - Removed as we use async send_command in connect
+
+    /// Send a probe command and wait for the  response.
+    ///
+    /// # Arguments
+    /// *  — One of , , , .
+    /// *  — Axis character (, , ).
+    /// *  — Target coordinate in **current units** (mm by default).
+    /// *  — Probe feed rate in units/min.
+    /// *  — Maximum time to wait for  or alarm.
+    ///
+    /// # Fail-safe behaviour
+    /// If the probe does not trigger and an error/alarm is raised, the method
+    /// automatically issues a  retract of [] along
+    /// the probe axis before returning an error.
+    pub async fn send_probe_command(
+        &mut self,
+        g38_variant: &str,
+        axis: char,
+        target: f64,
+        feed_rate: f64,
+        timeout_ms: u64,
+    ) -> anyhow::Result<PartialPosition> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<gcodekit5_core::ProbeResult>();
+
+        {
+            let mut state = self.state.write();
+            state.probe_in_progress = true;
+            if let Ok(mut guard) = state.probe_result_tx.clone().try_lock() {
+                *guard = Some(tx);
+            }
+        }
+
+        let cmd = format!("{}{}{:.3}F{:.0}", g38_variant, axis, target, feed_rate);
+        if let Err(e) = self.send_command(&cmd).await {
+            let mut state = self.state.write();
+            state.probe_in_progress = false;
+            return Err(e);
+        }
+
+        let result = match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => {
+                let _ = self.send_retract(axis).await;
+                anyhow::bail!("Probe result channel closed unexpectedly")
+            }
+            Err(_) => {
+                let _ = self.send_retract(axis).await;
+                {
+                    let mut state = self.state.write();
+                    state.probe_in_progress = false;
+                }
+                anyhow::bail!(
+                    "Probe timeout after {} ms — retracted {} mm",
+                    timeout_ms,
+                    PROBE_FAILSAFE_RETRACT_MM
+                )
+            }
+        };
+
+        {
+            let mut state = self.state.write();
+            state.probe_in_progress = false;
+        }
+
+        if !result.success {
+            let _ = self.send_retract(axis).await;
+            anyhow::bail!(
+                "Probe did not trigger (success=false) — retracted {} mm",
+                PROBE_FAILSAFE_RETRACT_MM
+            );
+        }
+
+        Ok(PartialPosition {
+            x: Some(result.position.x),
+            y: Some(result.position.y),
+            z: Some(result.position.z),
+            ..Default::default()
+        })
+    }
+
+    /// Send a rapid retract move to safe height (Z+).
+    async fn send_retract(&self, _axis: char) -> anyhow::Result<()> {
+        let retract_cmd = format!("G91 G0 Z+{:.3} G90", PROBE_FAILSAFE_RETRACT_MM);
+        let _ = self.communicator.send_command(&retract_cmd);
+        Ok(())
+    }
 
     /// Start the IO loop task
     fn start_io_loop(&mut self) -> anyhow::Result<()> {
@@ -446,36 +545,18 @@ impl ControllerTrait for GrblController {
     }
 
     async fn probe_z(&mut self, feed_rate: f64) -> anyhow::Result<PartialPosition> {
-        let cmd = format!("G38.2Z-100F{}", feed_rate);
-        self.send_command(&cmd).await?;
-
-        let state = self.state.read();
-        Ok(PartialPosition {
-            z: Some(state.work_position.z),
-            ..Default::default()
-        })
+        self.send_probe_command("G38.2", 'Z', -100.0, feed_rate, DEFAULT_PROBE_TIMEOUT_MS)
+            .await
     }
 
     async fn probe_x(&mut self, feed_rate: f64) -> anyhow::Result<PartialPosition> {
-        let cmd = format!("G38.2X100F{}", feed_rate);
-        self.send_command(&cmd).await?;
-
-        let state = self.state.read();
-        Ok(PartialPosition {
-            x: Some(state.work_position.x),
-            ..Default::default()
-        })
+        self.send_probe_command("G38.2", 'X', 100.0, feed_rate, DEFAULT_PROBE_TIMEOUT_MS)
+            .await
     }
 
     async fn probe_y(&mut self, feed_rate: f64) -> anyhow::Result<PartialPosition> {
-        let cmd = format!("G38.2Y100F{}", feed_rate);
-        self.send_command(&cmd).await?;
-
-        let state = self.state.read();
-        Ok(PartialPosition {
-            y: Some(state.work_position.y),
-            ..Default::default()
-        })
+        self.send_probe_command("G38.2", 'Y', 100.0, feed_rate, DEFAULT_PROBE_TIMEOUT_MS)
+            .await
     }
 
     async fn set_feed_override(&mut self, percentage: u16) -> anyhow::Result<()> {

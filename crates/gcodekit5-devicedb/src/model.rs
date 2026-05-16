@@ -84,7 +84,9 @@ pub struct DeviceProfile {
     pub x_axis: AxisLimits,
     pub y_axis: AxisLimits,
     pub z_axis: AxisLimits,
-    pub a_axis: AxisLimits, // Rotary/Aux
+    pub a_axis: AxisLimits, // Rotary/Aux - around X axis
+    pub b_axis: AxisLimits, // Rotary/Aux - around Y axis (5th axis)
+    pub c_axis: AxisLimits, // Rotary/Aux - around Z axis (6th axis)
 
     // Capabilities
     pub num_axes: u8,
@@ -113,6 +115,38 @@ pub struct DeviceProfile {
     pub grbl_settings: std::collections::HashMap<u16, String>,
 }
 
+impl DeviceProfile {
+    /// Returns the number of enabled axes based on axis configuration
+    pub fn axis_count(&self) -> u8 {
+        let mut count = 3; // X, Y, Z are always present
+        if self.a_axis.enabled {
+            count += 1;
+        }
+        if self.b_axis.enabled {
+            count += 1;
+        }
+        if self.c_axis.enabled {
+            count += 1;
+        }
+        count
+    }
+
+    /// Returns true if the device has 4 or more axes (includes A axis)
+    pub fn has_a_axis(&self) -> bool {
+        self.a_axis.enabled
+    }
+
+    /// Returns true if the device has 5 or more axes (includes B axis)
+    pub fn has_b_axis(&self) -> bool {
+        self.b_axis.enabled
+    }
+
+    /// Returns true if the device has 6 axes (includes C axis)
+    pub fn has_c_axis(&self) -> bool {
+        self.c_axis.enabled
+    }
+}
+
 impl Default for DeviceProfile {
     fn default() -> Self {
         Self {
@@ -129,6 +163,16 @@ impl Default for DeviceProfile {
                 enabled: true,
             },
             a_axis: AxisLimits {
+                min: 0.0,
+                max: 360.0,
+                enabled: false,
+            },
+            b_axis: AxisLimits {
+                min: 0.0,
+                max: 360.0,
+                enabled: false,
+            },
+            c_axis: AxisLimits {
                 min: 0.0,
                 max: 360.0,
                 enabled: false,

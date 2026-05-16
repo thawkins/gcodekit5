@@ -273,6 +273,11 @@ pub enum MachineEvent {
         /// Position where probe was triggered.
         position: Position,
     },
+    /// Probe pin state changed (real-time status report).
+    ProbePinChanged {
+        /// Current probe pin state.
+        state: crate::ProbePinState,
+    },
     /// Limit switch triggered.
     LimitTriggered {
         /// Axis that triggered the limit.
@@ -336,6 +341,9 @@ impl MachineEvent {
                     "Probe at: X{:.3} Y{:.3} Z{:.3}",
                     position.x, position.y, position.z
                 )
+            }
+            MachineEvent::ProbePinChanged { state } => {
+                format!("Probe pin: {:?}", state)
             }
             MachineEvent::LimitTriggered { axis, direction } => {
                 format!("Limit: {:?} {:?}", axis, direction)

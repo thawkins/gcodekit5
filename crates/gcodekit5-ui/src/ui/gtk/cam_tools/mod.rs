@@ -8,6 +8,7 @@ mod common;
 mod drill_press;
 mod gerber;
 mod jigsaw;
+mod probe_routines;
 mod speeds_feeds;
 mod spoilboard_grid;
 mod spoilboard_surfacing;
@@ -19,6 +20,7 @@ pub use bitmap_engraving::BitmapEngravingTool;
 pub use drill_press::DrillPressTool;
 pub use gerber::GerberTool;
 pub use jigsaw::JigsawTool;
+pub use probe_routines::ProbeRoutinesTool;
 pub use speeds_feeds::SpeedsFeedsTool;
 pub use spoilboard_grid::SpoilboardGridTool;
 pub use spoilboard_surfacing::SpoilboardSurfacingTool;
@@ -117,6 +119,15 @@ impl CamToolsView {
         );
         stack.add_named(drill_tool.widget(), Some("drill_press"));
 
+        // Probe Routines Tool
+        let probe_tool = ProbeRoutinesTool::new(
+            &stack,
+            settings.clone(),
+            machine_control.clone(),
+            on_generate.clone(),
+        );
+        stack.add_named(probe_tool.widget(), Some("probe_routines"));
+
         Self { content: stack }
     }
 
@@ -196,14 +207,20 @@ impl CamToolsView {
                     icon: "media-floppy-symbolic",
                     category: t!("generators"),
                 },
-                Tool {
-                    page: "drill_press",
-                    title: t!("Drill Press"),
-                    desc: t!("Emulate a drill press with peck drilling and helical cycles"),
-                    icon: "input-mouse-symbolic",
-                    category: t!("generators"),
-                },
-            ]
+                                  Tool {
+                                      page: "drill_press",
+                                      title: t!("Drill Press"),
+                                      desc: t!("Emulate a drill press with peck drilling and helical cycles"),
+                                      icon: "input-mouse-symbolic",
+                                      category: t!("generators"),
+                                  },
+                                  Tool {
+                                      page: "probe_routines",
+                                      title: t!("Probe Tools"),
+                                      desc: t!("Touch probe routines for WCS setup: Z-touch, edge find, corner find, bore/boss center, tool length"),
+                                      icon: "input-touchpad-symbolic",
+                                      category: t!("maintenance"),
+                                  },            ]
         }
         /*
                 #[derive(Clone, Copy)]
