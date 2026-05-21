@@ -147,6 +147,9 @@ The object positioning issue when opening "gckd" files.
   - The import DXF and SVG files has been improved.
   - New icons have been added to the tools.
 
+  **Individual properties by object**
+  - In addition to the general properties for laser engraving and cutting that apply to all objects in the Designer and are set in "Tool Settings", you can now define individual properties for each object by selecting, via a checkbox, whether you want to use global or specific properties for that object.
+
 ### 👁️ 2D Visualizer
 - **Real-time Rendering**: Instant visualization of G-code toolpaths
 - **Adaptive Grid System**:
