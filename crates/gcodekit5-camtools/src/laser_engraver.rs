@@ -674,6 +674,7 @@ impl BitmapImageEngraver {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_segment(
         &self,
         gcode: &mut String,

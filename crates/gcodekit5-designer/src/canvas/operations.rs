@@ -188,6 +188,7 @@ impl Canvas {
                 fillet: obj.fillet,
                 chamfer: obj.chamfer,
                 lock_aspect_ratio: obj.lock_aspect_ratio,
+                use_global_laser: obj.use_global_laser,
             };
 
             self.shape_store.insert(id, new_obj);

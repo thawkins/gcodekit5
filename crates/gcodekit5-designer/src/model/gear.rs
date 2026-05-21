@@ -14,7 +14,7 @@ use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
-use super::{DesignPath, DesignerShape, Point, Property, PropertyValue};
+use super::{DesignPath, DesignerShape, Point, Property, PropertyValue, LaserParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignGear {
@@ -24,6 +24,7 @@ pub struct DesignGear {
     pub pressure_angle_deg: f64,  // Cambiar nombre para claridad, almacenar en grados
     pub rotation: f64,
     pub hole_radius: f64,
+    pub laser_params: LaserParams,
 }
 
 impl DesignGear {
@@ -35,6 +36,7 @@ impl DesignGear {
             pressure_angle_deg: 20.0,  // Grados sexagesimales
             rotation: 0.0,
             hole_radius: 0.0,
+            laser_params: LaserParams::default(),
         }
     }
 }

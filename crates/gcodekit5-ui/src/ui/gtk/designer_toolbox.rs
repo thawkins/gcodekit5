@@ -710,15 +710,14 @@ impl DesignerToolbox {
                     ("Feed", MachineMode::Cnc3D) => t!("Feed Rate"),
                     ("Speed", MachineMode::Laser2D) => t!("Laser Power"),
                     ("Speed", MachineMode::Cnc3D) => t!("Spindle Speed"),
-                    ("Step Down", MachineMode::Laser2D) => t!("Number of Passes"),
+                    ("Step Down", MachineMode::Laser2D) => t!("Passes"),
                     ("Step Down", MachineMode::Cnc3D) => t!("Step Down"),
                     ("Tool Dia", MachineMode::Laser2D) => t!("Laser Width"),
                     ("Tool Dia", MachineMode::Cnc3D) => t!("Tool Dia"),
-                    ("Cut Depth", MachineMode::Laser2D) => t!(""),
+                    ("Cut Depth", MachineMode::Laser2D) => t!("-"),
                     ("Cut Depth", MachineMode::Cnc3D) => t!("Cut Depth"),
                     _ => label_text.clone(),
                 };
-
                 let label = Label::new(Some(&format!("{}:", display_label)));
                 label.set_halign(Align::Start);
 
@@ -754,7 +753,7 @@ impl DesignerToolbox {
                                 (percent, "%")
                             }
                             (UnitsKind::Rpm, MachineMode::Cnc3D) => (val_mm, "RPM"),
-                            (UnitsKind::Length, MachineMode::Laser2D) => (val_mm, ""),
+                            (UnitsKind::Length, MachineMode::Laser2D) => (val_mm, ""),  // Sin unidades
                             (UnitsKind::Length, MachineMode::Cnc3D) => match units {
                                 MeasurementSystem::Metric => (val_mm, "mm"),
                                 MeasurementSystem::Imperial => (val_mm / 25.4, "in"),
@@ -859,13 +858,13 @@ impl DesignerToolbox {
             let getter = Rc::new(move || state_getter.borrow().tool_settings.tool_diameter);
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_tool_diameter(val));
-            create_setting(
-                t!("Tool Dia"),
-                getter,
-                setter,
-                t!("Tool Diameter"),
-                UnitsKind::Length,
-            );
+                create_setting(
+                    String::from("Tool Dia"),
+                    getter,
+                    setter,
+                    t!("Tool Diameter"),
+                    UnitsKind::Length,
+                );
         }
 
         // Cut Depth
@@ -874,13 +873,13 @@ impl DesignerToolbox {
             let getter = Rc::new(move || state_getter.borrow().tool_settings.cut_depth);
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_cut_depth(val));
-            create_setting(
-                t!("Cut Depth"),
-                getter,
-                setter,
-                t!("Target Cut Depth (positive)"),
-                UnitsKind::Length,
-            );
+                create_setting(
+                    String::from("Cut Depth"),
+                    getter,
+                    setter,
+                    t!("Target Cut Depth (positive)"),
+                    UnitsKind::Length,
+                );
         }
 
         // Step Down
@@ -889,13 +888,13 @@ impl DesignerToolbox {
             let getter = Rc::new(move || state_getter.borrow().tool_settings.step_down);
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_step_down(val));
-            create_setting(
-                t!("Step Down"),
-                getter,
-                setter,
-                t!("Depth per pass"),
-                UnitsKind::Length,
-            );
+                create_setting(
+                    "Step Down".to_string(),
+                    getter,
+                    setter,
+                    t!("Depth per pass"),
+                    UnitsKind::Length,
+                );
         }
 
         (settings_box, settings_grid)

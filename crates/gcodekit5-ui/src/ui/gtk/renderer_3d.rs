@@ -265,13 +265,12 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                     } else {
                         end_angle - start_angle
                     }
-                } else {
-                    if end_angle < start_angle {
-                        end_angle - start_angle + 2.0 * std::f32::consts::PI
-                    } else {
-                        end_angle - start_angle
-                    }
-                };
+                } else if end_angle < start_angle {
+                     end_angle - start_angle + 2.0 * std::f32::consts::PI
+                 } else {
+                     end_angle - start_angle
+                 };
+
 
                 let step = angle_range / segments as f32;
 

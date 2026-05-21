@@ -3,6 +3,7 @@
 //! Implements save/load functionality for .gck4 (GCodeKit4) design files
 //! using JSON format with complete design state preservation.
 
+
 use crate::model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
@@ -134,7 +135,11 @@ pub struct ShapeData {
     pub lock_aspect_ratio: bool,
     #[serde(default)]
     pub original_path: Option<String>,
+    #[serde(default = "default_true")]
+    pub use_global_laser: bool,
 }
+
+fn default_true() -> bool { true }
 
 fn default_lock_aspect_ratio() -> bool {
     false
@@ -441,6 +446,7 @@ impl DesignFile {
             chamfer: obj.chamfer,
             lock_aspect_ratio: obj.lock_aspect_ratio,
             original_path,
+            use_global_laser: obj.use_global_laser,
         }
     }
 
@@ -632,6 +638,7 @@ impl DesignFile {
             fillet: data.fillet,
             chamfer: data.chamfer,
             lock_aspect_ratio: data.lock_aspect_ratio,
+            use_global_laser: data.use_global_laser,
         })
     }
 }

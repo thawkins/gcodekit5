@@ -14,7 +14,7 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::Matrix4;
 
-use super::{DesignerShape, Point, Property, PropertyValue};
+use super::{DesignerShape, Point, Property, PropertyValue, LaserParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignPath {
@@ -29,6 +29,7 @@ pub struct DesignPath {
     #[serde(skip)]
     pub original_path: Option<Path>,
     pub lock_aspect_ratio: bool,
+    pub laser_params: LaserParams,
 }
 
 fn distance_to_line_segment(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
@@ -60,6 +61,7 @@ impl DesignPath {
             closed: false,
             original_path: None,
             lock_aspect_ratio: false,
+            laser_params: LaserParams::default(),
         }
     }
 
@@ -157,6 +159,7 @@ impl DesignPath {
                 closed: false,
                 original_path: None,
                 lock_aspect_ratio: true,
+                laser_params: LaserParams::default(),
             });
         }
         None
@@ -170,6 +173,7 @@ impl DesignPath {
                 closed: false,
                 original_path: None,
                 lock_aspect_ratio: false,
+                laser_params: LaserParams::default(),
             };
         }
 
@@ -234,6 +238,7 @@ impl DesignPath {
             closed,
             original_path: Some(lyon_path),
             lock_aspect_ratio: false,
+            laser_params: LaserParams::default(),
         }
     }
 
@@ -322,6 +327,7 @@ impl DesignPath {
             closed: paths_info.iter().any(|(_, c)| *c),
             original_path: Some(path.clone()),
             lock_aspect_ratio: false,
+            laser_params: LaserParams::default(),
         }
     }
 

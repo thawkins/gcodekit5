@@ -7,3 +7,4 @@ pub mod gear_sprocket;
 pub mod geometry;
 pub mod image;
 pub mod text;
+pub mod laser_override;

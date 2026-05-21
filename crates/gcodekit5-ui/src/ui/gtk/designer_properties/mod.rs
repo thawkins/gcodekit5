@@ -5,6 +5,7 @@
 //! - Main panel orchestration (this file)
 //! - Handlers for different property categories (handlers/)
 
+
 mod builders;
 mod handlers;
 mod update;
@@ -38,6 +39,7 @@ fn format_font_points(mm: f64) -> String {
 
 /// Properties panel showing editable properties for selected shapes.
 #[allow(clippy::type_complexity)]
+#[derive(Clone)]
 pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
     pub(crate) state: Shared<DesignerState>,
@@ -142,6 +144,13 @@ pub struct PropertiesPanel {
     pub(crate) image_invert_check: CheckButton,
     pub(crate) image_dithering_combo: ComboBoxText,
     pub(crate) image_halftone_threshold_entry: Entry,
+    // Laser override widgets
+    pub(crate) laser_override_frame: Frame,
+    pub(crate) laser_use_global_check: CheckButton,
+    pub(crate) laser_feed_rate_entry: Entry,
+    pub(crate) laser_power_entry: Entry,
+    pub(crate) laser_passes_entry: Entry,
+
 }
 
 impl PropertiesPanel {
@@ -282,6 +291,15 @@ impl PropertiesPanel {
 
         scrolled.set_child(Some(&content));
 
+        let (
+            laser_override_frame,
+            laser_use_global_check,
+            laser_feed_rate_entry,
+            laser_power_entry,
+            laser_passes_entry,
+        ) = Self::build_laser_override_section();
+        content.append(&laser_override_frame);
+
         let panel = Rc::new(Self {
             widget: scrolled,
             state: state.clone(),
@@ -342,6 +360,12 @@ impl PropertiesPanel {
             image_invert_check,
             image_dithering_combo,
             image_halftone_threshold_entry,
+
+            laser_override_frame,
+            laser_use_global_check,
+            laser_feed_rate_entry,
+            laser_power_entry,
+            laser_passes_entry,
 
             header,
             x_unit_label,
@@ -733,5 +757,8 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
+
+        // Laser override handlers
+        handlers::laser_override::setup_laser_override_handlers(self);
     }
 }

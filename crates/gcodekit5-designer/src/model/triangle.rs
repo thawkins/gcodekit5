@@ -11,7 +11,7 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 //use nalgebra::{Matrix4, Vector3};
 
-use super::{DesignerShape, Point, Property, PropertyValue};
+use super::{DesignerShape, Point, Property, PropertyValue, LaserParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignTriangle {
@@ -19,6 +19,7 @@ pub struct DesignTriangle {
     pub height: f64,
     pub center: Point,
     pub rotation: f64,
+    pub laser_params: LaserParams,
 }
 
 impl DesignTriangle {
@@ -28,6 +29,7 @@ impl DesignTriangle {
             height,
             center,
             rotation: 0.0,
+            laser_params: LaserParams::default(),
         }
     }
 }

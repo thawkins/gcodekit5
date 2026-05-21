@@ -78,6 +78,7 @@ pub struct DrawingObject {
     pub fillet: f64,
     pub chamfer: f64,
     pub lock_aspect_ratio: bool,
+    pub use_global_laser: bool,
 }
 
 impl DrawingObject {
@@ -155,6 +156,7 @@ impl DrawingObject {
             fillet: 0.0,
             chamfer: 0.0,
             lock_aspect_ratio: true, // lock default aspect ratio
+            use_global_laser: true,
         }
     }
 }

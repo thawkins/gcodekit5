@@ -493,6 +493,7 @@ impl ImageEngraver {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn scan_column(
         &self,
         gcode: &mut String,

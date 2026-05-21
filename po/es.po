@@ -188,11 +188,23 @@ msgstr "Tipo de Máquina"
 msgid "Laser Speed"
 msgstr "Velocidad del Laser"
 
-msgid "Feed Rate"
-msgstr "Avance"
+msgid "Feed rate:"
+msgstr "Velocidad:"
+
+msgid "Power:"
+msgstr "Potencia:"
+
+msgid "Passes:"
+msgstr "Pasadas:"
+
+msgid "Laser Config (Object)"
+msgstr "Configuración Láser (Objeto)"
+
+msgid "Use global values"
+msgstr "Usar valores globales"
 
 msgid "Laser Power"
-msgstr "Potencia del Laser"
+msgstr "Potencia Láser"
 
 msgid "Spindle Speed"
 msgstr "Velocidad de husillo"
@@ -211,6 +223,9 @@ msgstr "Profundidad de corte objetivo (positiva)"
 
 msgid "Step Down"
 msgstr "Profundidad de pasada"
+
+msgid "Passes"
+msgstr "Pasadas"
 
 msgid "Depth per pass"
 msgstr "Profundidad de pasada"
@@ -827,9 +842,6 @@ msgstr "Configuración Multipasada"
 msgid "Multi-Pass:"
 msgstr "Multipasada:"
 
-msgid "Number of Passes:"
-msgstr "Num. de Pasadas:"
-
 msgid "Hatching"
 msgstr "Sombreado"
 
@@ -1036,9 +1048,6 @@ msgstr "Ancho del espacio:"
 msgid "Laser Settings"
 msgstr "Configuración del láser"
 
-msgid "Passes:"
-msgstr "Pases:"
-
 msgid "Power (S):"
 msgstr "Potencia (S):"
 
@@ -1176,9 +1185,6 @@ msgstr "Perfil"
 msgid "Depth:"
 msgstr "Profundidad:"
 
-msgid "Step Down:"
-msgstr "Profundidad de pasada:"
-
 msgid "Step In:"
 msgstr "Paso lateral:"
 
@@ -1189,7 +1195,7 @@ msgid "Strategy:"
 msgstr "Estrategia:"
 
 msgid "Raster Fill (%):"
-msgstr "Relleno Rasterizado (%):"
+msgstr "Relleno Raster (%):"
 
 # gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
 msgid "Select a shape to edit its properties"

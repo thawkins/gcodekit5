@@ -8,7 +8,7 @@ use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
-use super::{DesignPath, DesignerShape, Point, Property, PropertyValue};
+use super::{DesignPath, DesignerShape, Point, Property, PropertyValue, LaserParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignSprocket {
@@ -18,6 +18,7 @@ pub struct DesignSprocket {
     pub roller_diameter: f64,
     pub rotation: f64,
     pub hole_radius: f64,
+    pub laser_params: LaserParams,
 }
 
 impl DesignSprocket {
@@ -30,6 +31,7 @@ impl DesignSprocket {
             roller_diameter: pitch * 0.6,
             rotation: 0.0,
             hole_radius: 0.0,
+            laser_params: LaserParams::default(),
         }
     }
 

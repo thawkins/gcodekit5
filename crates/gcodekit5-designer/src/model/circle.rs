@@ -11,13 +11,14 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
 
-use super::{DesignerShape, Point, Property, PropertyValue};
+use super::{DesignerShape, Point, Property, PropertyValue, LaserParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignCircle {
     pub radius: f64,
     pub center: Point,
     pub rotation: f64,
+    pub laser_params: LaserParams,
 }
 
 impl DesignCircle {
@@ -26,6 +27,7 @@ impl DesignCircle {
             center,
             radius,
             rotation: 0.0,
+            laser_params: LaserParams::default(),
         }
     }
 }
