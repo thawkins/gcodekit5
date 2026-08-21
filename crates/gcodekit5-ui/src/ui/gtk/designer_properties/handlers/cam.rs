@@ -6,7 +6,26 @@ use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
-use gtk4::{DropDown, Entry};
+use gtk4::{CheckButton, DropDown, Entry};
+
+/// Setup CAM use-global checkbox handler.
+///
+/// Checked => use global CAM values (disable object-specific edition).
+/// Unchecked => use object-specific CAM values.
+pub fn setup_cam_use_global_handler(
+    use_global_check: &CheckButton,
+    state: Shared<DesignerState>,
+    updating: Shared<bool>,
+) {
+    use_global_check.connect_toggled(move |check| {
+        if *updating.borrow() {
+            return;
+        }
+        let mut designer_state = state.borrow_mut();
+        let use_custom = !check.is_active();
+        designer_state.set_selected_use_custom_values(use_custom);
+    });
+}
 
 /// Setup operation type dropdown handler
 pub fn setup_operation_type_handler(
@@ -50,6 +69,28 @@ pub fn setup_depth_handler(
             let mut designer_state = state.borrow_mut();
             let is_pocket = op_combo.selected() == 1;
             designer_state.set_selected_pocket_properties(is_pocket, val as f64);
+        } else {
+            entry.add_css_class("entry-invalid");
+        }
+    });
+}
+
+/// Setup Z offset entry handler
+pub fn setup_z_offset_handler(
+    z_offset_entry: &Entry,
+    state: Shared<DesignerState>,
+    settings: Shared<SettingsPersistence>,
+    updating: Shared<bool>,
+) {
+    z_offset_entry.connect_changed(move |entry| {
+        if *updating.borrow() {
+            return;
+        }
+        let system = settings.borrow().config().ui.measurement_system;
+        if let Ok(val) = units::parse_length(&entry.text(), system) {
+            entry.remove_css_class("entry-invalid");
+            let mut designer_state = state.borrow_mut();
+            designer_state.set_selected_z_offset(val as f64);
         } else {
             entry.add_css_class("entry-invalid");
         }

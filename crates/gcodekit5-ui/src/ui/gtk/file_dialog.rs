@@ -10,6 +10,7 @@ use gtk4::{
     ButtonsType, FileChooserAction, FileChooserDialog, MessageDialog, MessageType, ResponseType,
     Widget,
 };
+use gcodekit5_settings::controller::SettingsController;
 
 /// Create a `FileChooserDialog` for **opening** a file.
 ///
@@ -44,6 +45,27 @@ pub fn save_dialog(title: &str, parent: Option<&impl IsA<gtk4::Window>>) -> File
     dlg.set_default_size(900, 700);
     dlg.set_modal(true);
     dlg
+}
+
+/// Apply the persisted working directory to a file chooser dialog.
+pub fn set_last_working_directory(
+    dialog: &FileChooserDialog,
+    settings_controller: Option<&SettingsController>,
+) {
+    let Some(controller) = settings_controller else {
+        return;
+    };
+
+    let settings_ref = controller.persistence.borrow();
+    let last_path = &settings_ref.config().file_processing.output_directory;
+    let folder_path = if last_path.is_file() {
+        last_path.parent().unwrap_or(last_path).to_path_buf()
+    } else {
+        last_path.clone()
+    };
+
+    let file = gtk4::gio::File::for_path(folder_path);
+    let _ = dialog.set_current_folder(Some(&file));
 }
 
 /// Create a `FileChooserDialog` for **selecting a folder**.

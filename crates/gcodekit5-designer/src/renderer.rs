@@ -206,10 +206,9 @@ pub fn render_canvas(
                     match event {
                         lyon::path::Event::Begin { at } => pb.move_to(at.x, at.y),
                         lyon::path::Event::Line { to, .. } => pb.line_to(to.x, to.y),
-                        lyon::path::Event::End { close, .. }
-                            if close => {
-                                pb.close();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            pb.close();
+                        }
                         _ => {}
                     }
                 }
@@ -224,10 +223,9 @@ pub fn render_canvas(
                     match event {
                         lyon::path::Event::Begin { at } => pb.move_to(at.x, at.y),
                         lyon::path::Event::Line { to, .. } => pb.line_to(to.x, to.y),
-                        lyon::path::Event::End { close, .. }
-                            if close => {
-                                pb.close();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            pb.close();
+                        }
                         _ => {}
                     }
                 }

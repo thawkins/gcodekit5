@@ -33,6 +33,7 @@ pub use ellipse::DesignEllipse;
 pub use gear::DesignGear;
 pub use line::DesignLine;
 pub use path::DesignPath;
+pub use path::ParametricPathSource;
 pub use polygon::DesignPolygon;
 pub use rectangle::DesignRectangle;
 pub use sprocket::DesignSprocket;
@@ -258,12 +259,11 @@ impl RasterImage {
     }
 } // impl RasterImage
 
-
 // ---
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct LaserParams {
-    pub feed_rate: f64,      // mm/min
-    pub power_percent: f64,  // 0-100
+    pub feed_rate: f64,     // mm/min
+    pub power_percent: f64, // 0-100
     pub passes: u32,
     pub use_global: bool,
 }
@@ -524,6 +524,7 @@ impl Shape {
             closed: false,
             original_path: None,
             lock_aspect_ratio: true,
+            parametric_source: None,
             laser_params: LaserParams::default(),
         }
     }

@@ -22,14 +22,14 @@ impl DesignerCanvas {
 
         let started_at = std::time::Instant::now();
 
-        let (shapes, feed_rate, spindle_speed, tool_diameter, cut_depth) = {
+        let (shapes, feed_rate, spindle_speed, tool_diameter, is_cnc_mode) = {
             let state = self.state.borrow();
             (
                 state.canvas.shapes().cloned().collect::<Vec<_>>(),
                 state.tool_settings.feed_rate,
                 state.tool_settings.spindle_speed,
                 state.tool_settings.tool_diameter,
-                state.tool_settings.cut_depth,
+                state.machine_mode() == gcodekit5_designer::designer_state::MachineMode::Cnc3D,
             )
         };
 
@@ -60,7 +60,6 @@ impl DesignerCanvas {
             gen.set_feed_rate(feed_rate);
             gen.set_spindle_speed(spindle_speed);
             gen.set_tool_diameter(tool_diameter);
-            gen.set_cut_depth(cut_depth);
             gen.set_step_in(tool_diameter * 0.4);
 
             let mut toolpaths = Vec::new();
@@ -70,7 +69,12 @@ impl DesignerCanvas {
                 }
 
                 gen.set_pocket_strategy(shape.pocket_strategy);
-                gen.set_start_depth(shape.start_depth);
+                let effective_start_depth = if is_cnc_mode {
+                    shape.start_depth + shape.z_offset
+                } else {
+                    shape.start_depth
+                };
+                gen.set_start_depth(effective_start_depth);
                 gen.set_cut_depth(shape.pocket_depth);
                 gen.set_step_in(shape.step_in as f64);
                 gen.set_raster_fill_ratio(shape.raster_fill_ratio);

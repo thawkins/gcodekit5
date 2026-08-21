@@ -14,14 +14,14 @@ use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
-use super::{DesignPath, DesignerShape, Point, Property, PropertyValue, LaserParams};
+use super::{DesignPath, DesignerShape, LaserParams, Point, Property, PropertyValue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignGear {
     pub center: Point,
     pub module: f64,
     pub teeth: usize,
-    pub pressure_angle_deg: f64,  // Cambiar nombre para claridad, almacenar en grados
+    pub pressure_angle_deg: f64, // Cambiar nombre para claridad, almacenar en grados
     pub rotation: f64,
     pub hole_radius: f64,
     pub laser_params: LaserParams,
@@ -33,7 +33,7 @@ impl DesignGear {
             center,
             module,
             teeth,
-            pressure_angle_deg: 20.0,  // Grados sexagesimales
+            pressure_angle_deg: 20.0, // Grados sexagesimales
             rotation: 0.0,
             hole_radius: 0.0,
             laser_params: LaserParams::default(),
@@ -49,7 +49,7 @@ impl DesignerShape for DesignGear {
             self.center,
             self.module,
             self.teeth,
-            self.pressure_angle_deg,  // Convertir a radianes
+            self.pressure_angle_deg, // Convertir a radianes
             self.hole_radius,
         );
 
@@ -106,7 +106,7 @@ impl DesignerShape for DesignGear {
             },
             Property {
                 name: "Pressure Angle".to_string(),
-                value: PropertyValue::Number(self.pressure_angle_deg),  // Ya en grados
+                value: PropertyValue::Number(self.pressure_angle_deg), // Ya en grados
             },
             Property {
                 name: "Hole Radius".to_string(),
@@ -141,4 +141,3 @@ impl DesignerShape for DesignGear {
         }
     }
 }
-

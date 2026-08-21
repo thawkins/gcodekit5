@@ -2,6 +2,7 @@
 
 use super::*;
 use gcodekit5_designer::designer_state::MachineMode;
+use gcodekit5_designer::model::ParametricPathSource;
 
 impl PropertiesPanel {
     pub(crate) fn set_entry_text_if_changed(
@@ -21,7 +22,8 @@ impl PropertiesPanel {
 
     /// Update the panel from the current selection.
     pub fn update_from_selection(&self) {
-        // Don't update if any widget has focus (user is editing)
+        // Do not rewrite entries while the user is typing; this preserves caret
+        // position and avoids forced formatting mid-edit.
         if *self.has_focus.borrow() {
             return;
         }
@@ -33,15 +35,16 @@ impl PropertiesPanel {
         // Update unit labels
         self.x_unit_label.set_text(unit_label);
         self.y_unit_label.set_text(unit_label);
+        self.z_unit_label.set_text(unit_label);
         self.width_unit_label.set_text(unit_label);
         self.height_unit_label.set_text(unit_label);
         self.radius_unit_label.set_text(unit_label);
         self.font_size_unit_label.set_text("pt");
         self.depth_unit_label.set_text(unit_label);
+        self.z_offset_unit_label.set_text(unit_label);
         self.step_down_unit_label.set_text(unit_label);
         self.step_in_unit_label.set_text(unit_label);
         self.offset_unit_label.set_text(unit_label);
-        self.fillet_unit_label.set_text(unit_label);
         self.chamfer_unit_label.set_text(unit_label);
 
         // Extract data first to avoid holding the borrow while updating widgets
@@ -49,13 +52,11 @@ impl PropertiesPanel {
         let selection_data = {
             let designer_state = self.state.borrow();
 
-
-
             let selected: Vec<_> = designer_state
-            .canvas
-            .shapes()
-            .filter(|s| s.selected)
-            .collect();
+                .canvas
+                .shapes()
+                .filter(|s| s.selected)
+                .collect();
 
             let data = if selected.is_empty() {
                 None
@@ -80,50 +81,58 @@ impl PropertiesPanel {
                 Some((
                     vec![obj.id],
                     Some(obj.shape.clone()),
-                      obj.operation_type,
-                      obj.pocket_depth,
-                      obj.step_down,
-                      obj.step_in,
-                      obj.ramp_angle,
-                      obj.pocket_strategy,
-                      obj.raster_fill_ratio,
-                      obj.offset,
-                      obj.fillet,
-                      obj.chamfer,
-                      any_not_text,
-                      obj.lock_aspect_ratio,
-                      laser_params_opt,
+                    obj.use_custom_values,
+                    obj.operation_type,
+                    obj.pocket_depth,
+                    obj.start_depth,
+                    obj.z_offset,
+                    obj.step_down,
+                    obj.step_in,
+                    obj.ramp_angle,
+                    obj.pocket_strategy,
+                    obj.raster_fill_ratio,
+                    obj.offset,
+                    obj.fillet,
+                    obj.chamfer,
+                    any_not_text,
+                    obj.lock_aspect_ratio,
+                    laser_params_opt,
                 ))
             } else {
                 let obj = &selected[0];
                 let any_not_text = selected.iter().any(|s| !matches!(s.shape, Shape::Text(_)));
                 Some((
                     selected.iter().map(|s| s.id).collect(),
-                      None,
-                      obj.operation_type,
-                      obj.pocket_depth,
-                      obj.step_down,
-                      obj.step_in,
-                      obj.ramp_angle,
-                      obj.pocket_strategy,
-                      obj.raster_fill_ratio,
-                      obj.offset,
-                      obj.fillet,
-                      obj.chamfer,
-                      any_not_text,
-                      false,
-                      None,
+                    None,
+                    obj.use_custom_values,
+                    obj.operation_type,
+                    obj.pocket_depth,
+                    obj.start_depth,
+                    obj.z_offset,
+                    obj.step_down,
+                    obj.step_in,
+                    obj.ramp_angle,
+                    obj.pocket_strategy,
+                    obj.raster_fill_ratio,
+                    obj.offset,
+                    obj.fillet,
+                    obj.chamfer,
+                    any_not_text,
+                    false,
+                    None,
                 ))
             };
             data
         };
 
-
         if let Some((
             ids,
             shape_opt,
+            use_custom_values,
             op_type,
             depth,
+            start_depth,
+            z_offset,
             step_down,
             step_in,
             ramp_angle,
@@ -136,7 +145,7 @@ impl PropertiesPanel {
             lock_aspect,
             laser_params_opt,
         )) = selection_data
-            {
+        {
             let (w, h, rot) = if let Some(shape) = &shape_opt {
                 match shape {
                     Shape::Rectangle(r) => (r.width, r.height, r.rotation),
@@ -151,7 +160,6 @@ impl PropertiesPanel {
                     Shape::RasterImage(r) => (r.width_mm, r.height_mm, r.rotation),
                     _ => (0.0, 0.0, 0.0),
                 }
-
             } else {
                 (0.0, 0.0, 0.0)
             };
@@ -164,13 +172,54 @@ impl PropertiesPanel {
                 // Leer en tiempo real el estado global de la máquina
                 let global_settings = self.state.borrow().tool_settings.clone();
 
-                // Si use_global es true, usamos las ToolSettings. Si es false, usamos lo que guardó el objeto.
-                let display_feed = if params.use_global { global_settings.feed_rate } else { params.feed_rate };
-                let display_power = if params.use_global { global_settings.spindle_speed as f64 } else { params.power_percent };
+                // Calcular los valores a mostrar
+                let display_feed = if params.use_global {
+                    global_settings.feed_rate
+                } else {
+                    params.feed_rate
+                };
 
-                let display_passes = if params.use_global { (global_settings.step_down as u32).max(1) } else { params.passes };
+                let display_power = if params.use_global {
+                    (global_settings.spindle_speed as f64) / 10.0
+                } else {
+                    params.power_percent
+                };
 
-                // Asignamos feed_rate a la caja de texto
+                let display_passes = if params.use_global {
+                    (global_settings.step_down as u32).max(1)
+                } else {
+                    params.passes
+                };
+
+                // Solo actualizar si el valor ha cambiado y NO hay foco
+                if !*self.has_focus.borrow() {
+                    self.laser_feed_rate_entry.set_text(&display_feed.to_string());
+                    self.laser_power_entry.set_text(&display_power.to_string());
+                    self.laser_passes_entry.set_text(&display_passes.to_string());
+                    self.laser_use_global_check.set_active(params.use_global);
+
+                    self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                    self.laser_power_entry.set_sensitive(!params.use_global);
+                    self.laser_passes_entry.set_sensitive(!params.use_global);
+                }
+
+                self.laser_feed_rate_entry.set_text(&display_feed.to_string());
+                self.laser_power_entry.set_text(&display_power.to_string());
+                self.laser_passes_entry.set_text(&display_passes.to_string());
+                self.laser_use_global_check.set_active(params.use_global);
+
+                // Deshabilitar campos si es global
+                self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                self.laser_power_entry.set_sensitive(!params.use_global);
+                self.laser_passes_entry.set_sensitive(!params.use_global);
+
+                let display_passes = if params.use_global {
+                    (global_settings.step_down as u32).max(1)
+                } else {
+                    params.passes
+                };
+
+                // Asignar feed_rate a la caja de texto
                 if let Ok(current) = self.laser_feed_rate_entry.text().parse::<f64>() {
                     if (current - display_feed).abs() > 1e-6 {
                         self.laser_feed_rate_entry.set_text(&display_feed.to_string());
@@ -179,7 +228,7 @@ impl PropertiesPanel {
                     self.laser_feed_rate_entry.set_text(&display_feed.to_string());
                 }
 
-                // Asignamos power a la caja de texto
+                // Asignar power a la caja de texto
                 if let Ok(current) = self.laser_power_entry.text().parse::<f64>() {
                     if (current - display_power).abs() > 1e-6 {
                         self.laser_power_entry.set_text(&display_power.to_string());
@@ -188,7 +237,7 @@ impl PropertiesPanel {
                     self.laser_power_entry.set_text(&display_power.to_string());
                 }
 
-                // Asignamos passes a la caja de texto
+                // Asignar passes a la caja de texto
                 if let Ok(current) = self.laser_passes_entry.text().parse::<u32>() {
                     if current != display_passes {
                         self.laser_passes_entry.set_text(&display_passes.to_string());
@@ -197,12 +246,12 @@ impl PropertiesPanel {
                     self.laser_passes_entry.set_text(&display_passes.to_string());
                 }
 
-                // Forzamos al Checkbox visual a ponerse en su sitio
+                // Forzar al Checkbox visual a ponerse en su sitio
                 if self.laser_use_global_check.is_active() != params.use_global {
                     self.laser_use_global_check.set_active(params.use_global);
                 }
 
-                // Deshabilitamos los campos si es global
+                // Deshabilitar los campos si es global
                 self.laser_feed_rate_entry.set_sensitive(!params.use_global);
                 self.laser_power_entry.set_sensitive(!params.use_global);
                 self.laser_passes_entry.set_sensitive(!params.use_global);
@@ -224,17 +273,21 @@ impl PropertiesPanel {
             // Show/hide appropriate sections
             self.empty_label.set_visible(false);
 
-            let is_raster = matches!(shape_opt, Some(Shape::RasterImage(_)));
-            // CAM frame solo visible para shapes que no son imágenes
-            self.cam_frame.set_visible(!is_raster);
-            self.ops_frame.set_visible(!is_raster && any_not_text);
-
             // Obtener el modo de máquina
             let machine_mode = self.state.borrow().machine_mode();
             let is_laser = machine_mode == MachineMode::Laser2D;
 
+            let is_raster = matches!(shape_opt, Some(Shape::RasterImage(_)));
+            // CAM frame: only relevant for CNC 3D and non-raster shapes.
+            self.cam_frame.set_visible(!is_laser && !is_raster);
+            self.ops_frame.set_visible(!is_raster && any_not_text);
+
+            // Z position is only editable in CNC/3D mode.
+            self.pos_z_entry.set_sensitive(!is_laser);
+
             // El panel de propiedades láser solo se muestra en modo láser
-            self.laser_override_frame.set_visible(is_laser && !is_raster);
+            self.laser_override_frame
+                .set_visible(is_laser && !is_raster);
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
@@ -248,6 +301,11 @@ impl PropertiesPanel {
 
                 self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
                 self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
+                if is_laser {
+                    self.pos_z_entry.set_text("0");
+                } else {
+                    self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
+                }
 
                 self.lock_aspect_ratio.set_active(lock_aspect);
 
@@ -259,6 +317,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.ops_frame.set_visible(false);
                         self.cam_frame.set_visible(false);
                         self.image_engraving_frame.set_visible(true);
@@ -299,35 +358,36 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.set_entry_text_if_changed(
                             &self.corner_radius_entry,
                             r.corner_radius as f32,
                             system,
                         );
+                        self.is_slot_check.set_sensitive(true);
                         self.is_slot_check.set_active(r.is_slot);
                         self.rotation_entry.set_text(&format!("{:.1}", r.rotation));
                         self.rotation_entry.set_sensitive(true);
                         self.set_entry_text_if_changed(&self.width_entry, r.width as f32, system);
                         self.set_entry_text_if_changed(&self.height_entry, r.height as f32, system);
 
-                    // --- Laser Parameters
+                        // --- Laser Parameters
                         self.set_entry_text_if_changed(
                             &self.laser_feed_rate_entry,
                             r.laser_params.feed_rate as f32,
                             system,
                         );
-                            self.set_entry_text_if_changed(
+                        self.set_entry_text_if_changed(
                             &self.laser_power_entry,
                             r.laser_params.power_percent as f32,
                             system,
                         );
-                                self.set_entry_text_if_changed(
+                        self.set_entry_text_if_changed(
                             &self.laser_passes_entry,
                             r.laser_params.passes as f32,
                             system,
                         );
-
                     }
 
                     Shape::Circle(c) => {
@@ -336,6 +396,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false);
@@ -359,8 +420,7 @@ impl PropertiesPanel {
 
                     Shape::Ellipse(e) => {
                         let has_rotation = e.rotation.abs() > f64::EPSILON;
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", e.rotation));
+                        self.rotation_entry.set_text(&format!("{:.1}", e.rotation));
                         if has_rotation {
                             self.width_entry.set_sensitive(false);
                             self.height_entry.set_sensitive(false);
@@ -386,6 +446,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
 
                         // --- Laser Parameters
                         self.set_entry_text_if_changed(
@@ -411,6 +472,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.text_entry.set_text(&text_shape.text);
                         self.font_size_entry
@@ -453,8 +515,7 @@ impl PropertiesPanel {
                     }
                     Shape::Polygon(p) => {
                         let has_rotation = p.rotation.abs() > f64::EPSILON;
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", p.rotation));
+                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
 
                         if has_rotation {
                             self.sides_entry.set_sensitive(false);
@@ -468,10 +529,10 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(true);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.sides_entry.set_text(&p.sides.to_string());
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", p.rotation));
+                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
                         self.rotation_entry.set_sensitive(true);
                         self.height_entry.set_sensitive(false);
 
@@ -498,6 +559,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(true);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.gear_module_entry.set_text(&format!("{:.2}", g.module));
                         self.gear_teeth_entry.set_text(&g.teeth.to_string());
@@ -530,6 +592,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(true);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.sprocket_pitch_entry
                             .set_text(&format!("{:.2}", s.pitch));
@@ -568,13 +631,40 @@ impl PropertiesPanel {
                             (y2 - y1) as f32,
                             system,
                         );
-                        self.corner_frame.set_visible(false);
+                        self.corner_frame.set_visible(true);
+                        self.set_entry_text_if_changed(
+                            &self.corner_radius_entry,
+                            fillet as f32,
+                            system,
+                        );
+                        self.is_slot_check.set_active(false);
+                        self.is_slot_check.set_sensitive(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        let timing_params = match &p.parametric_source {
+                            Some(ParametricPathSource::TimingPulley {
+                                pitch,
+                                teeth,
+                                belt_width,
+                                hole_radius,
+                            }) => Some((*pitch, *teeth, *belt_width, *hole_radius)),
+                            _ => None,
+                        };
+                        self.timing_pulley_frame.set_visible(timing_params.is_some());
                         self.path_frame.set_visible(true);
                         self.path_closed_check.set_active(p.closed);
+
+                        if let Some((pitch, teeth, belt_width, hole_radius)) = timing_params {
+                            self.timing_pulley_pitch_entry
+                                .set_text(&format!("{:.2}", pitch));
+                            self.timing_pulley_teeth_entry.set_text(&teeth.to_string());
+                            self.timing_pulley_belt_width_entry
+                                .set_text(&format!("{:.2}", belt_width));
+                            self.timing_pulley_hole_radius_entry
+                                .set_text(&format!("{:.2}", hole_radius));
+                        }
 
                         // No edit X Y
                         self.pos_x_entry.set_sensitive(true);
@@ -623,9 +713,14 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.set_entry_text_if_changed(&self.width_entry, tri.width as f32, system);
-                        self.set_entry_text_if_changed(&self.height_entry, tri.height as f32, system);
+                        self.set_entry_text_if_changed(
+                            &self.height_entry,
+                            tri.height as f32,
+                            system,
+                        );
                         self.rotation_entry
                             .set_text(&format!("{:.1}", tri.rotation));
 
@@ -652,6 +747,7 @@ impl PropertiesPanel {
                         self.polygon_frame.set_visible(false);
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
+                        self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
 
                         // Posición y rotación
@@ -661,8 +757,13 @@ impl PropertiesPanel {
                         self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
                         self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
                         self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
-                        self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
-                        self.rotation_entry.set_text(&format!("{:.1}", line.rotation));
+                        self.set_entry_text_if_changed(
+                            &self.height_entry,
+                            (y2 - y1) as f32,
+                            system,
+                        );
+                        self.rotation_entry
+                            .set_text(&format!("{:.1}", line.rotation));
                         self.rotation_entry.set_sensitive(true);
 
                         // Laser Parameters
@@ -693,6 +794,7 @@ impl PropertiesPanel {
                 self.polygon_frame.set_visible(false);
                 self.gear_frame.set_visible(false);
                 self.sprocket_frame.set_visible(false);
+                self.timing_pulley_frame.set_visible(false);
                 self.path_frame.set_visible(false);
                 self.image_engraving_frame.set_visible(false);
                 self.laser_override_frame.set_visible(false);
@@ -715,11 +817,28 @@ impl PropertiesPanel {
 
                 self.set_entry_text_if_changed(&self.pos_x_entry, min_x as f32, system);
                 self.set_entry_text_if_changed(&self.pos_y_entry, min_y as f32, system);
+                if is_laser {
+                    self.pos_z_entry.set_text("0");
+                } else {
+                    self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
+                }
                 self.set_entry_text_if_changed(&self.width_entry, (max_x - min_x) as f32, system);
                 self.set_entry_text_if_changed(&self.height_entry, (max_y - min_y) as f32, system);
             }
 
             // Update CAM properties (common to all shapes)
+            let cam_enabled = !is_laser && !is_raster;
+            let use_global_cam = !use_custom_values;
+            self.cam_use_global_check.set_sensitive(cam_enabled);
+            self.cam_use_global_check.set_active(use_global_cam);
+
+            let cam_entries_enabled = cam_enabled && use_custom_values;
+            self.op_type_combo.set_sensitive(cam_entries_enabled);
+            self.depth_entry.set_sensitive(cam_entries_enabled);
+            self.z_offset_entry.set_sensitive(cam_entries_enabled);
+            self.step_down_entry.set_sensitive(cam_entries_enabled);
+            self.ramp_angle_entry.set_sensitive(cam_entries_enabled);
+
             self.op_type_combo
                 .set_selected(if op_type == OperationType::Pocket {
                     1
@@ -728,6 +847,7 @@ impl PropertiesPanel {
                 });
 
             self.set_entry_text_if_changed(&self.depth_entry, depth as f32, system);
+            self.set_entry_text_if_changed(&self.z_offset_entry, z_offset as f32, system);
             self.set_entry_text_if_changed(&self.step_down_entry, step_down, system);
             self.set_entry_text_if_changed(&self.step_in_entry, step_in, system);
             self.ramp_angle_entry
@@ -744,14 +864,36 @@ impl PropertiesPanel {
 
             // Update geometry ops values
             self.offset_entry.set_text(&format!("{:.2}", offset));
-            self.fillet_entry.set_text(&format!("{:.2}", fillet));
             self.chamfer_entry.set_text(&format!("{:.2}", chamfer));
 
             // Enable/disable pocket-specific controls
+            // Obtener el modo actual
             let is_pocket = op_type == OperationType::Pocket;
-            self.strategy_combo.set_sensitive(is_pocket);
-            self.step_in_entry.set_sensitive(is_pocket);
-            self.raster_fill_entry.set_sensitive(is_pocket);
+
+            // Determinar qué valor mostrar para profundidad
+            let depth_value_to_show = if is_pocket {
+                // En modo Pocket: usar el valor guardado de pocket_depth
+                depth
+            } else {
+                // En modo Profile: usar el valor de Z (start_depth)
+                start_depth
+            };
+
+            // Actualizar el entry de profundidad
+            self.set_entry_text_if_changed(&self.depth_entry, depth_value_to_show as f32, system);
+
+            // El campo depth_entry solo es editable en modo Pocket
+            self.depth_entry.set_sensitive(cam_entries_enabled && is_pocket);
+            self.depth_label.set_sensitive(cam_entries_enabled && is_pocket);
+            self.depth_unit_label.set_sensitive(cam_entries_enabled && is_pocket);
+            let is_pocket = op_type == OperationType::Pocket;
+            self.strategy_combo.set_sensitive(cam_entries_enabled && is_pocket);
+            self.step_in_entry.set_sensitive(cam_entries_enabled && is_pocket);
+            self.step_in_label.set_sensitive(cam_entries_enabled && is_pocket);
+            self.step_in_unit_label.set_sensitive(cam_entries_enabled && is_pocket);
+            self.raster_fill_entry.set_sensitive(cam_entries_enabled && is_pocket);
+
+
 
             *self.updating.borrow_mut() = false;
         } else {
@@ -765,6 +907,7 @@ impl PropertiesPanel {
             self.polygon_frame.set_visible(false);
             self.gear_frame.set_visible(false);
             self.sprocket_frame.set_visible(false);
+            self.timing_pulley_frame.set_visible(false);
             self.path_frame.set_visible(false);
             self.cam_frame.set_visible(false);
             self.ops_frame.set_visible(false);
@@ -776,18 +919,23 @@ impl PropertiesPanel {
             *self.updating.borrow_mut() = true;
             self.pos_x_entry.set_text("");
             self.pos_y_entry.set_text("");
+            self.pos_z_entry.set_text("");
             self.width_entry.set_text("");
             self.height_entry.set_text("");
             self.rotation_entry.set_text("");
             self.corner_radius_entry.set_text("");
             self.depth_entry.set_text("");
+            self.z_offset_entry.set_text("");
             self.step_down_entry.set_text("");
             self.step_in_entry.set_text("");
             self.ramp_angle_entry.set_text("");
 
             // Disable widgets when nothing selected
             self.op_type_combo.set_sensitive(false);
+            self.cam_use_global_check.set_sensitive(false);
+            self.cam_use_global_check.set_active(false);
             self.depth_entry.set_sensitive(false);
+            self.z_offset_entry.set_sensitive(false);
             self.step_down_entry.set_sensitive(false);
             self.step_in_entry.set_sensitive(false);
             self.ramp_angle_entry.set_sensitive(false);
@@ -805,12 +953,14 @@ impl PropertiesPanel {
         let entries = vec![
             &self.pos_x_entry,
             &self.pos_y_entry,
+            &self.pos_z_entry,
             &self.width_entry,
             &self.height_entry,
             &self.rotation_entry,
             &self.corner_radius_entry,
             &self.font_size_entry,
             &self.depth_entry,
+            &self.z_offset_entry,
             &self.step_down_entry,
             &self.step_in_entry,
             &self.ramp_angle_entry,
@@ -822,8 +972,11 @@ impl PropertiesPanel {
             &self.sprocket_pitch_entry,
             &self.sprocket_teeth_entry,
             &self.sprocket_roller_diameter_entry,
+            &self.timing_pulley_pitch_entry,
+            &self.timing_pulley_teeth_entry,
+            &self.timing_pulley_belt_width_entry,
+            &self.timing_pulley_hole_radius_entry,
             &self.offset_entry,
-            &self.fillet_entry,
             &self.chamfer_entry,
             &self.image_feed_rate_entry,
             &self.image_travel_rate_entry,
@@ -831,6 +984,10 @@ impl PropertiesPanel {
             &self.image_max_power_entry,
             &self.image_ppi_entry,
             &self.image_halftone_threshold_entry,
+            // ---
+            &self.laser_feed_rate_entry,
+            &self.laser_power_entry,
+            &self.laser_passes_entry,
         ];
 
         for entry in entries {

@@ -11,7 +11,7 @@ use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use crate::ui::gtk::osd_format::format_zoom_center_cursor;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
-use gcodekit5_designer::designer_state::DesignerState;
+use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
 use gcodekit5_designer::engraving::image_engraver;
 use gcodekit5_designer::model::{DesignerShape, Shape};
 use gcodekit5_designer::serialization::DesignFile;
@@ -139,7 +139,6 @@ impl DesignerView {
         // Empty state (shown when no shapes)
         let (
             empty_box,
-            empty_new_btn,
             empty_open_btn,
             empty_import_svg_btn,
             empty_import_dxf_btn,
@@ -152,9 +151,27 @@ impl DesignerView {
 
         // Connect the Import Image button to the empty state
         let canvas_clone = canvas.clone();
+        let empty_import_image_btn_for_click = empty_import_image_btn.clone();
         empty_import_image_btn.connect_clicked(move |_| {
             canvas_clone.import_raster_image();
+            if empty_import_image_btn_for_click.is_sensitive() {
+                empty_import_image_btn_for_click.set_tooltip_text(None);
+            }
         });
+
+        let image_import_state = state.clone();
+        let image_import_button = empty_import_image_btn.clone();
+        toolbox.register_refresh_callback(move || {
+            let enabled = image_import_state.borrow().machine_mode() != MachineMode::Cnc3D;
+            image_import_button.set_sensitive(enabled);
+            let tooltip = if enabled {
+                None
+            } else {
+                Some(t!("Raster image import is only available in 2D mode").to_string())
+            };
+            image_import_button.set_tooltip_text(tooltip.as_deref());
+        });
+        toolbox.refresh_settings();
 
         // Status Panel (Bottom Left)
         let (status_box, status_label_osd, units_badge) = Self::create_status_panel();
@@ -593,23 +610,75 @@ impl DesignerView {
                 console_manager.set_silent_mode(false);
             } else {
                 // Not an image: use the normal CNC generator
+                if let Some((safe_z, violating_count, max_start_z)) =
+                    state.safe_z_clearance_violation_summary()
+                {
+                    drop(state);
+
+                    status_label_gen
+                        .set_text(&t!("G-code blocked: objects at/above Safe Z"));
+
+                    let parent = crate::ui::gtk::file_dialog::parent_window(&canvas_gen.widget);
+                    crate::ui::gtk::common::dialog::show_warning(
+                        &t!("Invalid Z positioning"),
+                        &format!(
+                            "{}\n\n{}\n{}\n{}",
+                            t!("One or more objects are positioned at or above the Safe Z height."),
+                            t!("Lower object Z positions before generating G-code."),
+                            format!("{}: {:.3} mm", t!("Safe Z"), safe_z),
+                            format!(
+                                "{}: {} ({}: {:.3} mm)",
+                                t!("Objects in conflict"),
+                                violating_count,
+                                t!("highest start Z"),
+                                max_start_z
+                            )
+                        ),
+                        parent.as_ref(),
+                    );
+                    return;
+                }
+
                 // Copy settings to avoid borrow issues
                 let feed_rate = state.tool_settings.feed_rate;
                 let spindle_speed = state.tool_settings.spindle_speed;
                 let tool_diameter = state.tool_settings.tool_diameter;
-                let cut_depth = state.tool_settings.cut_depth;
                 let start_depth = state.tool_settings.start_depth;
 
                 // Update toolpath generator settings from state
                 state.toolpath_generator.set_feed_rate(feed_rate);
                 state.toolpath_generator.set_spindle_speed(spindle_speed);
                 state.toolpath_generator.set_tool_diameter(tool_diameter);
-                state.toolpath_generator.set_cut_depth(cut_depth);
                 state.toolpath_generator.set_start_depth(start_depth);
                 state.toolpath_generator.set_step_in(tool_diameter * 0.4);
 
-                let gcode = state.generate_gcode();
+                let limits = if let Some(dm) = &device_manager {
+                    if let Some(profile) = dm.get_active_profile() {
+                        Some(gcodekit5_designer::gcode_gen::MachineLimits {
+                            x_min: profile.x_axis.min,
+                            x_max: profile.x_axis.max,
+                            y_min: profile.y_axis.min,
+                            y_max: profile.y_axis.max,
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let (gcode, has_out_of_limits_warning) = state.generate_gcode_with_warning_info(limits);
+
                 drop(state);
+
+                if has_out_of_limits_warning {
+                    let parent = crate::ui::gtk::file_dialog::parent_window(&canvas_gen.widget);
+                    crate::ui::gtk::common::dialog::show_warning(
+                        &t!("Out of limits warning"),
+                        &t!("The generated G-code contains coordinates outside the machine working area (Negative values). Review the path before sending it to the machine."),
+                        parent.as_ref(),
+                    );
+                }
 
                 status_label_gen.set_text(&t!("G-Code generated"));
 
@@ -625,13 +694,8 @@ impl DesignerView {
         toolbox
             .fast_shape_gallery()
             .connect_shape_selected(move |shape| {
-                let mut state = canvas_shape.state.borrow_mut();
-                state.add_shape_with_undo(shape);
-                drop(state);
-
-                // Refresh layers panel
+                canvas_shape.set_pending_fast_shape(shape);
                 layers_shape.refresh(&canvas_shape.state);
-                canvas_shape.widget.queue_draw();
             });
 
         let view = Rc::new(Self {
@@ -648,10 +712,12 @@ impl DesignerView {
         });
 
         // Empty state actions
+/*
         {
             let v = view.clone();
             empty_new_btn.connect_clicked(move |_| v.new_file());
         }
+*/
         {
             let v = view.clone();
             empty_open_btn.connect_clicked(move |_| v.open_file());
@@ -709,6 +775,10 @@ impl DesignerView {
 
     pub fn set_status(&self, message: &str) {
         self.status_label.set_text(message);
+    }
+
+    pub fn current_tool_diameter_mm(&self) -> f64 {
+        self.canvas.state.borrow().tool_settings.tool_diameter
     }
 
     pub fn set_on_gcode_generated<F: Fn(String) + 'static>(&self, f: F) {
@@ -804,6 +874,28 @@ impl DesignerView {
         }
 
         Some(base_bounds)
+    }
+
+    /// Returns a title suffix with current designer mode and active file name.
+    pub fn window_title_suffix(&self) -> String {
+        let mode_label = {
+            let state = self.canvas.state.borrow();
+            match state.machine_mode() {
+                MachineMode::Laser2D => "2D",
+                MachineMode::Cnc3D => "3D",
+            }
+        };
+
+        let file_label = {
+            let current = self.current_file.borrow();
+            current
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| t!("Untitled"))
+        };
+
+        format!("{} - {}", mode_label, file_label)
     }
 }
 

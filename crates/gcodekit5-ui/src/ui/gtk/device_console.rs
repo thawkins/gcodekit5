@@ -148,7 +148,7 @@ impl DeviceConsoleView {
         // Append to bottom and auto-scroll
         let mut iter = buffer.end_iter();
         buffer.insert(&mut iter, msg.as_ref());
-//        println!("🔍 Mensaje recibido: '{}'", message);
+        //        println!("🔍 Mensaje recibido: '{}'", message);
 
         // Auto-scroll to bottom after inserting
         let mark = buffer.create_mark(None, &buffer.end_iter(), false);

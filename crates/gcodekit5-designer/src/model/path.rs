@@ -14,7 +14,17 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::Matrix4;
 
-use super::{DesignerShape, Point, Property, PropertyValue, LaserParams};
+use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParametricPathSource {
+    TimingPulley {
+        pitch: f64,
+        teeth: usize,
+        belt_width: f64,
+        hole_radius: f64,
+    },
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignPath {
@@ -29,6 +39,8 @@ pub struct DesignPath {
     #[serde(skip)]
     pub original_path: Option<Path>,
     pub lock_aspect_ratio: bool,
+    #[serde(default)]
+    pub parametric_source: Option<ParametricPathSource>,
     pub laser_params: LaserParams,
 }
 
@@ -61,6 +73,7 @@ impl DesignPath {
             closed: false,
             original_path: None,
             lock_aspect_ratio: false,
+            parametric_source: None,
             laser_params: LaserParams::default(),
         }
     }
@@ -159,6 +172,7 @@ impl DesignPath {
                 closed: false,
                 original_path: None,
                 lock_aspect_ratio: true,
+                parametric_source: None,
                 laser_params: LaserParams::default(),
             });
         }
@@ -173,6 +187,7 @@ impl DesignPath {
                 closed: false,
                 original_path: None,
                 lock_aspect_ratio: false,
+                parametric_source: None,
                 laser_params: LaserParams::default(),
             };
         }
@@ -238,6 +253,7 @@ impl DesignPath {
             closed,
             original_path: Some(lyon_path),
             lock_aspect_ratio: false,
+            parametric_source: None,
             laser_params: LaserParams::default(),
         }
     }
@@ -327,6 +343,7 @@ impl DesignPath {
             closed: paths_info.iter().any(|(_, c)| *c),
             original_path: Some(path.clone()),
             lock_aspect_ratio: false,
+            parametric_source: None,
             laser_params: LaserParams::default(),
         }
     }

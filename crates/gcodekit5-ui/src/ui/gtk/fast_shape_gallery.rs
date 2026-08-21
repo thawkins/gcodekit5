@@ -4,7 +4,9 @@
 
 use crate::t;
 use gcodekit5_core::{shared_none, SharedOption};
-use gcodekit5_designer::model::{DesignGear, DesignPath, DesignSprocket, Point, Shape};
+use gcodekit5_designer::model::{
+    DesignGear, DesignPath, DesignSprocket, ParametricPathSource, Point, Shape,
+};
 use gcodekit5_designer::parametric_shapes::*;
 use gtk4::prelude::*;
 use gtk4::{Box, Dialog, FlowBox, Frame, Image, Label, Orientation, ResponseType, ScrolledWindow};
@@ -184,6 +186,7 @@ impl FastShapeGallery {
                     ))
                 }),
             ),
+/*
             FastShapeTemplate::new(
                 t!("Helical Gear"),
                 t!("Helical gear with angled teeth"),
@@ -198,6 +201,7 @@ impl FastShapeGallery {
                     )))
                 }),
             ),
+*/
             FastShapeTemplate::new(
                 t!("Sprocket"),
                 t!("Chain sprocket for #40 chain"),
@@ -214,12 +218,24 @@ impl FastShapeGallery {
                 t!("XL timing belt pulley"),
                 "emblem-system-symbolic".to_string(),
                 Rc::new(|center| {
-                    Shape::Path(DesignPath::from_lyon_path(&generate_timing_pulley(
-                        center, 5.08, // pitch (XL)
-                        20,   // teeth
-                        9.4,  // belt width
-                        5.0,  // hole radius
-                    )))
+                    let pitch = 5.08;
+                    let teeth = 20;
+                    let belt_width = 9.4;
+                    let hole_radius = 5.0;
+                    let mut path = DesignPath::from_lyon_path(&generate_timing_pulley(
+                        center,
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    ));
+                    path.parametric_source = Some(ParametricPathSource::TimingPulley {
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    });
+                    Shape::Path(path)
                 }),
             ),
             // Structural shapes
@@ -244,7 +260,7 @@ impl FastShapeGallery {
                         center, 80.0, // width
                         60.0, // height
                         5.0,  // thickness
-                        8.0,  // hole diameter
+                        2.5,  // hole diameter
                         15.0, // hole spacing
                     )))
                 }),
@@ -258,7 +274,7 @@ impl FastShapeGallery {
                         center, 100.0, // length
                         40.0,  // width
                         5.0,   // thickness
-                        8.0,   // hole diameter
+                        2.5,   // hole diameter
                         15.0,  // hole spacing
                     )))
                 }),

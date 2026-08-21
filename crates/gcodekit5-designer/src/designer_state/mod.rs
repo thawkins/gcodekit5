@@ -21,7 +21,7 @@ mod transforms;
 mod viewport;
 
 use crate::commands::DesignerCommand;
-use crate::stock_removal::{SimulationResult, StockMaterial};
+use crate::stock_removal::{StockMaterial};
 use crate::{Canvas, ToolpathGenerator};
 
 /// Tool settings for the designer
@@ -33,6 +33,7 @@ pub struct ToolSettings {
     pub cut_depth: f64,
     pub start_depth: f64,
     pub step_down: f64,
+    pub continuous_z_between_passes: bool,
     pub machine_mode: MachineMode,
 }
 
@@ -45,20 +46,19 @@ impl Default for ToolSettings {
             cut_depth: 0.0,
             start_depth: 0.0,
             step_down: 0.0,
+            continuous_z_between_passes: false,
             machine_mode: MachineMode::default(),
         }
     }
 }
 
 /// Machine operation mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MachineMode {
     #[default]
     Laser2D,
     Cnc3D,
 }
-
 
 /// Designer state for UI integration
 #[derive(Clone)]
@@ -83,13 +83,14 @@ pub struct DesignerState {
     // Stock removal simulation
     pub stock_material: Option<StockMaterial>,
     pub show_stock_removal: bool,
-    pub simulation_resolution: f32,
-    pub simulation_result: Option<SimulationResult>,
     /// Number of axes on the active device (default 3).
     pub num_axes: u8,
 }
 
 impl DesignerState {
+    const LASER_DEFAULT_TOOL_DIAMETER_MM: f64 = 0.1;
+    const CNC_DEFAULT_TOOL_DIAMETER_MM: f64 = 5.0;
+
     /// Creates a new designer state.
     pub fn new() -> Self {
         Self {
@@ -102,9 +103,9 @@ impl DesignerState {
             is_modified: false,
             design_name: "Untitled".to_string(),
             show_grid: true,
-            grid_spacing_mm: 10.0,
+            grid_spacing_mm: 50.0,
             show_toolpaths: false,
-            snap_enabled: false,
+            snap_enabled: true,
             snap_threshold_mm: 0.5,
             clipboard: Vec::new(),
             default_properties_shape: crate::canvas::DrawingObject::new(
@@ -120,11 +121,9 @@ impl DesignerState {
                 height: 200.0,
                 thickness: 10.0,
                 origin: (0.0, 0.0, 0.0),
-                safe_z: 10.0,
+                safe_z: StockMaterial::default_safe_z_for_thickness(10.0),
             }),
             show_stock_removal: false,
-            simulation_resolution: 0.1,
-            simulation_result: None,
             num_axes: 3,
         }
     }
@@ -176,16 +175,16 @@ impl DesignerState {
 
     /// Sets the tool diameter for toolpath generation.
     pub fn set_tool_diameter(&mut self, diameter: f64) {
-    let valid_diameter = if diameter.is_finite() && diameter > 0.0 {
-        diameter
-    } else {
-        0.001
-    };
+        let valid_diameter = if diameter.is_finite() && diameter > 0.0 {
+            diameter
+        } else {
+            0.001
+        };
 
-    self.tool_settings.tool_diameter = valid_diameter;
-    self.toolpath_generator.set_tool_diameter(valid_diameter);
-    self.gcode_generated = false;
-}
+        self.tool_settings.tool_diameter = valid_diameter;
+        self.toolpath_generator.set_tool_diameter(valid_diameter);
+        self.gcode_generated = false;
+    }
 
     /// Sets the cut depth for toolpath generation.
     pub fn set_cut_depth(&mut self, depth: f64) {
@@ -197,12 +196,24 @@ impl DesignerState {
 
     /// Sets the step-down for toolpath generation.
     pub fn set_step_down(&mut self, step: f64) {
-        let step = if step <= 0.0 { 0.1 } else { step };
+        let step = if self.machine_mode() == MachineMode::Laser2D {
+            // En modo láser: el valor es el número de pasadas (1-10)
+            step.round().clamp(1.0, 10.0)
+        } else {
+            // En modo CNC: profundidad de pasada en mm
+            if step <= 0.0 { 0.1 } else { step }
+        };
         debug_assert!(
             step.is_finite() && step > 0.0,
             "step_down must be positive and finite, got {step}"
         );
         self.tool_settings.step_down = step;
+        self.gcode_generated = false;
+    }
+
+    /// Sets whether CNC should keep Z continuous between passes when possible.
+    pub fn set_continuous_z_between_passes(&mut self, enabled: bool) {
+        self.tool_settings.continuous_z_between_passes = enabled;
         self.gcode_generated = false;
     }
 
@@ -213,8 +224,17 @@ impl DesignerState {
 
     /// Sets the machine mode
     pub fn set_machine_mode(&mut self, mode: MachineMode) {
+        if self.tool_settings.machine_mode == mode {
+            return;
+        }
+
         self.tool_settings.machine_mode = mode;
-        self.gcode_generated = false;
+
+        let default_tool_diameter = match mode {
+            MachineMode::Laser2D => Self::LASER_DEFAULT_TOOL_DIAMETER_MM,
+            MachineMode::Cnc3D => Self::CNC_DEFAULT_TOOL_DIAMETER_MM,
+        };
+        self.set_tool_diameter(default_tool_diameter);
     }
 }
 

@@ -3,7 +3,7 @@
 use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::commands::*;
-use crate::model::{DesignerShape, Shape};
+use crate::model::{DesignerShape, ParametricPathSource, Shape};
 use crate::shapes::OperationType;
 use crate::{Point, Rectangle};
 
@@ -165,6 +165,31 @@ impl DesignerState {
         }
     }
 
+    /// Sets the Z offset for selected shapes.
+    pub fn set_selected_z_offset(&mut self, z_offset: f64) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes().filter(|s| s.selected) {
+            if (obj.z_offset - z_offset).abs() > f64::EPSILON {
+                let mut new_obj = obj.clone();
+                new_obj.z_offset = z_offset;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Z Offset".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
     /// Sets the text properties of the selected shape.
     pub fn set_selected_text_properties(&mut self, content: String, font_size: f64) {
         let updates = self
@@ -192,27 +217,48 @@ impl DesignerState {
         self.push_command(cmd);
     }
 
-    /// Sets the corner radius for selected rectangles.
+    /// Sets corner radius for supported selected shapes.
     pub fn set_selected_corner_radius(&mut self, radius: f64) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
             if obj.selected {
-                if let crate::model::Shape::Rectangle(rect) = &obj.shape {
-                    let max_radius = rect.width.min(rect.height) / 2.0;
-                    let new_radius = radius.clamp(0.0, max_radius);
+                match &obj.shape {
+                    crate::model::Shape::Rectangle(rect) => {
+                        let max_radius = rect.width.min(rect.height) / 2.0;
+                        let new_radius = radius.clamp(0.0, max_radius);
 
-                    if (rect.corner_radius - new_radius).abs() > f64::EPSILON {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
-                            new_rect.corner_radius = new_radius;
+                        if (rect.corner_radius - new_radius).abs() > f64::EPSILON {
+                            let mut new_obj = obj.clone();
+                            if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
+                                new_rect.corner_radius = new_radius;
+                            }
+
+                            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                                id: obj.id,
+                                old_state: obj.clone(),
+                                new_state: new_obj,
+                            }));
                         }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
                     }
+                    crate::model::Shape::Path(_) => {
+                        let new_radius = radius.max(0.0);
+
+                        if (obj.fillet - new_radius).abs() > f64::EPSILON
+                            || obj.chamfer.abs() > f64::EPSILON
+                        {
+                            let mut new_obj = obj.clone();
+                            new_obj.fillet = new_radius;
+                            // Corner radius and chamfer are mutually exclusive on path geometry.
+                            new_obj.chamfer = 0.0;
+
+                            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                                id: obj.id,
+                                old_state: obj.clone(),
+                                new_state: new_obj,
+                            }));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -521,6 +567,83 @@ impl DesignerState {
             let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
                 name: "Change Sprocket Properties".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
+    /// Sets timing pulley properties for selected parametric path shapes.
+    pub fn set_selected_timing_pulley_properties(
+        &mut self,
+        pitch: f64,
+        teeth: usize,
+        belt_width: f64,
+        hole_radius: f64,
+    ) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes_mut() {
+            if !obj.selected {
+                continue;
+            }
+
+            let Shape::Path(path) = &obj.shape else {
+                continue;
+            };
+
+            let Some(ParametricPathSource::TimingPulley {
+                pitch: old_pitch,
+                teeth: old_teeth,
+                belt_width: old_belt_width,
+                hole_radius: old_hole_radius,
+            }) = &path.parametric_source
+            else {
+                continue;
+            };
+
+            if (old_pitch - pitch).abs() <= f64::EPSILON
+                && *old_teeth == teeth
+                && (old_belt_width - belt_width).abs() <= f64::EPSILON
+                && (old_hole_radius - hole_radius).abs() <= f64::EPSILON
+            {
+                continue;
+            }
+
+            let (x1, y1, x2, y2) = path.bounds();
+            let center = crate::model::Point::new((x1 + x2) * 0.5, (y1 + y2) * 0.5);
+            let regenerated = crate::parametric_shapes::generate_timing_pulley(
+                center,
+                pitch,
+                teeth,
+                belt_width,
+                hole_radius,
+            );
+
+            let mut new_path = crate::model::DesignPath::from_lyon_path(&regenerated);
+            new_path.rotation = path.rotation;
+            new_path.closed = path.closed;
+            new_path.lock_aspect_ratio = path.lock_aspect_ratio;
+            new_path.laser_params = path.laser_params;
+            new_path.parametric_source = Some(ParametricPathSource::TimingPulley {
+                pitch,
+                teeth,
+                belt_width,
+                hole_radius,
+            });
+
+            let mut new_obj = obj.clone();
+            new_obj.shape = Shape::Path(new_path);
+
+            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                id: obj.id,
+                old_state: obj.clone(),
+                new_state: new_obj,
+            }));
+        }
+
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Timing Pulley Properties".to_string(),
             });
             self.push_command(cmd);
         }

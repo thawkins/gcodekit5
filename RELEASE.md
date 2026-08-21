@@ -1,7 +1,7 @@
-## [0.54.0-alpha.2] - 2026-05-07
+## [1.0.0-alpha.1] - 2026-05-21
 
-### Changed
-- **Version bump**: Incremented patch version to alpha.2
+### Added
+- **individual laser parameters for each object**: In addition to the laser working parameters, it is now also possible to define the speed, power and passes properties individually for the desired objects while maintaining the global properties for the rest of the objects.
 
 ## [0.54.0-alpha.1] - 2026-05-06
 

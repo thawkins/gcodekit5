@@ -11,6 +11,15 @@ use crate::view_model::{
 use gcodekit5_core::Result;
 use std::path::Path;
 
+macro_rules! t {
+    ($s:expr) => {
+        gettextrs::gettext($s)
+    };
+    ($s:expr, $($args:tt)*) => {
+        format!(gettext_rs::gettext($s), $($args)*)
+    };
+}
+
 /// Settings persistence layer
 #[derive(Debug, Clone)]
 pub struct SettingsPersistence {
@@ -106,10 +115,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "measurement_system",
-                "Measurement System",
+                &t!("Measurement System"),
                 SettingValue::Enum(ui.measurement_system.to_string(), systems),
             )
-            .with_description("Units for display and input (Metric/mm or Imperial/inch)")
+            .with_description (&t!("Units for display and input (Metric/mm or Imperial/inch)"))
             .with_category(SettingsCategory::General),
         );
 
@@ -123,10 +132,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "feed_rate_units",
-                "Feed Rate Units",
+                &t!("Feed Rate Units"),
                 SettingValue::Enum(ui.feed_rate_units.to_string(), feed_units),
             )
-            .with_description("Units for feed rate display and input")
+            .with_description(&t!("Units for feed rate display and input"))
             .with_category(SettingsCategory::General),
         );
 
@@ -134,10 +143,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "default_directory",
-                "Default Directory",
+                &t!("Default Directory"),
                 SettingValue::Path(file.output_directory.to_string_lossy().to_string()),
             )
-            .with_description("Default directory for file operations")
+            .with_description(&t!("Default directory for file operations"))
             .with_category(SettingsCategory::General),
         );
     }
@@ -155,10 +164,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "theme",
-                "Theme",
+                &t!("Theme"),
                 SettingValue::Enum(ui.theme.to_string(), themes),
             )
-            .with_description("Application color theme (Light, Dark, or System default)")
+            .with_description(&t!("Application color theme (Light, Dark, or System default)"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -184,33 +193,33 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "language",
-                "Language",
+                &t!("Language"),
                 SettingValue::Enum(current_language.to_string(), languages),
             )
-            .with_description("User interface language (requires restart)")
+            .with_description(&t!("User interface language (requires restart)"))
             .with_category(SettingsCategory::UserInterface),
         );
 
         // Startup Tab
         let startup_tabs = vec![
-            "Machine".to_string(),
-            "Editor".to_string(),
-            "Visualizer".to_string(),
-            "CamTools".to_string(),
             "Designer".to_string(),
+            "Visualizer".to_string(),
+            "Machine".to_string(),
+//            "Editor".to_string(),
+            "CamTools".to_string(),
             "Config".to_string(),
             "Devices".to_string(),
             "Tools".to_string(),
             "Materials".to_string(),
         ];
         let current_startup_tab = match ui.startup_tab {
+            crate::config::StartupTab::Designer => "Designer",
+            crate::config::StartupTab::Visualizer => "Visualizer",
             crate::config::StartupTab::Console => "Machine",
             crate::config::StartupTab::DeviceInfo => "Config",
             crate::config::StartupTab::Machine => "Machine",
-            crate::config::StartupTab::Editor => "Editor",
-            crate::config::StartupTab::Visualizer => "Visualizer",
+            crate::config::StartupTab::Editor => "Machine",
             crate::config::StartupTab::CamTools => "CamTools",
-            crate::config::StartupTab::Designer => "Designer",
             crate::config::StartupTab::Config => "Config",
             crate::config::StartupTab::Devices => "Devices",
             crate::config::StartupTab::Tools => "Tools",
@@ -219,10 +228,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "startup_tab",
-                "Startup Tab",
+                t!("Startup Tab"),
                 SettingValue::Enum(current_startup_tab.to_string(), startup_tabs),
             )
-            .with_description("Tab to show when application starts")
+            .with_description(&t!("Tab to show when application starts"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -290,10 +299,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "show_about_on_startup",
-                "Show About on Startup",
+                &t!("Show About on Startup"),
                 SettingValue::Boolean(ui.show_about_on_startup),
             )
-            .with_description("Show the About dialog for 15 seconds when the application starts")
+            .with_description(&t!("Show the About dialog for 15 seconds when the application starts"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -301,10 +310,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "grid_major_line_width",
-                "Grid Major Line Width (px)",
+                &t!("Grid Major Line Width (px)"),
                 SettingValue::String(ui.grid_major_line_width.to_string()),
             )
-            .with_description("Thickness in pixels for coarse grid lines (default: 2)")
+            .with_description(&t!("Thickness in pixels for coarse grid lines (default: 2)"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -312,10 +321,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "grid_minor_line_width",
-                "Grid Minor Line Width (px)",
+                &t!("Grid Minor Line Width (px)"),
                 SettingValue::String(ui.grid_minor_line_width.to_string()),
             )
-            .with_description("Thickness in pixels for fine grid lines (default: 1)")
+            .with_description(&t!("Thickness in pixels for fine grid lines (default: 1)"))
             .with_category(SettingsCategory::UserInterface),
         );
     }
@@ -328,10 +337,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "preserve_comments",
-                "Preserve Comments",
+                &t!("Preserve Comments"),
                 SettingValue::Boolean(file.preserve_comments),
             )
-            .with_description("Keep G-code comments during file processing")
+            .with_description(&t!("Keep G-code comments during file processing"))
             .with_category(SettingsCategory::FileProcessing),
         );
 
@@ -467,18 +476,19 @@ impl SettingsPersistence {
         if let Some(setting) = dialog.get_setting("startup_tab") {
             let tab_str = setting.value.as_str();
             self.config.ui.startup_tab = match tab_str.as_str() {
+
+                "Designer" => crate::config::StartupTab::Designer,
                 "Machine" => crate::config::StartupTab::Machine,
                 "Console" => crate::config::StartupTab::Console,
-                "Editor" => crate::config::StartupTab::Editor,
+//                "Editor" => crate::config::StartupTab::Editor,
                 "Visualizer" => crate::config::StartupTab::Visualizer,
                 "CamTools" => crate::config::StartupTab::CamTools,
-                "Designer" => crate::config::StartupTab::Designer,
                 "DeviceInfo" => crate::config::StartupTab::DeviceInfo,
                 "Config" => crate::config::StartupTab::Config,
                 "Devices" => crate::config::StartupTab::Devices,
                 "Tools" => crate::config::StartupTab::Tools,
                 "Materials" => crate::config::StartupTab::Materials,
-                _ => crate::config::StartupTab::Machine,
+                _ => crate::config::StartupTab::Designer,
             };
         }
 

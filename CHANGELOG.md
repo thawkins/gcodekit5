@@ -1,7 +1,42 @@
-## [0.54.0-alpha.2] - 2026-05-07
+## [1.1.0-beta.1] - 2026-08-03
 
-### Changed
-- **Version bump**: Incremented patch version to alpha.2
+- The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).
+
+- In 3D mode, the Z coordinate is implemented to generate 3D G-code with passes based on the machining parameters in the Global or specific properties of each object.
+
+- **The 2D viewer is removed**, and the 3D viewer is always used for all G-code, whether 2D or 3D. Camera positions are used for this purpose.
+
+- The safety height parameter is generated from the entered value and the material thickness.
+
+- A warning dialog box has been added for when G-code is generated outside the machine limits. The warning is also retained within the G-code itself.
+
+- When saving as, the last path is used.
+
+- Play/pause/stop buttons and playback speed values ​​have been added to the viewer for simulating the tool's path on screen.
+
+- The shapes in the Shape Gallery have been corrected, and parametric mode has been added to the timing belt pulley, which previously lacked it.
+
+- Some errors in creating chamfers and radii on shape objects have been fixed.
+
+## [1.0.1-alpha.0] - 2026-06-18
+
+- Triangle generation in the designer has been corrected. Triangles can now be generated in all four positions and true symmetry can be applied. Previously, they could only be generated in one position.
+- The bounds of the triangles are now generated correctly and updated when the triangle is rotated.
+- The G-code and the Visualizer correctly reproduce the position of the triangles.
+- The triangles are now correctly saved in the gckd file
+- The display establishes a color scale based on the power S to preview the movements
+- In the designer, the bounds for the created lines are corrected. They now take into account the size and rotation of the line, which they didn't do before.
+- The Pause and Resume function in laser mode, which turned off the laser during some movements, has been fixed.
+- Help is implemented via F1 with explanatory images for each program module
+- The program translation has been expanded, including the help section.
+- A Warning is added to the G-code when the path goes outside the machine area (negative coordinates)
+- The positioning of texts and their grips is corrected.
+- Other visual modifications
+
+## [1.0.0-alpha.1] - 2026-05-21
+
+### Added
+- **individual laser parameters for each object**: In addition to the laser working parameters, it is now also possible to define the speed, power and passes properties individually for the desired objects while maintaining the global properties for the rest of the objects.
 
 ## [0.54.0-alpha.1] - 2026-05-06
 

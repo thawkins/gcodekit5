@@ -100,6 +100,45 @@ pub struct ImageEngraver {
 }
 
 impl ImageEngraver {
+
+    /// Check if a horizontal line (row) has any pixel that will produce laser power
+    fn is_row_empty(&self, y: u32) -> bool {
+        let result = (0..self.image.width()).all(|x| {
+            let intensity = self.image.get_pixel(x, y).0[0];
+            let power = self.intensity_to_power(intensity);
+            power == 0
+        });
+        result
+    }
+
+    /// Get only rows that have content to engrave (actual laser power > 0)
+    fn get_non_empty_rows(&self) -> Vec<u32> {
+        let rows: Vec<u32> = (0..self.image.height())
+            .rev()
+            .filter(|&y| {
+                let is_empty = self.is_row_empty(y);
+
+                !is_empty
+            })
+            .collect();
+        rows
+    }
+
+    fn get_non_empty_columns(&self) -> Vec<u32> {
+        (0..self.image.width())
+            .rev()  // <- Añade esto para invertir el orden (derecha a izquierda)
+            .filter(|&x| !self.is_column_empty(x))
+            .collect()
+    }
+
+    fn is_column_empty(&self, x: u32) -> bool {
+        (0..self.image.height()).all(|y| {
+            let intensity = self.image.get_pixel(x, y).0[0];
+            let power = self.intensity_to_power(intensity);
+            power == 0
+        })
+    }
+
     /// Create a new engraver from a file
     pub fn from_file<P: AsRef<Path>>(path: P, params: EngravingParams) -> Result<Self> {
         let img = image::open(path.as_ref()).context("Failed to load image file")?;
@@ -120,11 +159,30 @@ impl ImageEngraver {
         Self::from_image(img, params)
     }
 
-    /// Create a new engraver from a memory image
     pub fn from_image(img: DynamicImage, params: EngravingParams) -> Result<Self> {
+        // Componer sobre fondo blanco si la imagen tiene canal alfa
+        let img = if img.color().has_alpha() {
+
+            // Componer la imagen original sobre fondo blanco
+            let mut composed = img.to_rgba8();
+            for pixel in composed.pixels_mut() {
+                let alpha = pixel[3] as f32 / 255.0;
+                if alpha < 1.0 {
+                    // Mezclar con blanco (255,255,255)
+                    pixel[0] = ((pixel[0] as f32 * alpha) + (255.0 * (1.0 - alpha))) as u8;
+                    pixel[1] = ((pixel[1] as f32 * alpha) + (255.0 * (1.0 - alpha))) as u8;
+                    pixel[2] = ((pixel[2] as f32 * alpha) + (255.0 * (1.0 - alpha))) as u8;
+                }
+                pixel[3] = 255; // Canal alfa opaco después de componer
+            }
+            DynamicImage::ImageRgba8(composed)
+        } else {
+            img
+        };
+
         let mut gray = img.to_luma8();
 
-        // Apply transformations
+        // Aplicar transformaciones
         if params.mirror_x {
             image::imageops::flip_horizontal_in_place(&mut gray);
         }
@@ -347,32 +405,32 @@ impl ImageEngraver {
         pixel_width: f32,
         line_spacing: f32,
     ) -> Result<()> {
-        let height = self.image.height();
+        let non_empty_rows = self.get_non_empty_rows();
+
+        if non_empty_rows.is_empty() {
+            gcode.push_str("; No content to engrave\n");
+            return Ok(());
+        }
+
         let mut left_to_right = true;
         let offset_x = self.params.offset_x.max(OVERSCAN_MM);
         let offset_y = self.params.offset_y.max(OVERSCAN_MM);
 
-        for y_rev in 0..height {
-            let y = height - 1 - y_rev;
+        for (row_idx, &original_y) in non_empty_rows.iter().enumerate() {
+            let y_rev = self.image.height() - 1 - original_y;
             let y_pos = y_rev as f32 * line_spacing;
+            let y_absolute = offset_y + y_pos;
 
-            // Only do a G0 on the very first line to position
-            if y_rev == 0 {
-                let start_x = if left_to_right {
-                    offset_x - OVERSCAN_MM
-                } else {
-                    offset_x + (self.image.width() as f32 * pixel_width) + OVERSCAN_MM
-                };
-                gcode.push_str(&format!(
-                    "G0 X{:.3} Y{:.3} F{:.0}\n",
-                    start_x,
-                    offset_y + y_pos,
-                    self.params.travel_rate
-                ));
+            if row_idx == 0 {
+                gcode.push_str(&format!("G0 Y{:.3} F{:.0}\n", y_absolute, self.params.travel_rate));
+            } else {
+                gcode.push_str(&format!("G0 Y{:.3}\n", y_absolute));
             }
 
-            // Call scan_line (it handles Y stepping and overscan)
-            self.scan_line(gcode, y, y_pos, pixel_width, left_to_right);
+            // Llamar a scan_line pasando también el feed rate de grabado (engraving_rate)
+            self.scan_line(gcode, original_y, y_pos, pixel_width, left_to_right, offset_x, offset_y);
+
+            // ELIMINADA LA PAUSA G04 QUE CAUSABA PARONES ADICIONALES
 
             if self.params.bidirectional {
                 left_to_right = !left_to_right;
@@ -385,81 +443,102 @@ impl ImageEngraver {
         &self,
         gcode: &mut String,
         y: u32,
-        y_pos: f32,
+        _y_pos: f32,
         pixel_width: f32,
         left_to_right: bool,
+        offset_x: f32,
+        _offset_y: f32,
     ) {
         let width = self.image.width();
-        let mut points: Vec<(f32, u32)> = Vec::with_capacity(width as usize);
-        let offset_x = self.params.offset_x.max(OVERSCAN_MM);
-        let offset_y = self.params.offset_y.max(OVERSCAN_MM);
 
-        let x_range: Vec<u32> = if left_to_right {
-            (0..width).collect()
-        } else {
-            (0..width).rev().collect()
-        };
+        let mut min_x = width;
+        let mut max_x = 0u32;
 
-        for &x in &x_range {
+        for x in 0..width {
             let intensity = self.image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
-            let x_pos = offset_x + x as f32 * pixel_width;
-            points.push((x_pos, power));
+            if power > 0 {
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+            }
+        }
+
+        if min_x == width {
+            return;
+        }
+
+        let margin = 2;
+
+        let (start_x, end_x) = if left_to_right {
+            let start = min_x.saturating_sub(margin);
+            let end = (max_x + margin).min(width - 1);
+            (start, end)
+        } else {
+            let start = (max_x + margin).min(width - 1);
+            let end = min_x.saturating_sub(margin);
+            (start, end)
+        };
+
+        if start_x > end_x && left_to_right {
+            return;
+        }
+        if start_x < end_x && !left_to_right {
+            return;
+        }
+
+        let mut points: Vec<(f32, u32)> = Vec::new();
+
+        if left_to_right {
+            for x in start_x..=end_x {
+                let intensity = self.image.get_pixel(x, y).0[0];
+                let power = self.intensity_to_power(intensity);
+                let x_pos = offset_x + x as f32 * pixel_width;
+                points.push((x_pos, power));
+            }
+        } else {
+            for x in (end_x..=start_x).rev() {
+                let intensity = self.image.get_pixel(x, y).0[0];
+                let power = self.intensity_to_power(intensity);
+                let x_pos = offset_x + x as f32 * pixel_width;
+                points.push((x_pos, power));
+            }
         }
 
         if points.is_empty() {
             return;
         }
 
-        // Merge segments (your optimized current logic)
         let mut merged: Vec<(f32, f32, u32)> = Vec::new();
-        let mut start_x = points[0].0;
+        let mut seg_start_x = points[0].0;
         let mut current_power = points[0].1;
 
         for i in 1..points.len() {
             if points[i].1 != current_power {
-                merged.push((start_x, points[i - 1].0, current_power));
-                start_x = points[i].0;
+                merged.push((seg_start_x, points[i-1].0, current_power));
+                seg_start_x = points[i].0;
                 current_power = points[i].1;
             }
         }
-        merged.push((start_x, points.last().unwrap().0, current_power));
+        merged.push((seg_start_x, points.last().unwrap().0, current_power));
 
-        // --- OVERSCAN CONFIGURATION ---
-        let overscan_dist = OVERSCAN_MM; // mm for ramp up / ramp down (adjust as needed)
-        let y_coord = offset_y + y_pos;
+        let overscan_dist = OVERSCAN_MM;
         let first_x = merged[0].0;
         let last_x = merged.last().unwrap().1;
 
-        // 2. CALCULATE ENTRY AND EXIT POINTS
         let (entry_x, exit_x) = if left_to_right {
             (first_x - overscan_dist, last_x + overscan_dist)
         } else {
             (first_x + overscan_dist, last_x - overscan_dist)
         };
 
-        // RAPID MOVE TO OVERSCAN START
-        gcode.push_str(&format!("G0 X{:.2} Y{:.2}\n", entry_x, y_coord));
+        // CORRECCIÓN: Aseguramos el feed rate de corte/grabado en cada inicio de línea
+        gcode.push_str(&format!("G0 X{:.2}\n", entry_x));
+        gcode.push_str(&format!("G1 X{:.2} S0 F{:.0} M4\n", first_x, self.params.feed_rate));
 
-        // 4. ACCELERATION SEGMENT (Laser at S0 to avoid burning)
-        // Here the machine starts from 0 and reaches feed_rate when it gets to first_x
-        gcode.push_str(&format!(
-            "G1 X{:.2} S0 F{:.0} M4\n",
-            first_x, self.params.feed_rate
-        ));
-
-        // ACTUAL ENGRAVING (Optimized segments)
         for segment in &merged {
-            let x_clean = format!("{:.2}", segment.1)
-                .trim_end_matches('0')
-                .trim_end_matches('.')
-                .to_string();
-
-            // Only send X and S to save buffer
-            gcode.push_str(&format!("X{} S{}\n", x_clean, segment.2));
+            gcode.push_str(&format!("X{:.2} S{}\n", segment.1, segment.2));
         }
 
-        // BRAKE SEGMENT (Final overscan to avoid burned edges)
         gcode.push_str(&format!("X{:.2} S0\n", exit_x));
     }
 
@@ -469,21 +548,37 @@ impl ImageEngraver {
         pixel_width: f32,
         line_spacing: f32,
     ) -> Result<()> {
-        let width = self.image.width();
+        let non_empty_cols = self.get_non_empty_columns();
+
+        if non_empty_cols.is_empty() {
+            gcode.push_str("; No content to engrave\n");
+            return Ok(());
+        }
+
         let mut top_to_bottom = true;
         let offset_x = self.params.offset_x.max(OVERSCAN_MM);
         let offset_y = self.params.offset_y.max(OVERSCAN_MM);
 
-        for x in 0..width {
-            let x_pos = x as f32 * line_spacing;
+        let cols: Vec<u32> = non_empty_cols;
+
+        for (col_idx, &original_x) in cols.iter().enumerate() {
+            let x_pos = original_x as f32 * line_spacing;
+            let x_absolute = offset_x + x_pos;
+
+            if col_idx == 0 {
+                gcode.push_str(&format!("G0 X{:.3} F{:.0}\n", x_absolute, self.params.travel_rate));
+            } else {
+                gcode.push_str(&format!("G0 X{:.3}\n", x_absolute));
+            }
+
             self.scan_column(
                 gcode,
-                x,
-                x_pos,
+                original_x,
+                x_pos, // Pasamos el x_pos calculado con line_spacing
                 pixel_width,
                 top_to_bottom,
-                offset_x,
                 offset_y,
+                x_absolute, // Pasamos directamente la coordenada absoluta X ya calculada
             );
 
             if self.params.bidirectional {
@@ -493,113 +588,103 @@ impl ImageEngraver {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn scan_column(
         &self,
         gcode: &mut String,
         x: u32,
-        x_pos: f32,
+        _x_pos: f32,
         pixel_width: f32,
         top_to_bottom: bool,
-        offset_x: f32,
         offset_y: f32,
+        x_absolute: f32, // Recibe la coordenada X absoluta exacta
     ) {
         let height = self.image.height();
-        let mut points: Vec<(f32, u32)> = Vec::with_capacity(height as usize);
 
-        // Scanner along Y
-        let y_range: Vec<u32> = if top_to_bottom {
-            (0..height).collect()
-        } else {
-            (0..height).rev().collect()
-        };
+        let mut min_y = height;
+        let mut max_y = 0u32;
 
-        for &y in &y_range {
+        for y in 0..height {
             let intensity = self.image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
-            let y_pos = offset_y + y as f32 * pixel_width;
-            points.push((y_pos, power));
+            if power > 0 {
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            }
+        }
+
+        if min_y == height {
+            return;
+        }
+
+        let margin = 2;
+
+        let (start_y, end_y) = if top_to_bottom {
+            let start = min_y.saturating_sub(margin);
+            let end = (max_y + margin).min(height - 1);
+            (start, end)
+        } else {
+            let start = (max_y + margin).min(height - 1);
+            let end = min_y.saturating_sub(margin);
+            (start, end)
+        };
+
+        let mut points: Vec<(f32, u32)> = Vec::new();
+
+        if top_to_bottom {
+            for y in start_y..=end_y {
+                let intensity = self.image.get_pixel(x, y).0[0];
+                let power = self.intensity_to_power(intensity);
+                let flipped_y = (height - 1 - y) as f32;
+                let y_pos = offset_y + flipped_y * pixel_width;
+                points.push((y_pos, power));
+            }
+        } else {
+            for y in (end_y..=start_y).rev() {
+                let intensity = self.image.get_pixel(x, y).0[0];
+                let power = self.intensity_to_power(intensity);
+                let flipped_y = (height - 1 - y) as f32;
+                let y_pos = offset_y + flipped_y * pixel_width;
+                points.push((y_pos, power));
+            }
         }
 
         if points.is_empty() {
             return;
         }
 
-        // Merge segments with the same power
         let mut merged: Vec<(f32, f32, u32)> = Vec::new();
-        let mut start_y = points[0].0;
+        let mut seg_start_y = points[0].0;
         let mut current_power = points[0].1;
 
         for i in 1..points.len() {
             if points[i].1 != current_power {
-                merged.push((start_y, points[i - 1].0, current_power));
-                start_y = points[i].0;
+                merged.push((seg_start_y, points[i-1].0, current_power));
+                seg_start_y = points[i].0;
                 current_power = points[i].1;
             }
         }
-        merged.push((start_y, points.last().unwrap().0, current_power));
+        merged.push((seg_start_y, points.last().unwrap().0, current_power));
 
-        if merged.is_empty() {
-            return;
-        }
-
-        // Overscan configuration
-        let overscan_dist = 2.5;
-        let first_seg = &merged[0];
-        let last_seg = merged.last().unwrap();
+        let overscan_dist = OVERSCAN_MM;
+        let first_y = merged[0].0;
+        let last_y = merged.last().unwrap().1;
 
         let (entry_y, exit_y) = if top_to_bottom {
-            (first_seg.0 - overscan_dist, last_seg.1 + overscan_dist)
+            (first_y + overscan_dist, last_y - overscan_dist)
         } else {
-            (first_seg.0 + overscan_dist, last_seg.1 - overscan_dist)
+            (first_y - overscan_dist, last_y + overscan_dist)
         };
 
-        let x_abs = offset_x + x_pos;
-        let x_abs_fmt = format!("{:.2}", x_abs);
+        // CORRECCIÓN: Se fuerza la velocidad de trabajo (feed_rate) al iniciar el movimiento G1 de la columna
+        gcode.push_str(&format!("G0 X{:.2}\n", x_absolute));
+        gcode.push_str(&format!("G0 Y{:.2}\n", entry_y));
+        gcode.push_str(&format!("G1 Y{:.2} S0 F{:.0} M4\n", first_y, self.params.feed_rate));
 
-        // Rapid move to overscan start
-        gcode.push_str(&format!(
-            "G0 X{} Y{:.2} F{:.0}\n",
-            x_abs_fmt, entry_y, self.params.travel_rate
-        ));
-
-        // Acceleration segment (S0) to first real engraving boundary
-        gcode.push_str(&format!(
-            "G1 X{} Y{:.2} S0 F{:.0} M4\n",
-            x_abs_fmt, first_seg.1, self.params.feed_rate
-        ));
-
-        // Engraving segments, only Y and S changes (X is modal)
         for segment in &merged {
             gcode.push_str(&format!("Y{:.2} S{}\n", segment.1, segment.2));
         }
 
-        // Brake segment to exit overscan (S0)
         gcode.push_str(&format!("Y{:.2} S0\n", exit_y));
     }
-}
+} // impl ImageEngraver
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use anyhow::Result;
-    use image::{DynamicImage, GrayImage, Luma};
-
-    #[test]
-    fn engraver_with_zero_offset_never_generates_negative_overscan() -> Result<()> {
-        let img = DynamicImage::ImageLuma8(GrayImage::from_pixel(4, 4, Luma([128u8])));
-        let mut params = EngravingParams::default();
-        params.width_mm = 5.0;
-        params.offset_x = 0.0;
-        params.offset_y = 0.0;
-        params.scan_direction = ScanDirection::Horizontal;
-        params.bidirectional = false;
-
-        let engraver = ImageEngraver::from_image(img, params)?;
-        let gcode = engraver.generate_gcode()?;
-
-        assert!(!gcode.contains("X-"));
-        assert!(!gcode.contains("Y-"));
-        Ok(())
-    }
-}

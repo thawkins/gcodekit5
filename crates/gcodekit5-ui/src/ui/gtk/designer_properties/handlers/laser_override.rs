@@ -8,82 +8,136 @@ use std::rc::Rc;
 pub(crate) fn setup_laser_override_handlers(panel: &PropertiesPanel) {
     let panel_rc = Rc::new(panel.clone());
 
-    let update_selected_shape = {
-        let panel = panel_rc.clone();
-        move || {
-            let use_global = panel.laser_use_global_check.is_active();
+let update_selected_shape = {
+    let panel = panel_rc.clone();
+    move || {
+        let use_global = panel.laser_use_global_check.is_active();
 
-            {
-                let mut designer_state = panel.state.borrow_mut();
+        {
+            let mut designer_state = panel.state.borrow_mut();
 
-                let (feed_rate, power, passes) = if use_global {
-                    let global_feed = designer_state.tool_settings.feed_rate;
-                    let global_power = designer_state.tool_settings.spindle_speed as f64;
-                    let global_passes = (designer_state.tool_settings.step_down as u32).max(1);
-                    (global_feed, global_power, global_passes)
-                } else {
-                    let fr = panel.laser_feed_rate_entry.text().parse::<f64>().unwrap_or(1000.0);
-                    let pw = panel.laser_power_entry.text().parse::<f64>().unwrap_or(100.0);
-                    let ps = panel.laser_passes_entry.text().parse::<u32>().unwrap_or(1);
-                    (fr, pw, ps)
-                };
+            let (feed_rate, power, passes) = if use_global {
+                let global_feed = designer_state.tool_settings.feed_rate;
+                let global_power = (designer_state.tool_settings.spindle_speed as f64) / 10.0;
+                let global_passes = (designer_state.tool_settings.step_down as u32).max(1);
+                (global_feed, global_power, global_passes)
+            } else {
+                let fr = panel
+                    .laser_feed_rate_entry
+                    .text()
+                    .parse::<f64>()
+                    .unwrap_or(1000.0);
+                let pw = panel
+                    .laser_power_entry
+                    .text()
+                    .parse::<f64>()
+                    .unwrap_or(100.0);
 
-                for shape in designer_state.canvas.shapes_mut() {
-                    if shape.selected {
-                        match &mut shape.shape {
-                            Shape::Rectangle(rect) => {
-                                rect.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Circle(circle) => {
-                                circle.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Ellipse(ellipse) => {
-                                ellipse.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Line(line) => {
-                                line.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Path(path) => {
-                                path.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Polygon(polygon) => {
-                                polygon.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Triangle(triangle) => {
-                                triangle.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Text(text) => {
-                                text.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Gear(gear) => {
-                                gear.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::Sprocket(sprocket) => {
-                                sprocket.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
-                                shape.use_global_laser = use_global;
-                            }
-                            Shape::RasterImage(_) => {}
+                let ps = panel.laser_passes_entry.text().parse::<u32>().unwrap_or(1);
+                (fr, pw, ps)
+            };
+
+            for shape in designer_state.canvas.shapes_mut() {
+                if shape.selected {
+                    // Actualizar los campos de DrawingObject (para serialización)
+                    shape.use_global_laser = use_global;
+                    shape.laser_params = LaserParams { feed_rate, power_percent: power, passes, use_global };
+
+                    // Actualizar LaserParams dentro de la forma específica
+                    match &mut shape.shape {
+                        Shape::Rectangle(rect) => {
+                            rect.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+
                         }
-                        break;
+                        Shape::Circle(circle) => {
+                            circle.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Ellipse(ellipse) => {
+                            ellipse.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Line(line) => {
+                            line.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Path(path) => {
+                            path.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Polygon(polygon) => {
+                            polygon.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Triangle(triangle) => {
+                            triangle.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Text(text) => {
+                            text.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Gear(gear) => {
+                            gear.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                        Shape::Sprocket(sprocket) => {
+                            sprocket.laser_params = LaserParams {
+                                feed_rate,
+                                power_percent: power,
+                                passes,
+                                use_global,
+                            };
+                        }
+                            Shape::RasterImage(_) => {}
                     }
+                    break;
                 }
             }
-
-            if let Some(ref cb) = *panel.redraw_callback.borrow() {
-                cb();
-            }
         }
-    };
 
+        if let Some(ref cb) = *panel.redraw_callback.borrow() {
+            cb();
+        }
+    }
+};
 
     // Handler para el checkbox "Use global values"
     let panel_clone = panel_rc.clone();
@@ -128,5 +182,4 @@ pub(crate) fn setup_laser_override_handlers(panel: &PropertiesPanel) {
             update_fn();
         }
     });
-
 }

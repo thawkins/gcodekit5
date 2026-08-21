@@ -2,7 +2,7 @@
 
 use super::types::{Alignment, DrawingObject};
 use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape, LaserParams,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
     DesignTriangle as Triangle, DesignerShape, Point, RasterImage, Shape, ShapeType,
 };
@@ -178,6 +178,7 @@ impl Canvas {
                 operation_type: obj.operation_type,
                 use_custom_values: obj.use_custom_values,
                 pocket_depth: obj.pocket_depth,
+                z_offset: obj.z_offset,
                 start_depth: obj.start_depth,
                 step_down: obj.step_down,
                 step_in: obj.step_in,
@@ -189,6 +190,10 @@ impl Canvas {
                 chamfer: obj.chamfer,
                 lock_aspect_ratio: obj.lock_aspect_ratio,
                 use_global_laser: obj.use_global_laser,
+                laser_params: LaserParams::default(),
+//                laser_feed_rate: 1000.0,
+//                laser_power: 100.0,
+//                laser_passes: 1,
             };
 
             self.shape_store.insert(id, new_obj);

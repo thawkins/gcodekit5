@@ -348,6 +348,9 @@ pub fn generate_tabbed_box(
 
     paths
 }
+
+/*
+/// Generate a Helical Gear
 pub fn generate_helical_gear(
     center: Point,
     module: f64,
@@ -356,10 +359,6 @@ pub fn generate_helical_gear(
     helix_angle_deg: f64,
     hole_radius: f64,
 ) -> Path {
-    // For simplicity, we'll generate a basic involute gear and add a helical offset
-    // A true helical gear would have the involute curve skewed along the helix
-    // This is a simplified approximation
-
     let mut builder = Path::builder();
 
     let pitch_radius = (module * teeth as f64) / 2.0;
@@ -367,88 +366,69 @@ pub fn generate_helical_gear(
     let dedendum = 1.25 * module;
     let outer_radius = pitch_radius + addendum;
     let root_radius = pitch_radius - dedendum;
+
     let base_radius = pitch_radius * pressure_angle_deg.to_radians().cos();
+    let start_radius = if root_radius > base_radius { root_radius } else { base_radius };
 
     let angle_per_tooth = 2.0 * PI / teeth as f64;
-    let helix_offset = helix_angle_deg.to_radians().tan() * module; // Simplified helix offset
+
+    let helix_offset = helix_angle_deg.to_radians().tan() * module;
 
     let mut points = Vec::new();
+    let steps = 5;
 
     for i in 0..teeth {
         let tooth_center_angle = i as f64 * angle_per_tooth;
 
-        let t_max = ((outer_radius / base_radius).powi(2) - 1.0).sqrt();
-        let steps = 5;
+        let start_angle = tooth_center_angle - (angle_per_tooth / 2.0);
+        let start_helical = start_angle + (root_radius - root_radius) * helix_offset / (outer_radius - root_radius);
+        points.push(Point::new(
+            center.x + root_radius * start_helical.cos(),
+            center.y + root_radius * start_helical.sin(),
+        ));
 
-        let mut tooth_points = Vec::new();
+        let t_max = ((outer_radius / start_radius).powi(2) - 1.0).max(0.0).sqrt();
         for j in 0..=steps {
             let t = (j as f64 / steps as f64) * t_max;
-            let x = base_radius * (t.cos() + t * t.sin());
-            let y = base_radius * (t.sin() - t * t.cos());
+            let x = start_radius * (t.cos() + t * t.sin());
+            let y = start_radius * (t.sin() - t * t.cos());
 
-            let r = (x * x + y * y).sqrt();
+            let r = (x * x + y * y).sqrt().min(outer_radius);
             let phi = y.atan2(x);
 
-            let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
-            let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
-                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+            let angle = tooth_center_angle - (PI / (2.0 * teeth as f64)) + phi;
+            let helical_angle = angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
 
-            let angle = tooth_center_angle - (PI / (2.0 * teeth as f64)) - phi_pitch + phi;
-
-            // Add helical offset
-            let helical_angle =
-                angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
-
-            tooth_points.push(Point::new(
+            points.push(Point::new(
                 center.x + r * helical_angle.cos(),
                 center.y + r * helical_angle.sin(),
             ));
         }
 
-        if root_radius < base_radius {
-            let p0 = tooth_points[0];
-            let angle0 = (p0.y - center.y).atan2(p0.x - center.x);
-            points.push(Point::new(
-                center.x + root_radius * angle0.cos(),
-                center.y + root_radius * angle0.sin(),
-            ));
-        }
-
-        points.extend(tooth_points.clone());
-
-        let mut right_points = Vec::new();
         for j in (0..=steps).rev() {
             let t = (j as f64 / steps as f64) * t_max;
-            let x = base_radius * (t.cos() + t * t.sin());
-            let y = -(base_radius * (t.sin() - t * t.cos()));
+            let x = start_radius * (t.cos() + t * t.sin());
+            let y = start_radius * (t.sin() - t * t.cos());
 
-            let r = (x * x + y * y).sqrt();
+            let r = (x * x + y * y).sqrt().min(outer_radius);
+            // Invertimos el ángulo phi para simetrizar el flanco derecho
             let phi = y.atan2(x);
 
-            let t_pitch = ((pitch_radius / base_radius).powi(2) - 1.0).sqrt();
-            let phi_pitch = (t_pitch.sin() - t_pitch * t_pitch.cos())
-                .atan2(t_pitch.cos() + t_pitch * t_pitch.sin());
+            let angle = tooth_center_angle + (PI / (2.0 * teeth as f64)) - phi;
+            let helical_angle = angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
 
-            let angle = tooth_center_angle + (PI / (2.0 * teeth as f64)) + phi_pitch + phi;
-            let helical_angle =
-                angle + (r - root_radius) * helix_offset / (outer_radius - root_radius);
-
-            right_points.push(Point::new(
+            points.push(Point::new(
                 center.x + r * helical_angle.cos(),
                 center.y + r * helical_angle.sin(),
             ));
         }
-        points.extend(right_points);
 
-        if root_radius < base_radius {
-            if let Some(p_last) = points.last() {
-                let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
-                points.push(Point::new(
-                    center.x + root_radius * angle_last.cos(),
-                    center.y + root_radius * angle_last.sin(),
-                ));
-            }
-        }
+        let end_angle = tooth_center_angle + (angle_per_tooth / 2.0);
+        let end_helical = end_angle + (root_radius - root_radius) * helix_offset / (outer_radius - root_radius);
+        points.push(Point::new(
+            center.x + root_radius * end_helical.cos(),
+            center.y + root_radius * end_helical.sin(),
+        ));
     }
 
     if !points.is_empty() {
@@ -469,6 +449,7 @@ pub fn generate_helical_gear(
 
     builder.build()
 }
+*/
 
 /// Generate a timing pulley (XL series approximation)
 pub fn generate_timing_pulley(
@@ -480,44 +461,46 @@ pub fn generate_timing_pulley(
 ) -> Path {
     let mut builder = Path::builder();
 
-    // XL timing belt parameters (simplified)
+    // Parámetros de la correa XL
     let tooth_height = 1.27; // mm
 
-    let outer_radius = (pitch * teeth as f64) / (2.0 * PI) * (PI / teeth as f64).sin().recip();
+    // Corrección del radio: En poleas síncronas el radio primitivo se basa en el paso perimetral
+    let pitch_radius = (pitch * teeth as f64) / (2.0 * PI);
+    let outer_radius = pitch_radius;
     let root_radius = outer_radius - tooth_height;
 
     let mut points = Vec::new();
     let angle_per_tooth = 2.0 * PI / teeth as f64;
 
     for i in 0..teeth {
-        let tooth_center_angle = i as f64 * angle_per_tooth;
+        let base_angle = i as f64 * angle_per_tooth;
 
-        // Tooth tip
-        let tip_angle = tooth_center_angle;
+        // 1. Fondo izquierdo del diente (Punto más bajo antes de subir)
+        let valley_left = base_angle - angle_per_tooth * 0.25;
         points.push(Point::new(
-            center.x + outer_radius * tip_angle.cos(),
-            center.y + outer_radius * tip_angle.sin(),
+            center.x + root_radius * valley_left.cos(),
+            center.y + root_radius * valley_left.sin(),
         ));
 
-        // Left flank
-        let left_angle = tooth_center_angle - angle_per_tooth * 0.3;
+        // 2. Flanco izquierdo del diente (Sube hacia la cresta)
+        let tooth_left = base_angle - angle_per_tooth * 0.15;
         points.push(Point::new(
-            center.x + root_radius * left_angle.cos(),
-            center.y + root_radius * left_angle.sin(),
+            center.x + outer_radius * tooth_left.cos(),
+            center.y + outer_radius * tooth_left.sin(),
         ));
 
-        // Bottom of tooth
-        let bottom_angle = tooth_center_angle - angle_per_tooth * 0.2;
+        // 3. Flanco derecho del diente (Mantiene la cresta antes de bajar)
+        let tooth_right = base_angle + angle_per_tooth * 0.15;
         points.push(Point::new(
-            center.x + root_radius * bottom_angle.cos(),
-            center.y + root_radius * bottom_angle.sin(),
+            center.x + outer_radius * tooth_right.cos(),
+            center.y + outer_radius * tooth_right.sin(),
         ));
 
-        // Right flank
-        let right_angle = tooth_center_angle + angle_per_tooth * 0.3;
+        // 4. Fondo derecho del diente (Baja hacia el siguiente valle)
+        let valley_right = base_angle + angle_per_tooth * 0.25;
         points.push(Point::new(
-            center.x + root_radius * right_angle.cos(),
-            center.y + root_radius * right_angle.sin(),
+            center.x + root_radius * valley_right.cos(),
+            center.y + root_radius * valley_right.sin(),
         ));
     }
 

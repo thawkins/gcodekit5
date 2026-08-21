@@ -9,10 +9,11 @@ use gcodekit5_core::units::MeasurementSystem;
 use gcodekit5_core::{shared, thread_safe, Shared, SharedVec, ThreadSafe};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::designer_state::MachineMode;
+use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, Dialog, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
+    Align, Box, Button, CheckButton, Dialog, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
     ResponseType, ScrolledWindow,
 };
 use std::cell::Cell;
@@ -250,26 +251,32 @@ impl DesignerToolbox {
         let refresh_callbacks: SharedVec<Rc<dyn Fn()>> = shared(Vec::new());
 
         // ===== ADD SELECTOR LASER/CNC =====
-        let mode_frame = Frame::new(Some(&t!("Machine Mode")));
-        mode_frame.set_margin_top(10);
+        // 1. Crear el Frame (contenedor con borde y título)
+        let mode_frame = Frame::new(Some(&t!("Machine Mode"))); // Contenedor del tipo de máquina
+        mode_frame.set_margin_top(5);
         mode_frame.set_margin_bottom(5);
 
-        let mode_box = Box::new(Orientation::Horizontal, 5);
+        // 2. Crear el Box horizontal (para poner los botones en fila)
+        let mode_box = Box::new(Orientation::Horizontal, 5); // Box interno Horizontal
         mode_box.set_margin_start(5);
         mode_box.set_margin_end(5);
         mode_box.set_margin_top(5);
         mode_box.set_margin_bottom(5);
 
+        // 3. Crear los botones (CheckButton)
         let laser_radio = gtk4::CheckButton::with_label(&t!("Laser 2D"));
         let cnc_radio = gtk4::CheckButton::with_label(&t!("CNC 3D"));
 
+        // 4. Agrupar los botones (para que funcionen como radio buttons)
         let radio_group = laser_radio.clone();
         cnc_radio.set_group(Some(&radio_group));
 
+        // 5. Configurar el estado inicial de los botones según el estado actual
         let current_mode = state.borrow().machine_mode();
         laser_radio.set_active(current_mode == MachineMode::Laser2D);
         cnc_radio.set_active(current_mode == MachineMode::Cnc3D);
 
+        // 6. Conectar eventos: qué pasa cuando se hace clic en "Laser 2D"
         let state_laser = state.clone();
         let refresh_cb = refresh_callbacks.clone();
         laser_radio.connect_toggled(move |rb| {
@@ -284,6 +291,7 @@ impl DesignerToolbox {
             }
         });
 
+        // 7. Conectar eventos: qué pasa cuando se hace clic en "CNC 3D"
         let state_cnc = state.clone();
         let refresh_cb = refresh_callbacks.clone();
         cnc_radio.connect_toggled(move |rb| {
@@ -296,16 +304,47 @@ impl DesignerToolbox {
             }
         });
 
+        // 8. Sincronizar los botones con cambios externos al estado
+        {
+            let state_mode = state.clone();
+            let laser_radio_refresh = laser_radio.clone();
+            let cnc_radio_refresh = cnc_radio.clone();
+
+            let update_mode_buttons = Rc::new(move || {
+                let mode = state_mode.borrow().machine_mode();
+                let laser_active = mode == MachineMode::Laser2D;
+                let cnc_active = mode == MachineMode::Cnc3D;
+
+                if laser_radio_refresh.is_active() != laser_active {
+                    laser_radio_refresh.set_active(laser_active);
+                }
+                if cnc_radio_refresh.is_active() != cnc_active {
+                    cnc_radio_refresh.set_active(cnc_active);
+                }
+            });
+
+            refresh_callbacks.borrow_mut().push(update_mode_buttons.clone());
+            update_mode_buttons();
+        }
+
+        // 9. Añadir el frame al contenedor principal
         content_box.append(&mode_frame);
+        // 10. Añadir los botones al box
         mode_box.append(&laser_radio);
         mode_box.append(&cnc_radio);
+        // 11. Establecer el box como hijo del frame
         mode_frame.set_child(Some(&mode_box));
 
-        // Add separator
-        let separator = gtk4::Separator::new(Orientation::Horizontal);
-        separator.set_margin_top(10);
-        separator.set_margin_bottom(10);
-        content_box.append(&separator);
+        // Frame de botones de configuración
+        let mode_frame = Frame::new(None);
+        mode_frame.set_margin_top(5);
+        mode_frame.set_margin_bottom(5);
+
+        let mode_box = Box::new(Orientation::Vertical, 5);
+        mode_box.set_margin_start(5);
+        mode_box.set_margin_end(5);
+        mode_box.set_margin_top(5);
+        mode_box.set_margin_bottom(5);
 
         // Tool Settings - creamos el settings_box principal
         let current_units = thread_safe(
@@ -316,16 +355,6 @@ impl DesignerToolbox {
                 .ui
                 .measurement_system,
         );
-/*       // Crear el settings_box principal (se usa tanto en el toolbox como en el diálogo)
-        let (settings_box, _settings_grid) = Self::create_tool_settings_box(
-            state.clone(),
-            settings_controller.clone(),
-            current_units.clone(),
-            refresh_callbacks.clone(),
-        );
-*/
-        // Añadir el settings_box al content_box (visible siempre)
-//        content_box.append(&settings_box);
 
         // Tool Settings popup button
         let tool_settings_btn = Button::with_label(&t!("Tool Settings…"));
@@ -356,9 +385,7 @@ impl DesignerToolbox {
             });
         }
 
-        content_box.append(&tool_settings_btn);
-
-        // Stock Settings (código existente - se mantiene igual)
+        // Stock Settings
         let stock_box = Box::new(Orientation::Vertical, 8);
         stock_box.set_margin_start(8);
         stock_box.set_margin_end(8);
@@ -481,7 +508,12 @@ impl DesignerToolbox {
                     stock.width = val;
                 }
             });
-            create_stock_setting(t!("Stock Width"), getter, setter, t!("Stock material width"));
+            create_stock_setting(
+                t!("Stock Width"),
+                getter,
+                setter,
+                t!("Stock material width"),
+            );
         }
 
         {
@@ -501,7 +533,12 @@ impl DesignerToolbox {
                     stock.height = val;
                 }
             });
-            create_stock_setting(t!("Stock Height"), getter, setter, t!("Stock material height"));
+            create_stock_setting(
+                t!("Stock Height"),
+                getter,
+                setter,
+                t!("Stock material height"),
+            );
         }
 
         {
@@ -516,9 +553,14 @@ impl DesignerToolbox {
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                let mut s = state_setter.borrow_mut();
-                if let Some(ref mut stock) = s.stock_material {
-                    stock.thickness = val;
+                {
+                    let mut s = state_setter.borrow_mut();
+                    if let Some(ref mut stock) = s.stock_material {
+                        let clearance = (stock.safe_z - stock.thickness)
+                            .max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
+                        stock.thickness = val;
+                        stock.safe_z = stock.thickness + clearance;
+                    }
                 }
             });
             create_stock_setting(
@@ -536,54 +578,65 @@ impl DesignerToolbox {
                     .borrow()
                     .stock_material
                     .as_ref()
-                    .map(|s| s.safe_z)
-                    .unwrap_or(10.0)
+                    .map(|s| {
+                        (s.safe_z - s.thickness).max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM)
+                    })
+                    .unwrap_or(StockMaterial::DEFAULT_SAFE_Z_ABOVE_STOCK_MM)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                let mut s = state_setter.borrow_mut();
-                if let Some(ref mut stock) = s.stock_material {
-                    stock.safe_z = val;
+                {
+                    let mut s = state_setter.borrow_mut();
+                    if let Some(ref mut stock) = s.stock_material {
+                        let clearance = val.max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
+                        stock.safe_z = stock.thickness + clearance;
+                    }
                 }
             });
             create_stock_setting(
                 t!("Safe Z Height"),
                 getter,
                 setter,
-                t!("Safe height for rapid moves"),
+                t!("Safe height above stock for rapid moves"),
             );
         }
 
         {
             let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().simulation_resolution);
+            let getter = Rc::new(move || {
+                let step_down = state_getter.borrow().tool_settings.step_down;
+                if step_down > 0.0 { step_down as f32 } else { 0.1 }
+            });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                state_setter.borrow_mut().simulation_resolution = val.clamp(0.01, 2.0);
+                state_setter.borrow_mut().set_step_down(val.max(0.1) as f64);
             });
             create_stock_setting(
-                t!("Resolution"),
+                t!("Step Down"),
                 getter,
                 setter,
-                t!("Simulation resolution (lower = more detail)"),
+                t!("Depth per pass"),
             );
         }
-
-        let show_stock_check = gtk4::CheckButton::with_label(&t!("Show Stock Removal"));
-        show_stock_check.set_tooltip_text(Some(&t!("Enable stock removal visualization")));
-        show_stock_check.set_margin_top(5);
-        let show_stock_state = state.borrow().show_stock_removal;
-        show_stock_check.set_active(show_stock_state);
-        let state_show_stock = state.clone();
-        show_stock_check.connect_toggled(move |cb| {
-            state_show_stock.borrow_mut().show_stock_removal = cb.is_active();
-        });
-        stock_box.append(&show_stock_check);
 
         let stock_settings_btn = Button::with_label(&t!("Stock Settings…"));
         stock_settings_btn.set_margin_top(6);
         stock_settings_btn.set_margin_start(5);
         stock_settings_btn.set_margin_end(5);
+
+        {
+            let state_mode = state.clone();
+            let stock_settings_btn_mode = stock_settings_btn.clone();
+            let update_stock_settings_btn = Rc::new(move || {
+                let is_cnc_mode = state_mode.borrow().machine_mode() == MachineMode::Cnc3D;
+                stock_settings_btn_mode.set_sensitive(is_cnc_mode);
+            });
+
+            refresh_callbacks
+                .borrow_mut()
+                .push(update_stock_settings_btn.clone());
+            update_stock_settings_btn();
+        }
 
         let stock_settings_dialog = Dialog::builder()
             .title(t!("Stock Settings"))
@@ -631,30 +684,57 @@ impl DesignerToolbox {
             });
         }
 
+        // 9. Añadir el frame al contenedor principal
+        content_box.append(&mode_frame);
+
+        // 10. Añadir los botones al box
+        mode_box.append(&tool_settings_btn);
+        mode_box.append(&stock_settings_btn);
+
+        // 11. Establecer el box como hijo del frame
+        mode_frame.set_child(Some(&mode_box));
+
+        // 1. Crear el Frame de Gcode y Frame
+        let mode_frame = Frame::new(None); // Contenedor de G-code
+        mode_frame.set_margin_top(5);
+        mode_frame.set_margin_bottom(5);
+
+        let mode_box = Box::new(Orientation::Vertical, 5);
+        mode_box.set_margin_start(5);
+        mode_box.set_margin_end(5);
+        mode_box.set_margin_top(5);
+        mode_box.set_margin_bottom(5);
+
+        // Botones de G-code y Frame
+        let generate_btn = Button::with_label(&t!("Generate G-Code"));
+//        generate_btn.add_css_class("suggested-action");
+        generate_btn.set_margin_top(5);
+        generate_btn.set_margin_bottom(5);
+        generate_btn.set_margin_start(5);
+        generate_btn.set_margin_end(5);
+
         let frame_btn = Button::with_label(&format!(" ⛶  {}", t!("Frame ")));
         frame_btn.set_tooltip_text(Some(&t!("Generate low-power frame to position material")));
         frame_btn.add_css_class("flat");
         frame_btn.set_halign(gtk4::Align::Center);
 
-        content_box.append(&stock_settings_btn);
-
-        let generate_btn = Button::with_label(&t!("Generate G-Code"));
-        generate_btn.add_css_class("suggested-action");
-        generate_btn.set_margin_top(10);
-        generate_btn.set_margin_bottom(10);
-        generate_btn.set_margin_start(5);
-        generate_btn.set_margin_end(5);
-        content_box.append(&generate_btn);
-
-        let separator2 = gtk4::Separator::new(Orientation::Horizontal);
-        separator2.set_margin_top(10);
-        separator2.set_margin_bottom(10);
-        content_box.append(&separator2);
-        content_box.append(&frame_btn);
+        // 9. Añadir el frame al contenedor principal
+        content_box.append(&mode_frame);
+        // 10. Añadir los botones al box
+        mode_box.append(&generate_btn);
+        mode_box.append(&frame_btn);
+        // 11. Establecer el box como hijo del frame
+        mode_frame.set_child(Some(&mode_box));
 
         scrolled.set_child(Some(&content_box));
         main_container.append(&scrolled);
-
+/*
+        // Add separator
+        let separator = gtk4::Separator::new(Orientation::Horizontal);
+        separator.set_margin_top(10);
+        separator.set_margin_bottom(10);
+        main_container.append(&separator);
+*/
         Rc::new(Self {
             widget: main_container,
             current_tool,
@@ -714,8 +794,6 @@ impl DesignerToolbox {
                     ("Step Down", MachineMode::Cnc3D) => t!("Step Down"),
                     ("Tool Dia", MachineMode::Laser2D) => t!("Laser Width"),
                     ("Tool Dia", MachineMode::Cnc3D) => t!("Tool Dia"),
-                    ("Cut Depth", MachineMode::Laser2D) => t!("-"),
-                    ("Cut Depth", MachineMode::Cnc3D) => t!("Cut Depth"),
                     _ => label_text.clone(),
                 };
                 let label = Label::new(Some(&format!("{}:", display_label)));
@@ -753,7 +831,7 @@ impl DesignerToolbox {
                                 (percent, "%")
                             }
                             (UnitsKind::Rpm, MachineMode::Cnc3D) => (val_mm, "RPM"),
-                            (UnitsKind::Length, MachineMode::Laser2D) => (val_mm, ""),  // Sin unidades
+                            (UnitsKind::Length, MachineMode::Laser2D) => (val_mm, ""), // Sin unidades
                             (UnitsKind::Length, MachineMode::Cnc3D) => match units {
                                 MeasurementSystem::Metric => (val_mm, "mm"),
                                 MeasurementSystem::Imperial => (val_mm / 25.4, "in"),
@@ -858,43 +936,60 @@ impl DesignerToolbox {
             let getter = Rc::new(move || state_getter.borrow().tool_settings.tool_diameter);
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_tool_diameter(val));
-                create_setting(
-                    String::from("Tool Dia"),
-                    getter,
-                    setter,
-                    t!("Tool Diameter"),
-                    UnitsKind::Length,
-                );
-        }
-
-        // Cut Depth
-        {
-            let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.cut_depth);
-            let state_setter = state.clone();
-            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_cut_depth(val));
-                create_setting(
-                    String::from("Cut Depth"),
-                    getter,
-                    setter,
-                    t!("Target Cut Depth (positive)"),
-                    UnitsKind::Length,
-                );
+            create_setting(
+                String::from("Tool Dia"),
+                getter,
+                setter,
+                t!("Tool Diameter"),
+                UnitsKind::Length,
+            );
         }
 
         // Step Down
         {
             let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.step_down);
+            let getter = Rc::new(move || {
+                let state = state_getter.borrow();
+                let step_down = state.tool_settings.step_down;
+                if state.machine_mode() == MachineMode::Laser2D && step_down <= 0.0 {
+                    1.0
+                } else {
+                    step_down
+                }
+            });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_step_down(val));
-                create_setting(
-                    "Step Down".to_string(),
-                    getter,
-                    setter,
-                    t!("Depth per pass"),
-                    UnitsKind::Length,
-                );
+            create_setting(
+                "Step Down".to_string(),
+                getter,
+                setter,
+                t!("Depth per pass"),
+                UnitsKind::Length,
+            );
+        }
+
+        if state.borrow().machine_mode() == MachineMode::Cnc3D {
+            let row = tool_row.get();
+            tool_row.set(row + 1);
+
+            let label = Label::new(Some(&format!("{}:", t!("Continuous Z"))));
+            label.set_halign(Align::Start);
+
+            let check = CheckButton::new();
+            check.set_active(state.borrow().tool_settings.continuous_z_between_passes);
+            check.set_tooltip_text(Some(&t!(
+                "Keep tool at cutting depth between passes when XY start is unchanged"
+            )));
+
+            settings_grid.attach(&label, 0, row, 1, 1);
+            settings_grid.attach(&check, 1, row, 1, 1);
+
+            let state_toggle = state.clone();
+            check.connect_toggled(move |c| {
+                state_toggle
+                    .borrow_mut()
+                    .set_continuous_z_between_passes(c.is_active());
+            });
         }
 
         (settings_box, settings_grid)
@@ -984,6 +1079,12 @@ impl DesignerToolbox {
         }
     }
 
+    pub fn register_refresh_callback<F: Fn() + 'static>(&self, callback: F) {
+        self.refresh_callbacks
+            .borrow_mut()
+            .push(Rc::new(callback));
+    }
+
     /// Refresh all tool and stock settings UI widgets from current state.
     pub fn refresh_settings(&self) {
         for callback in self.refresh_callbacks.borrow().iter() {
@@ -1008,7 +1109,8 @@ G1 X{x2:.3} Y{y2:.3} ; Right side\n\
 G1 X{x1:.3} Y{y2:.3} ; Top side\n\
 G1 X{x1:.3} Y{y1:.3} ; Left side\n\
 M5 ; Láser OFF\n\
-G0 X0 Y0 ; Volver a origen\n\
+G0 X0 Y0 ; Return to origin\n\
+M30 ; End of program\n\
 ; --- Laser Frame End ---",
         x1 = x1,
         y1 = y1,

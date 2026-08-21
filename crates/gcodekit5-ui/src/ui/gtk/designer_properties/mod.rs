@@ -5,7 +5,6 @@
 //! - Main panel orchestration (this file)
 //! - Handlers for different property categories (handlers/)
 
-
 mod builders;
 mod handlers;
 mod update;
@@ -61,6 +60,7 @@ pub struct PropertiesPanel {
     // Property widgets
     pub(crate) pos_x_entry: Entry,
     pub(crate) pos_y_entry: Entry,
+    pub(crate) pos_z_entry: Entry,
     pub(crate) width_entry: Entry,
     pub(crate) height_entry: Entry,
     pub(crate) lock_aspect_ratio: CheckButton,
@@ -94,9 +94,18 @@ pub struct PropertiesPanel {
     pub(crate) sprocket_teeth_entry: Entry,
     pub(crate) sprocket_roller_diameter_entry: Entry,
 
+    // Timing pulley widgets
+    pub(crate) timing_pulley_frame: Frame,
+    pub(crate) timing_pulley_pitch_entry: Entry,
+    pub(crate) timing_pulley_teeth_entry: Entry,
+    pub(crate) timing_pulley_belt_width_entry: Entry,
+    pub(crate) timing_pulley_hole_radius_entry: Entry,
+
     // CAM widgets
+    pub(crate) cam_use_global_check: CheckButton,
     pub(crate) op_type_combo: DropDown,
     pub(crate) depth_entry: Entry,
+    pub(crate) z_offset_entry: Entry,
     pub(crate) step_down_entry: Entry,
     pub(crate) step_in_entry: Entry,
     pub(crate) ramp_angle_entry: Entry,
@@ -105,21 +114,23 @@ pub struct PropertiesPanel {
 
     // Geometry Ops widgets
     pub(crate) offset_entry: Entry,
-    pub(crate) fillet_entry: Entry,
     pub(crate) chamfer_entry: Entry,
 
     // Unit Labels
     pub(crate) x_unit_label: Label,
     pub(crate) y_unit_label: Label,
+    pub(crate) z_unit_label: Label,
     pub(crate) width_unit_label: Label,
     pub(crate) height_unit_label: Label,
     pub(crate) radius_unit_label: Label,
     pub(crate) font_size_unit_label: Label,
     pub(crate) depth_unit_label: Label,
+    depth_label: Label,
+    pub(crate) z_offset_unit_label: Label,
     pub(crate) step_down_unit_label: Label,
+    step_in_label: Label,
     pub(crate) step_in_unit_label: Label,
     pub(crate) offset_unit_label: Label,
-    pub(crate) fillet_unit_label: Label,
     pub(crate) chamfer_unit_label: Label,
     // Redraw callback
     pub(crate) redraw_callback: SharedOption<Rc<dyn Fn()>>,
@@ -150,7 +161,6 @@ pub struct PropertiesPanel {
     pub(crate) laser_feed_rate_entry: Entry,
     pub(crate) laser_power_entry: Entry,
     pub(crate) laser_passes_entry: Entry,
-
 }
 
 impl PropertiesPanel {
@@ -191,7 +201,7 @@ impl PropertiesPanel {
         content.append(&rotation_warning_label);
 
         // Build all UI sections
-        let (pos_frame, pos_x_entry, pos_y_entry, x_unit_label, y_unit_label) =
+        let (pos_frame, pos_x_entry, pos_y_entry, pos_z_entry, x_unit_label, y_unit_label, z_unit_label) =
             Self::build_position_section();
         content.append(&pos_frame);
 
@@ -242,28 +252,40 @@ impl PropertiesPanel {
         content.append(&sprocket_frame);
 
         let (
+            timing_pulley_frame,
+            timing_pulley_pitch_entry,
+            timing_pulley_teeth_entry,
+            timing_pulley_belt_width_entry,
+            timing_pulley_hole_radius_entry,
+        ) = Self::build_timing_pulley_section();
+        content.append(&timing_pulley_frame);
+
+        let (
             ops_frame,
             offset_entry,
-            fillet_entry,
             chamfer_entry,
             offset_unit_label,
-            fillet_unit_label,
             chamfer_unit_label,
         ) = Self::build_geometry_ops_section();
         content.append(&ops_frame);
 
         let (
             cam_frame,
+            cam_use_global_check,
             op_type_combo,
             depth_entry,
+            z_offset_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
             depth_unit_label,
+            z_offset_unit_label,
             step_down_unit_label,
             step_in_unit_label,
+            step_in_label,
+            depth_label,
         ) = Self::build_cam_section();
         content.append(&cam_frame);
 
@@ -314,11 +336,13 @@ impl PropertiesPanel {
             polygon_frame,
             gear_frame,
             sprocket_frame,
+            timing_pulley_frame,
             cam_frame,
             ops_frame,
             empty_label,
             pos_x_entry,
             pos_y_entry,
+            pos_z_entry,
             width_entry,
             height_entry,
             rotation_entry,
@@ -338,15 +362,20 @@ impl PropertiesPanel {
             sprocket_pitch_entry,
             sprocket_teeth_entry,
             sprocket_roller_diameter_entry,
+            timing_pulley_pitch_entry,
+            timing_pulley_teeth_entry,
+            timing_pulley_belt_width_entry,
+            timing_pulley_hole_radius_entry,
+            cam_use_global_check,
             op_type_combo,
             depth_entry,
+            z_offset_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
             offset_entry,
-            fillet_entry,
             chamfer_entry,
 
             image_engraving_frame,
@@ -370,15 +399,18 @@ impl PropertiesPanel {
             header,
             x_unit_label,
             y_unit_label,
+            z_unit_label,
             width_unit_label,
             height_unit_label,
             radius_unit_label,
             font_size_unit_label,
             depth_unit_label,
+            z_offset_unit_label,
             step_down_unit_label,
+            step_in_label,
             step_in_unit_label,
+            depth_label,
             offset_unit_label,
-            fillet_unit_label,
             chamfer_unit_label,
             lock_aspect_ratio,
             rotation_warning_label,
@@ -423,6 +455,14 @@ impl PropertiesPanel {
             &self.pos_x_entry,
             &self.width_entry,
             &self.height_entry,
+            self.state.clone(),
+            self.settings.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::dimensions::setup_position_z_handler(
+            &self.pos_z_entry,
             self.state.clone(),
             self.settings.clone(),
             self.redraw_callback.clone(),
@@ -569,6 +609,12 @@ impl PropertiesPanel {
         );
 
         // CAM handlers
+        handlers::cam::setup_cam_use_global_handler(
+            &self.cam_use_global_check,
+            self.state.clone(),
+            self.updating.clone(),
+        );
+
         handlers::cam::setup_operation_type_handler(
             &self.op_type_combo,
             self.state.clone(),
@@ -578,6 +624,13 @@ impl PropertiesPanel {
         handlers::cam::setup_depth_handler(
             &self.depth_entry,
             &self.op_type_combo,
+            self.state.clone(),
+            self.settings.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::cam::setup_z_offset_handler(
+            &self.z_offset_entry,
             self.state.clone(),
             self.settings.clone(),
             self.updating.clone(),
@@ -659,18 +712,37 @@ impl PropertiesPanel {
             self.updating.clone(),
         );
 
+        handlers::gear_sprocket::setup_timing_pulley_pitch_handler(
+            &self.timing_pulley_pitch_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::gear_sprocket::setup_timing_pulley_teeth_handler(
+            &self.timing_pulley_teeth_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::gear_sprocket::setup_timing_pulley_belt_width_handler(
+            &self.timing_pulley_belt_width_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::gear_sprocket::setup_timing_pulley_hole_radius_handler(
+            &self.timing_pulley_hole_radius_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
         // Effects handlers
         handlers::effects::setup_offset_handler(
             &self.offset_entry,
-            self.state.clone(),
-            self.preview_shapes.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-            self.has_focus.clone(),
-        );
-
-        handlers::effects::setup_fillet_handler(
-            &self.fillet_entry,
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),

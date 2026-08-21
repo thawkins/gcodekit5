@@ -382,7 +382,7 @@ impl MachineControlView {
         // MAIN AREA
         // ═════════════════════════════════════════════
         let main_area = Box::new(Orientation::Vertical, 12);
-        main_area.set_hexpand(true);
+        main_area.set_hexpand(false); // false - No reducir del mínimo
         main_area.set_vexpand(true);
         main_area.set_margin_top(12);
         main_area.set_margin_bottom(12);
@@ -712,7 +712,7 @@ impl MachineControlView {
         main_area.append(&jog_area);
 
         // Setup Paned
-        // Use an inner paned so we have: [sidebar] | [main area] | [device console]
+        // Layout: [sidebar] | [editor (top) + console (bottom)]
         let main_scroller = ScrolledWindow::new();
         main_scroller.set_hexpand(true);
         main_scroller.set_vexpand(true);
@@ -722,6 +722,57 @@ impl MachineControlView {
         let inner_paned = Paned::new(Orientation::Horizontal);
         inner_paned.set_start_child(Some(&main_scroller));
 
+        // ==========================================
+        // PANEL DERECHO DIVIDIDO VERTICALMENTE
+        // ==========================================
+        let right_vpaned = Paned::new(Orientation::Vertical);
+        right_vpaned.set_vexpand(true);
+        right_vpaned.set_hexpand(true);
+
+        // ---- Editor de G-code (PARTE SUPERIOR) ----
+        let editor_scroller = ScrolledWindow::new();
+        editor_scroller.set_policy(PolicyType::Automatic, PolicyType::Automatic);
+        editor_scroller.set_vexpand(true);
+        editor_scroller.set_hexpand(true);
+
+        if let Some(editor) = &editor {
+            editor.widget.set_vexpand(true);
+            editor.widget.set_hexpand(true);
+            editor_scroller.set_child(Some(&editor.widget));
+        } else {
+            let placeholder = Label::new(Some(&t!("Editor not available")));
+            placeholder.set_halign(Align::Center);
+            placeholder.set_valign(Align::Center);
+            editor_scroller.set_child(Some(&placeholder));
+        }
+
+        // Toolbar para el editor
+        let editor_header = Box::new(Orientation::Horizontal, 6);
+        editor_header.set_margin_start(6);
+        editor_header.set_margin_end(6);
+        editor_header.set_margin_top(6);
+        let editor_title = Label::new(Some(&t!("G-Code Editor")));
+        editor_title.add_css_class("dim-label");
+        editor_title.set_halign(Align::Start);
+        editor_title.set_hexpand(true);
+        editor_header.append(&editor_title);
+
+        let clear_editor_btn = Button::from_icon_name("edit-clear-symbolic");
+        clear_editor_btn.set_tooltip_text(Some(&t!("Clear editor")));
+        editor_header.append(&clear_editor_btn);
+
+        let save_editor_btn = Button::from_icon_name("document-save-symbolic");
+        save_editor_btn.set_tooltip_text(Some(&t!("Save G-code")));
+        editor_header.append(&save_editor_btn);
+
+        let editor_container = Box::new(Orientation::Vertical, 0);
+        editor_container.set_vexpand(true);
+        editor_container.append(&editor_header);
+        editor_container.append(&editor_scroller);
+
+        right_vpaned.set_start_child(Some(&editor_container));
+
+        // ---- Consola del dispositivo (PARTE INFERIOR) ----
         let console_container = Box::new(Orientation::Vertical, 10);
         console_container.set_hexpand(true);
         console_container.set_vexpand(true);
@@ -730,7 +781,7 @@ impl MachineControlView {
         console_container.set_margin_start(12);
         console_container.set_margin_end(12);
 
-        // Device Console header (clear/copy + collapse)
+        // Device Console header
         let console_header = Box::new(Orientation::Horizontal, 6);
         console_header.set_hexpand(true);
 
@@ -741,23 +792,19 @@ impl MachineControlView {
 
         let console_clear_btn = Button::from_icon_name("user-trash-symbolic");
         console_clear_btn.set_tooltip_text(Some(&t!("Clear console")));
-        console_clear_btn.update_property(&[AccessibleProperty::Label(&t!("Clear console"))]);
-
         let console_copy_err_btn = Button::from_icon_name("edit-copy-symbolic");
         console_copy_err_btn.set_tooltip_text(Some(&t!("Copy last error")));
-        console_copy_err_btn.update_property(&[AccessibleProperty::Label(&t!("Copy last error"))]);
-
         let help_btn = help_browser::make_help_button("machine_control");
 
         console_header.append(&console_title);
         console_header.append(&console_clear_btn);
         console_header.append(&console_copy_err_btn);
         console_header.append(&help_btn);
+
         console_container.append(&console_header);
 
-        // Embed Device Console if present
+        // Embed Device Console
         if let Some(ref console_view) = device_console {
-            // Guard against accidentally parenting the same widget twice.
             if console_view.widget.parent().is_none() {
                 console_container.append(&console_view.widget);
             }
@@ -773,7 +820,78 @@ impl MachineControlView {
         console_scroller.set_policy(PolicyType::Never, PolicyType::Automatic);
         console_scroller.set_child(Some(&console_container));
 
-        inner_paned.set_end_child(Some(&console_scroller));
+        right_vpaned.set_end_child(Some(&console_scroller));
+
+        // Configurar porcentaje (70% editor, 30% consola)
+        let right_vpaned_sized = Rc::new(Cell::new(false));
+        right_vpaned.add_tick_callback({
+            let right_vpaned_sized = right_vpaned_sized.clone();
+            let right_vpaned = right_vpaned.clone();
+            move |_, _| {
+                if right_vpaned_sized.get() {
+                    return glib::ControlFlow::Break;
+                }
+                let height = right_vpaned.height();
+                if height > 0 {
+                    // 70% para el editor (arriba), 30% para la consola (abajo)
+                    right_vpaned.set_position((height as f64 * 0.7) as i32);
+                    right_vpaned_sized.set(true);
+                }
+                glib::ControlFlow::Continue
+            }
+        });
+
+        // Conectar botones del editor
+        if let Some(editor) = &editor {
+            let editor_clone = editor.clone();
+            clear_editor_btn.connect_clicked(move |_| {
+                editor_clone.set_text("");
+            });
+
+            let editor_clone_save = editor.clone();
+            save_editor_btn.connect_clicked(move |_| {
+                editor_clone_save.save_file();
+            });
+        }
+
+        // Conectar botones de consola
+        {
+            let console_view = device_console.clone();
+            console_clear_btn.connect_clicked(move |_| {
+                if let Some(c) = console_view.as_ref() {
+                    c.clear_log();
+                }
+            });
+        }
+
+        {
+            let console_view = device_console.clone();
+            let console_container = console_container.clone();
+            console_copy_err_btn.connect_clicked(move |_| {
+                let Some(c) = console_view.as_ref() else {
+                    return;
+                };
+                let text = c.get_log_text();
+                let mut last = None;
+                for line in text.lines().rev() {
+                    let l = line.trim();
+                    if l.is_empty() || l == "ok" || l.starts_with('<') {
+                        continue;
+                    }
+                    let low = l.to_lowercase();
+                    if low.contains("error") || low.contains("alarm") {
+                        last = Some(l.to_string());
+                        break;
+                    }
+                }
+                if let Some(line) = last {
+                    let clipboard = console_container.display().clipboard();
+                    clipboard.set_text(&line);
+                }
+            });
+        }
+
+        inner_paned.set_end_child(Some(&right_vpaned));
 
         // Header actions (DeviceConsoleView toolbar is intentionally minimal)
         {
@@ -812,26 +930,12 @@ impl MachineControlView {
             });
         }
 
-        // Console hide/show
-        // - Hide button lives in the console header.
-        // - When hidden, the console collapses to 0 width and a small floating "Show" panel appears.
-        let console_collapsed = Rc::new(Cell::new(false));
-        let console_last_pos = Rc::new(Cell::new(0));
-
-        let console_hide_btn = make_icon_label_button("view-conceal-symbolic", &t!("Hide"));
-        console_hide_btn.set_tooltip_text(Some(&t!("Hide device console")));
-        console_header.append(&console_hide_btn);
-
-        let console_show_btn = make_icon_label_button("view-reveal-symbolic", &t!("Show Console"));
-        console_show_btn.set_tooltip_text(Some(&t!("Show device console")));
-
         let console_show_panel = Box::new(Orientation::Horizontal, 0);
         console_show_panel.add_css_class("osd");
         console_show_panel.set_halign(Align::End);
         console_show_panel.set_valign(Align::Start);
         console_show_panel.set_margin_end(12);
         console_show_panel.set_margin_top(12);
-        console_show_panel.append(&console_show_btn);
         console_show_panel.set_visible(false);
 
         let inner_overlay = Overlay::new();
@@ -840,71 +944,10 @@ impl MachineControlView {
         inner_overlay.set_hexpand(true);
         inner_overlay.set_vexpand(true);
 
-        {
-            let inner_paned = inner_paned.clone();
-            let hide_btn = console_hide_btn.clone();
-            let console_collapsed = console_collapsed.clone();
-            let console_last_pos = console_last_pos.clone();
-            let show_panel = console_show_panel.clone();
-
-            console_hide_btn.connect_clicked(move |_| {
-                if console_collapsed.get() {
-                    return;
-                }
-                console_last_pos.set(inner_paned.position());
-                inner_paned.set_end_child(None::<&gtk4::Widget>);
-                hide_btn.set_sensitive(false);
-                console_collapsed.set(true);
-                show_panel.set_visible(true);
-            });
-        }
-
-        {
-            let inner_paned = inner_paned.clone();
-            let console_scroller = console_scroller.clone();
-            let hide_btn = console_hide_btn.clone();
-            let console_collapsed = console_collapsed.clone();
-            let console_last_pos = console_last_pos.clone();
-            let show_panel = console_show_panel.clone();
-
-            console_show_btn.connect_clicked(move |_| {
-                if !console_collapsed.get() {
-                    return;
-                }
-                inner_paned.set_end_child(Some(&console_scroller));
-                let pos = console_last_pos.get();
-                if pos > 0 {
-                    inner_paned.set_position(pos);
-                }
-                hide_btn.set_sensitive(true);
-                console_collapsed.set(false);
-                show_panel.set_visible(false);
-            });
-        }
-
-        // Initial sizing (~59% main / ~41% console), then let the user resize.
-        let inner_sized = Rc::new(Cell::new(false));
-        inner_paned.add_tick_callback({
-            let inner_sized = inner_sized.clone();
-            move |paned, _clock| {
-                if inner_sized.get() {
-                    return glib::ControlFlow::Break;
-                }
-                let width = paned.width();
-                if width <= 0 {
-                    return glib::ControlFlow::Continue;
-                }
-                // Was 36% console; increase by ~15% => ~41.4% console.
-                paned.set_position((width as f64 * 0.586) as i32);
-                inner_sized.set(true);
-                glib::ControlFlow::Break
-            }
-        });
-
         widget.set_start_child(Some(&sidebar_scroller));
         widget.set_end_child(Some(&inner_overlay));
 
-        // Initial sizing (20% sidebar / 80% main), then let the user resize.
+        // Initial sizing (20% left sidebar / 80% main), then let the user resize.
         let outer_sized = Rc::new(Cell::new(false));
         widget.add_tick_callback({
             let outer_sized = outer_sized.clone();
@@ -916,11 +959,14 @@ impl MachineControlView {
                 if width <= 0 {
                     return glib::ControlFlow::Continue;
                 }
-                paned.set_position((width as f64 * 0.2) as i32);
+                paned.set_position((width as f64 * 0.20) as i32);
                 outer_sized.set(true);
                 glib::ControlFlow::Break
             }
         });
+
+        // No reducir del tamaño menor definido
+        widget.set_shrink_start_child(false);
 
         let communicator = thread_safe(SerialCommunicator::new());
 
@@ -1312,57 +1358,38 @@ impl MachineControlView {
             let is_paused = view.is_paused.clone();
             let console = view.device_console.clone();
             let view_pause = view.clone();
+
+        // Boton de pausa
             view.pause_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
-                    c.append_log("> M5 (Laser off)\n");
+                    c.append_log("> ! (Pause)\n");
                 }
 
-                let communicator = communicator.clone();
-                let console = console.clone();
-                let is_paused = is_paused.clone();
-                let view_pause = view_pause.clone();
-
-                // Send M5 and wait for ok
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command("M5");
+
+                    // Detectar modo láser: leer $32, si no disponible → CNC (false)
+                    let is_laser = device_status::get_grbl_setting(32)
+                        .and_then(|v| v.parse::<i32>().ok())
+                        .map(|v| v == 1)
+                        .unwrap_or(false);  // ← Default: CNC
+
+                    if !is_laser {
+                        // CNC: Enviar M5 para detener el spindle
+                        let _ = comm.send_command("M5");
+                        if let Some(c) = console.as_ref() {
+                            c.append_log("> M5 (Spindle off)\n");
+                        }
+                    }
+                    // Láser: solo enviar ! (GRBL apaga el láser automáticamente)
+                    let _ = comm.send(b"!");
                 }
 
-                // Wait for GRBL to confirm M5 with ok
-                // Use a timeout to avoid blocking
-                let start = std::time::Instant::now();
-                let timeout = std::time::Duration::from_millis(500);
+                *is_paused.lock() = true;
 
-                glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
-                    let ok_received = {
-                        let mut comm = communicator.lock();
-                        match comm.receive() {
-                            Ok(data) if !data.is_empty() => {
-                                let resp = String::from_utf8_lossy(&data);
-                                resp.contains("ok")
-                            }
-                            _ => false,
-                        }
-                    };
-
-                    if ok_received || start.elapsed() >= timeout {
-                        // Received OK or timeout, now send!
-                        if let Some(c) = console.as_ref() {
-                            c.append_log("> ! (Pause)\n");
-                        }
-                        {
-                            let mut comm = communicator.lock();
-                            let _ = comm.send(b"!");
-                        }
-                        *is_paused.lock() = true;
-                        if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
-                            sender.pause();
-                        }
-                        glib::ControlFlow::Break
-                    } else {
-                        glib::ControlFlow::Continue
-                    }
-                });
+                if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
+                    sender.pause();
+                }
             });
 
             // Unlock button handler
@@ -1459,6 +1486,9 @@ impl MachineControlView {
                 if let Some(sb) = status_bar.as_ref() {
                     sb.set_progress(0.0, "", "");
                 }
+                // Reactivar botón Send al parar
+                view_stop.send_btn.set_sensitive(true);
+                view_stop.stop_btn.set_sensitive(true);
             });
         }
 
@@ -1482,20 +1512,27 @@ impl MachineControlView {
                         .secondary_text(t!("Please load or type G-Code into the editor first."))
                         .build();
 
-                        // Set transient parent if possible
-                        if let Some(root) = widget_for_dialog.root() {
-                            if let Ok(win) = root.downcast::<gtk4::Window>() {
-                                dialog.set_transient_for(Some(&win));
-                                dialog.set_modal(true);
-                            }
+                    // Set transient parent if possible
+                    if let Some(root) = widget_for_dialog.root() {
+                        if let Ok(win) = root.downcast::<gtk4::Window>() {
+                            dialog.set_transient_for(Some(&win));
+                            dialog.set_modal(true);
                         }
+                    }
 
-                        dialog.connect_response(|d, _| d.close());
-                        dialog.show();
-                        return;
+                    dialog.connect_response(|d, _| d.close());
+                    dialog.show();
+                    return;
                 }
+                // Habilitar botones de control al iniciar
+                view_clone.stop_btn.set_sensitive(true);
+                view_clone.pause_btn.set_sensitive(true);
+                view_clone.resume_btn.set_sensitive(true);
 
-                // Usar DirectSender para TODO (sin condición is_image)
+                // Deshabilitar send_btn durante la ejecución
+                view_clone.send_btn.set_sensitive(false);
+
+                // Usar DirectSender
                 let (sender, receiver) = DirectSender::new(
                     communicator_clone.clone(),
                     view_clone.is_streaming.clone(),
@@ -1529,7 +1566,8 @@ impl MachineControlView {
                         // Mostrar barra de progreso
                         if message.starts_with('*') {
                             if let Some(sb) = status_bar.as_ref() {
-                                let percent_str = message.trim_start_matches('*').trim().trim_end_matches('%');
+                                let percent_str =
+                                    message.trim_start_matches('*').trim().trim_end_matches('%');
                                 if let Ok(percent) = percent_str.parse::<f64>() {
                                     MachineControlView::update_progress(
                                         &status_bar,
@@ -1543,7 +1581,7 @@ impl MachineControlView {
                                         sb.set_progress(0.0, "", "");
                                         view_timeout.pause_btn.set_sensitive(true);
                                         view_timeout.resume_btn.set_sensitive(true);
-                                        view_timeout.stop_btn.set_sensitive(false);
+                                        view_timeout.stop_btn.set_sensitive(true); // Siempre true
                                         *is_streaming_timeout.lock() = false;
                                     }
                                 }
@@ -1556,10 +1594,10 @@ impl MachineControlView {
                             }
                             view_timeout.pause_btn.set_sensitive(true);
                             view_timeout.resume_btn.set_sensitive(true);
-                            view_timeout.stop_btn.set_sensitive(false);
+                            view_timeout.stop_btn.set_sensitive(true); // Siempre true
+                            view_timeout.send_btn.set_sensitive(true);
                             *is_streaming_timeout.lock() = false;
                         }
-
                     }
                     glib::ControlFlow::Continue
                 });
@@ -1619,7 +1657,7 @@ impl MachineControlView {
                 }
             });
         }
-        // ---
+
         // Zero Controls
         {
             let communicator = view.communicator.clone();
@@ -2071,11 +2109,20 @@ impl MachineControlView {
                                                     let secs = (elapsed % 60.0) as u32;
 
                                                     if let Some(c) = device_console_poll.as_ref() {
-                                                        c.append_log(&format!("✅ Work completed on: {}:{:02}\n", mins, secs));
+                                                        c.append_log(&format!(
+                                                            "{} {}:{:02}\n",
+                                                            t!("✅ Work completed in:"),
+                                                            mins,
+                                                            secs
+                                                        ));
                                                     }
                                                     *job_start_time_poll.lock() = None;
+
+                                                    // Limpiar barra de progreso
+                                                    if let Some(sb) = status_bar_poll.as_ref() {
+                                                        sb.set_progress(0.0, "", "");
+                                                    }
                                                 }
-                                                // ---
 
                                                 if line.is_empty() { continue; }
 
@@ -2197,7 +2244,7 @@ impl MachineControlView {
                                                         conn_status_state_poll.set_text(&format!(
                                                             "{} {}",
                                                             t!("State:"),
-                                                                                                 state
+                                                            state
                                                         ));
                                                         state_label_poll.set_text(&state);
 
@@ -2228,24 +2275,16 @@ impl MachineControlView {
                                                             sb.set_state(&state);
                                                         }
 
-                                                        // If machine is Idle and not streaming, clear job timer
+
+                                                        // If machine is Idle and not streaming, just clear the timer without showing duplicate message
                                                         if state == "Idle" && !*is_streaming_poll.lock() {
                                                             let mut start_time = job_start_time_poll.lock();
                                                             if start_time.is_some() {
-
-                                                                let elapsed = start_time.map_or(0.0, |start| start.elapsed().as_secs_f64());
-                                                                let mins = (elapsed / 60.0).floor() as u32;
-                                                                let secs = (elapsed % 60.0) as u32;
-
                                                                 *start_time = None;
                                                                 if let Some(sb) = status_bar_poll.as_ref() {
                                                                     sb.set_progress(0.0, "", "");
                                                                 }
-                                                                if let Some(c) = device_console_poll.as_ref() {
-
-                                                                    c.append_log(&format!("✅ Work completed in: {}:{:02}\n", mins, secs));
-                                                                    c.append_log(&format!("{}\n", t!("Job Finished.")));
-                                                                }
+                                                                // NO mostrar mensaje de tiempo aquí - ya se muestra con "Program End"
                                                             }
                                                         }
 

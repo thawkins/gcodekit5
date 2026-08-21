@@ -108,7 +108,10 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if rect.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (rect.laser_params.feed_rate, rect.laser_params.power_percent as u32)
+            (
+                rect.laser_params.feed_rate,
+                (rect.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
         let w = rect.width;
@@ -135,11 +138,12 @@ impl ToolpathGenerator {
                 Point::new(x + w, y + h),
                 Point::new(x, y + h),
             ];
-            let t_corners: SmallVec<[Point; 4]> = corners.iter().map(|&p| transform_point(p)).collect();
+            let t_corners: SmallVec<[Point; 4]> =
+                corners.iter().map(|&p| transform_point(p)).collect();
 
             segments.push(ToolpathSegment::new(
                 ToolpathSegmentType::RapidMove,
-                Point::new(0.0, 0.0),
+                t_corners[0],
                 t_corners[0],
                 feed_rate,
                 spindle_speed,
@@ -161,7 +165,7 @@ impl ToolpathGenerator {
 
             segments.push(ToolpathSegment::new(
                 ToolpathSegmentType::RapidMove,
-                Point::new(0.0, 0.0),
+                start_pt,
                 start_pt,
                 feed_rate,
                 spindle_speed,
@@ -286,7 +290,10 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if circle.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (circle.laser_params.feed_rate, circle.laser_params.power_percent as u32)
+            (
+                circle.laser_params.feed_rate,
+                (circle.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
         let rotation = circle.rotation;
@@ -303,7 +310,7 @@ impl ToolpathGenerator {
 
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
-            Point::new(0.0, 0.0),
+            start_point,
             start_point,
             feed_rate,
             spindle_speed,
@@ -339,7 +346,10 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if ellipse.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (ellipse.laser_params.feed_rate, ellipse.laser_params.power_percent as u32)
+            (
+                ellipse.laser_params.feed_rate,
+                (ellipse.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
         let center = ellipse.center;
@@ -362,7 +372,7 @@ impl ToolpathGenerator {
 
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
-            Point::new(0.0, 0.0),
+            start_point,
             start_point,
             feed_rate,
             spindle_speed,
@@ -402,13 +412,16 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if line.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (line.laser_params.feed_rate, line.laser_params.power_percent as u32)
+            (
+                line.laser_params.feed_rate,
+                (line.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
         let segments = vec![
             ToolpathSegment::new(
                 ToolpathSegmentType::RapidMove,
-                Point::new(0.0, 0.0),
+                line.start,
                 line.start,
                 feed_rate,
                 spindle_speed,
@@ -431,16 +444,17 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if triangle.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (triangle.laser_params.feed_rate, triangle.laser_params.power_percent as u32)
+            (
+                triangle.laser_params.feed_rate,
+                (triangle.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
-        let half_w = triangle.width / 2.0;
-        let half_h = triangle.height / 2.0;
+        // Obtener los vértices locales del triángulo usando get_local_vertices_f64()
+        // Esto respeta right_angle_corner
+        let [p1_local, p2_local, p3_local] = triangle.get_local_vertices_f64();
 
-        let p1_local = Point::new(-half_w, -half_h);
-        let p2_local = Point::new(half_w, -half_h);
-        let p3_local = Point::new(-half_w, half_h);
-
+        // Aplicar rotación y traslación
         let rotation = triangle.rotation;
         let center = triangle.center;
 
@@ -458,7 +472,7 @@ impl ToolpathGenerator {
 
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
-            Point::new(0.0, 0.0),
+            p1,
             p1,
             feed_rate,
             spindle_speed,
@@ -497,7 +511,10 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if polygon.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (polygon.laser_params.feed_rate, polygon.laser_params.power_percent as u32)
+            (
+                polygon.laser_params.feed_rate,
+                (polygon.laser_params.power_percent *10.0) as u32,
+            )
         };
 
         let sides = polygon.sides.max(3);
@@ -527,7 +544,7 @@ impl ToolpathGenerator {
 
         segments.push(ToolpathSegment::new(
             ToolpathSegmentType::RapidMove,
-            Point::new(0.0, 0.0),
+            points[0],
             points[0],
             feed_rate,
             spindle_speed,
@@ -553,11 +570,14 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if path_shape.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (path_shape.laser_params.feed_rate, path_shape.laser_params.power_percent as u32)
+            (
+                path_shape.laser_params.feed_rate,
+                (path_shape.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
-        let mut current_pos = Point::new(0.0, 0.0);
         let mut first_point: Option<Point> = None;
+        let mut current_pos = Point::new(0.0, 0.0);
 
         for event in path_shape.render().iter() {
             match event {
@@ -584,14 +604,22 @@ impl ToolpathGenerator {
                     ));
                     current_pos = p;
                 }
-                lyon::path::Event::Cubic { ctrl1, ctrl2, to, .. } => {
+                lyon::path::Event::Cubic {
+                    ctrl1, ctrl2, to, ..
+                } => {
                     let p_to = Point::new(to.x as f64, to.y as f64);
                     let p_c1 = Point::new(ctrl1.x as f64, ctrl1.y as f64);
                     let p_c2 = Point::new(ctrl2.x as f64, ctrl2.y as f64);
 
-                    if let Some((center, is_ccw)) = self.try_convert_to_arc(current_pos, p_to, p_c1, p_c2) {
+                    if let Some((center, is_ccw)) =
+                        self.try_convert_to_arc(current_pos, p_to, p_c1, p_c2)
+                    {
                         segments.push(ToolpathSegment::new_arc(
-                            if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                            if is_ccw {
+                                ToolpathSegmentType::ArcCCW
+                            } else {
+                                ToolpathSegmentType::ArcCW
+                            },
                             current_pos,
                             p_to,
                             center,
@@ -629,9 +657,15 @@ impl ToolpathGenerator {
                     let p_to = Point::new(to.x as f64, to.y as f64);
                     let p_ctrl = Point::new(ctrl.x as f64, ctrl.y as f64);
 
-                    if let Some((center, is_ccw)) = self.try_convert_quadratic_to_arc(current_pos, p_to, p_ctrl) {
+                    if let Some((center, is_ccw)) =
+                        self.try_convert_quadratic_to_arc(current_pos, p_to, p_ctrl)
+                    {
                         segments.push(ToolpathSegment::new_arc(
-                            if is_ccw { ToolpathSegmentType::ArcCCW } else { ToolpathSegmentType::ArcCW },
+                            if is_ccw {
+                                ToolpathSegmentType::ArcCCW
+                            } else {
+                                ToolpathSegmentType::ArcCW
+                            },
                             current_pos,
                             p_to,
                             center,
@@ -694,7 +728,11 @@ impl ToolpathGenerator {
         self.generate_path_contour(&path_with_params, step_down)
     }
 
-    pub fn generate_sprocket_contour(&self, sprocket: &DesignSprocket, step_down: f64) -> Vec<Toolpath> {
+    pub fn generate_sprocket_contour(
+        &self,
+        sprocket: &DesignSprocket,
+        step_down: f64,
+    ) -> Vec<Toolpath> {
         let path = sprocket.render();
         let path_shape = PathShape::from_lyon_path(&path);
         let mut path_with_params = path_shape;
@@ -706,10 +744,14 @@ impl ToolpathGenerator {
         let (feed_rate, spindle_speed) = if text_shape.laser_params.use_global {
             (self.feed_rate, self.spindle_speed)
         } else {
-            (text_shape.laser_params.feed_rate, text_shape.laser_params.power_percent as u32)
+            (
+                text_shape.laser_params.feed_rate,
+                (text_shape.laser_params.power_percent * 10.0) as u32,
+            )
         };
 
-        let segments = self.build_text_outline_segments_with_params(text_shape, feed_rate, spindle_speed);
+        let segments =
+            self.build_text_outline_segments_with_params(text_shape, feed_rate, spindle_speed);
         self.create_multipass_toolpaths(segments, step_down)
     }
 
@@ -728,14 +770,12 @@ impl ToolpathGenerator {
         if self.ramp_angle > 0.001 && !segments.is_empty() {
             let contour_length: f64 = segments
                 .iter()
-                .map(|s| {
-                    match s.segment_type {
-                        ToolpathSegmentType::LinearMove | ToolpathSegmentType::RapidMove => {
-                            s.start.distance_to(&s.end)
-                        }
-                        ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
-                            s.start.distance_to(&s.end)
-                        }
+                .map(|s| match s.segment_type {
+                    ToolpathSegmentType::LinearMove | ToolpathSegmentType::RapidMove => {
+                        s.start.distance_to(&s.end)
+                    }
+                    ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
+                        s.start.distance_to(&s.end)
                     }
                 })
                 .sum();
@@ -861,28 +901,27 @@ impl ToolpathGenerator {
     ) -> Vec<ToolpathSegment> {
         let mut segments = Vec::new();
 
-        let font = font_manager::get_font_for(&text_shape.font_family, text_shape.bold, text_shape.italic);
+        let font =
+            font_manager::get_font_for(&text_shape.font_family, text_shape.bold, text_shape.italic);
         let scale = Scale::uniform(text_shape.font_size as f32);
         let v_metrics = font.v_metrics(scale);
-        let line_height = v_metrics.ascent - v_metrics.descent + v_metrics.line_gap;
+        let line_height = v_metrics.ascent - v_metrics.descent - v_metrics.line_gap;
 
-        let (min_x, min_y, max_x, max_y) = text_shape.bounds();
-        let baseline_y0 = (text_shape.y as f32) + v_metrics.ascent;
-        let rotation_center_raw = Point::new((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
-        let rotation_center = Point::new(
-            rotation_center_raw.x,
-            2.0 * baseline_y0 as f64 - rotation_center_raw.y,
-        );
+        // Obtener el bounding box centrado
+        let (left, bottom, right, top) = text_shape.bounds();
 
-        let mut caret_x = text_shape.x as f32;
+        let baseline_y0 = bottom as f32 + v_metrics.line_gap;
+
+        let rotation_center = Point::new((left + right) / 2.0, (bottom + top) / 2.0);
+
+        let mut caret_x = left as f32;
         let mut baseline_y = baseline_y0;
         let mut prev: Option<GlyphId> = None;
-
         let mut pen = Point::new(0.0, 0.0);
 
         for ch in text_shape.text.chars() {
             if ch == '\n' {
-                caret_x = text_shape.x as f32;
+                caret_x = left as f32;
                 baseline_y -= line_height;
                 prev = None;
                 continue;
@@ -954,7 +993,10 @@ impl ToolpathGenerator {
         step_down: f64,
         step_in: f64,
     ) -> Vec<Toolpath> {
-        let r = rect.effective_corner_radius().min(rect.width.abs() / 2.0).min(rect.height.abs() / 2.0);
+        let r = rect
+            .effective_corner_radius()
+            .min(rect.width.abs() / 2.0)
+            .min(rect.height.abs() / 2.0);
 
         if r > 0.001 || rect.rotation.abs() > 1e-6 {
             let mut vertices = Vec::new();
@@ -965,16 +1007,20 @@ impl ToolpathGenerator {
 
             if r > 0.001 {
                 let segments = 32;
-                let mut add_arc_points = |center: Point, start_angle: f64, end_angle: f64, include_start: bool| {
-                    let start_rad = start_angle.to_radians();
-                    let end_rad = end_angle.to_radians();
-                    let step = (end_rad - start_rad) / segments as f64;
-                    let start_i = if include_start { 0 } else { 1 };
-                    for i in start_i..=segments {
-                        let angle = start_rad + step * i as f64;
-                        vertices.push(Point::new(center.x + r * angle.cos(), center.y + r * angle.sin()));
-                    }
-                };
+                let mut add_arc_points =
+                    |center: Point, start_angle: f64, end_angle: f64, include_start: bool| {
+                        let start_rad = start_angle.to_radians();
+                        let end_rad = end_angle.to_radians();
+                        let step = (end_rad - start_rad) / segments as f64;
+                        let start_i = if include_start { 0 } else { 1 };
+                        for i in start_i..=segments {
+                            let angle = start_rad + step * i as f64;
+                            vertices.push(Point::new(
+                                center.x + r * angle.cos(),
+                                center.y + r * angle.sin(),
+                            ));
+                        }
+                    };
                 add_arc_points(Point::new(x + w - r, y + r), 270.0, 360.0, true);
                 add_arc_points(Point::new(x + w - r, y + h - r), 0.0, 90.0, false);
                 add_arc_points(Point::new(x + r, y + h - r), 90.0, 180.0, false);
@@ -1003,7 +1049,8 @@ impl ToolpathGenerator {
         gen.operation.set_ramp_angle(self.ramp_angle);
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-        gen.operation.set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        gen.operation
+            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.generate_rectangular_pocket(rect, step_down)
     }
 
@@ -1014,13 +1061,18 @@ impl ToolpathGenerator {
         step_down: f64,
         step_in: f64,
     ) -> Vec<Toolpath> {
-        let op = PocketOperation::new("circle_pocket".to_string(), pocket_depth, self.tool_diameter);
+        let op = PocketOperation::new(
+            "circle_pocket".to_string(),
+            pocket_depth,
+            self.tool_diameter,
+        );
         let mut gen = PocketGenerator::new(op);
         gen.operation.set_start_depth(self.start_depth);
         gen.operation.set_ramp_angle(self.ramp_angle);
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-        gen.operation.set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        gen.operation
+            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.generate_circular_pocket(circle, step_down)
     }
 
@@ -1031,12 +1083,17 @@ impl ToolpathGenerator {
         step_down: f64,
         step_in: f64,
     ) -> Vec<Toolpath> {
-        let op = PocketOperation::new("polyline_pocket".to_string(), pocket_depth, self.tool_diameter);
+        let op = PocketOperation::new(
+            "polyline_pocket".to_string(),
+            pocket_depth,
+            self.tool_diameter,
+        );
         let mut gen = PocketGenerator::new(op);
         gen.operation.set_start_depth(self.start_depth);
         gen.operation.set_ramp_angle(self.ramp_angle);
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-        gen.operation.set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        gen.operation
+            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.operation.set_strategy(self.pocket_strategy);
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
         gen.generate_polygon_pocket(vertices, step_down)
@@ -1321,7 +1378,10 @@ impl ToolpathGenerator {
             out
         }
 
-        fn subtract_intervals(mut allowed: Vec<(f64, f64)>, forbidden: &[(f64, f64)]) -> Vec<(f64, f64)> {
+        fn subtract_intervals(
+            mut allowed: Vec<(f64, f64)>,
+            forbidden: &[(f64, f64)],
+        ) -> Vec<(f64, f64)> {
             if forbidden.is_empty() {
                 return allowed;
             }
@@ -1424,7 +1484,12 @@ impl ToolpathGenerator {
 
     // ==================== AUXILIARY METHODS ====================
 
-    fn try_convert_quadratic_to_arc(&self, start: Point, end: Point, ctrl: Point) -> Option<(Point, bool)> {
+    fn try_convert_quadratic_to_arc(
+        &self,
+        start: Point,
+        end: Point,
+        ctrl: Point,
+    ) -> Option<(Point, bool)> {
         let mid_start_ctrl = Point::new((start.x + ctrl.x) / 2.0, (start.y + ctrl.y) / 2.0);
         let mid_ctrl_end = Point::new((ctrl.x + end.x) / 2.0, (ctrl.y + end.y) / 2.0);
         let center_candidate = Point::new(
@@ -1445,7 +1510,13 @@ impl ToolpathGenerator {
         }
     }
 
-    fn try_convert_to_arc(&self, start: Point, end: Point, ctrl1: Point, ctrl2: Point) -> Option<(Point, bool)> {
+    fn try_convert_to_arc(
+        &self,
+        start: Point,
+        end: Point,
+        ctrl1: Point,
+        ctrl2: Point,
+    ) -> Option<(Point, bool)> {
         let center_candidate = Point::new((ctrl1.x + ctrl2.x) / 2.0, (ctrl1.y + ctrl2.y) / 2.0);
         let r_start = start.distance_to(&center_candidate);
         let r_end = end.distance_to(&center_candidate);
