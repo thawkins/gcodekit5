@@ -17,7 +17,7 @@ pub use gcodekit5_settings::{
 };
 
 pub use gcodekit5_gcodeeditor::{
-    EditorState, TextBuffer, TextChange, TextLine, UndoManager, Viewport,
+    EditorBridgeBackend, EditorError, EditorResult, TextBuffer, TextChange, UndoManager, Viewport,
 };
 
 pub use crate::types::{
@@ -29,3 +29,5 @@ pub use crate::types::{
 // Re-export the UI's Slint EditorBridge at the crate root so existing imports keep working.
 pub use crate::editor::EditorBridge;
 pub use crate::editor::SlintTextLine as TextLineUi;
+
+

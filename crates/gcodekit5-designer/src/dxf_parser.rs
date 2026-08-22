@@ -4,7 +4,7 @@
 //!
 //! Supports:
 //! - DXF R2000+ format parsing
-//! - Entity extraction (lines, circles, arcs, polylines, text)
+//! - Entity extraction (lines, circles, arcs, polylines, ellipse, text)
 //! - Layer and block handling
 //! - Coordinate system transformation
 //! - Unit conversion
@@ -35,6 +35,8 @@ pub enum DxfEntityType {
     Spline,
     /// Block reference (insert)
     BlockReference,
+    /// Ellipse
+    Ellipse,
     /// Other/unsupported entity
     Other,
 }
@@ -121,6 +123,8 @@ pub struct DxfArc {
 pub struct DxfPolyline {
     /// Vertices
     pub vertices: Vec<Point>,
+    /// Bulge factors para cada segmento (0 = recta, >0 = arco)
+    pub bulges: Vec<f64>,
     /// Whether the polyline is closed
     pub closed: bool,
     /// Layer name
@@ -159,6 +163,8 @@ pub enum DxfEntity {
     Polyline(DxfPolyline),
     /// Text entity
     Text(DxfText),
+    /// Ellipse
+    Ellipse(DxfEllipse),
 }
 
 impl DxfEntity {
@@ -170,6 +176,7 @@ impl DxfEntity {
             DxfEntity::Arc(_) => DxfEntityType::Arc,
             DxfEntity::Polyline(_) => DxfEntityType::Polyline,
             DxfEntity::Text(_) => DxfEntityType::Text,
+            DxfEntity::Ellipse(_) => DxfEntityType::Ellipse,
         }
     }
 
@@ -181,6 +188,7 @@ impl DxfEntity {
             DxfEntity::Arc(a) => &a.layer,
             DxfEntity::Polyline(p) => &p.layer,
             DxfEntity::Text(t) => &t.layer,
+            DxfEntity::Ellipse(e) => &e.layer,
         }
     }
 
@@ -192,6 +200,7 @@ impl DxfEntity {
             DxfEntity::Arc(a) => a.color,
             DxfEntity::Polyline(p) => p.color,
             DxfEntity::Text(t) => t.color,
+            DxfEntity::Ellipse(e) => e.color,
         }
     }
 }
@@ -231,6 +240,24 @@ pub struct DxfFile {
     pub layers: HashMap<String, Vec<DxfEntity>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DxfEllipse {
+    /// Center point
+    pub center: Point,
+    /// Major axis endpoint (relative to center)
+    pub major_axis: Point,
+    /// Minor to major ratio
+    pub ratio: f64,
+    /// Start angle in radians
+    pub start_angle: f64,
+    /// End angle in radians
+    pub end_angle: f64,
+    /// Layer name
+    pub layer: String,
+    /// Color
+    pub color: u16,
+}
+
 impl DxfFile {
     /// Create new DXF file
     pub fn new() -> Self {
@@ -245,7 +272,6 @@ impl DxfFile {
     pub fn add_entity(&mut self, entity: DxfEntity) {
         let layer = entity.layer().to_string();
         self.entities.push(entity.clone());
-
         self.layers.entry(layer).or_default().push(entity);
     }
 
@@ -294,17 +320,12 @@ impl DxfFile {
                     t.position = Point::new(t.position.x * factor, t.position.y * factor);
                     t.height *= factor;
                 }
+                DxfEntity::Ellipse(e) => {
+                    e.center = Point::new(e.center.x * factor, e.center.y * factor);
+                    e.major_axis = Point::new(e.major_axis.x * factor, e.major_axis.y * factor);
+                }
             }
         }
-
-        self.header.extents_min = Point::new(
-            self.header.extents_min.x * factor,
-            self.header.extents_min.y * factor,
-        );
-        self.header.extents_max = Point::new(
-            self.header.extents_max.x * factor,
-            self.header.extents_max.y * factor,
-        );
 
         for layer_entities in self.layers.values_mut() {
             for entity in layer_entities {
@@ -330,9 +351,22 @@ impl DxfFile {
                         t.position = Point::new(t.position.x * factor, t.position.y * factor);
                         t.height *= factor;
                     }
+                    DxfEntity::Ellipse(e) => {
+                        e.center = Point::new(e.center.x * factor, e.center.y * factor);
+                        e.major_axis = Point::new(e.major_axis.x * factor, e.major_axis.y * factor);
+                    }
                 }
             }
         }
+
+        self.header.extents_min = Point::new(
+            self.header.extents_min.x * factor,
+            self.header.extents_min.y * factor,
+        );
+        self.header.extents_max = Point::new(
+            self.header.extents_max.x * factor,
+            self.header.extents_max.y * factor,
+        );
     }
 
     /// Apply unit conversion
@@ -417,6 +451,12 @@ impl DxfParser {
                             i += 1;
                             if let Ok(text_entity) = Self::parse_text(&lines, &mut i) {
                                 file.add_entity(DxfEntity::Text(text_entity));
+                            }
+                        }
+                        "ELLIPSE" => {
+                            i += 1;
+                            if let Ok(ellipse_entity) = Self::parse_ellipse(&lines, &mut i) {
+                                file.add_entity(DxfEntity::Ellipse(ellipse_entity));
                             }
                         }
                         _ => i += 1,
@@ -564,9 +604,9 @@ impl DxfParser {
         })
     }
 
-    /// Parse a LWPOLYLINE entity
     fn parse_lwpolyline(lines: &[&str], index: &mut usize) -> Result<DxfPolyline> {
         let mut vertices = Vec::new();
+        let mut bulges = Vec::new();
         let mut closed = false;
         let mut layer = "0".to_string();
         let mut color = 256u16;
@@ -574,43 +614,45 @@ impl DxfParser {
 
         while *index < lines.len() {
             let code = lines[*index].trim();
-            *index += 1;
-
-            if *index >= lines.len() {
-                break;
-            }
-
-            let value = lines[*index].trim();
+            let value = lines.get(*index + 1).map(|v| v.trim()).unwrap_or("");
 
             if code == "0" {
-                *index -= 2; // Backtrack so main loop can handle next entity
                 break;
-            }
+            } // End entity
 
             match code {
                 "8" => layer = value.to_string(),
                 "62" => color = value.parse().unwrap_or(256),
                 "70" => {
-                    if let Ok(flags) = value.parse::<i32>() {
-                        closed = (flags & 1) != 0;
-                    }
+                    let flags = value.parse::<i32>().unwrap_or(0);
+                    closed = (flags & 1) != 0;
                 }
                 "10" => current_x = value.parse().ok(),
                 "20" => {
                     if let Some(x) = current_x {
-                        let current_y = value.parse().unwrap_or(0.0);
-                        vertices.push(Point::new(x, current_y));
+                        let y = value.parse().unwrap_or(0.0);
+                        vertices.push(Point::new(x, y));
+
+                        bulges.push(0.0);
                         current_x = None;
                     }
                 }
+                "42" => {
+                    if let Ok(bulge_val) = value.parse::<f64>() {
+                        if let Some(last_bulge) = bulges.last_mut() {
+                            *last_bulge = bulge_val;
+                        }
+                    }
+                }
+                "90" => { /* Optional: You could use it to do Vec::with_capacity(n) */ }
                 _ => {}
             }
-
-            *index += 1;
+            *index += 2;
         }
 
         Ok(DxfPolyline {
             vertices,
+            bulges,
             closed,
             layer,
             color,
@@ -722,6 +764,7 @@ impl DxfParser {
 
         Ok(DxfPolyline {
             vertices,
+            bulges: vec![],
             closed,
             layer,
             color,
@@ -771,6 +814,57 @@ impl DxfParser {
             position,
             height,
             rotation,
+            layer,
+            color,
+        })
+    }
+
+    fn parse_ellipse(lines: &[&str], index: &mut usize) -> Result<DxfEllipse> {
+        let mut center = Point::new(0.0, 0.0);
+        let mut major_axis = Point::new(0.0, 0.0);
+        let mut ratio = 0.0;
+        let mut start_angle = 0.0;
+        let mut end_angle = 2.0 * std::f64::consts::PI;
+        let mut layer = "0".to_string();
+        let mut color = 256u16;
+
+        while *index < lines.len() {
+            let code = lines[*index].trim();
+            *index += 1;
+
+            if *index >= lines.len() {
+                break;
+            }
+
+            let value = lines[*index].trim();
+
+            if code == "0" && !value.is_empty() {
+                *index -= 1;
+                break;
+            }
+
+            match code {
+                "8" => layer = value.to_string(),
+                "62" => color = value.parse().unwrap_or(256),
+                "10" => center.x = value.parse().unwrap_or(0.0),
+                "20" => center.y = value.parse().unwrap_or(0.0),
+                "11" => major_axis.x = value.parse().unwrap_or(0.0),
+                "21" => major_axis.y = value.parse().unwrap_or(0.0),
+                "40" => ratio = value.parse().unwrap_or(0.0),
+                "41" => start_angle = value.parse().unwrap_or(0.0),
+                "42" => end_angle = value.parse().unwrap_or(2.0 * std::f64::consts::PI),
+                _ => {}
+            }
+
+            *index += 1;
+        }
+
+        Ok(DxfEllipse {
+            center,
+            major_axis,
+            ratio,
+            start_angle,
+            end_angle,
             layer,
             color,
         })

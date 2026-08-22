@@ -104,8 +104,8 @@ pub struct BufferedCommunicatorConfig {
 impl Default for BufferedCommunicatorConfig {
     fn default() -> Self {
         Self {
-            buffer_size: 128,
-            queue_size: 100,
+            buffer_size: 254,
+            queue_size: 200,
             max_retries: 3,
             flow_control: true,
         }
@@ -174,33 +174,28 @@ impl BufferedCommunicatorWrapper {
         let used_space = self.sent_buffer_size + command_size + 1; // +1 for newline
         used_space <= self.config.buffer_size
     }
-
-    /// Stream commands from the queue to the communicator
+    // DXF modification
     pub fn stream_commands(&mut self) -> gcodekit5_core::Result<()> {
         if self.send_paused {
             return Ok(());
         }
 
         loop {
-            let mut queue = self.command_queue.lock();
-
-            if queue.is_empty() {
-                break;
-            }
-
-            if let Some(mut command) = queue.pop_front() {
-                let command_size = command.command.len();
-
-                if !self.has_room_in_buffer(command_size) {
-                    // Put it back and stop streaming
-                    queue.push_front(command);
-                    break;
+            let command_to_send = {
+                let mut queue = self.command_queue.lock();
+                if let Some(cmd) = queue.front() {
+                    let cmd_size = cmd.command.len() + 1;
+                    if self.has_room_in_buffer(cmd_size) {
+                        queue.pop_front()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
-
-                drop(queue); // Release lock before sending
-
+            };
+            if let Some(mut command) = command_to_send {
                 self.send_buffered_command(&mut command)?;
-
                 let mut active = self.active_commands.lock();
                 active.push(command);
             } else {

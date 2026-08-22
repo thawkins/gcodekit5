@@ -13,12 +13,12 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.54.0-alpha.0"
+version = "1.1.0-beta.1"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 authors = ["GCodeKit Contributors"]
-repository = "https://github.com/thawkins/gcodekit5"
+repository = "https://github.com/feveal/gcodekit5-design"
 
 [workspace.dependencies]
 tokio = { version = "1.35", features = ["full"] }
@@ -35,15 +35,15 @@ arboard = "3.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
-image = "0.25"
+image = "0.25.14"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3.8"
 
 [package]
-name = "gcodekit5"
+name = "gcodekit5-design"
 version.workspace = true
 edition.workspace = true
-description = "A Rust-based Universal G-Code Sender for CNC machines with support for GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers"
+description = "A Rust-based Universal G-Code Sender for Laser and CNC machines with support for GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers"
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -64,6 +64,10 @@ gcodekit5-camtools = { path = "crates/gcodekit5-camtools" }
 gcodekit5-designer = { path = "crates/gcodekit5-designer" }
 gcodekit5-visualizer = { path = "crates/gcodekit5-visualizer" }
 gcodekit5-ui = { path = "crates/gcodekit5-ui" }
+
+gtk4 = { version = "0.9", features = ["v4_14"] }
+
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
@@ -88,14 +92,20 @@ depends = "$auto"
 section = "utility"
 priority = "optional"
 assets = [
-    ["target/release/gcodekit5", "usr/bin/", "755"],
-    ["assets/Pictures/com.github.thawkins.gcodekit5.png", "usr/share/icons/hicolor/128x128/apps/gcodekit5.png", "644"],
-    ["flatpak/com.github.thawkins.gcodekit5.desktop", "usr/share/applications/gcodekit5.desktop", "644"],
+    ["target/release/gcodekit5-design", "usr/bin/", "755"],
+    ["assets/Pictures/com.github.feveal.gcodekit5-design.png", "usr/share/icons/hicolor/128x128/apps/gcodekit5-design.png", "644"],
+    ["flatpak/com.github.feveal.gcodekit5-design.desktop", "usr/share/applications/gcodekit5-design.desktop", "644"],
 ]
 
 [package.metadata.generate-rpm]
 assets = [
-    { source = "target/release/gcodekit5", dest = "/usr/bin/gcodekit5", mode = "755" },
-    { source = "assets/Pictures/com.github.thawkins.gcodekit5.png", dest = "/usr/share/icons/hicolor/128x128/apps/gcodekit5.png", mode = "644" },
-    { source = "flatpak/com.github.thawkins.gcodekit5.desktop", dest = "/usr/share/applications/gcodekit5.desktop", mode = "644" },
+    { source = "target/release/gcodekit5-design", dest = "/usr/bin/gcodekit5-design", mode = "755" },
+    { source = "gcodekit5.png", dest = "/usr/share/icons/hicolor/128x128/apps/gcodekit5-design.png", mode = "644" },
+    { source = "flatpak/com.github.feveal.gcodekit5-design.desktop", dest = "/usr/share/applications/gcodekit5-design.desktop", mode = "644" },
 ]
+
+[dev-dependencies]
+mutants = "0.0.3"
+
+[patch.crates-io]
+core2 = { git = "https://github.com/bbqsrc/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }

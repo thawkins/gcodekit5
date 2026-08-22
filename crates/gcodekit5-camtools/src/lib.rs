@@ -10,7 +10,6 @@
 //! - **Tabbed Box Maker**: Create finger-jointed box designs with customizable parameters
 //! - **Drill Press**: Specialized drilling cycles including peck drilling and helical interpolation
 //! - **Laser Engraver**: Specialized processing for laser cutting and engraving
-//! - **Vector Engraver**: Vector path cutting with advanced contour and fill options
 //! - **Arc Expander**: Arc interpolation and expansion
 //!
 //! ## Supporting Infrastructure
@@ -43,7 +42,6 @@ pub mod spoilboard_surfacing;
 pub mod stats;
 pub mod tabbed_box;
 pub mod validator;
-pub mod vector_engraver;
 
 // UI module
 pub mod advanced_features_panel;
@@ -74,4 +72,3 @@ pub use tabbed_box::{
     BoxParameters, BoxType, FingerJointSettings, FingerStyle, KeyDividerType, TabbedBoxMaker,
 };
 pub use validator::GCodeValidator;
-pub use vector_engraver::{VectorEngraver, VectorEngravingParameters};

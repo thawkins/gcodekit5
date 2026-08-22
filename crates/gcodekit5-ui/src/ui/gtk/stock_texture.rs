@@ -52,7 +52,7 @@ impl StockTexture3D {
                 0,
                 RED,
                 UNSIGNED_BYTE,
-                Some(data),
+                glow::PixelUnpackData::Slice(Some(data)),
             );
 
             gl.bind_texture(TEXTURE_3D, None);

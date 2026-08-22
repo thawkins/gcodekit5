@@ -480,8 +480,6 @@ impl ConfigSettingsView {
             ],
         );
 
-        dialog.set_current_name("grbl_settings.json");
-
         let status_label = self.status_label.clone();
         let manager = self.settings_manager.clone();
         dialog.connect_response(move |dialog, response| {
@@ -494,6 +492,7 @@ impl ConfigSettingsView {
                     }
                 }
             }
+            dialog.set_current_name("grbl_settings.json");
             dialog.close();
         });
 

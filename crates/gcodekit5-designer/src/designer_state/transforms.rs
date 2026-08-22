@@ -3,7 +3,7 @@
 use super::DesignerState;
 use crate::commands::*;
 use crate::model::DesignerShape;
-use crate::Point;
+use crate::{Point, Shape};
 
 #[derive(Copy, Clone)]
 enum MirrorAxis {
@@ -25,107 +25,6 @@ impl DesignerState {
         }
 
         let cmd = DesignerCommand::MoveShapes(MoveShapes { ids, dx, dy });
-        self.push_command(cmd);
-    }
-
-    /// Resizes the selected shape via handle drag.
-    /// handle: 0=TL, 1=TR, 2=BL, 3=BR, 4=Center (move)
-    pub fn resize_selected(&mut self, handle: usize, dx: f64, dy: f64) {
-        let ids: Vec<u64> = self
-            .canvas
-            .shapes()
-            .filter(|s| s.selected)
-            .map(|s| s.id)
-            .collect();
-        if ids.is_empty() {
-            return;
-        }
-
-        // Calculate bounding box of ALL selected shapes
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-
-        for id in &ids {
-            if let Some(obj) = self.canvas.get_shape(*id) {
-                let (x1, y1, x2, y2) = obj.shape.bounds();
-                min_x = min_x.min(x1);
-                min_y = min_y.min(y1);
-                max_x = max_x.max(x2);
-                max_y = max_y.max(y2);
-            }
-        }
-
-        // If handle is 4 (move), we just translate all selected shapes
-        if handle == 4 {
-            self.move_selected(dx, dy);
-            return;
-        }
-
-        // Calculate new bounding box based on handle movement
-        let (new_min_x, new_min_y, new_max_x, new_max_y) = match handle {
-            0 => (min_x + dx, min_y + dy, max_x, max_y), // Top-left
-            1 => (min_x, min_y + dy, max_x + dx, max_y), // Top-right
-            2 => (min_x + dx, min_y, max_x, max_y + dy), // Bottom-left
-            3 => (min_x, min_y, max_x + dx, max_y + dy), // Bottom-right
-            _ => (min_x, min_y, max_x, max_y),
-        };
-
-        let old_width = max_x - min_x;
-        let old_height = max_y - min_y;
-        let new_width = (new_max_x - new_min_x).abs();
-        let new_height = (new_max_y - new_min_y).abs();
-
-        // Calculate scale factors
-        let sx = if old_width.abs() > 1e-6 {
-            new_width / old_width
-        } else {
-            1.0
-        };
-        let sy = if old_height.abs() > 1e-6 {
-            new_height / old_height
-        } else {
-            1.0
-        };
-
-        // Center of scaling
-        let center_x = (min_x + max_x) / 2.0;
-        let center_y = (min_y + max_y) / 2.0;
-
-        let new_center_x = (new_min_x + new_max_x) / 2.0;
-        let new_center_y = (new_min_y + new_max_y) / 2.0;
-
-        let t_dx = new_center_x - center_x;
-        let t_dy = new_center_y - center_y;
-
-        let mut commands = Vec::new();
-        for id in ids {
-            if let Some(obj) = self.canvas.get_shape(id) {
-                let old_shape = obj.shape.clone();
-                let mut new_shape = old_shape.clone();
-
-                // Scale relative to the center of the SELECTION bounding box
-                new_shape.scale(sx, sy, Point::new(center_x, center_y));
-
-                // Translate to new center
-                new_shape.translate(t_dx, t_dy);
-
-                commands.push(DesignerCommand::ResizeShape(ResizeShape {
-                    id,
-                    handle,
-                    dx,
-                    dy,
-                    old_shape: Some(old_shape),
-                    new_shape: Some(new_shape),
-                }));
-            }
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Resize Shapes".to_string(),
-        });
         self.push_command(cmd);
     }
 
@@ -375,20 +274,62 @@ impl DesignerState {
         };
 
         let (sx, sy, name) = match axis {
-            MirrorAxis::X => (1.0, -1.0, "Mirror X"),
-            MirrorAxis::Y => (-1.0, 1.0, "Mirror Y"),
+            MirrorAxis::X => (-1.0, 1.0, "Mirror X"),
+            MirrorAxis::Y => (1.0, -1.0, "Mirror Y"),
         };
 
         let mut commands = Vec::new();
-        for obj in selected {
-            let mut new_obj = obj.clone();
-            new_obj.shape.scale(sx, sy, Point::new(center_x, center_y));
+        for mut obj in selected {
+            // Verificar si es un triángulo
+            if let Shape::Triangle(triangle) = &mut obj.shape {
+                // Aplicar mirror específico para triángulo
+                match axis {
+                    MirrorAxis::X => {
+                        // Reflejo en X (invierte Y)
+                        triangle.right_angle_corner = match triangle.right_angle_corner {
+                            0 => 2, // Inferior-Izquierda → Superior-Izquierda
+                            1 => 3, // Inferior-Derecha → Superior-Derecha
+                            2 => 0, // Superior-Izquierda → Inferior-Izquierda
+                            3 => 1, // Superior-Derecha → Inferior-Derecha
+                            _ => triangle.right_angle_corner,
+                        };
+                        // Invertir rotación
+                        triangle.rotation = -triangle.rotation;
+                    }
+                    MirrorAxis::Y => {
+                        // Reflejo en Y (invierte X)
+                        triangle.right_angle_corner = match triangle.right_angle_corner {
+                            0 => 1, // Inferior-Izquierda → Inferior-Derecha
+                            1 => 0, // Inferior-Derecha → Inferior-Izquierda
+                            2 => 3, // Superior-Izquierda → Superior-Derecha
+                            3 => 2, // Superior-Derecha → Superior-Izquierda
+                            _ => triangle.right_angle_corner,
+                        };
+                        // Invertir rotación
+                        triangle.rotation = -triangle.rotation;
+                    }
+                }
 
-            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                id: obj.id,
-                old_state: obj,
-                new_state: new_obj,
-            }));
+                // Ajustar la posición del centro para que el reflejo sea alrededor del centro de selección
+                triangle.center.x = center_x + (triangle.center.x - center_x) * sx;
+                triangle.center.y = center_y + (triangle.center.y - center_y) * sy;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: obj.clone(),
+                }));
+            } else {
+                // Para otros tipos de formas, usar el scale genérico
+                let mut new_obj = obj.clone();
+                new_obj.shape.scale(sx, sy, Point::new(center_x, center_y));
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj,
+                    new_state: new_obj,
+                }));
+            }
         }
 
         let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
@@ -450,6 +391,9 @@ impl DesignerState {
             if let Some(obj) = self.canvas.get_shape(id) {
                 let mut new_obj = obj.clone();
                 new_obj.fillet = radius;
+                if matches!(new_obj.shape, crate::model::Shape::Path(_)) {
+                    new_obj.chamfer = 0.0;
+                }
 
                 commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                     id,
@@ -484,6 +428,9 @@ impl DesignerState {
             if let Some(obj) = self.canvas.get_shape(id) {
                 let mut new_obj = obj.clone();
                 new_obj.chamfer = distance;
+                if matches!(new_obj.shape, crate::model::Shape::Path(_)) {
+                    new_obj.fillet = 0.0;
+                }
 
                 commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                     id,

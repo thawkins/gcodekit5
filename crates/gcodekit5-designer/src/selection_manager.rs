@@ -59,6 +59,21 @@ impl SelectionManager {
         self.selected_id
     }
 
+    /// Returns the IDs of all selected shapes.
+    ///
+    /// Scans the shape store and returns all shapes that have their `selected` flag set to `true`.
+    ///
+    /// # Arguments
+    ///
+    /// * `store` - The shape store to query
+    ///
+    /// # Returns
+    ///
+    /// A vector of IDs of selected shapes.
+    pub fn selected_ids(&self, store: &ShapeStore) -> Vec<u64> {
+        store.iter().filter(|o| o.selected).map(|o| o.id).collect()
+    }
+
     /// Sets the primary selected shape ID.
     ///
     /// # Arguments
@@ -117,12 +132,14 @@ impl SelectionManager {
     /// * `store` - The shape store to select from
     /// * `spatial_index` - Spatial index for efficient hit-testing
     /// * `point` - The point to test for selection
-    /// * `multi` - If `true`, enables multi-select mode (Shift+click behavior)
+    /// * `shift` - If `true`, adds to selection (Shift+click behavior)
+    /// * `ctrl` - If `true`, toggles selection (Ctrl+click behavior)
     ///
     /// # Multi-select Behavior
     ///
-    /// - If `multi` is `false`: Deselects all other shapes before selecting
-    /// - If `multi` is `true`: Toggles selection without affecting other shapes
+    /// - If `shift` is `false` and `ctrl` is `false`: Deselects all other shapes before selecting
+    /// - If `shift` is `true`: Adds to selection without affecting other shapes
+    /// - If `ctrl` is `true`: Toggles the clicked shape (select if unselected, deselect if selected)
     ///
     /// # Returns
     ///
@@ -133,20 +150,20 @@ impl SelectionManager {
         spatial_index: &SpatialIndex,
         point: &Point,
         tolerance: f64,
-        multi: bool,
+        shift: bool,
+        ctrl: bool,
     ) -> Option<u64> {
         let mut found_id = None;
         let mut found_group_id = None;
 
-        // Query spatial index for candidates (used for single shapes)
-        // Use a bounding box with tolerance to ensure we catch shapes near the click
+        // Query spatial index for candidates
         let query_bounds = Bounds::new(
             point.x - tolerance,
             point.y - tolerance,
             point.x + tolerance,
             point.y + tolerance,
         );
-        let candidates: HashSet<u64> = spatial_index.query(&query_bounds).into_iter().collect();
+        let _candidates: HashSet<u64> = spatial_index.query(&query_bounds).into_iter().collect();
 
         // Pre-calculate group bounding boxes
         let mut group_bounds: HashMap<u64, (f64, f64, f64, f64)> = HashMap::new();
@@ -168,45 +185,35 @@ impl SelectionManager {
         let mut processed_groups = HashSet::new();
 
         // Find the shape at the point (topmost first)
-        // We iterate in reverse draw order
-        // candidates_at_point logged temporarily during debugging
         for id in store.draw_order_iter().rev() {
             if let Some(obj) = store.get(id) {
+                if !obj.contains_point(point, tolerance) {
+                    continue;
+                }
+
                 if let Some(gid) = obj.group_id {
-                    // Handle group selection: check composite bounding box
                     if processed_groups.contains(&gid) {
                         continue;
                     }
                     processed_groups.insert(gid);
-
-                    if let Some(&(min_x, min_y, max_x, max_y)) = group_bounds.get(&gid) {
-                        if point.x >= min_x - tolerance
-                            && point.x <= max_x + tolerance
-                            && point.y >= min_y - tolerance
-                            && point.y <= max_y + tolerance
-                        {
-                            found_id = Some(obj.id);
-                            found_group_id = Some(gid);
-                            break;
-                        }
-                    }
+                    found_id = Some(obj.id);
+                    found_group_id = Some(gid);
+                    break;
                 } else {
-                    // Handle single shape selection: use precise hit test
-                    if candidates.contains(&obj.id) && obj.contains_point(point, tolerance) {
-                        found_id = Some(obj.id);
-                        found_group_id = None;
-                        break;
-                    }
+                    found_id = Some(obj.id);
+                    found_group_id = None;
+                    break;
                 }
             }
         }
 
-        if !multi {
+        // Handle selection based on modifiers
+        if !shift && !ctrl {
+            // Normal click: deselect all and select only this
             self.deselect_all(store);
         }
 
         if let Some(id) = found_id {
-            // Determine which IDs to select (single shape or whole group)
             let ids_to_select: Vec<u64> = if let Some(gid) = found_group_id {
                 store
                     .iter()
@@ -217,32 +224,45 @@ impl SelectionManager {
                 vec![id]
             };
 
-            // If multi-select, check if we should toggle off (only if all are already selected)
-            let all_selected = ids_to_select
-                .iter()
-                .all(|&sid| store.get(sid).map(|o| o.selected).unwrap_or(false));
-
-            let should_select = if multi { !all_selected } else { true };
-
-            for sid in ids_to_select {
-                if let Some(obj) = store.get_mut(sid) {
-                    obj.selected = should_select;
+            if shift {
+                // SHIFT: Add to selection (select always)
+                for sid in ids_to_select {
+                    if let Some(obj) = store.get_mut(sid) {
+                        obj.selected = true;
+                    }
                 }
-            }
-
-            if should_select {
-                self.selected_id = Some(id); // Set primary to the clicked one
-            } else if self.selected_id == Some(id) {
-                self.selected_id = None;
-                // Try to find another selected shape
-                if let Some(other) = store.iter().find(|o| o.selected) {
-                    self.selected_id = Some(other.id);
+                self.selected_id = Some(id);
+            } else if ctrl {
+                // CTRL: Toggle selection
+                let all_selected = ids_to_select
+                    .iter()
+                    .all(|&sid| store.get(sid).map(|o| o.selected).unwrap_or(false));
+                let should_select = !all_selected;
+                for sid in ids_to_select {
+                    if let Some(obj) = store.get_mut(sid) {
+                        obj.selected = should_select;
+                    }
                 }
+                if should_select {
+                    self.selected_id = Some(id);
+                } else if self.selected_id == Some(id) {
+                    // Find another selected shape to be primary
+                    self.selected_id = store.iter().find(|o| o.selected).map(|o| o.id);
+                }
+            } else {
+                // Normal click (already deselected all above)
+                for sid in ids_to_select {
+                    if let Some(obj) = store.get_mut(sid) {
+                        obj.selected = true;
+                    }
+                }
+                self.selected_id = Some(id);
             }
-        } else if !multi {
-            // Clicked on empty space without shift -> deselect all
+        } else if !shift && !ctrl {
+            // Clicked on empty space without modifiers -> deselect all
             self.selected_id = None;
         }
+        // With shift or ctrl and clicking on empty space, do nothing (keep current selection)
 
         self.selected_id
     }

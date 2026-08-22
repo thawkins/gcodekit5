@@ -3,9 +3,11 @@
 use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::commands::*;
-use crate::model::{DesignerShape, Shape};
+use crate::model::{DesignerShape, ParametricPathSource, Shape};
 use crate::shapes::OperationType;
 use crate::{Point, Rectangle};
+
+use csgrs::traits::CSG; // Para poder usar .transform()
 
 impl DesignerState {
     /// Sets the use_custom_values flag for selected shapes.
@@ -190,27 +192,48 @@ impl DesignerState {
         self.push_command(cmd);
     }
 
-    /// Sets the corner radius for selected rectangles.
+    /// Sets corner radius for supported selected shapes.
     pub fn set_selected_corner_radius(&mut self, radius: f64) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
             if obj.selected {
-                if let crate::model::Shape::Rectangle(rect) = &obj.shape {
-                    let max_radius = rect.width.min(rect.height) / 2.0;
-                    let new_radius = radius.clamp(0.0, max_radius);
+                match &obj.shape {
+                    crate::model::Shape::Rectangle(rect) => {
+                        let max_radius = rect.width.min(rect.height) / 2.0;
+                        let new_radius = radius.clamp(0.0, max_radius);
 
-                    if (rect.corner_radius - new_radius).abs() > f64::EPSILON {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
-                            new_rect.corner_radius = new_radius;
+                        if (rect.corner_radius - new_radius).abs() > f64::EPSILON {
+                            let mut new_obj = obj.clone();
+                            if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
+                                new_rect.corner_radius = new_radius;
+                            }
+
+                            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                                id: obj.id,
+                                old_state: obj.clone(),
+                                new_state: new_obj,
+                            }));
                         }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
                     }
+                    crate::model::Shape::Path(_) => {
+                        let new_radius = radius.max(0.0);
+
+                        if (obj.fillet - new_radius).abs() > f64::EPSILON
+                            || obj.chamfer.abs() > f64::EPSILON
+                        {
+                            let mut new_obj = obj.clone();
+                            new_obj.fillet = new_radius;
+                            // Corner radius and chamfer are mutually exclusive on path geometry.
+                            new_obj.chamfer = 0.0;
+
+                            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                                id: obj.id,
+                                old_state: obj.clone(),
+                                new_state: new_obj,
+                            }));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -283,16 +306,53 @@ impl DesignerState {
                     new_obj.shape.translate(trans_x, trans_y);
 
                     match &mut new_obj.shape {
+                        crate::model::Shape::Path(s) => {
+                            // Obtain real limits from DXF
+                            let (x1, _, x2, _) = s.bounds();
+
+                            // Calculate the actual CURRENT CENTER of the object
+                            let current_center_x = (x1 + x2) / 2.0;
+
+                            // The displacement (dx) is the difference between
+                            // what the Inspector (center_x) asks for and where the center
+                            let dx = center_x - current_center_x;
+
+                            if dx.abs() > f64::EPSILON {
+                                // Physically move all points that distance dx
+                                let translation = nalgebra::Matrix4::new_translation(
+                                    &nalgebra::Vector3::new(dx, 0.0, 0.0),
+                                );
+                                s.sketch = s.sketch.transform(&translation);
+                            }
+                            // Obtain the vertical limits
+                            let (_, y1, _, y2) = s.bounds();
+
+                            // Calculate the current VERTICAL CENTER
+                            let current_center_y = (y1 + y2) / 2.0;
+
+                            // Displacement (dy) is: Destination (center_y) - Origin (current center)
+                            let dy = center_y - current_center_y;
+
+                            if dy.abs() > f64::EPSILON {
+                                // Move on the Y axis (second parameter of Vector3)
+                                let translation = nalgebra::Matrix4::new_translation(
+                                    &nalgebra::Vector3::new(0.0, dy, 0.0),
+                                );
+                                s.sketch = s.sketch.transform(&translation);
+                            }
+                            s.rotation = rotation;
+                        }
+
                         crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Circle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Line(s) => s.rotation = s.current_angle_degrees(),
                         crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Path(s) => s.rotation += angle_delta,
                         crate::model::Shape::Text(s) => s.rotation += angle_delta,
                         crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
                         crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
                         crate::model::Shape::Gear(s) => s.rotation += angle_delta,
                         crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
+                        crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -334,6 +394,7 @@ impl DesignerState {
                         crate::model::Shape::Polygon(s) => s.rotation = rotation,
                         crate::model::Shape::Gear(s) => s.rotation = rotation,
                         crate::model::Shape::Sprocket(s) => s.rotation = rotation,
+                        crate::model::Shape::RasterImage(s) => s.rotation = rotation,
                     }
 
                     if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
@@ -419,13 +480,13 @@ impl DesignerState {
                 if let crate::model::Shape::Gear(gear) = &obj.shape {
                     if (gear.module - module).abs() > f64::EPSILON
                         || gear.teeth != teeth
-                        || (gear.pressure_angle - pressure_angle).abs() > f64::EPSILON
+                        || (gear.pressure_angle_deg - pressure_angle).abs() > f64::EPSILON
                     {
                         let mut new_obj = obj.clone();
                         if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
                             new_gear.module = module;
                             new_gear.teeth = teeth;
-                            new_gear.pressure_angle = pressure_angle;
+                            new_gear.pressure_angle_deg = pressure_angle;
                         }
 
                         commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -481,6 +542,83 @@ impl DesignerState {
             let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
                 name: "Change Sprocket Properties".to_string(),
+            });
+            self.push_command(cmd);
+        }
+    }
+
+    /// Sets timing pulley properties for selected parametric path shapes.
+    pub fn set_selected_timing_pulley_properties(
+        &mut self,
+        pitch: f64,
+        teeth: usize,
+        belt_width: f64,
+        hole_radius: f64,
+    ) {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes_mut() {
+            if !obj.selected {
+                continue;
+            }
+
+            let Shape::Path(path) = &obj.shape else {
+                continue;
+            };
+
+            let Some(ParametricPathSource::TimingPulley {
+                pitch: old_pitch,
+                teeth: old_teeth,
+                belt_width: old_belt_width,
+                hole_radius: old_hole_radius,
+            }) = &path.parametric_source
+            else {
+                continue;
+            };
+
+            if (old_pitch - pitch).abs() <= f64::EPSILON
+                && *old_teeth == teeth
+                && (old_belt_width - belt_width).abs() <= f64::EPSILON
+                && (old_hole_radius - hole_radius).abs() <= f64::EPSILON
+            {
+                continue;
+            }
+
+            let (x1, y1, x2, y2) = path.bounds();
+            let center = crate::model::Point::new((x1 + x2) * 0.5, (y1 + y2) * 0.5);
+            let regenerated = crate::parametric_shapes::generate_timing_pulley(
+                center,
+                pitch,
+                teeth,
+                belt_width,
+                hole_radius,
+            );
+
+            let mut new_path = crate::model::DesignPath::from_lyon_path(&regenerated);
+            new_path.rotation = path.rotation;
+            new_path.closed = path.closed;
+            new_path.lock_aspect_ratio = path.lock_aspect_ratio;
+            new_path.laser_params = path.laser_params;
+            new_path.parametric_source = Some(ParametricPathSource::TimingPulley {
+                pitch,
+                teeth,
+                belt_width,
+                hole_radius,
+            });
+
+            let mut new_obj = obj.clone();
+            new_obj.shape = Shape::Path(new_path);
+
+            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                id: obj.id,
+                old_state: obj.clone(),
+                new_state: new_obj,
+            }));
+        }
+
+        if !commands.is_empty() {
+            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: "Change Timing Pulley Properties".to_string(),
             });
             self.push_command(cmd);
         }
@@ -784,6 +922,101 @@ impl DesignerState {
             crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
             crate::model::Shape::Gear(s) => s.rotation += angle_delta,
             crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
+            crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
+        }
+    }
+
+    pub fn set_selected_x(&mut self, new_x: f64) {
+        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+            let (current_x, _, _, _) = obj.shape.bounds();
+            let dx = new_x - current_x;
+
+            if dx.abs() > f64::EPSILON {
+                match &mut obj.shape {
+                    crate::model::Shape::Path(s) => {
+                        // For imported objects: We move the physical points
+                        let translation = nalgebra::Matrix4::new_translation(
+                            &nalgebra::Vector3::new(dx, 0.0, 0.0),
+                        );
+                        s.sketch = s.sketch.transform(&translation);
+                    }
+                    _ => {
+                        // For native objects: We use translate with the exact jump (0.0 on Y so that it doesn't jump)
+                        obj.shape.translate(dx, 0.0);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn set_selected_y(&mut self, new_y: f64) {
+        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+            let (_, current_y, _, _) = obj.shape.bounds();
+            let dy = new_y - current_y;
+
+            if dy.abs() > f64::EPSILON {
+                match &mut obj.shape {
+                    crate::model::Shape::Path(s) => {
+                        let translation = nalgebra::Matrix4::new_translation(
+                            &nalgebra::Vector3::new(0.0, dy, 0.0),
+                        );
+                        s.sketch = s.sketch.transform(&translation);
+                    }
+                    _ => {
+                        obj.shape.translate(0.0, dy);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn set_selected_width(&mut self, width: f64) {
+        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+            match &mut obj.shape {
+                crate::model::Shape::Rectangle(r) => {
+                    r.width = width;
+                }
+                crate::model::Shape::Ellipse(e) => {
+                    e.rx = width / 2.0;
+                }
+                crate::model::Shape::Triangle(t) => {
+                    t.width = width;
+                }
+                _ => {
+                    let (x1, y1, x2, y2) = obj.shape.bounds();
+                    let current_width = x2 - x1;
+                    if current_width > 0.0 {
+                        let scale_factor = width / current_width;
+                        let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                        obj.shape.scale(scale_factor, 1.0, center);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn set_selected_height(&mut self, height: f64) {
+        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+            match &mut obj.shape {
+                crate::model::Shape::Rectangle(r) => {
+                    r.height = height;
+                }
+                crate::model::Shape::Ellipse(e) => {
+                    e.ry = height / 2.0;
+                }
+                crate::model::Shape::Triangle(t) => {
+                    t.height = height;
+                }
+                _ => {
+                    let (x1, y1, x2, y2) = obj.shape.bounds();
+                    let current_height = y2 - y1;
+                    if current_height > 0.0 {
+                        let scale_factor = height / current_height;
+                        let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                        obj.shape.scale(1.0, scale_factor, center);
+                    }
+                }
+            }
         }
     }
 }

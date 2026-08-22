@@ -16,6 +16,7 @@ use gtk4::{
 use std::rc::Rc;
 use tracing::error;
 
+use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::help_browser;
 
 use crate::device_status;
@@ -115,17 +116,17 @@ impl DeviceManagerWindow {
         let current_feed_units = shared(initial_feed_units);
 
         // LEFT SIDEBAR - Devices List
-        let sidebar = Box::new(Orientation::Vertical, 10);
+        let sidebar = Box::new(Orientation::Vertical, spacing::MEDIUM);
         sidebar.add_css_class("sidebar");
         sidebar.set_width_request(250);
-        sidebar.set_margin_top(10);
-        sidebar.set_margin_bottom(10);
-        sidebar.set_margin_start(10);
-        sidebar.set_margin_end(10);
+        sidebar.set_margin_top(spacing::MEDIUM);
+        sidebar.set_margin_bottom(spacing::MEDIUM);
+        sidebar.set_margin_start(spacing::MEDIUM);
+        sidebar.set_margin_end(spacing::MEDIUM);
 
         // Header
-        let header_box = Box::new(Orientation::Horizontal, 10);
-        header_box.set_margin_start(5);
+        let header_box = Box::new(Orientation::Horizontal, spacing::MEDIUM);
+        header_box.set_margin_start(spacing::SMALL);
         let title = Label::new(Some("Devices"));
         title.add_css_class("title-4");
         title.set_halign(Align::Start);
@@ -161,11 +162,11 @@ impl DeviceManagerWindow {
         widget.set_start_child(Some(&sidebar));
 
         // RIGHT PANEL - Device Details/Edit Form
-        let main_content = Box::new(Orientation::Vertical, 10);
-        main_content.set_margin_top(20);
-        main_content.set_margin_bottom(20);
-        main_content.set_margin_start(20);
-        main_content.set_margin_end(20);
+        let main_content = Box::new(Orientation::Vertical, spacing::MEDIUM);
+        main_content.set_margin_top(spacing::EXTRA_LARGE);
+        main_content.set_margin_bottom(spacing::EXTRA_LARGE);
+        main_content.set_margin_start(spacing::EXTRA_LARGE);
+        main_content.set_margin_end(spacing::EXTRA_LARGE);
 
         // Action buttons bar
         let action_bar = Box::new(Orientation::Horizontal, 10);

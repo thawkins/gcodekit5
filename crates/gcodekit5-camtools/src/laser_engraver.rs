@@ -428,7 +428,6 @@ impl BitmapImageEngraver {
         F: FnMut(f32),
     {
         let mut gcode = String::new();
-
         gcode.push_str("; Laser Image Engraving G-code\n");
         gcode.push_str(&format!(
             "; Generated: {}\n",
@@ -453,7 +452,7 @@ impl BitmapImageEngraver {
         ));
         gcode.push_str(&format!(
             "; Estimated time: {:.1} minutes\n",
-            self.estimate_time() / 60.0
+            self.estimate_time() / 6.0
         ));
         gcode.push_str(";\n");
 
@@ -545,7 +544,7 @@ impl BitmapImageEngraver {
         let width = image.width();
         let mut left_to_right = true;
 
-        // Render from bottom to top to match device coordinate space
+        // Render from bottom to top
         for y_reversed in 0..height {
             if y_reversed % 10 == 0 || y_reversed == height - 1 {
                 let progress = 0.1 + (y_reversed as f32 / height as f32) * 0.8;
@@ -555,58 +554,152 @@ impl BitmapImageEngraver {
             let y = height - 1 - y_reversed;
             let y_pos = y_reversed as f32 * line_spacing;
 
-            if left_to_right || !self.params.bidirectional {
+            // Turn off laser before rapid movement
+            gcode.push_str("M5\n");
+
+            // Position according to direction
+            if left_to_right {
                 gcode.push_str(&format!("G0 X0 Y{:.3}\n", y_pos));
             } else {
-                gcode.push_str(&format!(
-                    "G0 X{:.3} Y{:.3}\n",
-                    (width - 1) as f32 * pixel_width,
-                    y_pos
-                ));
+                let end_x = (width - 1) as f32 * pixel_width;
+                gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", end_x, y_pos));
             }
 
-            let mut in_burn = false;
-            let mut last_power = 0;
+            // Record the line with the current address
+            self.scan_line(gcode, image, y, y_pos, pixel_width, left_to_right);
 
-            let x_range: BoxedIterator<u32> = if left_to_right || !self.params.bidirectional {
-                Box::new(0..width)
-            } else {
-                Box::new((0..width).rev())
-            };
-
-            for x in x_range {
-                let intensity = image.get_pixel(x, y).0[0];
-                let power = self.intensity_to_power(intensity);
-                let power_value = (power * self.params.power_scale / 100.0) as u32;
-                let x_pos = x as f32 * pixel_width;
-
-                if power_value > 0 {
-                    if !in_burn || power_value != last_power {
-                        gcode.push_str(&format!(
-                            "G1 X{:.3} Y{:.3} F{:.0} M3 S{}\n",
-                            x_pos, y_pos, self.params.feed_rate, power_value
-                        ));
-                        in_burn = true;
-                        last_power = power_value;
-                    } else {
-                        gcode.push_str(&format!("G1 X{:.3} Y{:.3}\n", x_pos, y_pos));
-                    }
-                } else if in_burn {
-                    gcode.push_str("M5\n");
-                    in_burn = false;
-                }
-            }
-
-            if in_burn {
-                gcode.push_str("M5\n");
-            }
-
+            // Alternate direction if it is bidirectional
             if self.params.bidirectional {
                 left_to_right = !left_to_right;
             }
         }
 
         Ok(())
+    }
+
+    fn scan_line(
+        &self,
+        gcode: &mut String,
+        image: &GrayImage,
+        y: u32,
+        y_pos: f32,
+        pixel_width: f32,
+        left_to_right: bool,
+    ) {
+        let width = image.width();
+        let mut in_burn = false;
+        let mut current_power = 0u32;
+        let mut segment_start = 0.0;
+        let mut segment_end = 0.0;
+        let mut first_segment_of_burst = true;
+
+        let indices: Vec<u32> = if left_to_right {
+            (0..width).collect()
+        } else {
+            (0..width).rev().collect()
+        };
+
+        for &x in &indices {
+            let intensity = image.get_pixel(x, y).0[0];
+            let power = self.intensity_to_power(intensity);
+            let mut power_value = (power * self.params.power_scale / 100.0).round() as u32;
+
+            // Threshold filter
+            if power_value < 5 {
+                power_value = 0;
+            }
+
+            // Power rounding to "flatten" similar colors
+            if power_value > 0 {
+                let step = 5; // try with 5 or 10
+                power_value = (power_value / step) * step;
+            }
+
+            let power_value = power_value.clamp(0, 1000);
+            let x_pos = x as f32 * pixel_width;
+
+            if power_value > 0 {
+                if !in_burn {
+                    in_burn = true;
+                    current_power = power_value;
+                    segment_start = x_pos;
+                    segment_end = x_pos;
+                    first_segment_of_burst = true;
+                } else if power_value == current_power {
+                    segment_end = x_pos;
+                } else {
+                    // Power change attached to the previous one: is_new_segment = first_segment_of_burst
+                    self.emit_segment(
+                        gcode,
+                        segment_start,
+                        segment_end,
+                        y_pos,
+                        current_power,
+                        left_to_right,
+                        first_segment_of_burst,
+                    );
+
+                    current_power = power_value;
+                    segment_start = x_pos;
+                    segment_end = x_pos;
+                    first_segment_of_burst = false; // The following ones no longer need G0
+                }
+            } else if in_burn {
+                self.emit_segment(
+                    gcode,
+                    segment_start,
+                    segment_end,
+                    y_pos,
+                    current_power,
+                    left_to_right,
+                    first_segment_of_burst,
+                );
+                gcode.push_str("M5\n");
+                in_burn = false;
+                current_power = 0;
+            }
+        }
+
+        if in_burn {
+            self.emit_segment(
+                gcode,
+                segment_start,
+                segment_end,
+                y_pos,
+                current_power,
+                left_to_right,
+                first_segment_of_burst,
+            );
+            gcode.push_str("M5\n");
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_segment(
+        &self,
+        gcode: &mut String,
+        start: f32,
+        end: f32,
+        y_pos: f32,
+        power: u32,
+        left_to_right: bool,
+        is_new_segment: bool,
+    ) {
+        let pos_x = if left_to_right { start } else { end };
+        let target_x = if left_to_right { end } else { start };
+
+        if is_new_segment {
+            // Rapid positioning
+            gcode.push_str(&format!("G0 X{:.3} Y{:.3} S0\n", pos_x, y_pos));
+            // First line of the segment
+            gcode.push_str(&format!(
+                "G1 X{:.3} S{} F{:.0} M4\n",
+                target_x, power, self.params.feed_rate
+            ));
+        } else {
+            // Continuation of the segment
+            gcode.push_str(&format!("G1 X{:.3} S{}\n", target_x, power));
+        }
     }
 
     fn generate_vertical_scan_with_progress<F>(
@@ -660,7 +753,7 @@ impl BitmapImageEngraver {
                 if power_value > 0 {
                     if !in_burn || power_value != last_power {
                         gcode.push_str(&format!(
-                            "G1 X{:.3} Y{:.3} F{:.0} M3 S{}\n",
+                            "G1 X{:.3} Y{:.3} F{:.0} M4 S{}\n",
                             x_pos, y_pos, self.params.feed_rate, power_value
                         ));
                         in_burn = true;
@@ -689,6 +782,10 @@ impl BitmapImageEngraver {
     /// Convert pixel intensity to laser power
     fn intensity_to_power(&self, intensity: u8) -> f32 {
         let normalized = intensity as f32 / 255.0;
-        self.params.min_power + (normalized * (self.params.max_power - self.params.min_power))
+
+        let gamma = 0.7;
+        let corrected = normalized.powf(gamma);
+
+        self.params.min_power + (corrected * (self.params.max_power - self.params.min_power))
     }
 }

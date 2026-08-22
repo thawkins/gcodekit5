@@ -42,6 +42,12 @@ fn main() {
         }
     }
 
+    glib_build_tools::compile_resources(
+        &["resources"],
+        "resources/gresources.xml",
+        "gcodekit5.gresource",
+    );
+
     // Expose the locale directory to the code
     println!("cargo:rustc-env=LOCALE_DIR={}", locale_dir.display());
 

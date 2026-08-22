@@ -1,5 +1,6 @@
 /* GCodeKit5 Custom Styles */
 
+/* Light Teme */
 :root {
     /* Semantic Colors mapped to GTK/Adwaita theme colors */
     --bg-color: @theme_bg_color;
@@ -110,7 +111,7 @@ separator.inspector-section-separator {
 }
 
 .designer-toolbox button:hover {
-    background-color: alpha(@accent_bg_color, 0.1);
+    background-color: alpha(@accent_bg_color, 0.3);
 }
 
 .designer-toolbox button.selected-tool {
@@ -297,7 +298,7 @@ label.help-content {
     background-color: #2ecc71;
     color: white;
     border-radius: 4px;
-    padding: 2px 6px;
+    padding: 2px 2px;
     font-size: 10px;
     font-weight: bold;
     margin-left: 5px;
@@ -305,73 +306,34 @@ label.help-content {
 
 /* Visualizer Floating OSD Panels */
 .visualizer-osd {
-    background-color: alpha(var(--window-bg-color), 0.85);
-    border-radius: 6px;
-    border: 1px solid alpha(var(--fg-color), 0.1);
-    padding: 4px 8px;
-    min-height: 28px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    padding: 4px 4px;
+    min-width: 4px;
+    min-height: 2px;
+    border-radius: 4px;
+    border: 4px solid var(--border-color);
+    color: var(--card-fg-color);
+    font-size: 12px;
+    background-color: rgba(255, 255, 255, 0.05);
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.1),
+        0 8px 16px rgba(0, 0, 0, 0.5);
 }
 
 .visualizer-osd label {
-    color: var(--fg-color);
+    padding: 4px 4px;
     font-size: 12px;
+    margin-bottom: 4px;
 }
 
-.visualizer-osd .osd-units-badge {
-    background-color: alpha(var(--accent-color), 0.15);
-    border: 1px solid alpha(var(--accent-color), 0.35);
-    border-radius: 999px;
-    padding: 1px 8px;
-    font-weight: 600;
+.empty-actions:hover {
+    background-color: alpha(#1a73e8, 0.3);
+    color: var(--accent-fg-color);
 }
-
-.active-tool-chip {
-    background-color: alpha(var(--accent-color), 0.15);
-    border: 1px solid alpha(var(--accent-color), 0.35);
-    border-radius: 999px;
-    padding: 2px 10px;
-    font-weight: 600;
-    font-size: 12px;
+/*
+.empty-actions {
+    background-color: var(--card-bg-color);
 }
-
-/* Validation */
-.entry-invalid {
-    border: 1px solid var(--error-color);
-    box-shadow: inset 0 0 0 1px alpha(var(--error-color), 0.4);
-}
-
-.visualizer-osd button {
-    min-width: 32px;
-    min-height: 32px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    background-color: alpha(var(--fg-color), 0.1);
-    border: 1px solid alpha(var(--fg-color), 0.2);
-    color: var(--fg-color);
-    font-size: 13px;
-}
-
-/* Compact OSD clusters (icon/button toolbars) to match the height of text OSD panels */
-.visualizer-osd.osd-controls {
-    padding: 0;
-    min-height: 0;
-}
-
-.visualizer-osd.osd-controls button {
-    min-width: 28px;
-    min-height: 28px;
-    padding: 2px 6px;
-}
-
-.visualizer-osd button:hover {
-    background-color: alpha(var(--fg-color), 0.2);
-}
-
-.visualizer-osd button:active {
-    background-color: alpha(var(--fg-color), 0.3);
-}
-
+*/
 /* Legend swatches */
 .legend-swatch {
     border-radius: 3px;
@@ -484,3 +446,96 @@ frame.vector-preview {
 .nav-btn:active {
     background-color: alpha(var(--accent-bg-color), 0.8);
 }
+
+/* GLOBAL REDUCTION */
+
+entry {
+    min-height: 20px;
+    max-height: 24px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+
+button {
+    min-height: 24px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+}
+
+combobox {
+    min-height: 24px;
+}
+
+spinbutton {
+    min-height: 24px;
+}
+
+listbox.compact-list row {
+    padding: 0px;
+    min-height: 24px;
+    margin: 0px;
+    border-bottom: 1px solid alpha(@borders, 0.2);
+}
+
+listbox.compact-list row:last-child {
+    border-bottom: none;
+}
+
+listbox.compact-list row * {
+    min-height: 20px;
+    max-height: 22px;
+}
+
+listbox.compact-list row label {
+    min-height: 20px;
+    padding: 0px 2px;
+    margin: 0px;
+}
+
+listbox.compact-list row entry,
+listbox.compact-list row .position-entry {
+    min-height: 20px;
+    padding: 0px 2px;
+    margin: 0px;
+}
+
+/* Search Panel Compact (floating OSD) */
+.visualizer-osd entry {
+    min-height: 24px;
+    max-height: 26px;
+    padding: 1px 4px;
+    margin: 0px;
+    font-size: 11px;
+}
+
+.visualizer-osd button {
+    min-width: 26px;
+    min-height: 24px;
+    padding: 1px 4px;
+    margin: 0px;
+}
+
+.visualizer-osd button label {
+    font-size: 11px;
+}
+
+.visualizer-osd .compact-entry {
+    min-height: 22px;
+    max-height: 24px;
+    padding: 0px 4px;
+    font-size: 11px;
+}
+
+.visualizer-osd .compact-entry text {
+    min-height: 20px;
+}
+
+/* Reducir espaciado entre filas del panel de búsqueda */
+.visualizer-osd > box {
+    margin: 0px;
+    padding: 0px;
+    spacing: 2px;
+}
+

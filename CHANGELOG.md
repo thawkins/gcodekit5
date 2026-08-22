@@ -1,3 +1,69 @@
+## [1.1.0-beta.1] - 2026-08-03
+
+- The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).
+
+- In 3D mode, the Z coordinate is implemented to generate 3D G-code with passes based on the machining parameters in the Global or specific properties of each object.
+
+- **The 2D viewer is removed**, and the 3D viewer is always used for all G-code, whether 2D or 3D. Camera positions are used for this purpose.
+
+- The safety height parameter is generated from the entered value and the material thickness.
+
+- A warning dialog box has been added for when G-code is generated outside the machine limits. The warning is also retained within the G-code itself.
+
+- When saving as, the last path is used.
+
+- Play/pause/stop buttons and playback speed values ​​have been added to the viewer for simulating the tool's path on screen.
+
+- The shapes in the Shape Gallery have been corrected, and parametric mode has been added to the timing belt pulley, which previously lacked it.
+
+- Some errors in creating chamfers and radii on shape objects have been fixed.
+
+## [1.0.1-alpha.0] - 2026-06-18
+
+- Triangle generation in the designer has been corrected. Triangles can now be generated in all four positions and true symmetry can be applied. Previously, they could only be generated in one position.
+- The bounds of the triangles are now generated correctly and updated when the triangle is rotated.
+- The G-code and the Visualizer correctly reproduce the position of the triangles.
+- The triangles are now correctly saved in the gckd file
+- The display establishes a color scale based on the power S to preview the movements
+- In the designer, the bounds for the created lines are corrected. They now take into account the size and rotation of the line, which they didn't do before.
+- The Pause and Resume function in laser mode, which turned off the laser during some movements, has been fixed.
+- Help is implemented via F1 with explanatory images for each program module
+- The program translation has been expanded, including the help section.
+- A Warning is added to the G-code when the path goes outside the machine area (negative coordinates)
+- The positioning of texts and their grips is corrected.
+- Other visual modifications
+
+## [1.0.0-alpha.1] - 2026-05-21
+
+### Added
+- **individual laser parameters for each object**: In addition to the laser working parameters, it is now also possible to define the speed, power and passes properties individually for the desired objects while maintaining the global properties for the rest of the objects.
+
+## [0.54.0-alpha.1] - 2026-05-06
+
+### Added
+- **Raster image import in Designer**: Full support for importing PNG, JPG, BMP, GIF, TIFF images
+  - Image integration into GCKD file format for persistent storage
+  - Halftone threshold controls for image preprocessing
+  - High-speed streaming with 40-line window and overscan for laser engraving
+- **Active machine display**: Machine name shown in status bar for quick identification
+- **Translations**: CAM Tools, designer tool icons, and partial UI translations
+- **AGENTS.md**: Project guidelines for AI coding assistant
+
+### Changed
+- **Raster image viewer display**: Improved raster rendering quality and performance in Viewer
+- **Viewer optimization**: Performance improvements for rendering raster overlay data
+- **Vectorized G-code simplification**: Cleaner, more compact G-code output
+- **Path engraving improvements**: Better toolpath generation for vector paths
+- **Feed rate, terminal, and status bar**: Various UI/UX improvements
+- **GTK 4.14 compatibility**: Full sync with latest GTK4 API requirements
+
+### Fixed
+- Pause/stop management errors in Designer during streaming operations
+- Stop/Reset logic: new flow disabling pause in raster mode
+- Rotation, aspect ratio, and menu bugs in Designer
+- Polygon width properties and visibility
+- SVG and DXF import scaling and G-code generation quality
+
 ## [0.54.0-alpha.0] - 2026-03-05
 
 ### Added
@@ -8,8 +74,6 @@
 ### Changed
 - **Memory optimizations**: `Cow<'static, str>` for G-code command counts, `SmallVec<[Point; 4]>` for rectangle corners, `Vec::with_capacity` pre-allocation, clone reduction in pipeline processing
 - **Arc audit**: confirmed all Arc usage is in genuinely multi-threaded contexts
-
-## [0.51.0-alpha.0] - 2026-02-11
 
 ### Added
 - **Shared error dialog helper** (`file_dialog::show_error_dialog`): modal, transient, with parent window support
@@ -2474,3 +2538,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - For single selection: Width and height changes now preserve the current position directly from the shape data instead of reading from UI text fields.
   - Width and height changes now only apply when the user finishes editing (Enter key or Tab to next field) instead of on every keystroke, preventing intermediate values from causing position shifts.
 - **Designer**: Fixed UI formatting issue where position values would appear to change after editing size properties due to text field reformatting from user input to formatted output.
+
+### Added
+- **UI/UX Density:** Applied global CSS to reduce text box heights in the Inspector, improving information density for high-count layer projects.
+- **Iconography:** New SVG icons for Designer tools (Triangle, etc.) with adaptive light/dark theme colors.
+- **Workflow:** Added an editable "Order" field for entities to allow manual toolpath sequencing.
+- **Persistence:** The application now saves and restores the last working path in `config.json`.
+- **Tooling:** Added `mutants` as a dev-dependency for mutation testing and LSP error cleanup.
+
+### Fixed
+- **GTK4 Compatibility:** Resolved a critical bug in KDE/Kubuntu where file dialogs were broken; replaced `FileChooserNative` with `FileChooserDialog`.
+- **DXF Import Engine:** Fixed symmetry, scaling, and distortion issues during DXF import.
+- **Geometry:** Polylines in DXF now import as smooth curves instead of chamfered segments.
+- **Designer Logic:**
+    - Fixed object positioning to use the **center** as the anchor point instead of the bottom-left corner.
+    - Implemented **Aspect Ratio Lock** in the Inspector to prevent accidental deformations.
+    - Fixed resizing bugs in the **Polygon** tool.
+    - Improved **Triangle** tool to support asymmetric right triangles via Inspector.
+- **Selection:** Fixed bidirectional synchronization between the canvas and the Layers list, with improved click tolerance for high zoom levels.
+- **Visualizer:** Improved visibility of imported G-Code files on the canvas.
+
+### Changed
+- **Laser Mode:** When "Laser" is selected in Devices, G-Code generation is now restricted to 2D (X/Y axes only), omitting unnecessary Z movements.
+- **Compiler Noise:** Silenced ~800+ GTK 4.14 deprecation warnings via `.cargo/config.toml` to maintain a clean build log.
+- **Infrastructure:** Updated codebase to align with the new `core` and `spatial_index` module structure.

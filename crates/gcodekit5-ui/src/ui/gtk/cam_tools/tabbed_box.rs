@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::tabbed_box::{
     BoxParameters, BoxType, KeyDividerType, TabbedBoxMaker as Generator,
@@ -96,18 +97,24 @@ impl TabbedBoxMaker {
         sidebar.set_margin_end(24);
 
         let title_lbl = Label::builder()
-            .label("Tabbed Box Maker")
+            .label(t!("Tabbed Box Maker"))
             .css_classes(vec!["title-3"])
             .wrap(true)
             .halign(Align::Start)
             .build();
 
-        let desc_lbl = Label::builder()
-            .label("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm.")
-            .css_classes(vec!["body"])
-            .wrap(true)
-            .halign(Align::Start)
-            .build();
+let desc_lbl = Label::builder()
+    .label(&format!(
+        r#"{} <a href="https://github.com/florianfesti/boxes">{}</a> {}"#,
+        t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm. For more cases involving boxes and other objects, it is recommended to use the "),
+        t!("Boxes"),
+        t!(". Install the Extension in Inkscape. There, generate the models and save them as SVG files. Then import the SVG file into the Designer, rearrange the objects as needed, and generate the G-code to send to the machine.")
+    ))
+    .css_classes(vec!["body"])
+    .wrap(true)
+    .halign(Align::Start)
+    .use_markup(true)
+    .build();
 
         sidebar.append(&title_lbl);
         sidebar.append(&desc_lbl);
@@ -124,33 +131,36 @@ impl TabbedBoxMaker {
             .build();
 
         // Widgets
-        let (width_row, width, width_unit) = create_dimension_row("X (Width):", 100.0, &settings);
-        let (depth_row, depth, depth_unit) = create_dimension_row("Y (Depth):", 100.0, &settings);
+        let (width_row, width, width_unit) =
+            create_dimension_row(&t!("X (Width):"), 100.0, &settings);
+        let (depth_row, depth, depth_unit) =
+            create_dimension_row(&t!("Y (Depth):"), 100.0, &settings);
         let (height_row, height, height_unit) =
-            create_dimension_row("H (Height):", 100.0, &settings);
+            create_dimension_row(&t!("H (Height):"), 100.0, &settings);
         let outside = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
         let (thickness_row, thickness, thickness_unit) =
-            create_dimension_row("Thickness:", 3.0, &settings);
-        let (burn_row, burn, burn_unit) = create_dimension_row("Burn / Tool Dia:", 0.1, &settings);
+            create_dimension_row(&t!("Thickness:"), 3.0, &settings);
+        let (burn_row, burn, burn_unit) =
+            create_dimension_row(&t!("Burn / Tool Dia:"), 0.1, &settings);
         let finger_width = Entry::builder().text("2").valign(Align::Center).build();
         let space_width = Entry::builder().text("2").valign(Align::Center).build();
         let surrounding_spaces = Entry::builder().text("2").valign(Align::Center).build();
         let (play_row, play, play_unit) =
-            create_dimension_row("Play (fit tolerance):", 0.0, &settings);
+            create_dimension_row(&t!("Play (fit tolerance):"), 0.0, &settings);
         let (extra_length_row, extra_length, extra_length_unit) =
-            create_dimension_row("Extra Length:", 0.0, &settings);
+            create_dimension_row(&t!("Extra Length:"), 0.0, &settings);
 
         // New Widgets
         let box_type = ComboBoxText::new();
-        box_type.append(Some("0"), "Full Box");
-        box_type.append(Some("1"), "No Top");
-        box_type.append(Some("2"), "No Bottom");
-        box_type.append(Some("3"), "No Sides");
-        box_type.append(Some("4"), "No Front/Back");
-        box_type.append(Some("5"), "No Left/Right");
+        box_type.append(Some("0"), &t!("Full Box"));
+        box_type.append(Some("1"), &t!("No Top"));
+        box_type.append(Some("2"), &t!("No Bottom"));
+        box_type.append(Some("3"), &t!("No Sides"));
+        box_type.append(Some("4"), &t!("No Front/Back"));
+        box_type.append(Some("5"), &t!("No Left/Right"));
         box_type.set_active_id(Some("0"));
         box_type.set_valign(Align::Center);
 
@@ -158,10 +168,10 @@ impl TabbedBoxMaker {
         let dividers_y = Entry::builder().text("0").valign(Align::Center).build();
 
         let divider_keying = ComboBoxText::new();
-        divider_keying.append(Some("0"), "Walls and Floor");
-        divider_keying.append(Some("1"), "Walls Only");
-        divider_keying.append(Some("2"), "Floor Only");
-        divider_keying.append(Some("3"), "None");
+        divider_keying.append(Some("0"), &t!("Walls and Floor"));
+        divider_keying.append(Some("1"), &t!("Walls Only"));
+        divider_keying.append(Some("2"), &t!("Floor Only"));
+        divider_keying.append(Some("3"), &t!("None"));
         divider_keying.set_active_id(Some("0"));
         divider_keying.set_valign(Align::Center);
 
@@ -175,24 +185,26 @@ impl TabbedBoxMaker {
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
 
         let (z_step_down_row, z_step_down, z_step_down_unit) =
-            create_dimension_row("Z Step Down:", 0.1, &settings);
+            create_dimension_row(&t!("Z Step Down:"), 0.1, &settings);
 
         let (offset_x_row, offset_x, offset_x_unit) =
-            create_dimension_row("Offset X:", 10.0, &settings);
+            create_dimension_row(&t!("Offset X:"), 10.0, &settings);
         let (offset_y_row, offset_y, offset_y_unit) =
-            create_dimension_row("Offset Y:", 10.0, &settings);
+            create_dimension_row(&t!("Offset Y:"), 10.0, &settings);
         let home_before = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
             .build();
 
         // Box Dimensions
-        let dim_group = PreferencesGroup::builder().title("Box Dimensions").build();
+        let dim_group = PreferencesGroup::builder()
+            .title(t!("Box Dimensions"))
+            .build();
         dim_group.add(&width_row);
         dim_group.add(&depth_row);
         dim_group.add(&height_row);
 
-        let outside_row = ActionRow::builder().title("Outside Dims:").build();
+        let outside_row = ActionRow::builder().title(t!("Outside Dims:")).build();
         outside_row.add_suffix(&outside);
         dim_group.add(&outside_row);
 
@@ -200,14 +212,14 @@ impl TabbedBoxMaker {
 
         // Box Configuration
         let config_group = PreferencesGroup::builder()
-            .title("Box Configuration")
+            .title(t!("Box Configuration"))
             .build();
-        config_group.add(&Self::create_row("Box Type:", &box_type));
-        config_group.add(&Self::create_row("Dividers X:", &dividers_x));
-        config_group.add(&Self::create_row("Dividers Y:", &dividers_y));
-        config_group.add(&Self::create_row("Divider Keying:", &divider_keying));
+        config_group.add(&Self::create_row(&t!("Box Type:"), &box_type));
+        config_group.add(&Self::create_row(&t!("Dividers X:"), &dividers_x));
+        config_group.add(&Self::create_row(&t!("Dividers Y:"), &dividers_y));
+        config_group.add(&Self::create_row(&t!("Divider Keying:"), &divider_keying));
 
-        let optimize_row = ActionRow::builder().title("Optimize Layout:").build();
+        let optimize_row = ActionRow::builder().title(t!("Optimize Layout:")).build();
         optimize_row.add_suffix(&optimize_layout);
         config_group.add(&optimize_row);
 
@@ -215,7 +227,7 @@ impl TabbedBoxMaker {
 
         // Material Settings
         let mat_group = PreferencesGroup::builder()
-            .title("Material Settings")
+            .title(t!("Material Settings"))
             .build();
         mat_group.add(&thickness_row);
         mat_group.add(&burn_row);
@@ -223,10 +235,10 @@ impl TabbedBoxMaker {
 
         // Finger Joint Settings
         let finger_group = PreferencesGroup::builder()
-            .title("Finger Joint Settings (multiples of thickness)")
+            .title(t!("Finger Joint Settings (multiples of thickness)"))
             .build();
-        finger_group.add(&Self::create_row("Finger Width:", &finger_width));
-        finger_group.add(&Self::create_row("Space Width:", &space_width));
+        finger_group.add(&Self::create_row(&t!("Finger Width:"), &finger_width));
+        finger_group.add(&Self::create_row(&t!("Space Width:"), &space_width));
         finger_group.add(&Self::create_row(
             "Surrounding Spaces:",
             &surrounding_spaces,
@@ -236,22 +248,24 @@ impl TabbedBoxMaker {
         scroll_content.append(&finger_group);
 
         // Laser Settings
-        let laser_group = PreferencesGroup::builder().title("Laser Settings").build();
-        laser_group.add(&Self::create_row("Passes:", &passes));
-        laser_group.add(&Self::create_row("Power (S):", &power));
-        laser_group.add(&Self::create_row("Feed Rate:", &feed_rate));
+        let laser_group = PreferencesGroup::builder()
+            .title(t!("Laser Settings"))
+            .build();
+        laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
+        laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
+        laser_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
         laser_group.add(&z_step_down_row);
         scroll_content.append(&laser_group);
 
         // Work Origin Offsets
         let offset_group = PreferencesGroup::builder()
-            .title("Work Origin Offsets")
+            .title(t!("Work Origin Offsets"))
             .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title("Home Device Before Start")
+            .title(t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -267,11 +281,11 @@ impl TabbedBoxMaker {
         action_box.set_margin_end(12);
         action_box.set_halign(Align::End);
 
-        let load_btn = Button::with_label("Load");
-        let save_btn = Button::with_label("Save");
-        let cancel_btn = Button::with_label("Cancel");
-        let generate_gcode_btn = Button::with_label("Generate G-code");
-        let generate_shapes_btn = Button::with_label("Generate Shapes");
+        let load_btn = Button::with_label(&t!("Load"));
+        let save_btn = Button::with_label(&t!("Save"));
+        let cancel_btn = Button::with_label(&t!("Cancel"));
+        let generate_gcode_btn = Button::with_label(&t!("Generate G-code"));
+        let generate_shapes_btn = Button::with_label(&t!("Generate Shapes"));
         generate_gcode_btn.add_css_class("suggested-action");
 
         action_box.append(&load_btn);
@@ -381,7 +395,7 @@ impl TabbedBoxMaker {
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
-                .title("Generating Box")
+                .title(t!("Generating Box"))
                 .modal(true)
                 .default_width(400)
                 .default_height(150)
@@ -394,7 +408,7 @@ impl TabbedBoxMaker {
             vbox.set_margin_start(24);
             vbox.set_margin_end(24);
 
-            let status_label = Label::new(Some("Generating box panels..."));
+            let status_label = Label::new(Some(&t!("Generating box panels...")));
             vbox.append(&status_label);
 
             let progress_bar = gtk4::ProgressBar::new();
@@ -404,7 +418,7 @@ impl TabbedBoxMaker {
 
             let button_box = Box::new(Orientation::Horizontal, 6);
             button_box.set_halign(Align::End);
-            let cancel_button = Button::with_label("Cancel");
+            let cancel_button = Button::with_label(&t!("Cancel"));
             button_box.append(&cancel_button);
             vbox.append(&button_box);
 
@@ -427,7 +441,7 @@ impl TabbedBoxMaker {
             std::thread::spawn(move || {
                 let result = (|| -> Result<String, String> {
                     if cancel_rx.try_recv().is_ok() {
-                        return Err("Cancelled by user".to_string());
+                        return Err(t!("Cancelled by user"));
                     }
                     let mut generator = Generator::new(params)?;
                     generator.generate()?;

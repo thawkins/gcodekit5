@@ -1,4 +1,4 @@
-//! Serialization and deserialization for designer files.
+//! Serialization and deserialization for designer files
 //!
 //! Implements save/load functionality for .gck4 (GCodeKit4) design files
 //! using JSON format with complete design state preservation.
@@ -6,7 +6,7 @@
 use crate::model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
-    DesignTriangle as Triangle,
+    DesignTriangle as Triangle, RasterImage,
 };
 use crate::shapes::OperationType;
 use anyhow::{Context, Result};
@@ -19,12 +19,24 @@ use super::pocket_operations::PocketStrategy;
 use crate::model::*;
 
 /// Design file format version
-const FILE_FORMAT_VERSION: &str = "1.0";
+const FILE_FORMAT_VERSION: &str = "1.1";
+
+/// Document mode stored in design files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum DesignMode {
+    #[default]
+    #[serde(rename = "2d")]
+    TwoD,
+    #[serde(rename = "3d")]
+    ThreeD,
+}
 
 /// Complete design file structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignFile {
     pub version: String,
+    #[serde(default)]
+    pub design_mode: DesignMode,
     pub metadata: DesignMetadata,
     pub viewport: ViewportState,
     pub shapes: Vec<ShapeData>,
@@ -65,6 +77,8 @@ pub struct ShapeData {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    #[serde(default)]
+    pub right_angle_corner: u8,
     #[serde(default)]
     pub points: Vec<(f64, f64)>,
     pub selected: bool,
@@ -132,14 +146,82 @@ pub struct ShapeData {
     pub chamfer: f64,
     #[serde(default = "default_lock_aspect_ratio")]
     pub lock_aspect_ratio: bool,
+    #[serde(default)]
+    pub original_path: Option<String>,
+    #[serde(default = "default_true")]
+    pub use_global_laser: bool,
+    #[serde(default)]
+    pub laser_params: LaserParams,
+    // ========== PARÁMETROS LÁSER PARA IMÁGENES RÁSTER ==========
+    #[serde(default = "default_feed_rate")]
+    pub feed_rate: f64,
+    #[serde(default = "default_travel_rate")]
+    pub travel_rate: f64,
+    #[serde(default = "default_min_power")]
+    pub min_power: f64,
+    #[serde(default = "default_max_power")]
+    pub max_power: f64,
+    #[serde(default = "default_ppi")]
+    pub ppi: f64,
+    #[serde(default = "default_bidirectional")]
+    pub bidirectional: bool,
+    #[serde(default = "default_invert")]
+    pub invert: bool,
+    #[serde(default = "default_scan_direction")]
+    pub scan_direction: String,
+    #[serde(default = "default_dithering")]
+    pub dithering: String,
+    #[serde(default = "default_halftone_threshold")]
+    pub halftone_threshold: u8,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_lock_aspect_ratio() -> bool {
-    true
+    false
 }
 
 fn default_raster_fill_ratio() -> f64 {
     0.5
+}
+
+// ========== FUNCIONES DEFAULT PARA PARÁMETROS LÁSER ==========
+fn default_travel_rate() -> f64 {
+    3000.0
+}
+
+fn default_min_power() -> f64 {
+    0.0
+}
+
+fn default_max_power() -> f64 {
+    20.0
+}
+
+fn default_ppi() -> f64 {
+    254.0
+}
+
+fn default_bidirectional() -> bool {
+    true
+}
+
+fn default_invert() -> bool {
+    true
+}
+
+fn default_scan_direction() -> String {
+    "horizontal".to_string()
+}
+
+fn default_dithering() -> String {
+    "none".to_string()
+}
+
+fn default_halftone_threshold() -> u8 {
+    127
 }
 
 /// Toolpath generation parameters
@@ -153,6 +235,10 @@ pub struct ToolpathParameters {
     pub tool_diameter: f64,
     #[serde(default = "default_cut_depth")]
     pub cut_depth: f64,
+    #[serde(default = "default_step_down")]
+    pub step_down: f64,
+    #[serde(default = "default_continuous_z_between_passes")]
+    pub continuous_z_between_passes: bool,
     #[serde(default = "default_stock_width")]
     pub stock_width: f32,
     #[serde(default = "default_stock_height")]
@@ -175,6 +261,12 @@ fn default_tool_diameter() -> f64 {
 fn default_cut_depth() -> f64 {
     -5.0
 }
+fn default_step_down() -> f64 {
+    1.0
+}
+fn default_continuous_z_between_passes() -> bool {
+    false
+}
 fn default_stock_width() -> f32 {
     200.0
 }
@@ -185,7 +277,7 @@ fn default_stock_thickness() -> f32 {
     10.0
 }
 fn default_safe_z_height() -> f32 {
-    10.0
+    default_stock_thickness() + 5.0
 }
 
 impl Default for ToolpathParameters {
@@ -195,6 +287,8 @@ impl Default for ToolpathParameters {
             spindle_speed: default_spindle_speed(),
             tool_diameter: default_tool_diameter(),
             cut_depth: default_cut_depth(),
+            step_down: default_step_down(),
+            continuous_z_between_passes: default_continuous_z_between_passes(),
             stock_width: default_stock_width(),
             stock_height: default_stock_height(),
             stock_thickness: default_stock_thickness(),
@@ -225,6 +319,18 @@ impl ToolpathParameters {
     /// Builder method to set cut depth in mm (negative value).
     pub fn with_cut_depth(mut self, depth: f64) -> Self {
         self.cut_depth = depth;
+        self
+    }
+
+    /// Builder method to set step_down
+    pub fn with_step_down(mut self, step_down: f64) -> Self {
+        self.step_down = step_down;
+        self
+    }
+
+    /// Builder method to enable/disable continuous Z between passes.
+    pub fn with_continuous_z_between_passes(mut self, enabled: bool) -> Self {
+        self.continuous_z_between_passes = enabled;
         self
     }
 
@@ -259,6 +365,7 @@ impl DesignFile {
         let now = Utc::now();
         Self {
             version: FILE_FORMAT_VERSION.to_string(),
+            design_mode: DesignMode::default(),
             metadata: DesignMetadata {
                 name: name.into(),
                 created: now,
@@ -280,9 +387,7 @@ impl DesignFile {
     /// Save design to file
     pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
         let json = serde_json::to_string_pretty(self).context("Failed to serialize design")?;
-
         std::fs::write(path.as_ref(), json).context("Failed to write design file")?;
-
         Ok(())
     }
 
@@ -290,21 +395,34 @@ impl DesignFile {
     pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content =
             std::fs::read_to_string(path.as_ref()).context("Failed to read design file")?;
-
         let mut design: DesignFile =
             serde_json::from_str(&content).context("Failed to parse design file")?;
-
         // Update modified timestamp
         design.metadata.modified = Utc::now();
-
         Ok(design)
     }
 
-    /// Convert DrawingObject to ShapeData
     pub fn from_drawing_object(obj: &DrawingObject) -> ShapeData {
-        let (x, y, x2, y2) = obj.shape.bounds();
-        let width = x2 - x;
-        let height = y2 - y;
+        // 1. We only use the bounds to calculate the center (cx, cy)
+        let (x1, y1, x2, y2) = obj.shape.bounds();
+        let cx = (x1 + x2) / 2.0;
+        let cy = (y1 + y2) / 2.0;
+
+        // 2. We obtain the actual width and height of the object using shape-specific parameters
+        let (real_width, real_height) = match &obj.shape {
+            Shape::Rectangle(r) => (r.width, r.height),
+            Shape::Circle(c) => (c.radius * 2.0, c.radius * 2.0),
+            Shape::Ellipse(e) => (e.rx * 2.0, e.ry * 2.0),
+            Shape::Triangle(t) => (t.width, t.height),
+            Shape::Polygon(p) => (p.radius * 2.0, p.radius * 2.0),
+            Shape::RasterImage(r) => (r.width_mm, r.height_mm),
+            _ => (x2 - x1, y2 - y1),
+        };
+
+        let shape_points = match &obj.shape {
+            Shape::Line(line) => vec![(line.start.x, line.start.y), (line.end.x, line.end.y)],
+            _ => Vec::new(),
+        };
 
         let shape_type = match obj.shape.shape_type() {
             ShapeType::Rectangle => "rectangle",
@@ -317,7 +435,10 @@ impl DesignFile {
             ShapeType::Polygon => "polygon",
             ShapeType::Gear => "gear",
             ShapeType::Sprocket => "sprocket",
+            ShapeType::RasterImage => "raster_image",
         };
+
+        let rotation = obj.shape.rotation();
 
         let (text_content, font_size, font_family, font_bold, font_italic) =
             if let Shape::Text(text_shape) = &obj.shape {
@@ -355,15 +476,12 @@ impl DesignFile {
         let mut pressure_angle = 0.0;
         let mut pitch = 0.0;
         let mut roller_diameter = 0.0;
-        let thickness = 0.0;
-        let depth = 0.0;
-        let tab_size = 0.0;
 
         match &obj.shape {
             Shape::Gear(g) => {
                 teeth = g.teeth;
                 module = g.module;
-                pressure_angle = g.pressure_angle;
+                pressure_angle = g.pressure_angle_deg;
             }
             Shape::Sprocket(s) => {
                 teeth = s.teeth;
@@ -373,16 +491,64 @@ impl DesignFile {
             _ => {}
         }
 
+        let original_path = if let Shape::RasterImage(raster) = &obj.shape {
+            raster
+                .original_path
+                .clone()
+                .map(|p| p.display().to_string())
+        } else {
+            None
+        };
+
+        // ========== EXTRAER PARÁMETROS LÁSER ==========
+        let (feed_rate, travel_rate, min_power, max_power, ppi, bidirectional, invert, scan_direction, dithering, halftone_threshold) =
+            if let Shape::RasterImage(raster) = &obj.shape {
+                (
+                    raster.feed_rate,
+                    raster.travel_rate,
+                    raster.min_power,
+                    raster.max_power,
+                    raster.ppi,
+                    raster.bidirectional,
+                    raster.invert,
+                    raster.scan_direction.clone(),
+                    raster.dithering.clone(),
+                    raster.halftone_threshold,
+                )
+            } else {
+                (
+                    default_feed_rate(),
+                    default_travel_rate(),
+                    default_min_power(),
+                    default_max_power(),
+                    default_ppi(),
+                    default_bidirectional(),
+                    default_invert(),
+                    default_scan_direction(),
+                    default_dithering(),
+                    default_halftone_threshold(),
+                )
+            };
+
+        let right_angle_corner = if let Shape::Triangle(t) = &obj.shape {
+            t.right_angle_corner
+        } else {
+                0
+        };
+
+        let laser_params = obj.laser_params;
+
         ShapeData {
             id: obj.id as i32,
             shape_type: shape_type.to_string(),
             name: obj.name.clone(),
-            x,
-            y,
-            width,
-            height,
-            points: Vec::new(),
-            selected: false,
+            x: cx,
+            y: cy,
+            width: real_width,
+            height: real_height,
+            right_angle_corner,
+            points: shape_points,
+            selected: obj.selected,
             use_custom_values: obj.use_custom_values,
             operation_type: match obj.operation_type {
                 OperationType::Profile => "profile".to_string(),
@@ -401,7 +567,7 @@ impl DesignFile {
             group_id: obj.group_id,
             corner_radius,
             is_slot,
-            rotation: obj.shape.rotation(),
+            rotation,
             ramp_angle: obj.ramp_angle,
             pocket_strategy: obj.pocket_strategy,
             raster_fill_ratio: obj.raster_fill_ratio,
@@ -411,50 +577,94 @@ impl DesignFile {
             pressure_angle,
             pitch,
             roller_diameter,
-            thickness,
-            depth,
-            tab_size,
+            thickness: 0.0,
+            depth: obj.pocket_depth,
+            tab_size: 0.0,
             offset: obj.offset,
             fillet: obj.fillet,
             chamfer: obj.chamfer,
             lock_aspect_ratio: obj.lock_aspect_ratio,
+            original_path,
+            use_global_laser: obj.use_global_laser,
+            // ========== PARÁMETROS LÁSER ==========
+            feed_rate,
+            travel_rate,
+            min_power,
+            max_power,
+            ppi,
+            bidirectional,
+            invert,
+            scan_direction,
+            dithering,
+            halftone_threshold,
+            laser_params,
         }
     }
 
-    /// Convert ShapeData to DrawingObject
     pub fn to_drawing_object(data: &ShapeData, next_id: i32) -> Result<DrawingObject> {
+        // Obtener laser_params una sola vez
+        let laser_params = data.laser_params;
+
         let shape: Shape = match data.shape_type.as_str() {
             "rectangle" => {
-                let mut rect = Rectangle::new(data.x, data.y, data.width, data.height);
+                let x = data.x - data.width / 2.0;
+                let y = data.y - data.height / 2.0;
+                let mut rect = Rectangle::new(x, y, data.width, data.height);
                 rect.corner_radius = data.corner_radius;
                 rect.is_slot = data.is_slot;
+                rect.laser_params = laser_params;
                 Shape::Rectangle(rect)
             }
             "circle" => {
                 let radius = data.width.min(data.height) / 2.0;
-                let center = Point::new(data.x + radius, data.y + radius);
-                Shape::Circle(Circle::new(center, radius))
+                let center = Point::new(data.x, data.y);
+                let mut circle = Circle::new(center, radius);
+                circle.laser_params = laser_params;
+                Shape::Circle(circle)
             }
             "line" => {
-                let start = Point::new(data.x, data.y);
-                let end = Point::new(data.x + data.width, data.y + data.height);
-                Shape::Line(Line::new(start, end))
+                let mut line = if data.points.len() >= 2 {
+                    let start = Point::new(data.points[0].0, data.points[0].1);
+                    let end = Point::new(data.points[1].0, data.points[1].1);
+                    Line::new(start, end)
+                } else {
+                    let half_w = data.width / 2.0;
+                    let half_h = data.height / 2.0;
+                    let start = Point::new(data.x - half_w, data.y - half_h);
+                    let end = Point::new(data.x + half_w, data.y + half_h);
+                    Line::new(start, end)
+                };
+                line.rotation = data.rotation;
+                line.laser_params = laser_params;
+                Shape::Line(line)
             }
             "ellipse" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
-                Shape::Ellipse(Ellipse::new(center, data.width / 2.0, data.height / 2.0))
+                let center = Point::new(data.x, data.y);
+                let mut ellipse = Ellipse::new(center, data.width / 2.0, data.height / 2.0);
+                ellipse.laser_params = laser_params;
+                Shape::Ellipse(ellipse)
             }
             "triangle" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
-                Shape::Triangle(Triangle::new(center, data.width, data.height))
+                let center = Point::new(data.x, data.y);
+                let mut triangle = Triangle::new_with_corner(
+                    center,
+                    data.width,
+                    data.height,
+                    data.right_angle_corner
+                );
+                triangle.rotation = data.rotation;
+                triangle.laser_params = laser_params;
+                Shape::Triangle(triangle)
             }
             "polygon" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
-                let radius = data.width.min(data.height) / 2.0;
-                Shape::Polygon(Polygon::new(center, radius, data.sides))
+                let center = Point::new(data.x, data.y);
+                let radius = data.width.max(data.height) / 2.0;
+                let mut polygon = Polygon::new(center, radius, data.sides);
+                polygon.laser_params = laser_params;
+                Shape::Polygon(polygon)
             }
             "polyline" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let radius = data.width.min(data.height) / 2.0;
                 let sides = 6;
                 let mut vertices = Vec::with_capacity(sides);
@@ -464,40 +674,95 @@ impl DesignFile {
                     let y = center.y + radius * angle.sin();
                     vertices.push(Point::new(x, y));
                 }
-                Shape::Path(PathShape::from_points(&vertices, true))
+                let mut path = PathShape::from_points(&vertices, true);
+                path.laser_params = laser_params;
+                Shape::Path(path)
             }
             "text" => {
-                let mut s =
-                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                let mut s = TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }
                 s.bold = data.font_bold;
                 s.italic = data.font_italic;
+                s.laser_params = laser_params;
                 Shape::Text(s)
             }
             "path" => {
-                if let Some(path_shape) = PathShape::from_svg_path(&data.path_data) {
+                if let Some(mut path_shape) = PathShape::from_svg_path(&data.path_data) {
+                    path_shape.laser_params = laser_params;
                     Shape::Path(path_shape)
                 } else {
-                    // Fallback if path parsing fails
+                    // Fallback...
                     let mut rect = Rectangle::new(data.x, data.y, data.width, data.height);
                     rect.corner_radius = data.corner_radius;
                     rect.is_slot = data.is_slot;
+                    rect.laser_params = laser_params;
                     Shape::Rectangle(rect)
                 }
             }
             "gear" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let mut gear = DesignGear::new(center, data.module, data.teeth);
-                gear.pressure_angle = data.pressure_angle;
+                gear.pressure_angle_deg = data.pressure_angle;
+                gear.laser_params = laser_params;
                 Shape::Gear(gear)
             }
             "sprocket" => {
-                let center = Point::new(data.x + data.width / 2.0, data.y + data.height / 2.0);
+                let center = Point::new(data.x, data.y);
                 let mut sprocket = DesignSprocket::new(center, data.pitch, data.teeth);
                 sprocket.roller_diameter = data.roller_diameter;
+                sprocket.laser_params = laser_params;
                 Shape::Sprocket(sprocket)
+            }
+            "raster_image" => {
+                let center = Point::new(data.x, data.y);
+                let original_path = data.original_path.as_ref().map(std::path::PathBuf::from);
+
+                let (image_data, width_mm, height_mm) = if let Some(ref path) = original_path {
+                    if path.exists() {
+                        match crate::image_importer::ImageImporter::load_image_data_with_size(
+                            path,
+                            data.width,
+                            data.height,
+                        ) {
+                            Ok((data, w, h)) => (data, w, h),
+                            Err(e) => {
+                                eprintln!("Warning: Could not load image {:?}: {}", path, e);
+                                (Vec::new(), data.width, data.height)
+                            }
+                        }
+                    } else {
+                        eprintln!("Warning: Image file not found: {:?}", path);
+                        (Vec::new(), data.width, data.height)
+                    }
+                } else {
+                    (Vec::new(), data.width, data.height)
+                };
+
+                let mut raster = RasterImage::new(
+                    data.id as u64,
+                    center,
+                    width_mm,
+                    height_mm,
+                    image_data,
+                    original_path,
+                );
+
+                // Parámetros láser para raster
+                raster.feed_rate = data.feed_rate;
+                raster.travel_rate = data.travel_rate;
+                raster.min_power = data.min_power;
+                raster.max_power = data.max_power;
+                raster.ppi = data.ppi;
+                raster.bidirectional = data.bidirectional;
+                raster.invert = data.invert;
+                raster.scan_direction = data.scan_direction.clone();
+                raster.dithering = data.dithering.clone();
+                raster.halftone_threshold = data.halftone_threshold;
+                raster.rotation = data.rotation;
+
+                Shape::RasterImage(raster)
             }
             _ => anyhow::bail!("Unknown shape type: {}", data.shape_type),
         };
@@ -515,6 +780,7 @@ impl DesignFile {
             Shape::Polygon(s) => s.rotation = data.rotation,
             Shape::Gear(s) => s.rotation = data.rotation,
             Shape::Sprocket(s) => s.rotation = data.rotation,
+            Shape::RasterImage(s) => s.rotation = data.rotation,
         }
 
         let operation_type = match data.operation_type.as_str() {
@@ -533,6 +799,7 @@ impl DesignFile {
             crate::model::ShapeType::Polygon => "Polygon",
             crate::model::ShapeType::Gear => "Gear",
             crate::model::ShapeType::Sprocket => "Sprocket",
+            crate::model::ShapeType::RasterImage => "Raster Image",
         };
 
         Ok(DrawingObject {
@@ -558,6 +825,8 @@ impl DesignFile {
             fillet: data.fillet,
             chamfer: data.chamfer,
             lock_aspect_ratio: data.lock_aspect_ratio,
+            use_global_laser: data.use_global_laser,
+            laser_params,
         })
     }
 }

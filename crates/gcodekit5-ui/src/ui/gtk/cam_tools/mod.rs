@@ -12,7 +12,7 @@ mod speeds_feeds;
 mod spoilboard_grid;
 mod spoilboard_surfacing;
 mod tabbed_box;
-mod vector_engraving;
+// mod vector_engraving;
 
 // Re-export all tool types
 pub use bitmap_engraving::BitmapEngravingTool;
@@ -23,7 +23,7 @@ pub use speeds_feeds::SpeedsFeedsTool;
 pub use spoilboard_grid::SpoilboardGridTool;
 pub use spoilboard_surfacing::SpoilboardSurfacingTool;
 pub use tabbed_box::TabbedBoxMaker;
-pub use vector_engraving::VectorEngravingTool;
+// pub use vector_engraving::VectorEngravingTool;
 
 use common::set_paned_initial_fraction;
 
@@ -35,6 +35,8 @@ use std::rc::Rc;
 
 use crate::ui::gtk::machine_control::MachineControlView;
 use gcodekit5_settings::SettingsController;
+
+use crate::t;
 
 pub struct CamToolsView {
     pub content: Stack,
@@ -84,11 +86,11 @@ impl CamToolsView {
         // Bitmap Engraving Tool
         let bitmap_tool = BitmapEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(bitmap_tool.widget(), Some("laser_image"));
-
+/*
         // Vector Engraving Tool
         let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(vector_tool.widget(), Some("laser_vector"));
-
+*/
         // Speeds & Feeds Calculator
         let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
         stack.add_named(feeds_tool.widget(), Some("feeds"));
@@ -125,84 +127,90 @@ impl CamToolsView {
     fn create_dashboard(stack: &Stack) -> Box {
         // Compact dashboard: tool list (left) + details panel (right)
         // with search + category filtering.
-        #[derive(Clone, Copy)]
+        // Compact dashboard: tool list (left) + details panel (right)
+        // with search + category filtering.
+        #[derive(Clone)]
         struct Tool {
             page: &'static str,
-            title: &'static str,
-            desc: &'static str,
+            title: String,
+            desc: String,
             icon: &'static str,
-            category: &'static str,
+            category: String,
         }
 
-        const TOOLS: &[Tool] = &[
-            Tool {
-                page: "tabbed_box",
-                title: "Tabbed Box Maker",
-                desc: "Generate G-code for laser/CNC cut boxes with finger joints",
-                icon: "object-select-symbolic",
-                category: "generators",
-            },
-            Tool {
-                page: "jigsaw",
-                title: "Jigsaw Puzzle Generator",
-                desc: "Create custom jigsaw puzzle patterns from images",
-                icon: "image-x-generic-symbolic",
-                category: "generators",
-            },
-            Tool {
-                page: "laser_image",
-                title: "Laser Image Engraver",
-                desc: "Convert raster images to G-code for laser engraving",
-                icon: "camera-photo-symbolic",
-                category: "engraving",
-            },
-            Tool {
-                page: "laser_vector",
-                title: "Laser Vector Engraver",
-                desc: "Convert SVG and DXF vector files to G-code",
-                icon: "insert-image-symbolic",
-                category: "engraving",
-            },
-            Tool {
-                page: "feeds",
-                title: "Speeds and Feeds Calculator",
-                desc: "Calculate cutting speeds and feeds for your materials",
-                icon: "accessories-calculator-symbolic",
-                category: "calculators",
-            },
-            Tool {
-                page: "surfacing",
-                title: "Spoilboard Surfacing",
-                desc: "Generate surfacing toolpaths to flatten your spoilboard",
-                icon: "view-refresh-symbolic",
-                category: "maintenance",
-            },
-            Tool {
-                page: "grid",
-                title: "Create Spoilboard Grid",
-                desc: "Generate grid patterns for spoilboard alignment",
-                icon: "view-grid-symbolic",
-                category: "maintenance",
-            },
-            Tool {
-                page: "gerber",
-                title: "Gerber to G-Code",
-                desc: "Convert Gerber files to G-Code for PCB milling",
-                icon: "media-floppy-symbolic",
-                category: "generators",
-            },
-            Tool {
-                page: "drill_press",
-                title: "Drill Press",
-                desc: "Emulate a drill press with peck drilling and helical cycles",
-                icon: "input-mouse-symbolic",
-                category: "generators",
-            },
-        ];
+        fn get_tools() -> Vec<Tool> {
+            vec![
+                Tool {
+                    page: "tabbed_box",
+                    title: t!("Tabbed Box Maker"),
+                    desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
+                    icon: "object-select-symbolic",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "jigsaw",
+                    title: t!("Jigsaw Puzzle Generator"),
+                    desc: t!("Create custom jigsaw puzzle patterns from images"),
+                    icon: "image-x-generic-symbolic",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "laser_image",
+                    title: t!("Laser Image Engraver"),
+                    desc: t!("Convert raster images to G-code for laser engraving"),
+                    icon: "camera-photo-symbolic",
+                    category: t!("engraving"),
+                },
+/*
+                Tool {
+                    page: "laser_vector",
+                    title: t!("Laser Vector Engraver"),
+                    desc: t!("Convert SVG and DXF vector files to G-code"),
+                    icon: "insert-image-symbolic",
+                    category: t!("engraving"),
+                },
+*/
+                Tool {
+                    page: "feeds",
+                    title: t!("Speeds and Feeds Calculator"),
+                    desc: t!("Calculate cutting speeds and feeds for your materials"),
+                    icon: "accessories-calculator-symbolic",
+                    category: t!("calculators"),
+                },
+                Tool {
+                    page: "surfacing",
+                    title: t!("Spoilboard Surfacing"),
+                    desc: t!("Generate surfacing toolpaths to flatten your spoilboard"),
+                    icon: "view-refresh-symbolic",
+                    category: t!("maintenance"),
+                },
+                Tool {
+                    page: "grid",
+                    title: t!("Create Spoilboard Grid"),
+                    desc: t!("Generate grid patterns for spoilboard alignment"),
+                    icon: "view-grid-symbolic",
+                    category: t!("maintenance"),
+                },
+                Tool {
+                    page: "gerber",
+                    title: t!("Gerber to G-Code"),
+                    desc: t!("Convert Gerber files to G-Code for PCB milling"),
+                    icon: "media-floppy-symbolic",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "drill_press",
+                    title: t!("Drill Press"),
+                    desc: t!("Emulate a drill press with peck drilling and helical cycles"),
+                    icon: "input-mouse-symbolic",
+                    category: t!("generators"),
+                },
+            ]
+        }
 
         fn apply_filters(list: &gtk4::ListBox, query: &str, category: &str) {
             let q = query.trim().to_lowercase();
-
+            let tools = get_tools();
             let mut child = list.first_child();
             while let Some(w) = child {
                 child = w.next_sibling();
@@ -218,7 +226,7 @@ impl CamToolsView {
                 let Some(idx) = idx else {
                     continue;
                 };
-                let Some(tool) = TOOLS.get(idx) else {
+                let Some(tool) = tools.get(idx) else {
                     continue;
                 };
 
@@ -276,7 +284,9 @@ impl CamToolsView {
         let list = gtk4::ListBox::new();
         list.add_css_class("boxed-list");
 
-        for (idx, tool) in TOOLS.iter().enumerate() {
+        let tools = get_tools();
+
+        for (idx, tool) in get_tools().iter().enumerate() {
             let row = gtk4::ListBoxRow::new();
             row.set_selectable(true);
             // SAFETY: set_data stores a u32 keyed by "camtool-index". The data
@@ -296,11 +306,13 @@ impl CamToolsView {
             icon.set_valign(Align::Start);
 
             let v = Box::new(Orientation::Vertical, 2);
-            let t = Label::new(Some(tool.title));
+            //            let t = Label::new(Some(tool.title));
+            let t = Label::new(Some(&tool.title));
             t.set_xalign(0.0);
             t.add_css_class("heading");
 
-            let d = Label::new(Some(tool.desc));
+            //            let d = Label::new(Some(tool.desc));
+            let d = Label::new(Some(&tool.desc));
             d.set_xalign(0.0);
             d.set_wrap(true);
             d.add_css_class("caption");
@@ -330,15 +342,15 @@ impl CamToolsView {
         details.set_hexpand(true);
         details.set_vexpand(true);
 
-        let details_title = Label::new(Some("Select a tool"));
+        let details_title = Label::new(Some(&t!("Select a tool")));
         details_title.set_xalign(0.0);
         details_title.add_css_class("title-2");
 
-        let details_desc = Label::new(Some("Choose a tool from the list to see details."));
+        let details_desc = Label::new(Some(&t!("Choose a tool from the list to see details.")));
         details_desc.set_xalign(0.0);
         details_desc.set_wrap(true);
 
-        let open_btn = Button::with_label("Open");
+        let open_btn = Button::with_label(&t!("Open"));
         open_btn.add_css_class("suggested-action");
         open_btn.set_sensitive(false);
 
@@ -366,15 +378,15 @@ impl CamToolsView {
                             .map(|p| *p.as_ref() as usize)
                     };
                     if let Some(idx) = idx {
-                        if let Some(tool) = TOOLS.get(idx) {
-                            details_title.set_text(tool.title);
-                            details_desc.set_text(tool.desc);
+                        if let Some(tool) = get_tools().get(idx) {
+                            details_title.set_text(&tool.title);
+                            details_desc.set_text(&tool.desc);
                         }
                     }
                     open_btn.set_sensitive(true);
                 } else {
-                    details_title.set_text("Select a tool");
-                    details_desc.set_text("Choose a tool from the list to see details.");
+                    details_title.set_text(&t!("Select a tool"));
+                    details_desc.set_text(&t!("Choose a tool from the list to see details."));
                     open_btn.set_sensitive(false);
                 }
             });
@@ -393,7 +405,7 @@ impl CamToolsView {
                             .map(|p| *p.as_ref() as usize)
                     };
                     if let Some(idx) = idx {
-                        if let Some(tool) = TOOLS.get(idx) {
+                        if let Some(tool) = get_tools().get(idx) {
                             stack_for_click.set_visible_child_name(tool.page);
                         }
                     }
@@ -409,7 +421,7 @@ impl CamToolsView {
                         .map(|p| *p.as_ref() as usize)
                 };
                 if let Some(idx) = idx {
-                    if let Some(tool) = TOOLS.get(idx) {
+                    if let Some(tool) = tools.get(idx) {
                         stack_for_activate.set_visible_child_name(tool.page);
                     }
                 }

@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 use gcodekit5_core::units;
@@ -64,7 +65,7 @@ impl JigsawTool {
         header.append(&back_btn);
 
         let title = Label::builder()
-            .label("Jigsaw Puzzle Generator")
+            .label(t!("Jigsaw Puzzle Generator"))
             .css_classes(vec!["title-2"])
             .build();
         title.set_hexpand(true);
@@ -90,14 +91,14 @@ impl JigsawTool {
         sidebar.set_margin_end(24);
 
         let title_label = Label::builder()
-            .label("Jigsaw Puzzle Generator")
+            .label(t!("Jigsaw Puzzle Generator"))
             .css_classes(vec!["title-3"])
             .halign(Align::Start)
             .build();
         sidebar.append(&title_label);
 
         let desc = Label::builder()
-            .label("Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces.")
+            .label(t!("Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."))
             .css_classes(vec!["body"])
             .wrap(true)
             .halign(Align::Start)
@@ -114,25 +115,26 @@ impl JigsawTool {
             .build();
 
         // Widgets
-        let (width_row, width, width_unit) = create_dimension_row("Width:", 200.0, &settings);
-        let (height_row, height, height_unit) = create_dimension_row("Height:", 150.0, &settings);
+        let (width_row, width, width_unit) = create_dimension_row(&t!("Width:"), 200.0, &settings);
+        let (height_row, height, height_unit) =
+            create_dimension_row(&t!("Height:"), 150.0, &settings);
         let pieces_across = Entry::builder().text("4").valign(Align::Center).build();
         let pieces_down = Entry::builder().text("3").valign(Align::Center).build();
-        let (kerf_row, kerf, kerf_unit) = create_dimension_row("Kerf:", 0.5, &settings);
+        let (kerf_row, kerf, kerf_unit) = create_dimension_row(&t!("Kerf:"), 0.5, &settings);
         let seed = Entry::builder().text("42").valign(Align::Center).build();
         let tab_size = Entry::builder().text("20").valign(Align::Center).build();
         let jitter = Entry::builder().text("4").valign(Align::Center).build();
         let (corner_radius_row, corner_radius, corner_radius_unit) =
-            create_dimension_row("Corner Radius:", 2.0, &settings);
+            create_dimension_row(&t!("Corner Radius:"), 2.0, &settings);
         let passes = Entry::builder().text("3").valign(Align::Center).build();
         let power = Entry::builder().text("1000").valign(Align::Center).build();
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
         let (z_step_down_row, z_step_down, z_step_down_unit) =
-            create_dimension_row("Z Step Down:", 0.5, &settings);
+            create_dimension_row(&t!("Z Step Down:"), 0.5, &settings);
         let (offset_x_row, offset_x, offset_x_unit) =
-            create_dimension_row("Offset X:", 10.0, &settings);
+            create_dimension_row(&t!("Offset X:"), 10.0, &settings);
         let (offset_y_row, offset_y, offset_y_unit) =
-            create_dimension_row("Offset Y:", 10.0, &settings);
+            create_dimension_row(&t!("Offset Y:"), 10.0, &settings);
         let home_before = CheckButton::builder()
             .active(false)
             .valign(Align::Center)
@@ -140,7 +142,7 @@ impl JigsawTool {
 
         // Groups
         let dim_group = PreferencesGroup::builder()
-            .title("Puzzle Dimensions")
+            .title(t!("Puzzle Dimensions"))
             .build();
         dim_group.add(&width_row);
         dim_group.add(&height_row);
@@ -148,20 +150,20 @@ impl JigsawTool {
         scroll_content.append(&dim_group);
 
         let grid_group = PreferencesGroup::builder()
-            .title("Grid Configuration")
+            .title(t!("Grid Configuration"))
             .build();
-        grid_group.add(&Self::create_row("Pieces Across:", &pieces_across));
-        grid_group.add(&Self::create_row("Pieces Down:", &pieces_down));
+        grid_group.add(&Self::create_row(&t!("Pieces Across:"), &pieces_across));
+        grid_group.add(&Self::create_row(&t!("Pieces Down:"), &pieces_down));
         scroll_content.append(&grid_group);
 
         let param_group = PreferencesGroup::builder()
-            .title("Puzzle Parameters")
+            .title(t!("Puzzle Parameters"))
             .build();
         param_group.add(&kerf_row);
-        param_group.add(&Self::create_row("Tab Size (%):", &tab_size));
-        param_group.add(&Self::create_row("Jitter (%):", &jitter));
+        param_group.add(&Self::create_row(&t!("Tab Size (%):"), &tab_size));
+        param_group.add(&Self::create_row(&t!("Jitter (%):"), &jitter));
 
-        let seed_row = ActionRow::builder().title("Random Seed:").build();
+        let seed_row = ActionRow::builder().title(t!("Random Seed:")).build();
         let seed_box = Box::new(Orientation::Horizontal, 6);
         seed_box.append(&seed);
         let rand_btn = Button::builder()
@@ -173,19 +175,23 @@ impl JigsawTool {
 
         scroll_content.append(&param_group);
 
-        let laser_group = PreferencesGroup::builder().title("Laser Settings").build();
-        laser_group.add(&Self::create_row("Passes:", &passes));
-        laser_group.add(&Self::create_row("Power (S):", &power));
-        laser_group.add(&Self::create_row("Feed Rate:", &feed_rate));
+        let laser_group = PreferencesGroup::builder()
+            .title(t!("Laser Settings"))
+            .build();
+        laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
+        laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
+        laser_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
         laser_group.add(&z_step_down_row);
         scroll_content.append(&laser_group);
 
-        let offset_group = PreferencesGroup::builder().title("Work Offsets").build();
+        let offset_group = PreferencesGroup::builder()
+            .title(t!("Work Offsets"))
+            .build();
         offset_group.add(&offset_x_row);
         offset_group.add(&offset_y_row);
 
         let home_row = ActionRow::builder()
-            .title("Home Device Before Start")
+            .title(t!("Home Device Before Start"))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -201,10 +207,10 @@ impl JigsawTool {
         action_box.set_margin_end(12);
         action_box.set_halign(Align::End);
 
-        let load_btn = Button::with_label("Load");
-        let save_btn = Button::with_label("Save");
-        let cancel_btn = Button::with_label("Cancel");
-        let generate_btn = Button::with_label("Generate");
+        let load_btn = Button::with_label(&t!("Load"));
+        let save_btn = Button::with_label(&t!("Save"));
+        let cancel_btn = Button::with_label(&t!("Cancel"));
+        let generate_btn = Button::with_label(&t!("Generate"));
         generate_btn.add_css_class("suggested-action");
         action_box.append(&load_btn);
         action_box.append(&save_btn);
@@ -297,7 +303,7 @@ impl JigsawTool {
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
-                .title("Generating Puzzle")
+                .title(t!("Generating Puzzle"))
                 .modal(true)
                 .default_width(400)
                 .default_height(150)
@@ -310,7 +316,7 @@ impl JigsawTool {
             vbox.set_margin_start(24);
             vbox.set_margin_end(24);
 
-            let status_label = Label::new(Some("Generating puzzle pieces..."));
+            let status_label = Label::new(Some(&t!("Generating puzzle pieces...")));
             vbox.append(&status_label);
 
             let progress_bar = gtk4::ProgressBar::new();
@@ -320,7 +326,7 @@ impl JigsawTool {
 
             let button_box = Box::new(Orientation::Horizontal, 6);
             button_box.set_halign(Align::End);
-            let cancel_button = Button::with_label("Cancel");
+            let cancel_button = Button::with_label(&t!("Cancel"));
             button_box.append(&cancel_button);
             vbox.append(&button_box);
 
@@ -343,7 +349,7 @@ impl JigsawTool {
             std::thread::spawn(move || {
                 let result = (|| -> Result<String, String> {
                     if cancel_rx.try_recv().is_ok() {
-                        return Err("Cancelled by user".to_string());
+                        return Err(t!("Cancelled by user"));
                     }
                     let mut maker = JigsawPuzzleMaker::new(params)?;
                     maker.generate()?;
@@ -374,8 +380,8 @@ impl JigsawTool {
                         }
                         Err(e) => {
                             CamToolsView::show_error_dialog(
-                                "Puzzle Generation Failed",
-                                &format!("Failed to generate puzzle: {}", e),
+                                &t!("Puzzle Generation Failed"),
+                                &format!("{}: {}", t!("Failed to generate puzzle"), e),
                             );
                         }
                     }

@@ -1,9 +1,12 @@
 //! Rendering and drawing methods for the designer canvas
 
 use super::*;
+use crate::t;
+use crate::ui::gtk::common;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::{DesignerShape, Point, Shape};
 use gcodekit5_designer::toolpath::{Toolpath, ToolpathSegmentType};
+use image::GenericImageView;
 
 impl DesignerCanvas {
     // Canvas rendering requires all transform, theme, and state parameters.
@@ -19,6 +22,7 @@ impl DesignerCanvas {
         polyline_points: &[Point],
         preview_shapes: &[Shape],
         toolpaths: &[Toolpath],
+        pending_fast_shape: Option<Shape>,
         device_bounds: (f64, f64, f64, f64),
         style_context: &gtk4::StyleContext,
         grid_major_line_width: f64,
@@ -78,7 +82,8 @@ impl DesignerCanvas {
         let height = max_y - min_y;
 
         let _ = cr.save();
-        cr.set_source_rgb(0.0, 0.0, 1.0); // Blue
+        let bounds_color = common::colors::to_rgb_f64(&common::colors::DEVICE_BOUNDS);
+        cr.set_source_rgb(bounds_color.0, bounds_color.1, bounds_color.2);
         cr.set_line_width(2.0 / zoom); // 2px wide on screen
         cr.rectangle(min_x, min_y, width, height);
         let _ = cr.stroke();
@@ -199,7 +204,16 @@ impl DesignerCanvas {
 
         // Draw Shapes
         for obj in state.canvas.shape_store.iter() {
-            // 1. Draw Base Shape
+            let has_geometry_modifiers =
+                obj.offset.abs() > 1e-6 || obj.fillet.abs() > 1e-6 || obj.chamfer.abs() > 1e-6;
+            let display_shape = if has_geometry_modifiers {
+                obj.get_effective_shape()
+            } else {
+                obj.shape.clone()
+            };
+
+            // Draw only the visible geometry. If the shape has modifiers,
+            // use the effective result to avoid drawing base + modified outlines.
             let _ = cr.save();
 
             if obj.selected {
@@ -218,6 +232,14 @@ impl DesignerCanvas {
                     1.0,
                 );
                 cr.set_line_width(2.0 / zoom);
+            } else if has_geometry_modifiers {
+                cr.set_source_rgba(
+                    warning_color.red() as f64,
+                    warning_color.green() as f64,
+                    warning_color.blue() as f64,
+                    1.0,
+                );
+                cr.set_line_width(2.0 / zoom);
             } else {
                 cr.set_source_rgba(
                     fg_color.red() as f64,
@@ -228,29 +250,15 @@ impl DesignerCanvas {
                 cr.set_line_width(2.0 / zoom);
             }
 
-            Self::draw_shape_geometry(cr, &obj.shape);
+            Self::draw_shape_geometry(cr, &display_shape);
 
-            // Draw resize handles on BASE shape
+            // Draw resize handles on the visible shape.
             if selected_count <= 1 && obj.selected {
-                let bounds = Self::selection_bounds(&obj.shape);
+                let bounds = Self::selection_bounds(&display_shape);
                 Self::draw_resize_handles(cr, &bounds, zoom, &accent_color);
             }
 
             let _ = cr.restore();
-
-            // 2. Draw Effective Shape (Yellow Overlay) if modified
-            if obj.offset.abs() > 1e-6 || obj.fillet.abs() > 1e-6 || obj.chamfer.abs() > 1e-6 {
-                let _ = cr.save();
-                cr.set_source_rgba(
-                    warning_color.red() as f64,
-                    warning_color.green() as f64,
-                    warning_color.blue() as f64,
-                    1.0,
-                );
-                cr.set_line_width(2.0 / zoom);
-                Self::draw_shape_geometry(cr, &obj.get_effective_shape());
-                let _ = cr.restore();
-            }
         }
 
         // Draw Preview Shapes (e.g. for offset/fillet) in yellow
@@ -267,6 +275,28 @@ impl DesignerCanvas {
             let _ = cr.restore();
         }
 
+        let has_pending_fast_shape = pending_fast_shape.is_some();
+
+        // Draw ghost preview for a pending fast shape at cursor position.
+        if let Some(mut ghost_shape) = pending_fast_shape {
+            let (x1, y1, x2, y2) = ghost_shape.bounds();
+            let center_x = (x1 + x2) * 0.5;
+            let center_y = (y1 + y2) * 0.5;
+            ghost_shape.translate(mouse_pos.0 - center_x, mouse_pos.1 - center_y);
+
+            let _ = cr.save();
+            cr.set_source_rgba(
+                accent_color.red() as f64,
+                accent_color.green() as f64,
+                accent_color.blue() as f64,
+                0.65,
+            );
+            cr.set_line_width(2.0 / zoom);
+            cr.set_dash(&[4.0 / zoom, 4.0 / zoom], 0.0);
+            Self::draw_shape_geometry(cr, &ghost_shape);
+            let _ = cr.restore();
+        }
+
         if selected_count > 1 {
             let mut min_x = f64::INFINITY;
             let mut min_y = f64::INFINITY;
@@ -274,7 +304,15 @@ impl DesignerCanvas {
             let mut max_y = f64::NEG_INFINITY;
 
             for obj in state.canvas.shape_store.iter().filter(|o| o.selected) {
-                let (x1, y1, x2, y2) = Self::selection_bounds(&obj.shape);
+                let (x1, y1, x2, y2) = if obj.offset.abs() > 1e-6
+                    || obj.fillet.abs() > 1e-6
+                    || obj.chamfer.abs() > 1e-6
+                {
+                    let effective = obj.get_effective_shape();
+                    Self::selection_bounds(&effective)
+                } else {
+                    Self::selection_bounds(&obj.shape)
+                };
                 min_x = min_x.min(x1);
                 min_y = min_y.min(y1);
                 max_x = max_x.max(x2);
@@ -314,7 +352,44 @@ impl DesignerCanvas {
                 let _ = cr.restore();
             }
         }
+
+        if has_pending_fast_shape {
+            let _ = cr.save();
+            cr.identity_matrix();
+
+            let text = t!("Click to position shape");
+            cr.select_font_face(
+                "Sans",
+                gtk4::cairo::FontSlant::Normal,
+                gtk4::cairo::FontWeight::Bold,
+            );
+            cr.set_font_size(13.0);
+
+            if let Ok(extents) = cr.text_extents(&text) {
+                let padding_x = 10.0;
+                let padding_y = 6.0;
+                let box_w = extents.width() + padding_x * 2.0;
+                let box_h = extents.height() + padding_y * 2.0;
+                let x = 16.0;
+                let y = 16.0;
+
+                cr.set_source_rgba(0.10, 0.10, 0.10, 0.80);
+                cr.rectangle(x, y, box_w, box_h);
+                let _ = cr.fill();
+
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.95);
+                cr.move_to(
+                    x + padding_x - extents.x_bearing(),
+                    y + padding_y - extents.y_bearing(),
+                );
+                let _ = cr.show_text(&text);
+            }
+
+            let _ = cr.restore();
+        }
     }
+
+    // Anular fn draw_grid para rejilla proporcional al zoom
 
     // Grid rendering requires all viewport and spacing parameters.
     #[allow(clippy::too_many_arguments)]
@@ -434,6 +509,7 @@ impl DesignerCanvas {
         }
 
         match shape {
+            Shape::RasterImage(raster) => raster.bounds(),
             Shape::Rectangle(rect) => {
                 if rect.rotation.abs() <= 1e-9 {
                     return rect.bounds();
@@ -522,6 +598,81 @@ impl DesignerCanvas {
 
     fn draw_shape_geometry(cr: &gtk4::cairo::Context, shape: &Shape) {
         match shape {
+            Shape::RasterImage(raster) => {
+                // Load the image from the data
+                if let Ok(img) = image::load_from_memory(&raster.image_data) {
+                    let (img_w, img_h) = img.dimensions();
+                    let target_w = raster.width_mm;
+                    let target_h = raster.height_mm;
+                    let (x1, y1, _, _) = raster.bounds();
+
+                    // Convert to RGBA
+                    let rgba = img.to_rgba8();
+                    let data = rgba.as_raw();
+
+                    // Create image surface in Cairo
+                    use gtk4::cairo::Format;
+                    use gtk4::cairo::ImageSurface;
+
+                    if let Ok(mut surface) =
+                        ImageSurface::create(Format::ARgb32, img_w as i32, img_h as i32)
+                    {
+                        // Cairo expects ARGB, convert RGBA to ARGB
+                        let stride = surface.stride() as usize;
+                        match surface.data() {
+                            Ok(mut surface_data) => {
+                                for y in 0..img_h {
+                                    for x in 0..img_w {
+                                        let src_idx = ((y * img_w + x) * 4) as usize;
+                                        let dst_idx = (y as usize * stride) + (x as usize * 4);
+
+                                        let r = data[src_idx];
+                                        let g = data[src_idx + 1];
+                                        let b = data[src_idx + 2];
+                                        let a = data[src_idx + 3];
+
+                                        // Cairo ARGB: A R G B
+                                        surface_data[dst_idx] = b;
+                                        surface_data[dst_idx + 1] = g;
+                                        surface_data[dst_idx + 2] = r;
+                                        surface_data[dst_idx + 3] = a;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to get surface data: {}", e);
+                            }
+                        }
+                        surface.mark_dirty();
+
+                        // Draw the scaled image
+                        let _ = cr.save();
+                        cr.translate(x1, y1 + target_h);
+                        cr.scale(target_w / img_w as f64, -target_h / img_h as f64);
+                        let _ = cr.set_source_surface(&surface, 0.0, 0.0);
+                        let _ = cr.paint();
+                        let _ = cr.restore();
+
+                        // Draw border
+                        cr.rectangle(x1, y1, target_w, target_h);
+                        let border_color = common::colors::to_rgb_f64(&common::colors::BLACK);
+                        cr.set_source_rgba(border_color.0, border_color.1, border_color.2, 1.0);
+                        let _ = cr.stroke();
+                        return;
+                    }
+                }
+
+                // Fallback: rectángulo gris
+                let (x1, y1, x2, y2) = raster.bounds();
+                cr.rectangle(x1, y1, x2 - x1, y2 - y1);
+                let gray = common::colors::to_rgba_f64(&common::colors::GRAY_70);
+                cr.set_source_rgba(gray.0, gray.1, gray.2, 0.5);
+                let _ = cr.fill();
+                let black = common::colors::to_rgb_f64(&common::colors::BLACK);
+                cr.set_source_rgba(black.0, black.1, black.2, 1.0);
+                let _ = cr.stroke();
+            }
+
             Shape::Rectangle(rect) => {
                 let _ = cr.save();
                 cr.translate(rect.center.x, rect.center.y);
@@ -645,24 +796,9 @@ impl DesignerCanvas {
                 let _ = cr.stroke();
                 let _ = cr.restore();
             }
+
             Shape::Text(text) => {
-                // Basic text placeholder
                 let _ = cr.save();
-                // Rotate around text bounds center, then flip Y for text rendering.
-                let (x1, y1, x2, y2) = text.bounds();
-                let cx = (x1 + x2) / 2.0;
-                let cy = (y1 + y2) / 2.0;
-                // Use negative angle because we flip Y after rotation.
-                // Note: text.rotation is in degrees, convert to radians for Cairo
-                let angle = -text.rotation.to_radians();
-
-                cr.translate(cx, cy);
-                cr.rotate(angle);
-                cr.translate(-cx, -cy);
-
-                // Flip Y back for text so it's not upside down
-                cr.translate(text.x, text.y);
-                cr.scale(1.0, -1.0);
                 let slant = if text.italic {
                     gtk4::cairo::FontSlant::Italic
                 } else {
@@ -675,9 +811,34 @@ impl DesignerCanvas {
                 };
                 cr.select_font_face(&text.font_family, slant, weight);
                 cr.set_font_size(text.font_size);
+
+                let extents = match cr.text_extents(&text.text) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        let _ = cr.restore();
+                        return;
+                    }
+                };
+
+                let _ = cr.save();
+
+                cr.translate(text.x, text.y);
+
+                if text.rotation.abs() > 1e-6 {
+                    cr.rotate(text.rotation.to_radians());
+                }
+
+                cr.scale(1.0, -1.0);
+
+                let x_offset = -extents.width() / 2.0;
+                let y_offset = -text.font_size / 2.0 + extents.height();
+
+                cr.move_to(x_offset, y_offset);
                 let _ = cr.show_text(&text.text);
+
                 let _ = cr.restore();
             }
+
             Shape::Triangle(triangle) => {
                 let path = triangle.render();
                 cr.new_path();
@@ -685,10 +846,8 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
                         }
                         _ => {}
                     }
@@ -702,10 +861,8 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
                         }
                         _ => {}
                     }
@@ -719,10 +876,8 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
                         }
                         _ => {}
                     }
@@ -736,10 +891,8 @@ impl DesignerCanvas {
                     match event {
                         lyon::path::Event::Begin { at } => cr.move_to(at.x as f64, at.y as f64),
                         lyon::path::Event::Line { to, .. } => cr.line_to(to.x as f64, to.y as f64),
-                        lyon::path::Event::End { close, .. } => {
-                            if close {
-                                cr.close_path();
-                            }
+                        lyon::path::Event::End { close, .. } if close => {
+                            cr.close_path();
                         }
                         _ => {}
                     }
@@ -750,25 +903,10 @@ impl DesignerCanvas {
     }
 
     fn draw_origin_crosshair(cr: &gtk4::cairo::Context, zoom: f64) {
-        let _ = cr.save();
-
         // Draw Origin Axes (Full World Extent)
         let extent = core_constants::WORLD_EXTENT_MM;
-        cr.set_line_width(1.0 / zoom); // Thinner line for full axes
-
-        // X Axis Red
-        cr.set_source_rgb(1.0, 0.0, 0.0);
-        cr.move_to(-extent, 0.0);
-        cr.line_to(extent, 0.0);
-        let _ = cr.stroke();
-
-        // Y Axis Green
-        cr.set_source_rgb(0.0, 1.0, 0.0);
-        cr.move_to(0.0, -extent);
-        cr.line_to(0.0, extent);
-        let _ = cr.stroke();
-
-        let _ = cr.restore();
+        let line_width = 1.0 / zoom; // Thinner line for full axes
+        crate::ui::gtk::common::rendering::draw_origin_axes(cr, extent, zoom, line_width);
     }
 
     pub(super) fn get_resize_handle_at(
@@ -827,7 +965,30 @@ impl DesignerCanvas {
         let mut dx = current_x - start.0;
         let mut dy = current_y - start.1;
 
-        if shift_pressed {
+        // Get all selected objects and check if ALL have lock_aspect_ratio active
+        let state = self.state.borrow();
+        let selected_ids: Vec<u64> = state
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .map(|s| s.id)
+            .collect();
+
+        // Check if ALL selected objects have lock_aspect_ratio = true
+        let all_lock_aspect = if !selected_ids.is_empty() {
+            selected_ids.iter().all(|&id| {
+                if let Some(obj) = state.canvas.get_shape(id) {
+                    obj.lock_aspect_ratio
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        };
+        drop(state);
+
+        if shift_pressed || all_lock_aspect {
             // Maintain aspect ratio
             let ratio = if orig_height.abs() > 0.001 {
                 orig_width / orig_height
@@ -947,8 +1108,6 @@ impl DesignerCanvas {
         let mut state = self.state.borrow_mut();
 
         // Restore original shapes first so drag updates don't compound transforms.
-        // (Without this, we repeatedly multiply already-scaled dimensions and the selection
-        // shrinks/grows exponentially.)
         if let Some(originals) = self.resize_original_shapes.borrow().as_ref() {
             for (id, original_shape) in originals {
                 if let Some(obj) = state.canvas.shape_store.get_mut(*id) {
@@ -959,9 +1118,7 @@ impl DesignerCanvas {
             }
         }
 
-        // Apply scaling to all selected shapes (single or multiple)
-        // This ensures consistent behavior for rotated shapes where AABB resizing
-        // should be treated as a scaling operation relative to the anchor point.
+        // Apply scaling to all selected shapes
         let anchor = Point::new(anchor_x, anchor_y);
         for obj in state.canvas.shape_store.iter_mut() {
             if !obj.selected {
@@ -974,8 +1131,6 @@ impl DesignerCanvas {
                     rect.width *= sx.abs();
                     rect.height *= sy.abs();
 
-                    // Only scale corner_radius if not in slot mode
-                    // (slot mode calculates radius dynamically)
                     if !rect.is_slot {
                         rect.corner_radius *= sx.abs().min(sy.abs());
                     }
@@ -1029,6 +1184,13 @@ impl DesignerCanvas {
                     sprocket.pitch *= s;
                     sprocket.roller_diameter *= s;
                 }
+
+                Shape::RasterImage(raster) => {
+                    raster.center.x = anchor.x + (raster.center.x - anchor.x) * sx;
+                    raster.center.y = anchor.y + (raster.center.y - anchor.y) * sy;
+                    raster.width_mm *= sx.abs();
+                    raster.height_mm *= sy.abs();
+                }
             }
         }
     }
@@ -1056,7 +1218,8 @@ impl DesignerCanvas {
 
         for (cx, cy) in corners {
             // Draw white fill
-            cr.set_source_rgb(1.0, 1.0, 1.0);
+            let white = common::colors::to_rgb_f64(&common::colors::WHITE);
+            cr.set_source_rgb(white.0, white.1, white.2);
             cr.rectangle(cx - half_size, cy - half_size, handle_size, handle_size);
             let _ = cr.fill();
 

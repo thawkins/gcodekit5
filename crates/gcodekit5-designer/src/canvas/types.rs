@@ -1,6 +1,6 @@
 //! Canvas type definitions: CanvasSnapshot, CanvasPoint, DrawingMode, DrawingObject, Alignment.
 
-use crate::model::{DesignerShape, Point, Shape, ShapeType};
+use crate::model::{DesignerShape, Point, Shape, ShapeType, LaserParams};
 use crate::pocket_operations::PocketStrategy;
 use crate::shape_store::ShapeStore;
 use crate::shapes::OperationType;
@@ -78,6 +78,11 @@ pub struct DrawingObject {
     pub fillet: f64,
     pub chamfer: f64,
     pub lock_aspect_ratio: bool,
+    pub use_global_laser: bool,
+    pub laser_params: LaserParams,
+//    pub laser_feed_rate: f64,
+//    pub laser_power: f64,
+//    pub laser_passes: i32,
 }
 
 impl DrawingObject {
@@ -105,8 +110,18 @@ impl DrawingObject {
     }
 
     pub fn contains_point(&self, point: &Point, tolerance: f64) -> bool {
-        self.shape.contains_point(*point, tolerance)
-            || self.get_effective_shape().contains_point(*point, tolerance)
+        match &self.shape {
+            Shape::Line(line) => line.distance_to_point(point) <= tolerance,
+            Shape::Path(path) => path.distance_to_point(point) <= tolerance,
+            //For shapes with an area, you can keep the current method
+            _ => {
+                let (x1, y1, x2, y2) = self.shape.bounds();
+                point.x >= x1 - tolerance
+                    && point.x <= x2 + tolerance
+                    && point.y >= y1 - tolerance
+                    && point.y <= y2 + tolerance
+            }
+        }
     }
 
     /// Creates a new drawing object.
@@ -122,6 +137,7 @@ impl DrawingObject {
             ShapeType::Polygon => "Polygon",
             ShapeType::Gear => "Gear",
             ShapeType::Sprocket => "Sprocket",
+            ShapeType::RasterImage => "Raster Image",
         }
         .to_string();
 
@@ -135,15 +151,17 @@ impl DrawingObject {
             use_custom_values: false,
             pocket_depth: 0.0,
             start_depth: 0.0,
-            step_down: 0.0,
-            step_in: 0.0,
+            step_down: 1.0,
+            step_in: 0.5,
             ramp_angle: 0.0,
             pocket_strategy: PocketStrategy::ContourParallel,
             raster_fill_ratio: 0.5,
             offset: 0.0,
             fillet: 0.0,
             chamfer: 0.0,
-            lock_aspect_ratio: true,
+            lock_aspect_ratio: true, // lock default aspect ratio
+            use_global_laser: true,
+            laser_params: LaserParams::default(),
         }
     }
 }

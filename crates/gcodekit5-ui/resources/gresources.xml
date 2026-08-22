@@ -9,31 +9,70 @@
     <file compressed="true" alias="select.svg">icons/select.svg</file>
     <file compressed="true" alias="text.svg">icons/text.svg</file>
     <file compressed="true" alias="grab.svg">icons/grab.svg</file>
+    <file compressed="true" alias="triangle.svg">icons/triangle.svg</file>
+    <file compressed="true" alias="poligon.svg">icons/poligon.svg</file>
+    <file compressed="true" alias="gear.svg">icons/gear.svg</file>
+    <file compressed="true" alias="sprocket.svg">icons/sprocket.svg</file>
   </gresource>
   <gresource prefix="/com/gcodekit5/images">
     <file compressed="true" alias="gcodekit5.png">images/gcodekit5.png</file>
+    <file compressed="true" alias="gcodekit5_1.png">images/gcodekit5_1.png</file>
     <file compressed="true" alias="eStop2.png">images/eStop2.png</file>
   </gresource>
   <gresource prefix="/com/gcodekit5/help">
-    <file compressed="true" alias="index.md">markdown/index.md</file>
-    <file compressed="true" alias="machine_control.md">markdown/machine_control.md</file>
-    <file compressed="true" alias="device_console.md">markdown/device_console.md</file>
-    <file compressed="true" alias="gcode_editor.md">markdown/gcode_editor.md</file>
-    <file compressed="true" alias="visualizer.md">markdown/visualizer.md</file>
-    <file compressed="true" alias="cam_tools.md">markdown/cam_tools.md</file>
-    <file compressed="true" alias="tabbed_box_maker.md">markdown/tabbed_box_maker.md</file>
-    <file compressed="true" alias="designer.md">markdown/designer.md</file>
-    <file compressed="true" alias="device_config.md">markdown/device_config.md</file>
-    <file compressed="true" alias="device_manager.md">markdown/device_manager.md</file>
-    <file compressed="true" alias="tools_manager.md">markdown/tools_manager.md</file>
-    <file compressed="true" alias="materials_manager.md">markdown/materials_manager.md</file>
-    <file compressed="true" alias="settings.md">markdown/settings.md</file>
-    <file compressed="true" alias="jigsaw_puzzle.md">markdown/jigsaw_puzzle.md</file>
-    <file compressed="true" alias="laser_image_engraver.md">markdown/laser_image_engraver.md</file>
-    <file compressed="true" alias="laser_vector_engraver.md">markdown/laser_vector_engraver.md</file>
-    <file compressed="true" alias="speeds_feeds_calculator.md">markdown/speeds_feeds_calculator.md</file>
-    <file compressed="true" alias="spoilboard_surfacing.md">markdown/spoilboard_surfacing.md</file>
-    <file compressed="true" alias="spoilboard_grid.md">markdown/spoilboard_grid.md</file>
-    <file compressed="true" alias="gerber.md">markdown/gerber.md</file>
+    <file compressed="true" alias="en/index.md">markdown/en/index.md</file>
+    <file compressed="true" alias="en/machine_control.md">markdown/en/machine_control.md</file>
+    <file compressed="true" alias="en/device_console.md">markdown/en/device_console.md</file>
+    <file compressed="true" alias="en/gcode_editor.md">markdown/en/gcode_editor.md</file>
+    <file compressed="true" alias="en/visualizer.md">markdown/en/visualizer.md</file>
+    <file compressed="true" alias="en/cam_tools.md">markdown/en/cam_tools.md</file>
+    <file compressed="true" alias="en/tabbed_box_maker.md">markdown/en/tabbed_box_maker.md</file>
+    <file compressed="true" alias="en/designer.md">markdown/en/designer.md</file>
+    <file compressed="true" alias="en/device_config.md">markdown/en/device_config.md</file>
+    <file compressed="true" alias="en/device_manager.md">markdown/en/device_manager.md</file>
+    <file compressed="true" alias="en/tools_manager.md">markdown/en/tools_manager.md</file>
+    <file compressed="true" alias="en/materials_manager.md">markdown/en/materials_manager.md</file>
+    <file compressed="true" alias="en/settings.md">markdown/en/settings.md</file>
+    <file compressed="true" alias="en/jigsaw_puzzle.md">markdown/en/jigsaw_puzzle.md</file>
+    <file compressed="true" alias="en/laser_image_engraver.md">markdown/en/laser_image_engraver.md</file>
+    <file compressed="true" alias="en/speeds_feeds_calculator.md">markdown/en/speeds_feeds_calculator.md</file>
+    <file compressed="true" alias="en/spoilboard_surfacing.md">markdown/en/spoilboard_surfacing.md</file>
+    <file compressed="true" alias="en/spoilboard_grid.md">markdown/en/spoilboard_grid.md</file>
+    <file compressed="true" alias="en/gerber.md">markdown/en/gerber.md</file>
+    <file compressed="true" alias="en/drill_press.md">markdown/en/dirll_press.md</file>
+    <!-- Archivos en español -->
+    <file compressed="true" alias="es/index.md">markdown/es/index.md</file>
+    <file compressed="true" alias="es/designer.md">markdown/es/designer.md</file>
+    <file compressed="true" alias="es/visualizer.md">markdown/es/visualizer.md</file>
+    <file compressed="true" alias="es/machine_control.md">markdown/es/machine_control.md</file>
+    <file compressed="true" alias="es/device_console.md">markdown/es/device_console.md</file>
+    <file compressed="true" alias="es/gcode_editor.md">markdown/es/gcode_editor.md</file>
+    <file compressed="true" alias="es/cam_tools.md">markdown/es/cam_tools.md</file>
+    <file compressed="true" alias="es/tabbed_box_maker.md">markdown/es/tabbed_box_maker.md</file>
+    <file compressed="true" alias="es/device_config.md">markdown/es/device_config.md</file>
+    <file compressed="true" alias="es/device_manager.md">markdown/es/device_manager.md</file>
+    <file compressed="true" alias="es/tools_manager.md">markdown/es/tools_manager.md</file>
+    <file compressed="true" alias="es/materials_manager.md">markdown/es/materials_manager.md</file>
+    <file compressed="true" alias="es/settings.md">markdown/es/settings.md</file>
+    <file compressed="true" alias="es/jigsaw_puzzle.md">markdown/es/jigsaw_puzzle.md</file>
+    <file compressed="true" alias="es/laser_image_engraver.md">markdown/es/laser_image_engraver.md</file>
+    <file compressed="true" alias="es/speeds_feeds_calculator.md">markdown/es/speeds_feeds_calculator.md</file>
+    <file compressed="true" alias="es/spoilboard_surfacing.md">markdown/es/spoilboard_surfacing.md</file>
+    <file compressed="true" alias="es/spoilboard_grid.md">markdown/es/spoilboard_grid.md</file>
+    <file compressed="true" alias="es/gerber.md">markdown/es/gerber.md</file>
+    <file compressed="true" alias="es/drill_press.md">markdown/es/dirll_press.md</file>
+     <!-- *********** Help images ************ -->
+    <file compressed="true" alias="help_images/gcodekit5_1.png">help_images/gcodekit5_1.png</file>
+    <file compressed="true" alias="help_images/designer.png">help_images/designer.png</file>
+    <file compressed="true" alias="help_images/gcode_frame.png">help_images/gcode_frame.png</file>
+    <file compressed="true" alias="help_images/global_properties.png">help_images/global_properties.png</file>
+    <file compressed="true" alias="help_images/individual_properties.png">help_images/individual_properties.png</file>
+    <file compressed="true" alias="help_images/machine_control.png">help_images/machine_control.png</file>
+    <file compressed="true" alias="help_images/order_objects_1.png">help_images/order_objects_1.png</file>
+    <file compressed="true" alias="help_images/order_objects_2.png">help_images/order_objects_2.png</file>
+    <file compressed="true" alias="help_images/visualizer.png">help_images/visualizer.png</file>
+    <file compressed="true" alias="help_images/visualizer3d.png">help_images/visualizer3d.png</file>
+    <file compressed="true" alias="help_images/visualizer3d1.png">help_images/visualizer3d1.png</file>
+    <file compressed="true" alias="help_images/warning_limits.png">help_images/warning_limits.png</file>
   </gresource>
 </gresources>

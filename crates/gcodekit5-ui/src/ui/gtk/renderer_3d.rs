@@ -41,7 +41,7 @@ impl RenderBuffers {
         }
     }
 
-    pub fn update(&mut self, vertices: &[f32]) {
+    pub fn update(&mut self, vertex: &[f32]) {
         // SAFETY: GL context is valid. The from_raw_parts reinterprets the f32
         // slice as u8 for buffer upload; this is safe because the pointer and
         // length are derived from a valid slice and f32 has no alignment issues
@@ -52,8 +52,8 @@ impl RenderBuffers {
 
             // Upload data
             let u8_slice = std::slice::from_raw_parts(
-                vertices.as_ptr() as *const u8,
-                std::mem::size_of_val(vertices),
+                vertex.as_ptr() as *const u8,
+                std::mem::size_of_val(vertex),
             );
             self.gl
                 .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
@@ -78,14 +78,14 @@ impl RenderBuffers {
                 3 * std::mem::size_of::<f32>() as i32,
             );
 
-            self.vertex_count = (vertices.len() / 7) as i32;
+            self.vertex_count = (vertex.len() / 7) as i32;
 
             self.gl.bind_vertex_array(None);
             self.gl.bind_buffer(ARRAY_BUFFER, None);
         }
     }
 
-    pub fn update_volume(&mut self, vertices: &[f32]) {
+    pub fn update_volume(&mut self, vertex: &[f32]) {
         // SAFETY: GL context is valid. The from_raw_parts reinterprets f32 as u8
         // for GL buffer upload; pointer and length come from a valid slice.
         unsafe {
@@ -94,8 +94,8 @@ impl RenderBuffers {
 
             // Upload data
             let u8_slice = std::slice::from_raw_parts(
-                vertices.as_ptr() as *const u8,
-                std::mem::size_of_val(vertices),
+                vertex.as_ptr() as *const u8,
+                std::mem::size_of_val(vertex),
             );
             self.gl
                 .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
@@ -120,14 +120,14 @@ impl RenderBuffers {
                 3 * std::mem::size_of::<f32>() as i32,
             );
 
-            self.vertex_count = (vertices.len() / 6) as i32;
+            self.vertex_count = (vertex.len() / 6) as i32;
 
             self.gl.bind_vertex_array(None);
             self.gl.bind_buffer(ARRAY_BUFFER, None);
         }
     }
 
-    pub fn update_mesh(&mut self, vertices: &[f32]) {
+    pub fn update_mesh(&mut self, vertex: &[f32]) {
         // SAFETY: GL context is valid. The from_raw_parts reinterprets f32 as u8
         // for GL buffer upload; pointer and length come from a valid slice.
         unsafe {
@@ -135,8 +135,8 @@ impl RenderBuffers {
             self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
 
             let u8_slice = std::slice::from_raw_parts(
-                vertices.as_ptr() as *const u8,
-                std::mem::size_of_val(vertices),
+                vertex.as_ptr() as *const u8,
+                std::mem::size_of_val(vertex),
             );
             self.gl
                 .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
@@ -168,7 +168,7 @@ impl RenderBuffers {
                 6 * std::mem::size_of::<f32>() as i32,
             );
 
-            self.vertex_count = (vertices.len() / 10) as i32;
+            self.vertex_count = (vertex.len() / 10) as i32;
 
             self.gl.bind_vertex_array(None);
             self.gl.bind_buffer(ARRAY_BUFFER, None);
@@ -198,10 +198,159 @@ impl Drop for RenderBuffers {
         }
     }
 }
+// ---
+// En renderer_3d.rs, reemplazar la función existente con esta:
+pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
+    let mut rapid_vertex = Vec::new();
+    let mut cut_vertex = Vec::new();
 
+    for cmd in vis.commands() {
+        match cmd {
+            GCodeCommand::Move {
+                from,
+                to,
+                rapid,
+                intensity,
+            } => {
+                let vertex = if *rapid {
+                    &mut rapid_vertex
+                } else {
+                    &mut cut_vertex
+                };
+
+                let color = if *rapid {
+                    (0.5, 0.5, 0.5, 1.0) // Gris para movimientos rápidos
+                } else {
+                    let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
+                    (r, g, b, 1.0)
+                };
+
+                // Añadir vértices con color (formato: x, y, z, r, g, b, a)
+                vertex.push(from.x);
+                vertex.push(from.y);
+                vertex.push(from.z);
+                vertex.push(color.0);
+                vertex.push(color.1);
+                vertex.push(color.2);
+                vertex.push(color.3);
+
+                vertex.push(to.x);
+                vertex.push(to.y);
+                vertex.push(to.z);
+                vertex.push(color.0);
+                vertex.push(color.1);
+                vertex.push(color.2);
+                vertex.push(color.3);
+            }
+            GCodeCommand::Arc {
+                from,
+                to,
+                center,
+                clockwise,
+                intensity,
+            } => {
+                let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
+                let color = (r, g, b, 1.0);
+
+                // Generar segmentos del arco con color
+                let segments = 32; // Número de segmentos para aproximar el arco
+                let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
+
+                let start_angle = (from.y - center.y).atan2(from.x - center.x);
+                let end_angle = (to.y - center.y).atan2(to.x - center.x);
+
+                let angle_range = if *clockwise {
+                    if end_angle > start_angle {
+                        end_angle - start_angle - 2.0 * std::f32::consts::PI
+                    } else {
+                        end_angle - start_angle
+                    }
+                } else if end_angle < start_angle {
+                    end_angle - start_angle + 2.0 * std::f32::consts::PI
+                } else {
+                    end_angle - start_angle
+                };
+
+                let step = angle_range / segments as f32;
+
+                let mut prev_x = from.x;
+                let mut prev_y = from.y;
+                let mut prev_z = from.z;
+
+                for i in 1..=segments {
+                    let angle = start_angle + step * i as f32;
+                    let x = center.x + radius * angle.cos();
+                    let y = center.y + radius * angle.sin();
+                    let z = from.z + (to.z - from.z) * (i as f32 / segments as f32);
+
+                    cut_vertex.push(prev_x);
+                    cut_vertex.push(prev_y);
+                    cut_vertex.push(prev_z);
+                    cut_vertex.push(color.0);
+                    cut_vertex.push(color.1);
+                    cut_vertex.push(color.2);
+                    cut_vertex.push(color.3);
+
+                    cut_vertex.push(x);
+                    cut_vertex.push(y);
+                    cut_vertex.push(z);
+                    cut_vertex.push(color.0);
+                    cut_vertex.push(color.1);
+                    cut_vertex.push(color.2);
+                    cut_vertex.push(color.3);
+
+                    prev_x = x;
+                    prev_y = y;
+                    prev_z = z;
+                }
+            }
+            GCodeCommand::Dwell { .. } => {}
+        }
+    }
+
+    (rapid_vertex, cut_vertex)
+}
+
+// Versión original (sin colores por intensidad)
+pub fn generate_vertex_data_uniform(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
+    let mut rapid_vertex = Vec::new();
+    let mut cut_vertex = Vec::new();
+
+    // Colors
+    let rapid_color = [0.0, 0.8, 1.0, 1.0]; // Cyan (matches 2D)
+    let cut_color = [1.0, 1.0, 0.0, 1.0]; // Yellow (matches 2D)
+
+    for cmd in visualizer.commands() {
+        match cmd {
+            GCodeCommand::Move {
+                from, to, rapid, ..
+            } => {
+                if *rapid {
+                    push_line(&mut rapid_vertex, from, to, rapid_color);
+                } else {
+                    push_line(&mut cut_vertex, from, to, cut_color);
+                }
+            }
+            GCodeCommand::Arc {
+                from,
+                to,
+                center,
+                clockwise,
+                ..
+            } => {
+                push_arc(&mut cut_vertex, from, to, center, *clockwise, cut_color);
+            }
+            GCodeCommand::Dwell { .. } => {}
+        }
+    }
+
+    (rapid_vertex, cut_vertex)
+}
+
+/*
 pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
-    let mut rapid_vertices = Vec::new();
-    let mut cut_vertices = Vec::new();
+    let mut rapid_vertex = Vec::new();
+    let mut cut_vertex = Vec::new();
 
     // Colors
     let rapid_color = [0.0, 0.8, 1.0, 1.0]; // Cyan (matches 2D)
@@ -214,9 +363,9 @@ pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                 from, to, rapid, ..
             } => {
                 if *rapid {
-                    push_line(&mut rapid_vertices, from, to, rapid_color);
+                    push_line(&mut rapid_vertex, from, to, rapid_color);
                 } else {
-                    push_line(&mut cut_vertices, from, to, cut_color);
+                    push_line(&mut cut_vertex, from, to, cut_color);
                 }
             }
             GCodeCommand::Arc {
@@ -226,7 +375,7 @@ pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                 clockwise,
                 ..
             } => {
-                push_arc(&mut cut_vertices, from, to, center, *clockwise, arc_color);
+                push_arc(&mut cut_vertex, from, to, center, *clockwise, arc_color);
             }
             GCodeCommand::Dwell { .. } => {
                 // Ignore dwell for now in 3D
@@ -234,8 +383,9 @@ pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
         }
     }
 
-    (rapid_vertices, cut_vertices)
+    (rapid_vertex, cut_vertex)
 }
+*/
 
 pub fn generate_bounds_data(
     min_x: f32,
@@ -245,7 +395,7 @@ pub fn generate_bounds_data(
     min_z: f32,
     max_z: f32,
 ) -> Vec<f32> {
-    let mut vertices = Vec::new();
+    let mut vertex = Vec::new();
     let color = [0.0, 0.5, 1.0, 1.0]; // Bright Blue
 
     // Bottom face (Z = min_z)
@@ -254,10 +404,10 @@ pub fn generate_bounds_data(
     let p3 = Point3D::new(max_x, max_y, min_z);
     let p4 = Point3D::new(min_x, max_y, min_z);
 
-    push_line(&mut vertices, &p1, &p2, color);
-    push_line(&mut vertices, &p2, &p3, color);
-    push_line(&mut vertices, &p3, &p4, color);
-    push_line(&mut vertices, &p4, &p1, color);
+    push_line(&mut vertex, &p1, &p2, color);
+    push_line(&mut vertex, &p2, &p3, color);
+    push_line(&mut vertex, &p3, &p4, color);
+    push_line(&mut vertex, &p4, &p1, color);
 
     // Top face (Z = max_z)
     let p5 = Point3D::new(min_x, min_y, max_z);
@@ -265,23 +415,23 @@ pub fn generate_bounds_data(
     let p7 = Point3D::new(max_x, max_y, max_z);
     let p8 = Point3D::new(min_x, max_y, max_z);
 
-    push_line(&mut vertices, &p5, &p6, color);
-    push_line(&mut vertices, &p6, &p7, color);
-    push_line(&mut vertices, &p7, &p8, color);
-    push_line(&mut vertices, &p8, &p5, color);
+    push_line(&mut vertex, &p5, &p6, color);
+    push_line(&mut vertex, &p6, &p7, color);
+    push_line(&mut vertex, &p7, &p8, color);
+    push_line(&mut vertex, &p8, &p5, color);
 
     // Vertical edges
-    push_line(&mut vertices, &p1, &p5, color);
-    push_line(&mut vertices, &p2, &p6, color);
-    push_line(&mut vertices, &p3, &p7, color);
-    push_line(&mut vertices, &p4, &p8, color);
+    push_line(&mut vertex, &p1, &p5, color);
+    push_line(&mut vertex, &p2, &p6, color);
+    push_line(&mut vertex, &p3, &p7, color);
+    push_line(&mut vertex, &p4, &p8, color);
 
-    vertices
+    vertex
 }
 
 pub fn generate_tool_marker_data() -> Vec<f32> {
-    let mut vertices = Vec::new();
-    let color = [1.0, 0.0, 0.0, 0.25]; // Red with 75% transparency
+    let mut vertex = Vec::new();
+    let color = [1.0, 0.0, 0.0, 0.40]; // Red with 60% transparency
 
     // Simple pyramid/cone pointing down to (0,0,0)
     // Tip at (0,0,0)
@@ -303,57 +453,57 @@ pub fn generate_tool_marker_data() -> Vec<f32> {
         let p2 = Point3D::new(radius * angle2.cos(), radius * angle2.sin(), height);
 
         // Triangle side: Tip -> p1 -> p2
-        push_triangle(&mut vertices, &tip, &p1, &p2, color);
+        push_triangle(&mut vertex, &tip, &p1, &p2, color);
 
         // Triangle base: BaseCenter -> p2 -> p1
-        push_triangle(&mut vertices, &base_center, &p2, &p1, color);
+        push_triangle(&mut vertex, &base_center, &p2, &p1, color);
     }
 
-    vertices
+    vertex
 }
 
 fn push_triangle(
-    vertices: &mut Vec<f32>,
+    vertex: &mut Vec<f32>,
     p1: &Point3D,
     p2: &Point3D,
     p3: &Point3D,
     color: [f32; 4],
 ) {
     // Point 1
-    vertices.push(p1.x);
-    vertices.push(p1.y);
-    vertices.push(p1.z);
-    vertices.extend_from_slice(&color);
+    vertex.push(p1.x);
+    vertex.push(p1.y);
+    vertex.push(p1.z);
+    vertex.extend_from_slice(&color);
 
     // Point 2
-    vertices.push(p2.x);
-    vertices.push(p2.y);
-    vertices.push(p2.z);
-    vertices.extend_from_slice(&color);
+    vertex.push(p2.x);
+    vertex.push(p2.y);
+    vertex.push(p2.z);
+    vertex.extend_from_slice(&color);
 
     // Point 3
-    vertices.push(p3.x);
-    vertices.push(p3.y);
-    vertices.push(p3.z);
-    vertices.extend_from_slice(&color);
+    vertex.push(p3.x);
+    vertex.push(p3.y);
+    vertex.push(p3.z);
+    vertex.extend_from_slice(&color);
 }
 
-fn push_line(vertices: &mut Vec<f32>, from: &Point3D, to: &Point3D, color: [f32; 4]) {
+fn push_line(vertex: &mut Vec<f32>, from: &Point3D, to: &Point3D, color: [f32; 4]) {
     // Point 1
-    vertices.push(from.x);
-    vertices.push(from.y);
-    vertices.push(from.z);
-    vertices.extend_from_slice(&color);
+    vertex.push(from.x);
+    vertex.push(from.y);
+    vertex.push(from.z);
+    vertex.extend_from_slice(&color);
 
     // Point 2
-    vertices.push(to.x);
-    vertices.push(to.y);
-    vertices.push(to.z);
-    vertices.extend_from_slice(&color);
+    vertex.push(to.x);
+    vertex.push(to.y);
+    vertex.push(to.z);
+    vertex.extend_from_slice(&color);
 }
 
 fn push_arc(
-    vertices: &mut Vec<f32>,
+    vertex: &mut Vec<f32>,
     from: &Point3D,
     to: &Point3D,
     center: &Point3D,
@@ -393,15 +543,15 @@ fn push_arc(
         let z = from.z + z_diff * t;
 
         // Line segment
-        vertices.push(prev_x);
-        vertices.push(prev_y);
-        vertices.push(prev_z);
-        vertices.extend_from_slice(&color);
+        vertex.push(prev_x);
+        vertex.push(prev_y);
+        vertex.push(prev_z);
+        vertex.extend_from_slice(&color);
 
-        vertices.push(x);
-        vertices.push(y);
-        vertices.push(z);
-        vertices.extend_from_slice(&color);
+        vertex.push(x);
+        vertex.push(y);
+        vertex.push(z);
+        vertex.extend_from_slice(&color);
 
         prev_x = x;
         prev_y = y;
@@ -410,7 +560,7 @@ fn push_arc(
 }
 
 pub fn generate_grid_data(size: f32, step: f32) -> Vec<f32> {
-    let mut vertices = Vec::new();
+    let mut vertex = Vec::new();
     let color = [0.3, 0.3, 0.3, 1.0]; // Dark gray
 
     let half_size = size / 2.0;
@@ -421,41 +571,41 @@ pub fn generate_grid_data(size: f32, step: f32) -> Vec<f32> {
 
         // X-parallel lines (varying Y)
         // Start
-        vertices.push(-half_size);
-        vertices.push(pos);
-        vertices.push(0.0);
-        vertices.extend_from_slice(&color);
+        vertex.push(-half_size);
+        vertex.push(pos);
+        vertex.push(0.0);
+        vertex.extend_from_slice(&color);
 
         // End
-        vertices.push(half_size);
-        vertices.push(pos);
-        vertices.push(0.0);
-        vertices.extend_from_slice(&color);
+        vertex.push(half_size);
+        vertex.push(pos);
+        vertex.push(0.0);
+        vertex.extend_from_slice(&color);
 
         // Y-parallel lines (varying X)
         // Start
-        vertices.push(pos);
-        vertices.push(-half_size);
-        vertices.push(0.0);
-        vertices.extend_from_slice(&color);
+        vertex.push(pos);
+        vertex.push(-half_size);
+        vertex.push(0.0);
+        vertex.extend_from_slice(&color);
 
         // End
-        vertices.push(pos);
-        vertices.push(half_size);
-        vertices.push(0.0);
-        vertices.extend_from_slice(&color);
+        vertex.push(pos);
+        vertex.push(half_size);
+        vertex.push(0.0);
+        vertex.extend_from_slice(&color);
     }
 
-    vertices
+    vertex
 }
 
 pub fn generate_axis_data(length: f32) -> Vec<f32> {
-    let mut vertices = Vec::new();
+    let mut vertex = Vec::new();
     let origin = Point3D::new(0.0, 0.0, 0.0);
 
     // X Axis - Red
     push_line(
-        &mut vertices,
+        &mut vertex,
         &origin,
         &Point3D::new(length, 0.0, 0.0),
         [1.0, 0.0, 0.0, 1.0],
@@ -463,7 +613,7 @@ pub fn generate_axis_data(length: f32) -> Vec<f32> {
 
     // Y Axis - Green
     push_line(
-        &mut vertices,
+        &mut vertex,
         &origin,
         &Point3D::new(0.0, length, 0.0),
         [0.0, 1.0, 0.0, 1.0],
@@ -471,17 +621,17 @@ pub fn generate_axis_data(length: f32) -> Vec<f32> {
 
     // Z Axis - Blue
     push_line(
-        &mut vertices,
+        &mut vertex,
         &origin,
         &Point3D::new(0.0, 0.0, length),
         [0.0, 0.0, 1.0, 1.0],
     );
 
-    vertices
+    vertex
 }
 
 // Generate a bounding box for volumetric rendering
-// Returns vertices for a cube with position (loc 0) and tex coords (loc 1)
+// Returns vertex for a cube with position (loc 0) and tex coords (loc 1)
 pub fn generate_volume_box_data(
     min_x: f32,
     max_x: f32,
@@ -491,7 +641,7 @@ pub fn generate_volume_box_data(
     max_z: f32,
 ) -> Vec<f32> {
     // Each vertex: 3 floats (position) + 3 floats (tex coord)
-    let vertices = vec![
+    let vertex = vec![
         // Front face (Z = max_z)
         min_x, min_y, max_z, 0.0, 0.0, 1.0, max_x, min_y, max_z, 1.0, 0.0, 1.0, max_x, max_y, max_z,
         1.0, 1.0, 1.0, min_x, min_y, max_z, 0.0, 0.0, 1.0, max_x, max_y, max_z, 1.0, 1.0, 1.0,
@@ -513,5 +663,5 @@ pub fn generate_volume_box_data(
         1.0, min_x, max_y, min_z, 0.0, 1.0, 0.0,
     ];
 
-    vertices
+    vertex
 }

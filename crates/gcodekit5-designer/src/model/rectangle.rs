@@ -11,7 +11,7 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
 
-use super::{DesignerShape, Point, Property, PropertyValue};
+use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignRectangle {
@@ -22,6 +22,7 @@ pub struct DesignRectangle {
     /// Rotation angle in degrees (converted to radians for rendering)
     pub rotation: f64,
     pub is_slot: bool,
+    pub laser_params: LaserParams,
 }
 
 impl DesignRectangle {
@@ -33,6 +34,7 @@ impl DesignRectangle {
             corner_radius: 0.0,
             rotation: 0.0,
             is_slot: false,
+            laser_params: LaserParams::default(),
         }
     }
 
@@ -127,30 +129,31 @@ impl DesignerShape for DesignRectangle {
     }
 
     fn transform(&mut self, t: &Transform) {
-        // This is tricky. If t contains rotation, we update self.rotation.
-        // If t contains shear, we can't represent it.
-        // For now, assume t is translation/rotation/scale (possibly non-uniform).
+        // 1. Transforming the CENTER
+        let p = t.transform_point(lyon::math::point(
+            self.center.x as f32,
+            self.center.y as f32,
+        ));
+        self.center = crate::model::Point::new(p.x as f64, p.y as f64);
 
-        // Transform center
-        let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
-        self.center = Point::new(p.x as f64, p.y as f64);
+        // 2. Extract the ROTATION from the matrix
+        let angle_rad = t.m12.atan2(t.m11);
+        let angle_deg = angle_rad.to_degrees() as f64;
 
-        // Extract rotation and account for reflections (negative determinant flips orientation).
-        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
-        let det = t.m11 * t.m22 - t.m12 * t.m21;
-        let mut new_rotation = self.rotation + angle_deg;
-        if det < 0.0 {
-            new_rotation = -new_rotation;
-        }
-        self.rotation = new_rotation;
+        // We add the new rotation to the existing one.
+        self.rotation += angle_deg;
 
-        // Extract scale factors from basis vectors (supports non-uniform scaling)
-        // X basis vector: (m11, m12) - determines width scale
-        // Y basis vector: (m21, m22) - determines height scale
+        // 3. SCALING
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         let sy = (t.m21 * t.m21 + t.m22 * t.m22).sqrt() as f64;
-        self.width *= sx;
-        self.height *= sy;
+
+        // We only apply scaling if it is not a pure rotation/translation matrix (approx 1.0)
+        if (sx - 1.0).abs() > 1e-6 {
+            self.width *= sx;
+        }
+        if (sy - 1.0).abs() > 1e-6 {
+            self.height *= sy;
+        }
     }
 
     fn properties(&self) -> Vec<Property> {

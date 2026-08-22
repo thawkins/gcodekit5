@@ -54,6 +54,8 @@ pub struct DeviceConsoleManager {
     auto_scroll_enabled: ThreadSafe<bool>,
     /// Event callbacks (with interior mutability)
     on_event: ThreadSafeVec<DataCallback<ConsoleEvent>>,
+    /// Modo silencioso - no mostrar mensajes en consola
+    silent_mode: ThreadSafe<bool>,
 }
 
 impl DeviceConsoleManager {
@@ -64,11 +66,17 @@ impl DeviceConsoleManager {
             verbose_enabled: thread_safe(false),
             auto_scroll_enabled: thread_safe(true),
             on_event: thread_safe_vec(),
+            silent_mode: thread_safe(false),
         }
     }
 
     /// Add message to console
     pub fn add_message(&self, msg_type: DeviceMessageType, content: impl Into<String>) {
+        // Si estamos en modo silencioso, no mostrar nada
+        if *self.silent_mode.lock() {
+            return;
+        }
+
         let content = content.into();
 
         let level = match msg_type {
@@ -227,6 +235,16 @@ impl DeviceConsoleManager {
             let mut callbacks = self.on_event.lock();
             callbacks.push(Box::new(callback));
         }
+    }
+
+    /// Activar/desactivar modo silencioso (para grabado de imágenes)
+    pub fn set_silent_mode(&self, enabled: bool) {
+        *self.silent_mode.lock() = enabled;
+    }
+
+    /// Obtener estado del modo silencioso
+    pub fn is_silent_mode(&self) -> bool {
+        *self.silent_mode.lock()
     }
 }
 

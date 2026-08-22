@@ -449,7 +449,7 @@ impl MainWindow {
         // No-op; UI will update capabilities through dedicated view
     }
 
-    pub fn set_visible_lines(&self, _lines: Vec<gcodekit5_gcodeeditor::TextLine>) {
+    pub fn set_visible_lines(&self, _lines: Vec<crate::editor::TextLine>) {
         // No-op visible lines for headless tests
     }
 

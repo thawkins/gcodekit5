@@ -3,14 +3,17 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-02-10 01:41+0100\n"
-"Last-Translator: \n"
+"PO-Revision-Date: 2026-05-15 17:54+0200\n"
+"Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: Poedit 3.4.2\n"
+"X-Poedit-KeywordsList: t;t:1\n"
+"X-Poedit-Basepath: ../crates/gcodekit5-ui/src/ui/gtk/cam_tools\n"
+"X-Poedit-SearchPath-0: vector_engraving.rs\n"
 
 msgid "About"
 msgstr "Acerca de"
@@ -179,17 +182,32 @@ msgstr "Formas rapidas"
 msgid "Shape Gallery…"
 msgstr "Galería de formas…"
 
-msgid "Feed (Speed Laser)"
-msgstr "Alimentación o Velocidad del Laser"
+msgid "Machine Mode"
+msgstr "Tipo de Máquina"
 
-msgid "Feed Rate or Speed Laser"
-msgstr "Velocidad de alimentación o del Laser"
+msgid "Laser Speed"
+msgstr "Velocidad del Laser"
 
-msgid "Speed (Power Laser)"
-msgstr "Velocidad o Potencia del Laser"
+msgid "Feed rate:"
+msgstr "Velocidad:"
 
-msgid "Spindle Speed or Power Laser %"
-msgstr "Velocidad de husillo o Potencia del laser"
+msgid "Power:"
+msgstr "Potencia:"
+
+msgid "Passes:"
+msgstr "Pasadas:"
+
+msgid "Laser Config (Object)"
+msgstr "Configuración Láser (Objeto)"
+
+msgid "Use global values"
+msgstr "Usar valores globales"
+
+msgid "Laser Power"
+msgstr "Potencia Láser"
+
+msgid "Spindle Speed"
+msgstr "Velocidad de husillo"
 
 msgid "Tool Dia"
 msgstr "Diam. de herramienta"
@@ -204,7 +222,10 @@ msgid "Target Cut Depth (positive)"
 msgstr "Profundidad de corte objetivo (positiva)"
 
 msgid "Step Down"
-msgstr "Pasada"
+msgstr "Profundidad de pasada"
+
+msgid "Passes"
+msgstr "Pasadas"
 
 msgid "Depth per pass"
 msgstr "Profundidad de pasada"
@@ -214,6 +235,30 @@ msgstr "Configuración de Herramientas…"
 
 msgid "Tool Parameters"
 msgstr "Parametros de la herramienta"
+
+msgid "Starting laser engraving:"
+msgstr "Iniciando grabado láser:"
+
+msgid "lines"
+msgstr "líneas"
+
+msgid "Work completed."
+msgstr "Trabajo finalizado."
+
+msgid "Work stopped."
+msgstr "Trabajo detenido."
+
+msgid "Stopping..."
+msgstr "Deteniendo..."
+
+msgid "Paused"
+msgstr "Pausado"
+
+msgid "Resuming"
+msgstr "Reanudando"
+
+msgid "Unlocking..."
+msgstr "Desbloqueando..."
 
 msgid "Stock Width"
 msgstr "Ancho en bruto"
@@ -520,22 +565,22 @@ msgid "Increase feed rate by 10%"
 msgstr "Incrementar velocidad un 10%"
 
 msgid "Decrease spindle speed by 10%"
-msgstr ""
+msgstr "Disminuye velocidad de husillo un 10%"
 
 msgid "Decrease spindle speed by 1%"
-msgstr ""
+msgstr "Disminuye velocidad de husillo un 1%"
 
 msgid "Reset spindle speed to 100%"
-msgstr ""
+msgstr "Restablecer velocidad de husillo al 100%"
 
 msgid "Stop spindle"
-msgstr ""
+msgstr "Parar husillo"
 
 msgid "Increase spindle speed by 1%"
-msgstr ""
+msgstr "Aumentar velocidad de husillo un 1%"
 
 msgid "Increase spindle speed by 10%"
-msgstr ""
+msgstr "Aumentar velocidad de husillo un 10%"
 
 msgid "Work Coordinates (WPos)"
 msgstr "Coordenadas de trabajo (WPos)"
@@ -641,3 +686,536 @@ msgstr "Error al conectar"
 
 msgid "No valid G-Code lines found."
 msgstr "No se encontraron líneas de G-Code válidas."
+
+# crates/gcodekit5-ui/src/ui/gtk/cam-tools/bitmap_engraving.rs
+msgid "Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."
+msgstr "Convierte imágenes de mapa de bits a G-code para grabado láser. Admite diversos métodos de tramado y transformaciones de imagen."
+
+msgid "No image selected"
+msgstr "Ninguna imagen seleccionada"
+
+msgid "Width:"
+msgstr "Anchura:"
+
+msgid "Image File"
+msgstr "Archivo de imagen"
+
+msgid "Image Path:"
+msgstr "Ruta de la imagen:"
+
+msgid "Scanning"
+msgstr "Escaneando"
+
+msgid "Scan Direction:"
+msgstr "Dirección de Escaneo:"
+
+msgid "Pixels per mm:"
+msgstr "Pixels por mm:"
+
+msgid "Line Spacing:"
+msgstr "Interlineado:"
+
+msgid "Bidirectional:"
+msgstr "Bidireccional:"
+
+msgid "Image Transformations"
+msgstr "Transformación de imagen"
+
+msgid "Invert:"
+msgstr "Invertir:"
+
+msgid "Mirror X:"
+msgstr "Simetría en X:"
+
+msgid "Mirror Y:"
+msgstr "Simetría en Y:"
+
+msgid "Rotation:"
+msgstr "Rotación:"
+
+msgid "Halftoning"
+msgstr "Tramado"
+
+msgid "Method:"
+msgstr "Método:"
+
+msgid "Dot Size:"
+msgstr "Tamaño de Punto:"
+
+msgid "Threshold:"
+msgstr "Límite:"
+
+msgid "Select Image"
+msgstr "Seleccionar imagen"
+
+msgid "No Image Selected"
+msgstr "No se ha seleccionado ninguna imagen"
+
+msgid "Please select an image file first."
+msgstr "Por favor, seleccione primero un archivo de imagen."
+
+msgid "Generating Engraving"
+msgstr "Generar Grabado"
+
+msgid "Processing image..."
+msgstr "Procesando Imagen..."
+
+msgid "Loading image..."
+msgstr "Cargando Imagen..."
+
+msgid "Generating G-code..."
+msgstr "Generando G-code..."
+
+msgid "Finalizing..."
+msgstr "Finalizando..."
+
+msgid "Engraving Generation Failed"
+msgstr "Fallo de generación de Grabado"
+
+msgid "Failed to generate engraving"
+msgstr "Fallo al generar el Grabado"
+
+msgid "Save Parameters"
+msgstr "Guardar parámetros"
+
+msgid "Load Parameters"
+msgstr "Cargar parámetros"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/vector_engraving.rs
+msgid "Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."
+msgstr "Convierte gráficos vectoriales (SVG, DXF) a G-code para corte/grabado láser. Admite sombreado, pasadas múltiples y optimización de trayectoria."
+
+msgid "No file selected"
+msgstr "No se ha seleccionado archivo"
+
+msgid "No vector file selected"
+msgstr "No se ha seleccionado archivo vectorizado"
+
+msgid "Z Step Down:"
+msgstr "Paso en Z:"
+
+msgid "Desired Width:"
+msgstr "Ancho deseado:"
+
+msgid "Hatch Spacing:"
+msgstr "Espaciado de Sombreado:"
+
+msgid "Hatch Tolerance:"
+msgstr "Tolerancia de sombreado:"
+
+msgid "Vector File"
+msgstr "Archivo vectorizado"
+
+msgid "File Path:"
+msgstr "Ruta de archivo:"
+
+msgid "Browse..."
+msgstr "Explorador..."
+
+msgid "Output Settings"
+msgstr "Configuración de salida"
+
+msgid "Feed Rate:"
+msgstr "Avance:"
+
+msgid "Spindle Speed:"
+msgstr "Velocidad de husillo:"
+
+msgid "Travel Rate:"
+msgstr "Velocidad en vacío:"
+
+msgid "Cut Power (%):"
+msgstr "Potencia de corte (%):"
+
+msgid "Engrave Power (%):"
+msgstr "Potencia de Grabado (%):"
+
+msgid "Power Scale (S):"
+msgstr "Escala de potencia (S):"
+
+msgid "Invert Power:"
+msgstr "Invertir Potencia:"
+
+msgid "Multi-Pass Settings"
+msgstr "Configuración Multipasada"
+
+msgid "Multi-Pass:"
+msgstr "Multipasada:"
+
+msgid "Hatching"
+msgstr "Sombreado"
+
+msgid "Enable Hatch:"
+msgstr "Habilitar Sombreado:"
+
+msgid "Hatch Angle (°):"
+msgstr "Angulo de Sombreado (°):"
+
+msgid "Cross Hatch:"
+msgstr "Sombreado Cruzado:"
+
+msgid "Dwell Settings"
+msgstr "Ajustes de Pausa"
+
+msgid "Enable Dwell:"
+msgstr "Activar Pausa:"
+
+msgid "Dwell Time (s):"
+msgstr "Tiempo de Pausa (s):"
+
+msgid "Work Offsets"
+msgstr "Offsets de trabajo"
+
+msgid "Home Device Before Start"
+msgstr "Iniciar Dispositivo antes de comenzar"
+
+msgid "Unknown file extension"
+msgstr "Extensión no reconocida"
+
+msgid "Unsupported file format"
+msgstr "Formato de archivo no soportado"
+
+msgid "Failed to load SVG"
+msgstr "Fallo leyendo SVG"
+
+msgid "Failed to load DXF"
+msgstr "Fallo leyendo DXF"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs
+msgid "Tabbed Box Maker"
+msgstr "Creador de cajas con pestañas"
+
+msgid "Generate G-code for laser/CNC cut boxes with finger joints"
+msgstr "Genera G-code para cajas con uniones de dedos (finger joints)"
+
+msgid "Jigsaw Puzzle Generator"
+msgstr "Generador de puzles"
+
+msgid "Create custom jigsaw puzzle patterns from images"
+msgstr "Crea patrones de puzles personalizados a partir de imágenes"
+
+msgid "Laser Image Engraver"
+msgstr "Grabador de imágenes por láser"
+
+msgid "Convert raster images to G-code for laser engraving"
+msgstr "Convierte imágenes rasterizadas a G-code para grabado láser"
+
+msgid "Laser Vector Engraver"
+msgstr "Grabador vectorial por láser"
+
+msgid "Convert SVG and DXF vector files to G-code"
+msgstr "Convierte archivos vectoriales SVG y DXF a G-code"
+
+msgid "Speeds and Feeds Calculator"
+msgstr "Calculadora de velocidades y avances"
+
+msgid "Calculate cutting speeds and feeds for your materials"
+msgstr "Calcula las velocidades de corte y avances para tus materiales"
+
+msgid "Spoilboard Surfacing"
+msgstr "Planeado de sufridera"
+
+msgid "Generate surfacing toolpaths to flatten your spoilboard"
+msgstr "Genera trayectorias para aplanar el tablero sufridera"
+
+msgid "Create Spoilboard Grid"
+msgstr "Crear rejilla en la sufridera"
+
+msgid "Generate grid patterns for spoilboard alignment"
+msgstr "Genera patrones de rejilla para alineación en la sufridera"
+
+msgid "Gerber to G-Code"
+msgstr "De Gerber a G-Code"
+
+msgid "Convert Gerber files to G-Code for PCB milling"
+msgstr "Convierte archivos Gerber a G-Code para fresado de PCBs"
+
+msgid "Drill Press"
+msgstr "Taladradora de columna"
+
+msgid "Emulate a drill press with peck drilling and helical cycles"
+msgstr "Emula una taladradora con ciclos de taladrado profundo y helicoidales"
+
+msgid "generators"
+msgstr "generadores"
+
+msgid "engraving"
+msgstr "grabado"
+
+msgid "calculators"
+msgstr "calculadoras"
+
+msgid "maintenance"
+msgstr "mantenimiento"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/tabbed_box.rs
+msgid "Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."
+msgstr "Genera G-code para hacer cajas cortadas con láser/CNC con uniones dentadas, basado en el algoritmo boxes.py."
+
+msgid "X (Width):"
+msgstr "X (Ancho):"
+
+msgid "Y (Depth):"
+msgstr "Y (Profundidad):"
+
+msgid "H (Height):"
+msgstr "H (Altura):"
+
+msgid "Thickness:"
+msgstr "Espesor:"
+
+msgid "Burn / Tool Dia:"
+msgstr "Sangría/Diam. Herramienta:"
+
+msgid "Play (fit tolerance):"
+msgstr "Holgura (tolerancia de ajuste):"
+
+msgid "Extra Length:"
+msgstr "Longitud extra:"
+
+msgid "Full Box"
+msgstr "Caja completa"
+
+msgid "No Top"
+msgstr "Sin Tapa"
+
+msgid "No Bottom"
+msgstr "Sin Fondo"
+
+msgid "No Sides"
+msgstr "Sin Laterales"
+
+msgid "No Front/Back"
+msgstr "Sin Frontal/Trasero"
+
+msgid "No Left/Right"
+msgstr "Sin Izquierda/Derecha"
+
+msgid "Walls and Floor"
+msgstr "Paredes y Fondo"
+
+msgid "Walls Only"
+msgstr "Solo Paredes"
+
+msgid "Floor Only"
+msgstr "Solo Fondo"
+
+msgid "None"
+msgstr "Nada"
+
+msgid "Offset X:"
+msgstr "Offset X:"
+
+msgid "Offset Y:"
+msgstr "Offset Y:"
+
+msgid "Box Dimensions"
+msgstr "Dimensiones de la Caja"
+
+msgid "Outside Dims:"
+msgstr "Dims. Exteriores:"
+
+msgid "Box Configuration"
+msgstr "Configuración de la Caja"
+
+msgid "Box Type:"
+msgstr "Tipo de Caja:"
+
+msgid "Dividers X:"
+msgstr "Separadores X:"
+
+msgid "Dividers Y:"
+msgstr "Separadores Y:"
+
+msgid "Divider Keying:"
+msgstr "Clave Divisora:"
+
+msgid "Optimize Layout:"
+msgstr "Optimizar diseño:"
+
+msgid "Material Settings"
+msgstr "Configuración de material"
+
+msgid "Finger Joint Settings (multiples of thickness)"
+msgstr "Ajustes de las articulaciones (múltiplos del espesor)"
+
+msgid "Finger Width:"
+msgstr "Ancho del pestaña:"
+
+msgid "Space Width:"
+msgstr "Ancho del espacio:"
+
+msgid "Laser Settings"
+msgstr "Configuración del láser"
+
+msgid "Power (S):"
+msgstr "Potencia (S):"
+
+msgid "Work Origin Offsets"
+msgstr "Offsets de inicio"
+
+msgid "Load"
+msgstr "Cargar"
+
+msgid "Generate G-code"
+msgstr "Generar G-code"
+
+msgid "Generate Shapes"
+msgstr "Generar Formas"
+
+msgid "Generating Box"
+msgstr "Generando Caja"
+
+msgid "Generating box panels..."
+msgstr "Generando paneles de caja..."
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/jigsaw.rs
+msgid "Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."
+msgstr "Crea patrones personalizados para puzzles a partir de imágenes o material en blanco. Incorpora el algoritmo de Draradech para piezas únicas."
+
+msgid "Height:"
+msgstr "Altura:"
+
+msgid "Kerf:"
+msgstr "Corte:"
+
+msgid "Corner Radius:"
+msgstr "Radio de esquina:"
+
+msgid "Puzzle Dimensions"
+msgstr "Dimensiones del puzzle"
+
+msgid "Grid Configuration"
+msgstr "Configuración de Matriz"
+
+msgid "Pieces Across:"
+msgstr "Piezas en ancho:"
+
+msgid "Pieces Down:"
+msgstr "Piezas en alto:"
+
+msgid "Puzzle Parameters"
+msgstr "Parámetros del Puzzle"
+
+msgid "Tab Size (%):"
+msgstr "Tamaño de la pestaña (%):"
+
+msgid "Jitter (%):"
+msgstr "Fluctuación (%):"
+
+msgid "Random Seed:"
+msgstr "Semilla aleatoria:"
+
+msgid "Generate"
+msgstr "Generar"
+
+msgid "Generating Puzzle"
+msgstr "Generar Puzzle"
+
+msgid "Generating puzzle pieces..."
+msgstr "Generando Piezas de Puzzle..."
+
+msgid "Cancelled by user"
+msgstr "Cancelado por el usuario"
+
+msgid "Puzzle Generation Failed"
+msgstr "Generación de Puzzle Fallida"
+
+msgid "Failed to generate puzzle"
+msgstr "Fallo al Generar el Puzzle"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Position"
+msgstr "Posición"
+
+msgid "Size"
+msgstr "Tamaño"
+
+msgid "Lock Aspect:"
+msgstr "Bloquear Aspecto:"
+
+msgid "Angle:"
+msgstr "Angulo:"
+
+msgid "Corner"
+msgstr "Esquina"
+
+msgid "Slot Mode:"
+msgstr "Modo ranura:"
+
+msgid "Content:"
+msgstr "Contenido:"
+
+msgid "Sides:"
+msgstr "Lados:"
+
+msgid "Module:"
+msgstr "Módulo:"
+
+msgid "Teeth:"
+msgstr "Dientes:"
+
+msgid "Pressure Angle:"
+msgstr "Angulo de Presión:"
+
+msgid "Pitch:"
+msgstr "Paso:"
+
+msgid "Roller Dia:"
+msgstr "Diám. Rodillo:"
+
+msgid "Geometry Operations"
+msgstr "Operaciones geométricas"
+
+msgid "Fillet:"
+msgstr "Empalme:"
+
+msgid "Chamfer:"
+msgstr "Chaflán:"
+
+msgid "CAM Properties"
+msgstr "Propiedades CAM"
+
+msgid "Operation:"
+msgstr "Operación:"
+
+msgid "Profile"
+msgstr "Perfil"
+
+msgid "Depth:"
+msgstr "Profundidad:"
+
+msgid "Step In:"
+msgstr "Paso lateral:"
+
+msgid "Ramp Angle:"
+msgstr "Ángulo de rampa:"
+
+msgid "Strategy:"
+msgstr "Estrategia:"
+
+msgid "Raster Fill (%):"
+msgstr "Relleno Raster (%):"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
+msgid "Select a shape to edit its properties"
+msgstr "Seleccione una forma para editar sus propiedades"
+
+# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+msgid "Laser Engraving"
+msgstr "Grabado Láser"
+
+msgid "Min Power:"
+msgstr "Potencia Min:"
+
+msgid "Max Power:"
+msgstr "Potencia Max:"
+
+msgid "Resolution:"
+msgstr "Resolución:"
+
+msgid "Dithering:"
+msgstr "Tramado:"
+
+msgid "Halftone Threshold:"
+msgstr "Umbral Semitonos:"

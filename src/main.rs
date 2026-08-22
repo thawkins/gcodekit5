@@ -4,8 +4,9 @@
     windows_subsystem = "windows"
 )]
 
-use gcodekit5::init_logging;
+use gcodekit5_design::init_logging;
 
+#[cfg_attr(test, mutants::skip)]
 fn main() -> anyhow::Result<()> {
     // Initialize logging
     init_logging()?;

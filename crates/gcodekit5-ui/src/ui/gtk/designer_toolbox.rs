@@ -8,10 +8,12 @@ use crate::ui::gtk::fast_shape_gallery::FastShapeGallery;
 use gcodekit5_core::units::MeasurementSystem;
 use gcodekit5_core::{shared, thread_safe, Shared, SharedVec, ThreadSafe};
 use gcodekit5_designer::designer_state::DesignerState;
+use gcodekit5_designer::designer_state::MachineMode;
+use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, Dialog, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
+    Align, Box, Button, CheckButton, Dialog, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
     ResponseType, ScrolledWindow,
 };
 use std::cell::Cell;
@@ -63,10 +65,10 @@ impl DesignerTool {
             DesignerTool::Polyline => "polyline.svg",
             DesignerTool::Text => "text.svg",
             DesignerTool::Pan => "grab.svg",
-            DesignerTool::Triangle => "media-playback-start-symbolic",
-            DesignerTool::Polygon => "emblem-shared-symbolic",
-            DesignerTool::Gear => "system-run-symbolic",
-            DesignerTool::Sprocket => "emblem-system-symbolic",
+            DesignerTool::Triangle => "triangle.svg",
+            DesignerTool::Polygon => "poligon.svg",
+            DesignerTool::Gear => "gear.svg",
+            DesignerTool::Sprocket => "sprocket.svg",
         }
     }
 
@@ -88,6 +90,13 @@ impl DesignerTool {
     }
 }
 
+#[derive(Clone, Copy)]
+enum UnitsKind {
+    Length,
+    FeedRate,
+    Rpm,
+}
+
 // Complex type due to GTK widget and signal callback fields.
 #[allow(clippy::type_complexity)]
 pub struct DesignerToolbox {
@@ -96,6 +105,7 @@ pub struct DesignerToolbox {
     active_tool_label: Label,
     buttons: Vec<Button>,
     tools: Vec<DesignerTool>,
+    pub frame_btn: Button,
     generate_btn: Button,
     fast_shape_gallery: Rc<FastShapeGallery>,
     _state: Shared<DesignerState>,
@@ -110,15 +120,8 @@ impl DesignerToolbox {
         state: Shared<DesignerState>,
         settings_controller: Rc<SettingsController>,
     ) -> Rc<Self> {
-        #[derive(Clone, Copy)]
-        enum UnitsKind {
-            Length,
-            FeedRate,
-            Rpm,
-        }
-
         let main_container = Box::new(Orientation::Vertical, 0);
-        main_container.set_width_request(160); // Increased width for 3 columns
+        main_container.set_width_request(160);
         main_container.set_hexpand(true);
         main_container.add_css_class("designer-toolbox");
         main_container.set_margin_top(5);
@@ -171,12 +174,11 @@ impl DesignerToolbox {
 
         for (i, tool) in tools.iter().enumerate() {
             let btn = Button::new();
-            btn.set_size_request(40, 40); // Slightly smaller for 3 columns
+            btn.set_size_request(40, 40);
             btn.set_halign(Align::Center);
             let tooltip = tool.tooltip();
             btn.set_tooltip_text(Some(&tooltip));
 
-            // Use icon from compiled resources or standard icon name
             let icon_name = tool.icon();
             let icon = if icon_name.ends_with(".svg") {
                 let resource_path = format!("/com/gcodekit5/icons/{}", icon_name);
@@ -189,7 +191,6 @@ impl DesignerToolbox {
 
             buttons.push(btn.clone());
 
-            // Select tool is initially selected
             if *tool == DesignerTool::Select {
                 btn.add_css_class("selected-tool");
             }
@@ -199,7 +200,6 @@ impl DesignerToolbox {
 
         content_box.append(&grid);
 
-        // Now wire up click handlers after all buttons are collected
         for (i, btn) in buttons.iter().enumerate() {
             let current_tool_clone = current_tool.clone();
             let buttons_clone = buttons.clone();
@@ -211,7 +211,6 @@ impl DesignerToolbox {
                 *current_tool_clone.borrow_mut() = tool;
                 active_tool_label.set_text(&format!("{} {}", t!("Active tool:"), tool.tooltip()));
 
-                // Update button styles
                 for (j, b) in buttons_clone.iter().enumerate() {
                     if tools_clone[j] == tool {
                         b.add_css_class("selected-tool");
@@ -248,22 +247,106 @@ impl DesignerToolbox {
 
         content_box.append(&fast_shapes_btn);
 
-        // Add separator
-        let separator = gtk4::Separator::new(Orientation::Horizontal);
-        separator.set_margin_top(10);
-        separator.set_margin_bottom(10);
-        content_box.append(&separator);
+        #[allow(clippy::type_complexity)]
+        let refresh_callbacks: SharedVec<Rc<dyn Fn()>> = shared(Vec::new());
 
-        // Tool Settings
-        let settings_box = Box::new(Orientation::Vertical, 8);
-        settings_box.set_margin_start(8);
-        settings_box.set_margin_end(8);
-        settings_box.set_margin_top(8);
-        settings_box.set_margin_bottom(8);
+        // ===== ADD SELECTOR LASER/CNC =====
+        // 1. Crear el Frame (contenedor con borde y título)
+        let mode_frame = Frame::new(Some(&t!("Machine Mode"))); // Contenedor del tipo de máquina
+        mode_frame.set_margin_top(5);
+        mode_frame.set_margin_bottom(5);
 
-        let settings_grid = Grid::builder().row_spacing(8).column_spacing(8).build();
-        settings_box.append(&settings_grid);
+        // 2. Crear el Box horizontal (para poner los botones en fila)
+        let mode_box = Box::new(Orientation::Horizontal, 5); // Box interno Horizontal
+        mode_box.set_margin_start(5);
+        mode_box.set_margin_end(5);
+        mode_box.set_margin_top(5);
+        mode_box.set_margin_bottom(5);
 
+        // 3. Crear los botones (CheckButton)
+        let laser_radio = gtk4::CheckButton::with_label(&t!("Laser 2D"));
+        let cnc_radio = gtk4::CheckButton::with_label(&t!("CNC 3D"));
+
+        // 4. Agrupar los botones (para que funcionen como radio buttons)
+        let radio_group = laser_radio.clone();
+        cnc_radio.set_group(Some(&radio_group));
+
+        // 5. Configurar el estado inicial de los botones según el estado actual
+        let current_mode = state.borrow().machine_mode();
+        laser_radio.set_active(current_mode == MachineMode::Laser2D);
+        cnc_radio.set_active(current_mode == MachineMode::Cnc3D);
+
+        // 6. Conectar eventos: qué pasa cuando se hace clic en "Laser 2D"
+        let state_laser = state.clone();
+        let refresh_cb = refresh_callbacks.clone();
+        laser_radio.connect_toggled(move |rb| {
+            if rb.is_active() {
+                state_laser
+                    .borrow_mut()
+                    .set_machine_mode(MachineMode::Laser2D);
+
+                for callback in refresh_cb.borrow().iter() {
+                    callback();
+                }
+            }
+        });
+
+        // 7. Conectar eventos: qué pasa cuando se hace clic en "CNC 3D"
+        let state_cnc = state.clone();
+        let refresh_cb = refresh_callbacks.clone();
+        cnc_radio.connect_toggled(move |rb| {
+            if rb.is_active() {
+                state_cnc.borrow_mut().set_machine_mode(MachineMode::Cnc3D);
+
+                for callback in refresh_cb.borrow().iter() {
+                    callback();
+                }
+            }
+        });
+
+        // 8. Sincronizar los botones con cambios externos al estado
+        {
+            let state_mode = state.clone();
+            let laser_radio_refresh = laser_radio.clone();
+            let cnc_radio_refresh = cnc_radio.clone();
+
+            let update_mode_buttons = Rc::new(move || {
+                let mode = state_mode.borrow().machine_mode();
+                let laser_active = mode == MachineMode::Laser2D;
+                let cnc_active = mode == MachineMode::Cnc3D;
+
+                if laser_radio_refresh.is_active() != laser_active {
+                    laser_radio_refresh.set_active(laser_active);
+                }
+                if cnc_radio_refresh.is_active() != cnc_active {
+                    cnc_radio_refresh.set_active(cnc_active);
+                }
+            });
+
+            refresh_callbacks.borrow_mut().push(update_mode_buttons.clone());
+            update_mode_buttons();
+        }
+
+        // 9. Añadir el frame al contenedor principal
+        content_box.append(&mode_frame);
+        // 10. Añadir los botones al box
+        mode_box.append(&laser_radio);
+        mode_box.append(&cnc_radio);
+        // 11. Establecer el box como hijo del frame
+        mode_frame.set_child(Some(&mode_box));
+
+        // Frame de botones de configuración
+        let mode_frame = Frame::new(None);
+        mode_frame.set_margin_top(5);
+        mode_frame.set_margin_bottom(5);
+
+        let mode_box = Box::new(Orientation::Vertical, 5);
+        mode_box.set_margin_start(5);
+        mode_box.set_margin_end(5);
+        mode_box.set_margin_top(5);
+        mode_box.set_margin_bottom(5);
+
+        // Tool Settings - creamos el settings_box principal
         let current_units = thread_safe(
             settings_controller
                 .persistence
@@ -273,251 +356,34 @@ impl DesignerToolbox {
                 .measurement_system,
         );
 
-        // Collection of callbacks to refresh all settings UI widgets from state
-        #[allow(clippy::type_complexity)]
-        let refresh_callbacks: SharedVec<Rc<dyn Fn()>> = shared(Vec::new());
-
-        let tool_row = Rc::new(Cell::new(0));
-
-        // Helper to create a properties-style row: label | value | units
-        let create_setting = {
-            let settings_controller = settings_controller.clone();
-            let current_units = current_units.clone();
-            let settings_grid = settings_grid.clone();
-            let tool_row = tool_row.clone();
-            let refresh_callbacks = refresh_callbacks.clone();
-
-            move |label_text: String,
-                  getter: Rc<dyn Fn() -> f64>,
-                  setter: Rc<dyn Fn(f64)>,
-                  tooltip: String,
-                  units_kind: UnitsKind|
-                  -> Entry {
-                let label = Label::new(Some(&format!("{}:", label_text)));
-                label.set_halign(Align::Start);
-
-                let entry = Entry::builder().tooltip_text(&tooltip).build();
-                entry.set_hexpand(true);
-
-                let units_label = Label::new(Some(""));
-                units_label.set_halign(Align::End);
-                units_label.set_xalign(1.0);
-                units_label.set_width_chars(6);
-
-                let row = tool_row.get();
-                tool_row.set(row + 1);
-
-                settings_grid.attach(&label, 0, row, 1, 1);
-                settings_grid.attach(&entry, 1, row, 1, 1);
-                settings_grid.attach(&units_label, 2, row, 1, 1);
-
-                let update_display = {
-                    let entry = entry.clone();
-                    let units_label = units_label.clone();
-                    let getter = getter.clone();
-                    let current_units = current_units.clone();
-
-                    Rc::new(move || {
-                        let val_mm = getter();
-                        let units = *current_units.lock();
-
-                        let (val_display, unit_str) = match units_kind {
-                            UnitsKind::Length => match units {
-                                MeasurementSystem::Metric => (val_mm, "mm"),
-                                MeasurementSystem::Imperial => (val_mm / 25.4, "in"),
-                            },
-                            UnitsKind::FeedRate => match units {
-                                MeasurementSystem::Metric => (val_mm, "mm/min"),
-                                MeasurementSystem::Imperial => (val_mm / 25.4, "in/min"),
-                            },
-                            UnitsKind::Rpm => (val_mm, "RPM"),
-                        };
-
-                        units_label.set_text(unit_str);
-                        entry.set_text(&format!("{:.3}", val_display));
-                    })
-                };
-
-                // Register for external refresh (e.g., after file load)
-                refresh_callbacks.borrow_mut().push(update_display.clone());
-
-                update_display();
-
-                // Connect entry changed
-                {
-                    let current_units = current_units.clone();
-                    let setter = setter.clone();
-                    entry.connect_changed(move |e| {
-                        if let Ok(val) = e.text().parse::<f64>() {
-                            e.remove_css_class("entry-invalid");
-                            let units = *current_units.lock();
-                            let val_mm = match units_kind {
-                                UnitsKind::Length | UnitsKind::FeedRate => match units {
-                                    MeasurementSystem::Metric => val,
-                                    MeasurementSystem::Imperial => val * 25.4,
-                                },
-                                UnitsKind::Rpm => val,
-                            };
-                            setter(val_mm);
-                        } else {
-                            e.add_css_class("entry-invalid");
-                        }
-                    });
-                }
-
-                // Connect settings changed
-                {
-                    let update_display = update_display.clone();
-                    let current_units = current_units.clone();
-                    settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
-                            if let Ok(system) =
-                                serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
-                            {
-                                *current_units.lock() = system;
-                            } else if value == "Metric" {
-                                *current_units.lock() = MeasurementSystem::Metric;
-                            } else if value == "Imperial" {
-                                *current_units.lock() = MeasurementSystem::Imperial;
-                            }
-                            update_display();
-                        }
-                    });
-                }
-
-                entry
-            }
-        };
-
-        // Feed Rate
-        {
-            let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.feed_rate);
-            let state_setter = state.clone();
-            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_feed_rate(val));
-            create_setting(
-                t!("Feed"),
-                getter,
-                setter,
-                t!("Feed Rate"),
-                UnitsKind::FeedRate,
-            );
-        }
-
-        // Spindle Speed
-        {
-            let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.spindle_speed as f64);
-            let state_setter = state.clone();
-            let setter =
-                Rc::new(move |val: f64| state_setter.borrow_mut().set_spindle_speed(val as u32));
-            create_setting(
-                t!("Speed"),
-                getter,
-                setter,
-                t!("Spindle Speed"),
-                UnitsKind::Rpm,
-            );
-        }
-
-        // Tool Diameter
-        {
-            let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.tool_diameter);
-            let state_setter = state.clone();
-            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_tool_diameter(val));
-            create_setting(
-                t!("Tool Dia"),
-                getter,
-                setter,
-                t!("Tool Diameter"),
-                UnitsKind::Length,
-            );
-        }
-
-        // Cut Depth
-        {
-            let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.cut_depth);
-            let state_setter = state.clone();
-            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_cut_depth(val));
-            create_setting(
-                t!("Cut Depth"),
-                getter,
-                setter,
-                t!("Target Cut Depth (positive)"),
-                UnitsKind::Length,
-            );
-        }
-
-        // Step Down
-        {
-            let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().tool_settings.step_down);
-            let state_setter = state.clone();
-            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_step_down(val));
-            create_setting(
-                t!("Step Down"),
-                getter,
-                setter,
-                t!("Depth per pass"),
-                UnitsKind::Length,
-            );
-        }
-
-        // Tool Settings popup
+        // Tool Settings popup button
         let tool_settings_btn = Button::with_label(&t!("Tool Settings…"));
         tool_settings_btn.set_margin_top(6);
         tool_settings_btn.set_margin_start(5);
         tool_settings_btn.set_margin_end(5);
 
-        let tool_settings_dialog = Dialog::builder()
-            .title(t!("Tool Settings"))
-            .modal(true)
-            .resizable(true)
-            .build();
-        tool_settings_dialog.set_default_size(520, 520);
-        tool_settings_dialog.add_button(&t!("Close"), ResponseType::Close);
-        tool_settings_dialog.connect_response(|d, _| d.hide());
-
-        let tool_dialog_content = Box::new(Orientation::Vertical, 12);
-        tool_dialog_content.set_margin_start(12);
-        tool_dialog_content.set_margin_end(12);
-        tool_dialog_content.set_margin_top(12);
-        tool_dialog_content.set_margin_bottom(12);
-
-        let tool_header = Label::new(Some(&t!("Tool Settings")));
-        tool_header.add_css_class("title-3");
-        tool_header.set_halign(Align::Start);
-        tool_dialog_content.append(&tool_header);
-
-        let tool_frame = Frame::new(Some(&t!("Tool Parameters")));
-        tool_frame.set_child(Some(&settings_box));
-        tool_dialog_content.append(&tool_frame);
-
-        let tool_scroller = ScrolledWindow::builder()
-            .hscrollbar_policy(PolicyType::Never)
-            .vscrollbar_policy(PolicyType::Automatic)
-            .min_content_width(520)
-            .min_content_height(360)
-            .child(&tool_dialog_content)
-            .build();
-        tool_settings_dialog.content_area().append(&tool_scroller);
-
+        // Conectar el botón para mostrar el diálogo (recreado cada vez)
         {
-            let dlg = tool_settings_dialog.clone();
+            let state_dialog = state.clone();
+            let settings_controller_dialog = settings_controller.clone();
+            let current_units_dialog = current_units.clone();
+            let refresh_callbacks_dialog = refresh_callbacks.clone();
             let btn = tool_settings_btn.clone();
+
             tool_settings_btn.connect_clicked(move |_| {
                 if let Some(root) = btn.root() {
                     if let Ok(win) = root.downcast::<gtk4::Window>() {
-                        dlg.set_transient_for(Some(&win));
+                        Self::show_tool_settings_dialog(
+                            &win,
+                            state_dialog.clone(),
+                            settings_controller_dialog.clone(),
+                            current_units_dialog.clone(),
+                            refresh_callbacks_dialog.clone(),
+                        );
                     }
                 }
-                dlg.present();
             });
         }
-
-        content_box.append(&tool_settings_btn);
 
         // Stock Settings
         let stock_box = Box::new(Orientation::Vertical, 8);
@@ -530,7 +396,6 @@ impl DesignerToolbox {
         stock_box.append(&stock_grid);
         let stock_row = Rc::new(Cell::new(0));
 
-        // Helper for stock settings (f32): label | value | units
         let create_stock_setting = {
             let settings_controller = settings_controller.clone();
             let current_units = current_units.clone();
@@ -581,12 +446,9 @@ impl DesignerToolbox {
                     })
                 };
 
-                // Register for external refresh (e.g., after file load)
                 refresh_callbacks.borrow_mut().push(update_display.clone());
-
                 update_display();
 
-                // Connect entry changed
                 {
                     let current_units = current_units.clone();
                     let setter = setter.clone();
@@ -605,7 +467,6 @@ impl DesignerToolbox {
                     });
                 }
 
-                // Connect settings changed
                 {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
@@ -692,9 +553,14 @@ impl DesignerToolbox {
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                let mut s = state_setter.borrow_mut();
-                if let Some(ref mut stock) = s.stock_material {
-                    stock.thickness = val;
+                {
+                    let mut s = state_setter.borrow_mut();
+                    if let Some(ref mut stock) = s.stock_material {
+                        let clearance = (stock.safe_z - stock.thickness)
+                            .max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
+                        stock.thickness = val;
+                        stock.safe_z = stock.thickness + clearance;
+                    }
                 }
             });
             create_stock_setting(
@@ -705,7 +571,6 @@ impl DesignerToolbox {
             );
         }
 
-        // Safe Z Height
         {
             let state_getter = state.clone();
             let getter = Rc::new(move || {
@@ -713,57 +578,65 @@ impl DesignerToolbox {
                     .borrow()
                     .stock_material
                     .as_ref()
-                    .map(|s| s.safe_z)
-                    .unwrap_or(10.0)
+                    .map(|s| {
+                        (s.safe_z - s.thickness).max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM)
+                    })
+                    .unwrap_or(StockMaterial::DEFAULT_SAFE_Z_ABOVE_STOCK_MM)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                let mut s = state_setter.borrow_mut();
-                if let Some(ref mut stock) = s.stock_material {
-                    stock.safe_z = val;
+                {
+                    let mut s = state_setter.borrow_mut();
+                    if let Some(ref mut stock) = s.stock_material {
+                        let clearance = val.max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
+                        stock.safe_z = stock.thickness + clearance;
+                    }
                 }
             });
             create_stock_setting(
                 t!("Safe Z Height"),
                 getter,
                 setter,
-                t!("Safe height for rapid moves"),
+                t!("Safe height above stock for rapid moves"),
             );
         }
 
-        // Resolution
         {
             let state_getter = state.clone();
-            let getter = Rc::new(move || state_getter.borrow().simulation_resolution);
+            let getter = Rc::new(move || {
+                let step_down = state_getter.borrow().tool_settings.step_down;
+                if step_down > 0.0 { step_down as f32 } else { 0.1 }
+            });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                state_setter.borrow_mut().simulation_resolution = val.clamp(0.01, 2.0);
+                state_setter.borrow_mut().set_step_down(val.max(0.1) as f64);
             });
             create_stock_setting(
-                t!("Resolution"),
+                t!("Step Down"),
                 getter,
                 setter,
-                t!("Simulation resolution (lower = more detail)"),
+                t!("Depth per pass"),
             );
         }
 
-        // Show Stock Removal checkbox
-        let show_stock_check = gtk4::CheckButton::with_label(&t!("Show Stock Removal"));
-        show_stock_check.set_tooltip_text(Some(&t!("Enable stock removal visualization")));
-        show_stock_check.set_margin_top(5);
-        let show_stock_state = state.borrow().show_stock_removal;
-        show_stock_check.set_active(show_stock_state);
-        let state_show_stock = state.clone();
-        show_stock_check.connect_toggled(move |cb| {
-            state_show_stock.borrow_mut().show_stock_removal = cb.is_active();
-        });
-        stock_box.append(&show_stock_check);
-
-        // Stock Settings popup
         let stock_settings_btn = Button::with_label(&t!("Stock Settings…"));
         stock_settings_btn.set_margin_top(6);
         stock_settings_btn.set_margin_start(5);
         stock_settings_btn.set_margin_end(5);
+
+        {
+            let state_mode = state.clone();
+            let stock_settings_btn_mode = stock_settings_btn.clone();
+            let update_stock_settings_btn = Rc::new(move || {
+                let is_cnc_mode = state_mode.borrow().machine_mode() == MachineMode::Cnc3D;
+                stock_settings_btn_mode.set_sensitive(is_cnc_mode);
+            });
+
+            refresh_callbacks
+                .borrow_mut()
+                .push(update_stock_settings_btn.clone());
+            update_stock_settings_btn();
+        }
 
         let stock_settings_dialog = Dialog::builder()
             .title(t!("Stock Settings"))
@@ -811,26 +684,64 @@ impl DesignerToolbox {
             });
         }
 
-        content_box.append(&stock_settings_btn);
+        // 9. Añadir el frame al contenedor principal
+        content_box.append(&mode_frame);
 
-        // Generate G-Code Button
+        // 10. Añadir los botones al box
+        mode_box.append(&tool_settings_btn);
+        mode_box.append(&stock_settings_btn);
+
+        // 11. Establecer el box como hijo del frame
+        mode_frame.set_child(Some(&mode_box));
+
+        // 1. Crear el Frame de Gcode y Frame
+        let mode_frame = Frame::new(None); // Contenedor de G-code
+        mode_frame.set_margin_top(5);
+        mode_frame.set_margin_bottom(5);
+
+        let mode_box = Box::new(Orientation::Vertical, 5);
+        mode_box.set_margin_start(5);
+        mode_box.set_margin_end(5);
+        mode_box.set_margin_top(5);
+        mode_box.set_margin_bottom(5);
+
+        // Botones de G-code y Frame
         let generate_btn = Button::with_label(&t!("Generate G-Code"));
-        generate_btn.add_css_class("suggested-action");
-        generate_btn.set_margin_top(10);
-        generate_btn.set_margin_bottom(10);
+//        generate_btn.add_css_class("suggested-action");
+        generate_btn.set_margin_top(5);
+        generate_btn.set_margin_bottom(5);
         generate_btn.set_margin_start(5);
         generate_btn.set_margin_end(5);
-        content_box.append(&generate_btn);
+
+        let frame_btn = Button::with_label(&format!(" ⛶  {}", t!("Frame ")));
+        frame_btn.set_tooltip_text(Some(&t!("Generate low-power frame to position material")));
+        frame_btn.add_css_class("flat");
+        frame_btn.set_halign(gtk4::Align::Center);
+
+        // 9. Añadir el frame al contenedor principal
+        content_box.append(&mode_frame);
+        // 10. Añadir los botones al box
+        mode_box.append(&generate_btn);
+        mode_box.append(&frame_btn);
+        // 11. Establecer el box como hijo del frame
+        mode_frame.set_child(Some(&mode_box));
 
         scrolled.set_child(Some(&content_box));
         main_container.append(&scrolled);
-
+/*
+        // Add separator
+        let separator = gtk4::Separator::new(Orientation::Horizontal);
+        separator.set_margin_top(10);
+        separator.set_margin_bottom(10);
+        main_container.append(&separator);
+*/
         Rc::new(Self {
             widget: main_container,
             current_tool,
             active_tool_label,
             buttons,
             tools,
+            frame_btn,
             generate_btn,
             fast_shape_gallery,
             _state: state,
@@ -838,6 +749,304 @@ impl DesignerToolbox {
             _current_units: current_units,
             refresh_callbacks,
         })
+    }
+
+    /// Crea el settings_box con los campos de herramienta (Feed, Speed, etc.)
+    /// Devuelve (settings_box, settings_grid) para permitir su uso en diálogos
+    fn create_tool_settings_box(
+        state: Shared<DesignerState>,
+        settings_controller: Rc<SettingsController>,
+        current_units: ThreadSafe<MeasurementSystem>,
+        refresh_callbacks: SharedVec<Rc<dyn Fn()>>,
+    ) -> (Box, Grid) {
+        let settings_box = Box::new(Orientation::Vertical, 8);
+        settings_box.set_margin_start(8);
+        settings_box.set_margin_end(8);
+        settings_box.set_margin_top(8);
+        settings_box.set_margin_bottom(8);
+
+        let settings_grid = Grid::builder().row_spacing(8).column_spacing(8).build();
+        settings_box.append(&settings_grid);
+
+        let tool_row = Rc::new(Cell::new(0));
+
+        let create_setting = {
+            let settings_controller = settings_controller.clone();
+            let current_units = current_units.clone();
+            let settings_grid = settings_grid.clone();
+            let tool_row = tool_row.clone();
+            let refresh_callbacks = refresh_callbacks.clone();
+            let state = state.clone();
+
+            move |label_text: String,
+                  getter: Rc<dyn Fn() -> f64>,
+                  setter: Rc<dyn Fn(f64)>,
+                  tooltip: String,
+                  units_kind: UnitsKind|
+                  -> Entry {
+                let machine_mode = state.borrow().machine_mode();
+                let display_label = match (label_text.as_str(), machine_mode) {
+                    ("Feed", MachineMode::Laser2D) => t!("Laser Speed"),
+                    ("Feed", MachineMode::Cnc3D) => t!("Feed Rate"),
+                    ("Speed", MachineMode::Laser2D) => t!("Laser Power"),
+                    ("Speed", MachineMode::Cnc3D) => t!("Spindle Speed"),
+                    ("Step Down", MachineMode::Laser2D) => t!("Passes"),
+                    ("Step Down", MachineMode::Cnc3D) => t!("Step Down"),
+                    ("Tool Dia", MachineMode::Laser2D) => t!("Laser Width"),
+                    ("Tool Dia", MachineMode::Cnc3D) => t!("Tool Dia"),
+                    _ => label_text.clone(),
+                };
+                let label = Label::new(Some(&format!("{}:", display_label)));
+                label.set_halign(Align::Start);
+
+                let entry = Entry::builder().tooltip_text(&tooltip).build();
+                entry.set_hexpand(true);
+
+                let units_label = Label::new(Some(""));
+                units_label.set_halign(Align::End);
+                units_label.set_xalign(1.0);
+                units_label.set_width_chars(6);
+
+                let row = tool_row.get();
+                tool_row.set(row + 1);
+
+                settings_grid.attach(&label, 0, row, 1, 1);
+                settings_grid.attach(&entry, 1, row, 1, 1);
+                settings_grid.attach(&units_label, 2, row, 1, 1);
+
+                let update_display = {
+                    let entry = entry.clone();
+                    let units_label = units_label.clone();
+                    let getter = getter.clone();
+                    let current_units = current_units.clone();
+                    let machine_mode = state.borrow().machine_mode();
+
+                    Rc::new(move || {
+                        let val_mm = getter();
+                        let units = *current_units.lock();
+
+                        let (val_display, unit_str) = match (units_kind, machine_mode) {
+                            (UnitsKind::Rpm, MachineMode::Laser2D) => {
+                                let percent = (val_mm / 10.0).clamp(0.0, 100.0);
+                                (percent, "%")
+                            }
+                            (UnitsKind::Rpm, MachineMode::Cnc3D) => (val_mm, "RPM"),
+                            (UnitsKind::Length, MachineMode::Laser2D) => (val_mm, ""), // Sin unidades
+                            (UnitsKind::Length, MachineMode::Cnc3D) => match units {
+                                MeasurementSystem::Metric => (val_mm, "mm"),
+                                MeasurementSystem::Imperial => (val_mm / 25.4, "in"),
+                            },
+                            (UnitsKind::FeedRate, _) => match units {
+                                MeasurementSystem::Metric => (val_mm, "mm/min"),
+                                MeasurementSystem::Imperial => (val_mm / 25.4, "in/min"),
+                            },
+                        };
+
+                        units_label.set_text(unit_str);
+                        entry.set_text(&format!("{:.3}", val_display));
+                    })
+                };
+
+                refresh_callbacks.borrow_mut().push(update_display.clone());
+                update_display();
+
+                {
+                    let current_units = current_units.clone();
+                    let setter = setter.clone();
+                    let state = state.clone();
+                    entry.connect_changed(move |e| {
+                        if let Ok(val) = e.text().parse::<f64>() {
+                            e.remove_css_class("entry-invalid");
+                            let units = *current_units.lock();
+                            let machine_mode = state.borrow().machine_mode();
+
+                            let val_mm = match (units_kind, machine_mode) {
+                                (UnitsKind::Rpm, MachineMode::Laser2D) => val * 10.0,
+                                (UnitsKind::Rpm, MachineMode::Cnc3D) => val,
+                                (UnitsKind::Length | UnitsKind::FeedRate, _) => match units {
+                                    MeasurementSystem::Metric => val,
+                                    MeasurementSystem::Imperial => val * 25.4,
+                                },
+                            };
+
+                            setter(val_mm);
+                        } else {
+                            e.add_css_class("entry-invalid");
+                        }
+                    });
+                }
+
+                {
+                    let update_display = update_display.clone();
+                    let current_units = current_units.clone();
+                    settings_controller.on_setting_changed(move |key, value| {
+                        if key == "units.measurement_system" {
+                            if let Ok(system) =
+                                serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
+                            {
+                                *current_units.lock() = system;
+                            } else if value == "Metric" {
+                                *current_units.lock() = MeasurementSystem::Metric;
+                            } else if value == "Imperial" {
+                                *current_units.lock() = MeasurementSystem::Imperial;
+                            }
+                            update_display();
+                        }
+                    });
+                }
+
+                entry
+            }
+        };
+
+        // Feed Rate
+        {
+            let state_getter = state.clone();
+            let getter = Rc::new(move || state_getter.borrow().tool_settings.feed_rate);
+            let state_setter = state.clone();
+            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_feed_rate(val));
+            create_setting(
+                t!("Feed"),
+                getter,
+                setter,
+                t!("Feed Rate"),
+                UnitsKind::FeedRate,
+            );
+        }
+
+        // Spindle Speed
+        {
+            let state_getter = state.clone();
+            let getter = Rc::new(move || state_getter.borrow().tool_settings.spindle_speed as f64);
+            let state_setter = state.clone();
+            let setter =
+                Rc::new(move |val: f64| state_setter.borrow_mut().set_spindle_speed(val as u32));
+            create_setting(
+                t!("Speed"),
+                getter,
+                setter,
+                t!("Spindle Speed"),
+                UnitsKind::Rpm,
+            );
+        }
+
+        // Tool Diameter
+        {
+            let state_getter = state.clone();
+            let getter = Rc::new(move || state_getter.borrow().tool_settings.tool_diameter);
+            let state_setter = state.clone();
+            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_tool_diameter(val));
+            create_setting(
+                String::from("Tool Dia"),
+                getter,
+                setter,
+                t!("Tool Diameter"),
+                UnitsKind::Length,
+            );
+        }
+
+        // Step Down
+        {
+            let state_getter = state.clone();
+            let getter = Rc::new(move || {
+                let state = state_getter.borrow();
+                let step_down = state.tool_settings.step_down;
+                if state.machine_mode() == MachineMode::Laser2D && step_down <= 0.0 {
+                    1.0
+                } else {
+                    step_down
+                }
+            });
+            let state_setter = state.clone();
+            let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_step_down(val));
+            create_setting(
+                "Step Down".to_string(),
+                getter,
+                setter,
+                t!("Depth per pass"),
+                UnitsKind::Length,
+            );
+        }
+
+        if state.borrow().machine_mode() == MachineMode::Cnc3D {
+            let row = tool_row.get();
+            tool_row.set(row + 1);
+
+            let label = Label::new(Some(&format!("{}:", t!("Continuous Z"))));
+            label.set_halign(Align::Start);
+
+            let check = CheckButton::new();
+            check.set_active(state.borrow().tool_settings.continuous_z_between_passes);
+            check.set_tooltip_text(Some(&t!(
+                "Keep tool at cutting depth between passes when XY start is unchanged"
+            )));
+
+            settings_grid.attach(&label, 0, row, 1, 1);
+            settings_grid.attach(&check, 1, row, 1, 1);
+
+            let state_toggle = state.clone();
+            check.connect_toggled(move |c| {
+                state_toggle
+                    .borrow_mut()
+                    .set_continuous_z_between_passes(c.is_active());
+            });
+        }
+
+        (settings_box, settings_grid)
+    }
+
+    /// Muestra el diálogo Tool Settings, recreando el contenido cada vez
+    fn show_tool_settings_dialog(
+        parent: &gtk4::Window,
+        state: Shared<DesignerState>,
+        settings_controller: Rc<SettingsController>,
+        current_units: ThreadSafe<MeasurementSystem>,
+        refresh_callbacks: SharedVec<Rc<dyn Fn()>>,
+    ) {
+        // Crear el settings_box con el modo actual
+        let (settings_box, _) = Self::create_tool_settings_box(
+            state.clone(),
+            settings_controller.clone(),
+            current_units.clone(),
+            refresh_callbacks.clone(),
+        );
+
+        let dialog = Dialog::builder()
+            .title(t!("Tool Settings"))
+            .modal(true)
+            .resizable(true)
+            .transient_for(parent)
+            .build();
+
+        dialog.set_default_size(520, 520);
+        dialog.add_button(&t!("Close"), ResponseType::Close);
+        dialog.connect_response(|d, _| d.hide());
+
+        let content = Box::new(Orientation::Vertical, 12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+
+        let header = Label::new(Some(&t!("Tool Settings")));
+        header.add_css_class("title-3");
+        header.set_halign(Align::Start);
+        content.append(&header);
+
+        let frame = Frame::new(Some(&t!("Tool Parameters")));
+        frame.set_child(Some(&settings_box));
+        content.append(&frame);
+
+        let scroller = ScrolledWindow::builder()
+            .hscrollbar_policy(PolicyType::Never)
+            .vscrollbar_policy(PolicyType::Automatic)
+            .min_content_width(520)
+            .min_content_height(360)
+            .child(&content)
+            .build();
+
+        dialog.content_area().append(&scroller);
+        dialog.present();
     }
 
     pub fn connect_generate_clicked<F: Fn() + 'static>(&self, f: F) {
@@ -861,7 +1070,6 @@ impl DesignerToolbox {
         self.active_tool_label
             .set_text(&format!("{} {}", t!("Active tool:"), tool.tooltip()));
 
-        // Update button styles
         for (i, btn) in self.buttons.iter().enumerate() {
             if self.tools[i] == tool {
                 btn.add_css_class("selected-tool");
@@ -871,11 +1079,42 @@ impl DesignerToolbox {
         }
     }
 
+    pub fn register_refresh_callback<F: Fn() + 'static>(&self, callback: F) {
+        self.refresh_callbacks
+            .borrow_mut()
+            .push(Rc::new(callback));
+    }
+
     /// Refresh all tool and stock settings UI widgets from current state.
-    /// Call this after loading a design file to update displayed values.
     pub fn refresh_settings(&self) {
         for callback in self.refresh_callbacks.borrow().iter() {
             callback();
         }
     }
+
+    pub fn connect_frame_clicked<F: Fn() + 'static>(&self, f: F) {
+        self.frame_btn.connect_clicked(move |_| f());
+    }
+}
+
+// Gcode Function Frame
+pub fn generate_frame_gcode(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
+    format!(
+        "; --- Laser Frame Start ---\n\
+G90 ; Absolute coordinates\n\
+M3 S10 ; Laser ON low power\n\
+G0 X{x1:.3} Y{y1:.3} F3000 ; Go to corner\n\
+G1 X{x2:.3} Y{y1:.3} F1000 ; Bottom side\n\
+G1 X{x2:.3} Y{y2:.3} ; Right side\n\
+G1 X{x1:.3} Y{y2:.3} ; Top side\n\
+G1 X{x1:.3} Y{y1:.3} ; Left side\n\
+M5 ; Láser OFF\n\
+G0 X0 Y0 ; Return to origin\n\
+M30 ; End of program\n\
+; --- Laser Frame End ---",
+        x1 = x1,
+        y1 = y1,
+        x2 = x2,
+        y2 = y2
+    )
 }

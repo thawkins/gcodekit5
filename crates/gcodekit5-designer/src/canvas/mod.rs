@@ -60,7 +60,6 @@ impl Canvas {
     }
 
     /// Returns the number of shapes on the canvas.
-    /// Returns the number of shapes on the canvas.
     pub fn shape_count(&self) -> usize {
         self.shape_store.len()
     }
@@ -237,16 +236,20 @@ impl Canvas {
         }
     }
 
-    /// Selects a shape at the given point.
-    /// If multi is true, toggles selection of the shape at point while keeping others.
-    /// If multi is false, clears other selections and selects the shape at point.
-    pub fn select_at(&mut self, point: &Point, tolerance: f64, multi: bool) -> Option<u64> {
+    pub fn select_at(
+        &mut self,
+        point: &Point,
+        tolerance: f64,
+        shift: bool,
+        ctrl: bool,
+    ) -> Option<u64> {
         self.selection_manager.select_at(
             &mut self.shape_store,
             self.spatial_manager.inner(),
             point,
             tolerance,
-            multi,
+            shift,
+            ctrl,
         )
     }
 
@@ -356,7 +359,9 @@ impl Canvas {
     pub fn is_point_in_selected(&self, point: &Point) -> bool {
         if let Some(id) = self.selection_manager.selected_id() {
             if let Some(obj) = self.shape_store.get(id) {
-                return obj.contains_point(point, 3.0);
+                // Calculate tolerance based on zoom (5 pixels on screen)
+                let tolerance = 5.0 / self.viewport.zoom();
+                return obj.contains_point(point, tolerance);
             }
         }
         false
@@ -509,6 +514,45 @@ impl Canvas {
 
     pub fn set_selected_id(&mut self, id: Option<u64>) {
         self.selection_manager.set_selected_id(id);
+    }
+
+    pub fn select_next_at_position(&mut self, point: &Point, tolerance: f64) -> Option<u64> {
+        // Get all IDs near the point using the spatial manager
+        let near_ids = self.spatial_manager.query_point(point.x, point.y);
+
+        // Collect objects that actually contain the dot
+        let objects_at_point: Vec<u64> = near_ids
+            .iter()
+            .filter_map(|&id| {
+                if let Some(obj) = self.shape_store.get(id) {
+                    // Use contains_point method of DrawingObject
+                    if obj.contains_point(point, tolerance) {
+                        return Some(id);
+                    }
+                }
+                None
+            })
+            .collect();
+
+        if objects_at_point.is_empty() {
+            return None;
+        }
+
+        // If there is a current selection, find the next one.
+        if let Some(current_id) = self.selection_manager.selected_id() {
+            if let Some(pos) = objects_at_point.iter().position(|&id| id == current_id) {
+                // Select the next one (or go back to the first one)
+                let next_idx = (pos + 1) % objects_at_point.len();
+                let next_id = objects_at_point[next_idx];
+                self.select_shape(next_id, false);
+                return Some(next_id);
+            }
+        }
+
+        // If there is no current selection, select the first one.
+        let first_id = objects_at_point[0];
+        self.select_shape(first_id, false);
+        Some(first_id)
     }
 }
 
