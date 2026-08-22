@@ -55,7 +55,7 @@ impl DesignerState {
             .as_ref()
             .map(|s| s.thickness as f64)
             .unwrap_or(10.0);
-        stock_thickness - (shape.start_depth + shape.z_offset)
+        stock_thickness - shape.start_depth
     }
 
     /// Returns a safety violation summary when any object starts at/above safe Z in CNC mode.
@@ -130,8 +130,6 @@ impl DesignerState {
 
         if !shape.use_custom_values {
             effective.operation_type = cam_defaults.operation_type;
-            effective.pocket_depth = cam_defaults.pocket_depth;
-            effective.z_offset = cam_defaults.z_offset;
             effective.step_in = cam_defaults.step_in;
             effective.ramp_angle = cam_defaults.ramp_angle;
             effective.pocket_strategy = cam_defaults.pocket_strategy;
@@ -213,7 +211,6 @@ impl DesignerState {
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
         // Obtener el ID del objeto seleccionado (si hay)
-        //        let selected_id = self.canvas.selection_manager.selected_id();
         let selected_ids = self
             .canvas
             .selection_manager
@@ -276,16 +273,11 @@ impl DesignerState {
             let (toolpath_start_depth, toolpath_cut_depth) =
                 if self.machine_mode() == MachineMode::Cnc3D {
                     // CNC workflow: always start passes from stock top and descend to
-                    // final object Z (plus pocket depth if operation is Pocket).
-                    let final_object_z = if effective_shape_obj.operation_type == OperationType::Pocket {
-                        effective_start_depth - effective_shape_obj.pocket_depth.abs()
-                    } else {
-                        effective_start_depth
-                    };
-                    let cut_depth_from_stock = (stock_top_z - final_object_z).max(0.0);
+                    // final object Z.
+                    let cut_depth_from_stock = (stock_top_z - effective_start_depth).max(0.0);
                     (stock_top_z, cut_depth_from_stock)
                 } else {
-                    (effective_start_depth, effective_shape_obj.pocket_depth)
+                    (effective_start_depth, 0.0)
                 };
 
             self.toolpath_generator
@@ -320,7 +312,7 @@ impl DesignerState {
                         (
                             self.toolpath_generator.generate_rectangle_pocket(
                                 rect,
-                                effective_shape_obj.pocket_depth,
+                                effective_shape_obj.start_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
@@ -704,8 +696,8 @@ impl DesignerState {
 
             if shape.operation_type == OperationType::Pocket {
                 gcode.push_str(&format!(
-                    "; Pocket depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n",
-                    shape.pocket_depth, shape.step_down, shape.step_in
+                    "; Z depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n",
+                    shape.start_depth, shape.step_down, shape.step_in
                 ));
                 gcode.push_str(&format!("; Strategy: {:?}\n", shape.pocket_strategy));
             } else {

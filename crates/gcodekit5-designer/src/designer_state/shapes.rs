@@ -1,6 +1,6 @@
 //! Shape operations (add, delete, group, copy, paste, booleans) for designer state.
 
-use super::{DesignerState, MachineMode};
+use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::commands::*;
 use crate::model::{DesignPath as PathShape, DesignText as TextShape, DesignerShape, Shape};
@@ -9,30 +9,13 @@ use crate::shapes::OperationType;
 use crate::{Circle, DrawingMode, Ellipse, Line, Point, Rectangle};
 
 impl DesignerState {
-    fn default_cnc_object_z(&self) -> f64 {
-        0.0
-    }
 
     fn apply_mode_defaults_to_new_object(&self, obj: &mut DrawingObject) {
-        if self.machine_mode() == MachineMode::Cnc3D
-            && obj.start_depth.abs() < f64::EPSILON
-            && obj.z_offset.abs() < f64::EPSILON
-        {
-            obj.z_offset = self.default_cnc_object_z();
-        }
 
         let default_props = &self.default_properties_shape;
 
         if obj.start_depth.abs() < f64::EPSILON && default_props.start_depth.abs() > f64::EPSILON {
             obj.start_depth = default_props.start_depth;
-        }
-
-        if obj.z_offset.abs() < f64::EPSILON && default_props.z_offset.abs() > f64::EPSILON {
-            obj.z_offset = default_props.z_offset;
-        }
-
-        if obj.pocket_depth.abs() < f64::EPSILON && default_props.pocket_depth.abs() > f64::EPSILON {
-            obj.pocket_depth = default_props.pocket_depth;
         }
 
         if obj.step_down.abs() < f32::EPSILON && default_props.step_down.abs() > f32::EPSILON {

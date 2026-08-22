@@ -40,8 +40,6 @@ impl PropertiesPanel {
         self.height_unit_label.set_text(unit_label);
         self.radius_unit_label.set_text(unit_label);
         self.font_size_unit_label.set_text("pt");
-        self.depth_unit_label.set_text(unit_label);
-        self.z_offset_unit_label.set_text(unit_label);
         self.step_down_unit_label.set_text(unit_label);
         self.step_in_unit_label.set_text(unit_label);
         self.offset_unit_label.set_text(unit_label);
@@ -83,9 +81,7 @@ impl PropertiesPanel {
                     Some(obj.shape.clone()),
                     obj.use_custom_values,
                     obj.operation_type,
-                    obj.pocket_depth,
                     obj.start_depth,
-                    obj.z_offset,
                     obj.step_down,
                     obj.step_in,
                     obj.ramp_angle,
@@ -106,9 +102,7 @@ impl PropertiesPanel {
                     None,
                     obj.use_custom_values,
                     obj.operation_type,
-                    obj.pocket_depth,
                     obj.start_depth,
-                    obj.z_offset,
                     obj.step_down,
                     obj.step_in,
                     obj.ramp_angle,
@@ -130,9 +124,7 @@ impl PropertiesPanel {
             shape_opt,
             use_custom_values,
             op_type,
-            depth,
             start_depth,
-            z_offset,
             step_down,
             step_in,
             ramp_angle,
@@ -834,8 +826,6 @@ impl PropertiesPanel {
 
             let cam_entries_enabled = cam_enabled && use_custom_values;
             self.op_type_combo.set_sensitive(cam_entries_enabled);
-            self.depth_entry.set_sensitive(cam_entries_enabled);
-            self.z_offset_entry.set_sensitive(cam_entries_enabled);
             self.step_down_entry.set_sensitive(cam_entries_enabled);
             self.ramp_angle_entry.set_sensitive(cam_entries_enabled);
 
@@ -846,8 +836,6 @@ impl PropertiesPanel {
                     0
                 });
 
-            self.set_entry_text_if_changed(&self.depth_entry, depth as f32, system);
-            self.set_entry_text_if_changed(&self.z_offset_entry, z_offset as f32, system);
             self.set_entry_text_if_changed(&self.step_down_entry, step_down, system);
             self.set_entry_text_if_changed(&self.step_in_entry, step_in, system);
             self.ramp_angle_entry
@@ -866,26 +854,6 @@ impl PropertiesPanel {
             self.offset_entry.set_text(&format!("{:.2}", offset));
             self.chamfer_entry.set_text(&format!("{:.2}", chamfer));
 
-            // Enable/disable pocket-specific controls
-            // Obtener el modo actual
-            let is_pocket = op_type == OperationType::Pocket;
-
-            // Determinar qué valor mostrar para profundidad
-            let depth_value_to_show = if is_pocket {
-                // En modo Pocket: usar el valor guardado de pocket_depth
-                depth
-            } else {
-                // En modo Profile: usar el valor de Z (start_depth)
-                start_depth
-            };
-
-            // Actualizar el entry de profundidad
-            self.set_entry_text_if_changed(&self.depth_entry, depth_value_to_show as f32, system);
-
-            // El campo depth_entry solo es editable en modo Pocket
-            self.depth_entry.set_sensitive(cam_entries_enabled && is_pocket);
-            self.depth_label.set_sensitive(cam_entries_enabled && is_pocket);
-            self.depth_unit_label.set_sensitive(cam_entries_enabled && is_pocket);
             let is_pocket = op_type == OperationType::Pocket;
             self.strategy_combo.set_sensitive(cam_entries_enabled && is_pocket);
             self.step_in_entry.set_sensitive(cam_entries_enabled && is_pocket);
@@ -924,8 +892,6 @@ impl PropertiesPanel {
             self.height_entry.set_text("");
             self.rotation_entry.set_text("");
             self.corner_radius_entry.set_text("");
-            self.depth_entry.set_text("");
-            self.z_offset_entry.set_text("");
             self.step_down_entry.set_text("");
             self.step_in_entry.set_text("");
             self.ramp_angle_entry.set_text("");
@@ -934,8 +900,6 @@ impl PropertiesPanel {
             self.op_type_combo.set_sensitive(false);
             self.cam_use_global_check.set_sensitive(false);
             self.cam_use_global_check.set_active(false);
-            self.depth_entry.set_sensitive(false);
-            self.z_offset_entry.set_sensitive(false);
             self.step_down_entry.set_sensitive(false);
             self.step_in_entry.set_sensitive(false);
             self.ramp_angle_entry.set_sensitive(false);
@@ -959,8 +923,6 @@ impl PropertiesPanel {
             &self.rotation_entry,
             &self.corner_radius_entry,
             &self.font_size_entry,
-            &self.depth_entry,
-            &self.z_offset_entry,
             &self.step_down_entry,
             &self.step_in_entry,
             &self.ramp_angle_entry,

@@ -104,8 +104,6 @@ pub struct PropertiesPanel {
     // CAM widgets
     pub(crate) cam_use_global_check: CheckButton,
     pub(crate) op_type_combo: DropDown,
-    pub(crate) depth_entry: Entry,
-    pub(crate) z_offset_entry: Entry,
     pub(crate) step_down_entry: Entry,
     pub(crate) step_in_entry: Entry,
     pub(crate) ramp_angle_entry: Entry,
@@ -124,9 +122,6 @@ pub struct PropertiesPanel {
     pub(crate) height_unit_label: Label,
     pub(crate) radius_unit_label: Label,
     pub(crate) font_size_unit_label: Label,
-    pub(crate) depth_unit_label: Label,
-    depth_label: Label,
-    pub(crate) z_offset_unit_label: Label,
     pub(crate) step_down_unit_label: Label,
     step_in_label: Label,
     pub(crate) step_in_unit_label: Label,
@@ -273,19 +268,14 @@ impl PropertiesPanel {
             cam_frame,
             cam_use_global_check,
             op_type_combo,
-            depth_entry,
-            z_offset_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
-            depth_unit_label,
-            z_offset_unit_label,
             step_down_unit_label,
             step_in_unit_label,
             step_in_label,
-            depth_label,
         ) = Self::build_cam_section();
         content.append(&cam_frame);
 
@@ -368,8 +358,6 @@ impl PropertiesPanel {
             timing_pulley_hole_radius_entry,
             cam_use_global_check,
             op_type_combo,
-            depth_entry,
-            z_offset_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
@@ -404,12 +392,9 @@ impl PropertiesPanel {
             height_unit_label,
             radius_unit_label,
             font_size_unit_label,
-            depth_unit_label,
-            z_offset_unit_label,
             step_down_unit_label,
             step_in_label,
             step_in_unit_label,
-            depth_label,
             offset_unit_label,
             chamfer_unit_label,
             lock_aspect_ratio,
@@ -618,21 +603,6 @@ impl PropertiesPanel {
         handlers::cam::setup_operation_type_handler(
             &self.op_type_combo,
             self.state.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::cam::setup_depth_handler(
-            &self.depth_entry,
-            &self.op_type_combo,
-            self.state.clone(),
-            self.settings.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::cam::setup_z_offset_handler(
-            &self.z_offset_entry,
-            self.state.clone(),
-            self.settings.clone(),
             self.updating.clone(),
         );
 

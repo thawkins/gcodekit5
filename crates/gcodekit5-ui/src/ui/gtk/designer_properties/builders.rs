@@ -463,19 +463,14 @@ impl PropertiesPanel {
         Frame,
         CheckButton,
         DropDown,
-        Entry,
-        Entry,
-        Entry,
-        Entry,
-        Entry,
-        DropDown,
-        Entry,
-        Label,  // depth_unit_label
-        Label,  // z_offset_unit_label
+        Entry,  // step_down_entry
+        Entry,  // step_in_entry
+        Entry,  // ramp_angle_entry
+        DropDown, // strategy_combo
+        Entry, // raster_fill_entry
         Label,  // step_down_unit_label
         Label,  // step_in_unit_label
         Label,  // step_in_label
-        Label,  // depth_label
     ) {
         let frame = Self::create_section(&t!("CAM Properties"));
         let grid = gtk4::Grid::builder()
@@ -497,29 +492,6 @@ impl PropertiesPanel {
 
         let cam_use_global_check = CheckButton::with_label(&t!("Use global values"));
         cam_use_global_check.set_active(false);
-
-        // Pocket Depth
-        let depth_label = Label::new(Some(&t!("Depth:")));
-        depth_label.set_halign(gtk4::Align::Start);
-        let depth_entry = Entry::new();
-        let depth_unit_label = Label::new(Some("mm"));
-        depth_unit_label.set_width_chars(4);
-        depth_unit_label.set_halign(gtk4::Align::End);
-        depth_unit_label.set_xalign(1.0);
-
-        // Desactivar depth_entry por defecto (Profile es el default)
-        depth_entry.set_sensitive(false);
-        depth_label.set_sensitive(false);
-        depth_unit_label.set_sensitive(false);
-
-        // Z Offset
-        let z_offset_label = Label::new(Some(&t!("Z Offset:")));
-        z_offset_label.set_halign(gtk4::Align::Start);
-        let z_offset_entry = Entry::new();
-        let z_offset_unit_label = Label::new(Some("mm"));
-        z_offset_unit_label.set_width_chars(4);
-        z_offset_unit_label.set_halign(gtk4::Align::End);
-        z_offset_unit_label.set_xalign(1.0);
 
         // Step Down
         let step_down_label = Label::new(Some(&t!("Step Down:")));
@@ -583,12 +555,6 @@ impl PropertiesPanel {
         grid.attach(&op_label, 0, 0, 1, 1);
         grid.attach(&op_type_combo, 1, 0, 1, 1);
         grid.attach(&cam_use_global_check, 0, 1, 3, 1);
-        grid.attach(&depth_label, 0, 2, 1, 1);
-        grid.attach(&depth_entry, 1, 2, 1, 1);
-        grid.attach(&depth_unit_label, 2, 2, 1, 1);
-        grid.attach(&z_offset_label, 0, 3, 1, 1);
-        grid.attach(&z_offset_entry, 1, 3, 1, 1);
-        grid.attach(&z_offset_unit_label, 2, 3, 1, 1);
         grid.attach(&step_down_label, 0, 4, 1, 1);
         grid.attach(&step_down_entry, 1, 4, 1, 1);
         grid.attach(&step_down_unit_label, 2, 4, 1, 1);
@@ -609,19 +575,14 @@ impl PropertiesPanel {
             frame,
             cam_use_global_check,
             op_type_combo,
-            depth_entry,
-            z_offset_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
-            depth_unit_label,
-            z_offset_unit_label,
             step_down_unit_label,
             step_in_unit_label,
             step_in_label,
-            depth_label,
         )
     }
 

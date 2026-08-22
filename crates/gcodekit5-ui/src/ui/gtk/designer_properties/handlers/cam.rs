@@ -49,54 +49,6 @@ pub fn setup_operation_type_handler(
     });
 }
 
-/// Setup pocket depth entry handler
-pub fn setup_depth_handler(
-    depth_entry: &Entry,
-    op_type_combo: &DropDown,
-    state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
-    updating: Shared<bool>,
-) {
-    let op_combo = op_type_combo.clone();
-
-    depth_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        let system = settings.borrow().config().ui.measurement_system;
-        if let Ok(val) = units::parse_length(&entry.text(), system) {
-            entry.remove_css_class("entry-invalid");
-            let mut designer_state = state.borrow_mut();
-            let is_pocket = op_combo.selected() == 1;
-            designer_state.set_selected_pocket_properties(is_pocket, val as f64);
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
-}
-
-/// Setup Z offset entry handler
-pub fn setup_z_offset_handler(
-    z_offset_entry: &Entry,
-    state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
-    updating: Shared<bool>,
-) {
-    z_offset_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        let system = settings.borrow().config().ui.measurement_system;
-        if let Ok(val) = units::parse_length(&entry.text(), system) {
-            entry.remove_css_class("entry-invalid");
-            let mut designer_state = state.borrow_mut();
-            designer_state.set_selected_z_offset(val as f64);
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
-}
-
 /// Setup step down entry handler
 pub fn setup_step_down_handler(
     step_down_entry: &Entry,

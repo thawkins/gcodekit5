@@ -68,7 +68,6 @@ pub struct DrawingObject {
     pub operation_type: OperationType,
     pub use_custom_values: bool,
     pub pocket_depth: f64,
-    pub z_offset: f64,
     pub start_depth: f64,
     pub step_down: f32,
     pub step_in: f32,
@@ -151,10 +150,9 @@ impl DrawingObject {
             operation_type: OperationType::default(),
             use_custom_values: false,
             pocket_depth: 0.0,
-            z_offset: 0.0,
             start_depth: 0.0,
-            step_down: 0.0,
-            step_in: 0.0,
+            step_down: 1.0,
+            step_in: 0.5,
             ramp_angle: 0.0,
             pocket_strategy: PocketStrategy::ContourParallel,
             raster_fill_ratio: 0.5,
@@ -164,9 +162,6 @@ impl DrawingObject {
             lock_aspect_ratio: true, // lock default aspect ratio
             use_global_laser: true,
             laser_params: LaserParams::default(),
-//            laser_feed_rate: 1000.0,
-//            laser_power: 100.0,
-//            laser_passes: 1,
         }
     }
 }

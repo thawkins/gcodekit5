@@ -70,7 +70,7 @@ impl DesignerCanvas {
 
                 gen.set_pocket_strategy(shape.pocket_strategy);
                 let effective_start_depth = if is_cnc_mode {
-                    shape.start_depth + shape.z_offset
+                    shape.start_depth
                 } else {
                     shape.start_depth
                 };

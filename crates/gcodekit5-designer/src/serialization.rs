@@ -89,8 +89,6 @@ pub struct ShapeData {
     #[serde(default)]
     pub pocket_depth: f64,
     #[serde(default)]
-    pub z: f64,
-    #[serde(default)]
     pub start_depth: f64,
     #[serde(default)]
     pub step_down: f32,
@@ -225,14 +223,6 @@ fn default_dithering() -> String {
 fn default_halftone_threshold() -> u8 {
     127
 }
-/*
-fn default_laser_power() -> f64 {
-    100.0
-}
-fn default_laser_passes() -> i32 {
-    1
-}
-*/
 
 /// Toolpath generation parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -565,7 +555,6 @@ impl DesignFile {
                 OperationType::Pocket => "pocket".to_string(),
             },
             pocket_depth: obj.pocket_depth,
-            z: obj.z_offset,
             start_depth: obj.start_depth,
             step_down: obj.step_down,
             step_in: obj.step_in,
@@ -826,7 +815,6 @@ impl DesignFile {
             operation_type,
             use_custom_values: data.use_custom_values,
             pocket_depth: data.pocket_depth,
-            z_offset: data.z,
             start_depth: data.start_depth,
             step_down: data.step_down,
             step_in: data.step_in,

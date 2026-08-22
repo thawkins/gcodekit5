@@ -176,13 +176,19 @@ The object positioning issue when opening "gckd" files.
   - The ability to edit Timing Pulleys, which were previously not editable, has been added.
 
   **3D objects for CNC**
-  - Z coordinate implemented for CNC machining
-  - Objects in 3D Mode have depth, and machining conditions are configured through Global CAM Properties, including Tool Travel Speed, Tool Revolutions, Tool Diameter, and Depth of Cut.
+  - The Z coordinate has been implemented in the designer in "CNC 3D" mode to generate three-dimensional toolpaths.
+  - Objects in 3D Mode have depth, and machining conditions are configured through Global CAM Properties.
   - You can also define individual properties for each object. Unchecking "Use global values" in the properties panel will apply the new values ​​to the selected object.
+
+<img src="crates/gcodekit5-ui/resources/help_images/visualizer3d2.png" alt="Visualizer" width="800">
+
+<img src="crates/gcodekit5-ui/resources/help_images/visualizer3d1.png" alt="Renderer" width="800">
+
+  - For safe toolpath in CNC machining, a "Safety Z Height" parameter has been added from the start of machining to prevent collisions with the workpiece. This height is added to the Stock Material thickness. For example, if we define a material thickness of 10mm and a safety height of 5mm, the tool will begin machining at a height of 15mm and then descend to the first configured machining height, continuing to descend step by step according to the Step Down setting.
 
 ### 👁️ 3D Visualizer
 - **Real-time 3D Rendering**: Instant visualization of G-code toolpaths for CNC machining. Rendered representation of G-code toolpaths, depths according to the configured tool diameter. This preview is only available with CNC machine selection
-- Add **Play/Pause/Stop** to reproduce the movement of the tool at different playback speed levels. It is available for both 2D and 3D models
+- **Play/Pause/Stop** to reproduce the movement of the tool at different playback speed levels. It is available for both 2D and 3D models
 - **Adaptive Grid System**:
   - Dynamic grid spacing (e.g., 10mm, 100mm) based on zoom level
   - Infinite grid coverage across the entire viewport

@@ -165,31 +165,6 @@ impl DesignerState {
         }
     }
 
-    /// Sets the Z offset for selected shapes.
-    pub fn set_selected_z_offset(&mut self, z_offset: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.z_offset - z_offset).abs() > f64::EPSILON {
-                let mut new_obj = obj.clone();
-                new_obj.z_offset = z_offset;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id: obj.id,
-                    old_state: obj.clone(),
-                    new_state: new_obj,
-                }));
-            }
-        }
-
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Change Z Offset".to_string(),
-            });
-            self.push_command(cmd);
-        }
-    }
-
     /// Sets the text properties of the selected shape.
     pub fn set_selected_text_properties(&mut self, content: String, font_size: f64) {
         let updates = self
