@@ -527,10 +527,9 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
-                    lyon::path::Event::End { close, .. }
-                        if close => {
-                            path_str.push_str("Z ");
-                        }
+                    lyon::path::Event::End { close, .. } if close => {
+                        path_str.push_str("Z ");
+                    }
                     _ => {}
                 }
             }
@@ -553,10 +552,9 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
-                    lyon::path::Event::End { close, .. }
-                        if close => {
-                            path_str.push_str("Z ");
-                        }
+                    lyon::path::Event::End { close, .. } if close => {
+                        path_str.push_str("Z ");
+                    }
                     _ => {}
                 }
             }
@@ -650,10 +648,9 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
-                    lyon::path::Event::End { close, .. }
-                        if close => {
-                            path_str.push_str("Z ");
-                        }
+                    lyon::path::Event::End { close, .. } if close => {
+                        path_str.push_str("Z ");
+                    }
                     _ => {}
                 }
             }
@@ -676,10 +673,9 @@ fn render_shape_trait(shape: &crate::model::Shape, viewport: &crate::viewport::V
                         let (sx, sy) = viewport.world_to_pixel(rx, ry);
                         path_str.push_str(&format!("L {} {} ", sx, sy));
                     }
-                    lyon::path::Event::End { close, .. }
-                        if close => {
-                            path_str.push_str("Z ");
-                        }
+                    lyon::path::Event::End { close, .. } if close => {
+                        path_str.push_str("Z ");
+                    }
                     _ => {}
                 }
             }

@@ -11,7 +11,7 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
 
-use super::{DesignerShape, Point, Property, PropertyValue};
+use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignEllipse {
@@ -19,6 +19,7 @@ pub struct DesignEllipse {
     pub rx: f64,
     pub ry: f64,
     pub rotation: f64,
+    pub laser_params: LaserParams,
 }
 
 impl DesignEllipse {
@@ -28,6 +29,7 @@ impl DesignEllipse {
             rx,
             ry,
             rotation: 0.0,
+            laser_params: LaserParams::default(),
         }
     }
 }

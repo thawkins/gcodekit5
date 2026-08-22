@@ -3,7 +3,7 @@
 use super::DesignerState;
 use crate::commands::*;
 use crate::model::DesignerShape;
-use crate::Point;
+use crate::{Point, Shape};
 
 #[derive(Copy, Clone)]
 enum MirrorAxis {
@@ -279,15 +279,57 @@ impl DesignerState {
         };
 
         let mut commands = Vec::new();
-        for obj in selected {
-            let mut new_obj = obj.clone();
-            new_obj.shape.scale(sx, sy, Point::new(center_x, center_y));
+        for mut obj in selected {
+            // Verificar si es un triángulo
+            if let Shape::Triangle(triangle) = &mut obj.shape {
+                // Aplicar mirror específico para triángulo
+                match axis {
+                    MirrorAxis::X => {
+                        // Reflejo en X (invierte Y)
+                        triangle.right_angle_corner = match triangle.right_angle_corner {
+                            0 => 2, // Inferior-Izquierda → Superior-Izquierda
+                            1 => 3, // Inferior-Derecha → Superior-Derecha
+                            2 => 0, // Superior-Izquierda → Inferior-Izquierda
+                            3 => 1, // Superior-Derecha → Inferior-Derecha
+                            _ => triangle.right_angle_corner,
+                        };
+                        // Invertir rotación
+                        triangle.rotation = -triangle.rotation;
+                    }
+                    MirrorAxis::Y => {
+                        // Reflejo en Y (invierte X)
+                        triangle.right_angle_corner = match triangle.right_angle_corner {
+                            0 => 1, // Inferior-Izquierda → Inferior-Derecha
+                            1 => 0, // Inferior-Derecha → Inferior-Izquierda
+                            2 => 3, // Superior-Izquierda → Superior-Derecha
+                            3 => 2, // Superior-Derecha → Superior-Izquierda
+                            _ => triangle.right_angle_corner,
+                        };
+                        // Invertir rotación
+                        triangle.rotation = -triangle.rotation;
+                    }
+                }
 
-            commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                id: obj.id,
-                old_state: obj,
-                new_state: new_obj,
-            }));
+                // Ajustar la posición del centro para que el reflejo sea alrededor del centro de selección
+                triangle.center.x = center_x + (triangle.center.x - center_x) * sx;
+                triangle.center.y = center_y + (triangle.center.y - center_y) * sy;
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: obj.clone(),
+                }));
+            } else {
+                // Para otros tipos de formas, usar el scale genérico
+                let mut new_obj = obj.clone();
+                new_obj.shape.scale(sx, sy, Point::new(center_x, center_y));
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj,
+                    new_state: new_obj,
+                }));
+            }
         }
 
         let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
@@ -349,6 +391,9 @@ impl DesignerState {
             if let Some(obj) = self.canvas.get_shape(id) {
                 let mut new_obj = obj.clone();
                 new_obj.fillet = radius;
+                if matches!(new_obj.shape, crate::model::Shape::Path(_)) {
+                    new_obj.chamfer = 0.0;
+                }
 
                 commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                     id,
@@ -383,6 +428,9 @@ impl DesignerState {
             if let Some(obj) = self.canvas.get_shape(id) {
                 let mut new_obj = obj.clone();
                 new_obj.chamfer = distance;
+                if matches!(new_obj.shape, crate::model::Shape::Path(_)) {
+                    new_obj.fillet = 0.0;
+                }
 
                 commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                     id,

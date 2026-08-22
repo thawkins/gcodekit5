@@ -5,9 +5,66 @@ use crate::canvas::DrawingObject;
 use crate::commands::*;
 use crate::model::{DesignPath as PathShape, DesignText as TextShape, DesignerShape, Shape};
 use crate::ops::{perform_boolean, BooleanOp};
+use crate::shapes::OperationType;
 use crate::{Circle, DrawingMode, Ellipse, Line, Point, Rectangle};
 
 impl DesignerState {
+
+    fn apply_mode_defaults_to_new_object(&self, obj: &mut DrawingObject) {
+
+        let default_props = &self.default_properties_shape;
+
+        if obj.start_depth.abs() < f64::EPSILON && default_props.start_depth.abs() > f64::EPSILON {
+            obj.start_depth = default_props.start_depth;
+        }
+
+        if obj.step_down.abs() < f32::EPSILON && default_props.step_down.abs() > f32::EPSILON {
+            obj.step_down = default_props.step_down;
+        }
+
+        if obj.step_in.abs() < f32::EPSILON && default_props.step_in.abs() > f32::EPSILON {
+            obj.step_in = default_props.step_in;
+        }
+
+        if obj.ramp_angle.abs() < f32::EPSILON && default_props.ramp_angle.abs() > f32::EPSILON {
+            obj.ramp_angle = default_props.ramp_angle;
+        }
+
+        if obj.pocket_strategy != default_props.pocket_strategy {
+            obj.pocket_strategy = default_props.pocket_strategy.clone();
+        }
+
+        if obj.raster_fill_ratio.abs() < f64::EPSILON && default_props.raster_fill_ratio.abs() > f64::EPSILON {
+            obj.raster_fill_ratio = default_props.raster_fill_ratio;
+        }
+
+        if obj.offset.abs() < f64::EPSILON && default_props.offset.abs() > f64::EPSILON {
+            obj.offset = default_props.offset;
+        }
+
+        if obj.fillet.abs() < f64::EPSILON && default_props.fillet.abs() > f64::EPSILON {
+            obj.fillet = default_props.fillet;
+        }
+
+        if obj.chamfer.abs() < f64::EPSILON && default_props.chamfer.abs() > f64::EPSILON {
+            obj.chamfer = default_props.chamfer;
+        }
+
+        if !obj.use_custom_values && default_props.use_custom_values {
+            obj.use_custom_values = true;
+        }
+
+        if obj.operation_type == OperationType::Profile && default_props.operation_type != OperationType::Profile {
+            obj.operation_type = default_props.operation_type;
+        }
+    }
+
+    fn new_object_with_mode_defaults(&self, id: u64, shape: Shape) -> DrawingObject {
+        let mut obj = DrawingObject::new(id, shape);
+        self.apply_mode_defaults_to_new_object(&mut obj);
+        obj
+    }
+
     /// Check if grouping is possible (at least 2 items selected, and at least one is not already in a group).
     pub fn can_group(&self) -> bool {
         let selected: Vec<_> = self.canvas.shapes().filter(|s| s.selected).collect();
@@ -204,7 +261,7 @@ impl DesignerState {
     /// Adds a shape to the canvas with undo/redo support.
     pub fn add_shape_with_undo(&mut self, shape: Shape) -> u64 {
         let id = self.canvas.generate_id();
-        let obj = DrawingObject::new(id, shape);
+        let obj = self.new_object_with_mode_defaults(id, shape);
         let cmd = DesignerCommand::AddShape(AddShape {
             id,
             object: Some(obj),
@@ -214,17 +271,17 @@ impl DesignerState {
     }
 
     /// Adds a shape to the canvas at the specified position based on current mode.
-    pub fn add_shape_at(&mut self, x: f64, y: f64, multi_select: bool) {
+    pub fn add_shape_at(&mut self, x: f64, y: f64, shift: bool, ctrl: bool) {
         match self.canvas.mode() {
             DrawingMode::Select => {
                 let tolerance = 3.0 / self.canvas.zoom();
                 self.canvas
-                    .select_at(&Point::new(x, y), tolerance, multi_select);
+                    .select_at(&Point::new(x, y), tolerance, shift, ctrl);
             }
             DrawingMode::Rectangle => {
                 let id = self.canvas.generate_id();
                 let rect = Rectangle::new(x, y, 60.0, 40.0);
-                let obj = DrawingObject::new(id, Shape::Rectangle(rect));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Rectangle(rect));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -234,7 +291,7 @@ impl DesignerState {
             DrawingMode::Circle => {
                 let id = self.canvas.generate_id();
                 let circle = Circle::new(Point::new(x, y), 25.0);
-                let obj = DrawingObject::new(id, Shape::Circle(circle));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Circle(circle));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -244,7 +301,7 @@ impl DesignerState {
             DrawingMode::Line => {
                 let id = self.canvas.generate_id();
                 let line = Line::new(Point::new(x, y), Point::new(x + 50.0, y));
-                let obj = DrawingObject::new(id, Shape::Line(line));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Line(line));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -254,7 +311,7 @@ impl DesignerState {
             DrawingMode::Ellipse => {
                 let id = self.canvas.generate_id();
                 let ellipse = Ellipse::new(Point::new(x, y), 40.0, 25.0);
-                let obj = DrawingObject::new(id, Shape::Ellipse(ellipse));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Ellipse(ellipse));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -273,8 +330,8 @@ impl DesignerState {
                     let vy = center.y + radius * angle.sin();
                     vertices.push(Point::new(vx, vy));
                 }
-                let path_shape = PathShape::from_points(&vertices, false); // antes true y cierra
-                let obj = DrawingObject::new(id, Shape::Path(path_shape));
+                let path_shape = PathShape::from_points(&vertices, true); // default closed polyline
+                let obj = self.new_object_with_mode_defaults(id, Shape::Path(path_shape));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -284,7 +341,7 @@ impl DesignerState {
             DrawingMode::Text => {
                 let id = self.canvas.generate_id();
                 let text = TextShape::new("Text".to_string(), x, y, 20.0);
-                let obj = DrawingObject::new(id, Shape::Text(text));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Text(text));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -294,7 +351,7 @@ impl DesignerState {
             DrawingMode::Triangle => {
                 let id = self.canvas.generate_id();
                 let triangle = crate::model::DesignTriangle::new(Point::new(x, y), 50.0, 50.0);
-                let obj = DrawingObject::new(id, Shape::Triangle(triangle));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Triangle(triangle));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -304,7 +361,7 @@ impl DesignerState {
             DrawingMode::Polygon => {
                 let id = self.canvas.generate_id();
                 let polygon = crate::model::DesignPolygon::new(Point::new(x, y), 30.0, 6);
-                let obj = DrawingObject::new(id, Shape::Polygon(polygon));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Polygon(polygon));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -314,7 +371,7 @@ impl DesignerState {
             DrawingMode::Gear => {
                 let id = self.canvas.generate_id();
                 let gear = crate::model::DesignGear::new(Point::new(x, y), 2.0, 20);
-                let obj = DrawingObject::new(id, Shape::Gear(gear));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Gear(gear));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -324,7 +381,7 @@ impl DesignerState {
             DrawingMode::Sprocket => {
                 let id = self.canvas.generate_id();
                 let sprocket = crate::model::DesignSprocket::new(Point::new(x, y), 12.7, 15);
-                let obj = DrawingObject::new(id, Shape::Sprocket(sprocket));
+                let obj = self.new_object_with_mode_defaults(id, Shape::Sprocket(sprocket));
                 let cmd = DesignerCommand::AddShape(AddShape {
                     id,
                     object: Some(obj),
@@ -339,7 +396,7 @@ impl DesignerState {
     pub fn add_test_rectangle(&mut self) {
         let id = self.canvas.generate_id();
         let rect = Rectangle::new(10.0, 10.0, 50.0, 40.0);
-        let obj = DrawingObject::new(id, Shape::Rectangle(rect));
+        let obj = self.new_object_with_mode_defaults(id, Shape::Rectangle(rect));
         let cmd = DesignerCommand::AddShape(AddShape {
             id,
             object: Some(obj),
@@ -351,7 +408,7 @@ impl DesignerState {
     pub fn add_test_circle(&mut self) {
         let id = self.canvas.generate_id();
         let circle = Circle::new(Point::new(75.0, 75.0), 20.0);
-        let obj = DrawingObject::new(id, Shape::Circle(circle));
+        let obj = self.new_object_with_mode_defaults(id, Shape::Circle(circle));
         let cmd = DesignerCommand::AddShape(AddShape {
             id,
             object: Some(obj),
@@ -363,7 +420,7 @@ impl DesignerState {
     pub fn add_test_line(&mut self) {
         let id = self.canvas.generate_id();
         let line = Line::new(Point::new(10.0, 10.0), Point::new(100.0, 100.0));
-        let obj = DrawingObject::new(id, Shape::Line(line));
+        let obj = self.new_object_with_mode_defaults(id, Shape::Line(line));
         let cmd = DesignerCommand::AddShape(AddShape {
             id,
             object: Some(obj),
@@ -413,7 +470,7 @@ impl DesignerState {
         }
 
         let new_id = self.canvas.generate_id();
-        let mut new_obj = DrawingObject::new(new_id, result_shape);
+        let mut new_obj = self.new_object_with_mode_defaults(new_id, result_shape);
         new_obj.selected = true;
 
         let mut commands = Vec::new();

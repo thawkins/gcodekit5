@@ -11,7 +11,7 @@ use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
 
-use super::{DesignerShape, Point, Property, PropertyValue};
+use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignRectangle {
@@ -22,6 +22,7 @@ pub struct DesignRectangle {
     /// Rotation angle in degrees (converted to radians for rendering)
     pub rotation: f64,
     pub is_slot: bool,
+    pub laser_params: LaserParams,
 }
 
 impl DesignRectangle {
@@ -33,6 +34,7 @@ impl DesignRectangle {
             corner_radius: 0.0,
             rotation: 0.0,
             is_slot: false,
+            laser_params: LaserParams::default(),
         }
     }
 

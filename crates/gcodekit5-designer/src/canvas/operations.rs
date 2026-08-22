@@ -2,7 +2,7 @@
 
 use super::types::{Alignment, DrawingObject};
 use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape, LaserParams,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
     DesignTriangle as Triangle, DesignerShape, Point, RasterImage, Shape, ShapeType,
 };
@@ -188,6 +188,8 @@ impl Canvas {
                 fillet: obj.fillet,
                 chamfer: obj.chamfer,
                 lock_aspect_ratio: obj.lock_aspect_ratio,
+                use_global_laser: obj.use_global_laser,
+                laser_params: LaserParams::default(),
             };
 
             self.shape_store.insert(id, new_obj);

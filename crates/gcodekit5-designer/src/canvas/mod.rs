@@ -236,67 +236,21 @@ impl Canvas {
         }
     }
 
-    /// Selects a shape at the given point.
-    /// If multi is true, toggles selection of the shape at point while keeping others.
-    /// If multi is false, clears other selections and selects the shape at point.
-    pub fn select_at(&mut self, point: &Point, tolerance: f64, multi: bool) -> Option<u64> {
-        let margin = tolerance * 2.0;
-        let query_bounds = Bounds::new(
-            point.x - margin,
-            point.y - margin,
-            point.x + margin,
-            point.y + margin,
-        );
-
-        let near_ids = self.spatial_manager.query(&query_bounds);
-
-        let mut candidates = Vec::new();
-
-        for &id in &near_ids {
-            if let Some(obj) = self.shape_store.get(id) {
-                let distance = match &obj.shape {
-                    Shape::Path(path) => path.distance_to_point(point),
-                    Shape::Line(line) => line.distance_to_point(point),
-                    _ => {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let closest_x = point.x.clamp(x1, x2);
-                        let closest_y = point.y.clamp(y1, y2);
-                        let dx = point.x - closest_x;
-                        let dy = point.y - closest_y;
-                        (dx * dx + dy * dy).sqrt()
-                    }
-                };
-
-                if distance <= tolerance {
-                    candidates.push((id, distance));
-                }
-            }
-        }
-
-        // Sort by distance
-        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-
-        if multi {
-            // In multi mode, do not deselect existing ones
-            for &(id, _dist) in &candidates {
-                if let Some(obj) = self.shape_store.get_mut(id) {
-                    obj.selected = true;
-                }
-            }
-        } else {
-            // In normal mode, deselect all first
-            for obj in self.shape_store.iter_mut() {
-                obj.selected = false;
-            }
-
-            // Then select the best one.
-            if let Some(&(best_id, _)) = candidates.first() {
-                if let Some(obj) = self.shape_store.get_mut(best_id) {
-                    obj.selected = true;
-                }
-            }
-        }
-        candidates.first().map(|&(id, _)| id)
+    pub fn select_at(
+        &mut self,
+        point: &Point,
+        tolerance: f64,
+        shift: bool,
+        ctrl: bool,
+    ) -> Option<u64> {
+        self.selection_manager.select_at(
+            &mut self.shape_store,
+            self.spatial_manager.inner(),
+            point,
+            tolerance,
+            shift,
+            ctrl,
+        )
     }
 
     /// Selects shapes within or intersecting the given rectangle.

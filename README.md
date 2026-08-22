@@ -1,17 +1,37 @@
-# GCodeKit5
+# GCodeKit5-Design
 
-A modern, cross-platform G-Code sender and CNC machine controller written in Rust with GTK4 UI framework.
+A modern, cross-platform G-Code sender for Laser and CNC machine controller written in Rust with GTK4 UI framework.
 
-[![Build Status](https://github.com/thawkins/gcodekit5/workflows/Build%20and%20Release/badge.svg)](https://github.com/thawkins/gcodekit5/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
+[![License: APACHE](https://img.shields.io/badge/license-apache-blue.svg)](LICENSE-APACHE)
 [![Version](https://img.shields.io/badge/Version-0.54.0--alpha.2-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
 GCodeKit5 is a Rust-based CNC machine controller providing a modern alternative to Universal G-Code Sender. It supports multiple controller firmware types including GRBL, grblHAL, TinyG, g2core, Smoothieware, and FluidNC through a unified, intuitive interface built with the GTK4 UI framework.
 
-## Architecture
+<img src="crates/gcodekit5-ui/resources/help_images/designer.png" alt="Designer" width="800">
 
+## New version tested on Linux (Kubuntu 24.04) with improvements to the Designer module
+- Now you can: correctly import DXF and SVG files
+- Import raster images with the ability to create compositions from multiple images and vector objects, whether created or imported; order canvas objects using the Objects panel, which is used for G-code workflow; and configure G-code generation independently for each image, allowing you to change speed, power, inversion, etc., according to the image's characteristics.
+- You can also independently configure the working properties of vector objects, so with multiple objects on the canvas, you can define a global configuration for them or a specific configuration for some. For example, several objects might use one speed and power for engraving, and then a different object could be defined with a different speed and power for cutting.
+- For chain sprockets, only need to enter the pitch and the number of teeth; the roller diameter is automatically calculated as standard according to ANSI/ISO norms.
+- The pan function has been implemented on the Designer screen using the middle mouse button.
+
+## Change to the Machine Control tab
+- The G-code editor has been integrated into the Machine Control screen to avoid switching between tabs.
+- The G-code Editing tab has been removed as it has been integrated into the Machine Control tab.
+- G-code output to the console has been removed to improve the speed of sending data to the machine.
+
+## Checking boundaries outside the work area
+- Boundary checking has been added to the Designer. If any point is outside the work area, a WARNING appears in the G-code alerting the user so they can take appropriate action.
+
+## Recommendation
+- CAM Tools has a built-in box creator with tabs, but it's recommended to install the **"boxes"** plugin for **Inkscape**  (https://github.com/florianfesti/boxes), which offers many more features. After generating the desired box or shape, save it as an SVG file and import it directly into gcodekit5-design. Once imported, you can arrange the objects, organize them within the workspace, delete those that don't fit, and place them in a separate gckd file.
+- This "boxes" plugin also has the ability to create gears and sprokets of different types with greater flexibility and possibilities than the tools in gcodekit-design, so the use of "boxes" is also recommended for these topics.
+
+## Architecture
 GCodeKit5 is organized as a Cargo workspace with 7 crates for modular compilation and better code organization:
 
 - **gcodekit5-core** - Core types, traits, state management, events, and data models
@@ -70,7 +90,7 @@ This modular structure enables:
   - Coolant control
   - Tool change support
 
-### 📝 G-Code Editor & Streaming
+### 📝 G-Code Editor & Streaming (Into Machine Control)
 - **Text Editor (Phase 2 - COMPLETE)**:
   - ✅ Full keyboard input support (characters, arrows, backspace, delete)
   - ✅ Text insertion and deletion with proper cursor tracking at correct position
@@ -103,9 +123,9 @@ This modular structure enables:
   - Concurrent status polling via real-time `?` command
 - **Real-time Validation**: Syntax checking while editing
 
-### 🎨 2D CAD/CAM Designer
+### 🎨 2D/3D CAD/CAM Designer
 - **Vector Drawing Tools**:
-  - Geometric shapes: rectangles, circles, ellipses
+  - Geometric shapes: rectangles, circles, ellipses, triangles
   - Lines, polygons, Bezier curves, and arcs
   - Round rectangles with adjustable corner radius
 - **File Import**: Import SVG and DXF vector files
@@ -118,10 +138,10 @@ This modular structure enables:
   - Example: 37-path tiger head design converts to 26,000+ precise movement commands with optimal path breaks
 - **Interactive Editing**:
   - Zoom, pan, and fit-to-view controls
-  - **NEW**: Floating status panel (Zoom, Pan, Grid)
-  - **NEW**: Array Tools (Linear, Circular, Grid) with automatic grouping
-  - **NEW**: Dynamic grid and origin indicator
-  - **NEW**: View controls (Zoom In/Out, Fit, Reset)
+  - Floating status panel (Zoom, Pan, Grid)
+  - Array Tools (Linear, Circular, Grid) with automatic grouping
+  - Dynamic grid and origin indicator
+  - View controls (Zoom In/Out, Fit, Reset)
   - Precise positioning (X, Y, Width, Height inputs)
   - Properties dialog for detailed shape adjustments
   - Dual-grid system (10mm major + 1mm minor)
@@ -131,28 +151,51 @@ This modular structure enables:
   - Align horizontally (Left/Center/Right) or vertically (Top/Center/Bottom) across multi-selection groups
   - Selecting "Properties" with multiple shapes opens a "Multiple Shapes" dialog that applies pocket/text/toolpath settings to every selected object while keeping individual positions intact
 - **Toolpath Generation**: Convert designs to executable G-code
-- **NEW**: Frame button to generate Bounds Gcode
-  - **Non-Destructive Geometry Operations**: Live-modify shapes without destruction
-    - **Offset**: Dynamic expansion/contraction of shapes
-    - **Fillet**: Rounded corners with adjustable radius
-    - **Chamfer**: Beveled edges with configurable angle
-    - Live tweaking - changes apply immediately on edit
-  - **Image Import**: Import raster files, jpg, png, bmp ...
-    - New features in the image engraving Inspector
-    - G-code generator optimized for raster images
-  - **Shape Editing**:
-    - User-editable shape names displayed in Layers list
-    - Rectangle rounded corners and Slot mode (auto-radius)
-    - Shape conversion (Convert to Path, Convert to Rectangle)
-### 👁️ 2D Visualizer
-- **Real-time Rendering**: Instant visualization of G-code toolpaths
+- Frame button to generate Bounds Gcode
+- **Image Import**: Import raster files, jpg, png, bmp ...
+  - New features in the image engraving Inspector
+  - G-code generator optimized for raster images
+
+- **New improvements in Designer**
+  - Multiple images and vector objects can now be placed on the canvas, and G-code can be generated for all of them according to the order set in the Layers panel. Laser parameters for vector objects are set using the "Tool Settings" button, while image engraving parameters are set independently for each image in the object properties.
+  - Polylines are now created closed, but a checkbox has been added to the properties to open/close them.
+  - From Designer, all code is now sent via direct_sender.rs, improving engraving speed to match commercial programs.
+  - Image saving alongside vector objects has been integrated into "gckd" files.
+The object positioning issue when opening "gckd" files.
+  - The colors in the viewer have been changed when displaying images alongside vector objects to improve viewing.
+  - The active machine name has been added to the status bar.
+  - The import DXF and SVG files has been improved.
+  - New icons have been added to the tools.
+
+  **Individual properties by object**
+  - In addition to the general properties for laser engraving and cutting that apply to all objects in the Designer and are set in "Tool Settings", you can now define individual properties for each object by selecting, via a checkbox, whether you want to use global or specific properties for that object.
+
+  **Shape Gallery**
+  - In the shapes gallery, you can quickly draw various objects such as pinions and gears. These can then be edited by changing the pitch and number of teeth.
+  - Now the shapes are drawn correctly
+  - The ability to edit Timing Pulleys, which were previously not editable, has been added.
+
+  **3D objects for CNC**
+  - The Z coordinate has been implemented in the designer in "CNC 3D" mode to generate three-dimensional toolpaths.
+  - Objects in 3D Mode have depth, and machining conditions are configured through Global CAM Properties.
+  - You can also define individual properties for each object. Unchecking "Use global values" in the properties panel will apply the new values ​​to the selected object.
+
+<img src="crates/gcodekit5-ui/resources/help_images/visualizer3d2.png" alt="Visualizer" width="800">
+
+<img src="crates/gcodekit5-ui/resources/help_images/visualizer3d1.png" alt="Renderer" width="800">
+
+  - For safe toolpath in CNC machining, a "Safety Z Height" parameter has been added from the start of machining to prevent collisions with the workpiece. This height is added to the Stock Material thickness. For example, if we define a material thickness of 10mm and a safety height of 5mm, the tool will begin machining at a height of 15mm and then descend to the first configured machining height, continuing to descend step by step according to the Step Down setting.
+
+### 👁️ 3D Visualizer
+- **Real-time 3D Rendering**: Instant visualization of G-code toolpaths for CNC machining. Rendered representation of G-code toolpaths, depths according to the configured tool diameter. This preview is only available with CNC machine selection
+- **Play/Pause/Stop** to reproduce the movement of the tool at different playback speed levels. It is available for both 2D and 3D models
 - **Adaptive Grid System**:
   - Dynamic grid spacing (e.g., 10mm, 100mm) based on zoom level
   - Infinite grid coverage across the entire viewport
   - Grid size indicator in status bar
-  - **NEW**: Horizontal and vertical scrollbars for navigation
+  - Horizontal and vertical scrollbars for navigation
 - **Dynamic Canvas Sizing**: Automatically adjusts to window resize events
-- **Interactive Controls**: Zoom, pan, and fit-to-view with mouse interaction
+- **Interactive Controls**: Zoom, pan, and fit-to-view, **Orbit and isometric cámera with mouse interaction**
 - **Color-Coded Paths**: Distinct colors for Rapid (G0) and Feed (G1/G2/G3) moves
 - **Performance**: Optimized rendering for large files
 - **Shared Viewport Engine**: A centralized `ViewportTransform` keeps zoom/pan math consistent across toolpaths, grids, and origin markers.
@@ -552,6 +595,31 @@ You may choose either license for your use of this software.
 **Current Version**: 0.41.0-alpha.1
 **Status**: Active Development
 **Stability**: Alpha (breaking changes may occur)
+
+### Recent Updates (1.1.0-beta.1) - Multiple modifications and adjustments
+- The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).
+- In 3D mode, the Z coordinate is implemented to generate 3D G-code with passes based on the machining parameters in the Global or specific properties of each object.
+- The 2D viewer is removed, and the 3D viewer is always used for all G-code, whether 2D or 3D. Camera positions are used for this purpose.
+- The safety height parameter is generated from the entered value and the material thickness.
+- A warning dialog box has been added for when G-code is generated outside the machine limits. The warning is also retained within the G-code itself.
+- When saving as, the last path is used.
+- Play/pause/stop buttons and playback speed values ​​have been added to the viewer for simulating the tool's path on screen.
+- The shapes in the Shape Gallery have been corrected, and parametric mode has been added to the timing belt pulley, which previously lacked it.
+- Some errors in creating chamfers and radii on shape objects have been fixed.
+
+### Recent Updates (1.0.0-alpha.1) - Multiple modifications and adjustments
+- Triangle generation in the designer has been corrected. Triangles can now be generated in all four positions and true symmetry can be applied. Previously, they could only be generated in one position.
+- The bounds of the triangles are now generated correctly and updated when the triangle is rotated.
+- The G-code and the Visualizer correctly reproduce the position of the triangles.
+- The triangles are now correctly saved in the gckd file
+- The display establishes a color scale based on the power S to preview the movements
+- In the designer, the bounds for the created lines are corrected. They now take into account the size and rotation of the line, which they didn't do before.
+- The Pause and Resume function in laser mode, which turned off the laser during some movements, has been fixed.
+- Help is implemented via F1 with explanatory images for each program module
+- The program translation has been expanded, including the help section.
+- A Warning is added to the G-code when the path goes outside the machine area (negative coordinates)
+- The positioning of texts and their grips is corrected.
+- Other visual modifications
 
 ### Recent Updates (v0.41.0-alpha.1) - Non-Destructive Geometry
 - **Designer**: Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).

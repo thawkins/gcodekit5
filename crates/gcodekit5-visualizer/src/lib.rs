@@ -10,13 +10,10 @@ pub mod utils;
 pub mod visualizer;
 
 pub use visualizer::{
-    generate_surface_mesh, render_g1_to_path, render_g2_to_path, render_g3_to_path,
-    render_g4_to_path, render_grid_to_path, render_intensity_overlay, render_origin_to_path,
-    render_rapid_moves_to_path, render_toolpath_to_path, Camera, Camera3D, GCodeCommand, Point3D,
+    generate_surface_mesh, Camera, Camera3D, GCodeCommand, Point3D,
     Renderer, Scene, StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer,
     VisualizerControls, VoxelGrid,
 };
-
 pub use gcode::{
     stream::{FileStreamReader, GcodeStreamReader, PausableStream, StringStreamReader},
     CommandId, CommandLengthProcessor, CommandListener, CommandListenerHandle,

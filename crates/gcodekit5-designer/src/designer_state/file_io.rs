@@ -5,9 +5,15 @@ use super::DesignerState;
 impl DesignerState {
     /// Save design to file.
     pub fn save_to_file(&mut self, path: impl AsRef<std::path::Path>) -> anyhow::Result<()> {
-        use crate::serialization::DesignFile;
+        use crate::serialization::{DesignFile, DesignMode};
 
         let mut design = DesignFile::new(&self.design_name);
+
+        // Persist current machine mode as document mode for phase-based 2D/3D workflows.
+        design.design_mode = match self.machine_mode() {
+            super::MachineMode::Laser2D => DesignMode::TwoD,
+            super::MachineMode::Cnc3D => DesignMode::ThreeD,
+        };
 
         // Save viewport state
         design.viewport.zoom = self.canvas.zoom();
@@ -29,6 +35,8 @@ impl DesignerState {
         design.toolpath_params.spindle_speed = self.tool_settings.spindle_speed as f64;
         design.toolpath_params.tool_diameter = self.tool_settings.tool_diameter;
         design.toolpath_params.cut_depth = self.tool_settings.cut_depth;
+        design.toolpath_params.continuous_z_between_passes =
+            self.tool_settings.continuous_z_between_passes;
 
         // Save stock settings
         if let Some(stock) = &self.stock_material {
@@ -50,10 +58,16 @@ impl DesignerState {
 
     /// Load design from file.
     pub fn load_from_file(&mut self, path: impl AsRef<std::path::Path>) -> anyhow::Result<()> {
-        use crate::serialization::DesignFile;
+        use crate::serialization::{DesignFile, DesignMode};
         use crate::stock_removal::StockMaterial;
 
         let design = DesignFile::load_from_file(&path)?;
+
+        // Restore machine mode from serialized design mode (old files default to 2D).
+        self.set_machine_mode(match design.design_mode {
+            DesignMode::TwoD => super::MachineMode::Laser2D,
+            DesignMode::ThreeD => super::MachineMode::Cnc3D,
+        });
 
         // Clear existing shapes
         self.canvas.clear();
@@ -82,6 +96,8 @@ impl DesignerState {
         self.tool_settings.spindle_speed = design.toolpath_params.spindle_speed as u32;
         self.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
         self.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+        self.tool_settings.continuous_z_between_passes =
+            design.toolpath_params.continuous_z_between_passes;
 
         // Also update the toolpath generator to match
         self.toolpath_generator
@@ -94,13 +110,15 @@ impl DesignerState {
             .set_cut_depth(design.toolpath_params.cut_depth);
 
         // Restore stock settings
-        self.stock_material = Some(StockMaterial {
+        let mut stock_material = StockMaterial {
             width: design.toolpath_params.stock_width,
             height: design.toolpath_params.stock_height,
             thickness: design.toolpath_params.stock_thickness,
             origin: (0.0, 0.0, 0.0),
             safe_z: design.toolpath_params.safe_z_height,
-        });
+        };
+        stock_material.normalize_safe_z();
+        self.stock_material = Some(stock_material);
 
         // Update state
         self.design_name = design.metadata.name.clone();

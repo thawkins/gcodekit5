@@ -5,11 +5,23 @@ use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
 impl PropertiesPanel {
+
     pub(crate) fn create_section(title: &str) -> Frame {
-        Frame::new(Some(title))
+        let frame = Frame::new(None);
+
+        let title_label = Label::new(None);
+        title_label.set_markup(&format!("<b>{}</b>", title));
+        title_label.set_halign(gtk4::Align::Start);
+        title_label.set_margin_start(8);
+        title_label.set_margin_top(4);
+        title_label.set_margin_bottom(4);
+//        title_label.add_css_class("section-title"); // ← Opcional para CSS
+        frame.set_label_widget(Some(&title_label));
+        frame
     }
 
-    pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Label, Label) {
+
+    pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Entry, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -38,15 +50,27 @@ impl PropertiesPanel {
         y_unit_label.set_halign(gtk4::Align::End);
         y_unit_label.set_xalign(1.0);
 
+        let z_label = Label::new(Some(&t!("Z:")));
+        z_label.set_halign(gtk4::Align::Start);
+        let pos_z_entry = Entry::new();
+        pos_z_entry.set_hexpand(true);
+        let z_unit_label = Label::new(Some("mm"));
+        z_unit_label.set_width_chars(4);
+        z_unit_label.set_halign(gtk4::Align::End);
+        z_unit_label.set_xalign(1.0);
+
         grid.attach(&x_label, 0, 0, 1, 1);
         grid.attach(&pos_x_entry, 1, 0, 1, 1);
         grid.attach(&x_unit_label, 2, 0, 1, 1);
         grid.attach(&y_label, 0, 1, 1, 1);
         grid.attach(&pos_y_entry, 1, 1, 1, 1);
         grid.attach(&y_unit_label, 2, 1, 1, 1);
+        grid.attach(&z_label, 0, 2, 1, 1);
+        grid.attach(&pos_z_entry, 1, 2, 1, 1);
+        grid.attach(&z_unit_label, 2, 2, 1, 1);
 
         frame.set_child(Some(&grid));
-        (frame, pos_x_entry, pos_y_entry, x_unit_label, y_unit_label)
+        (frame, pos_x_entry, pos_y_entry, pos_z_entry, x_unit_label, y_unit_label, z_unit_label)
     }
 
     pub(crate) fn build_size_section() -> (Frame, Entry, Entry, CheckButton, Label, Label) {
@@ -117,7 +141,6 @@ impl PropertiesPanel {
         let rot_label = Label::new(Some(&t!("Angle:")));
         rot_label.set_halign(gtk4::Align::Start);
         let rotation_entry = Entry::new();
-        rotation_entry.set_hexpand(true);
         let rot_unit = Label::new(Some("deg"));
 
         grid.attach(&rot_label, 0, 0, 1, 1);
@@ -142,7 +165,6 @@ impl PropertiesPanel {
         let radius_label = Label::new(Some(&t!("Radius:")));
         radius_label.set_halign(gtk4::Align::Start);
         let corner_radius_entry = Entry::new();
-        corner_radius_entry.set_hexpand(true);
         let radius_unit_label = Label::new(Some("mm"));
         radius_unit_label.set_width_chars(4);
         radius_unit_label.set_halign(gtk4::Align::End);
@@ -184,7 +206,6 @@ impl PropertiesPanel {
         let text_content_label = Label::new(Some(&t!("Content:")));
         text_content_label.set_halign(gtk4::Align::Start);
         let text_entry = Entry::new();
-        text_entry.set_hexpand(true);
 
         let font_label = Label::new(Some(&t!("Font:")));
         font_label.set_halign(gtk4::Align::Start);
@@ -196,7 +217,6 @@ impl PropertiesPanel {
             }
         }
         let font_family_combo = DropDown::new(Some(font_model), None::<Expression>);
-        font_family_combo.set_hexpand(true);
 
         let style_label = Label::new(Some(&t!("Style:")));
         style_label.set_halign(gtk4::Align::Start);
@@ -209,7 +229,6 @@ impl PropertiesPanel {
         let font_size_label = Label::new(Some(&t!("Size:")));
         font_size_label.set_halign(gtk4::Align::Start);
         let font_size_entry = Entry::new();
-        font_size_entry.set_hexpand(true);
         let font_size_unit_label = Label::new(Some("pt"));
         font_size_unit_label.set_width_chars(4);
         font_size_unit_label.set_halign(gtk4::Align::End);
@@ -251,13 +270,35 @@ impl PropertiesPanel {
         let sides_label = Label::new(Some(&t!("Sides:")));
         sides_label.set_halign(gtk4::Align::Start);
         let sides_entry = Entry::new();
-        sides_entry.set_hexpand(true);
 
         grid.attach(&sides_label, 0, 0, 1, 1);
         grid.attach(&sides_entry, 1, 0, 1, 1);
 
         frame.set_child(Some(&grid));
         (frame, sides_entry)
+    }
+
+    pub(crate) fn build_path_section() -> (Frame, CheckButton) {
+        let frame = Self::create_section(&t!("Path"));
+        let grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let closed_label = Label::new(Some(&t!("Closed:")));
+        closed_label.set_halign(gtk4::Align::Start);
+        let path_closed_check = CheckButton::new();
+        path_closed_check.set_sensitive(true);
+
+        grid.attach(&closed_label, 0, 0, 1, 1);
+        grid.attach(&path_closed_check, 1, 0, 1, 1);
+
+        frame.set_child(Some(&grid));
+        (frame, path_closed_check)
     }
 
     pub(crate) fn build_gear_section() -> (Frame, Entry, Entry, Entry) {
@@ -274,17 +315,14 @@ impl PropertiesPanel {
         let module_label = Label::new(Some(&t!("Module:")));
         module_label.set_halign(gtk4::Align::Start);
         let gear_module_entry = Entry::new();
-        gear_module_entry.set_hexpand(true);
 
         let teeth_label = Label::new(Some(&t!("Teeth:")));
         teeth_label.set_halign(gtk4::Align::Start);
         let gear_teeth_entry = Entry::new();
-        gear_teeth_entry.set_hexpand(true);
 
         let pa_label = Label::new(Some(&t!("Pressure Angle:")));
         pa_label.set_halign(gtk4::Align::Start);
         let gear_pressure_angle_entry = Entry::new();
-        gear_pressure_angle_entry.set_hexpand(true);
 
         grid.attach(&module_label, 0, 0, 1, 1);
         grid.attach(&gear_module_entry, 1, 0, 1, 1);
@@ -316,17 +354,14 @@ impl PropertiesPanel {
         let pitch_label = Label::new(Some(&t!("Pitch:")));
         pitch_label.set_halign(gtk4::Align::Start);
         let sprocket_pitch_entry = Entry::new();
-        sprocket_pitch_entry.set_hexpand(true);
 
         let teeth_label = Label::new(Some(&t!("Teeth:")));
         teeth_label.set_halign(gtk4::Align::Start);
         let sprocket_teeth_entry = Entry::new();
-        sprocket_teeth_entry.set_hexpand(true);
 
         let roller_label = Label::new(Some(&t!("Roller Dia:")));
         roller_label.set_halign(gtk4::Align::Start);
         let sprocket_roller_diameter_entry = Entry::new();
-        sprocket_roller_diameter_entry.set_hexpand(true);
 
         grid.attach(&pitch_label, 0, 0, 1, 1);
         grid.attach(&sprocket_pitch_entry, 1, 0, 1, 1);
@@ -344,8 +379,53 @@ impl PropertiesPanel {
         )
     }
 
-    pub(crate) fn build_geometry_ops_section() -> (Frame, Entry, Entry, Entry, Label, Label, Label)
-    {
+    pub(crate) fn build_timing_pulley_section() -> (Frame, Entry, Entry, Entry, Entry) {
+        let frame = Self::create_section(&t!("Timing Pulley"));
+        let grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        let pitch_label = Label::new(Some(&t!("Pitch:")));
+        pitch_label.set_halign(gtk4::Align::Start);
+        let timing_pulley_pitch_entry = Entry::new();
+
+        let teeth_label = Label::new(Some(&t!("Teeth:")));
+        teeth_label.set_halign(gtk4::Align::Start);
+        let timing_pulley_teeth_entry = Entry::new();
+
+        let width_label = Label::new(Some(&t!("Belt Width:")));
+        width_label.set_halign(gtk4::Align::Start);
+        let timing_pulley_belt_width_entry = Entry::new();
+
+        let hole_label = Label::new(Some(&t!("Hole Radius:")));
+        hole_label.set_halign(gtk4::Align::Start);
+        let timing_pulley_hole_radius_entry = Entry::new();
+
+        grid.attach(&pitch_label, 0, 0, 1, 1);
+        grid.attach(&timing_pulley_pitch_entry, 1, 0, 1, 1);
+        grid.attach(&teeth_label, 0, 1, 1, 1);
+        grid.attach(&timing_pulley_teeth_entry, 1, 1, 1, 1);
+        grid.attach(&width_label, 0, 2, 1, 1);
+        grid.attach(&timing_pulley_belt_width_entry, 1, 2, 1, 1);
+        grid.attach(&hole_label, 0, 3, 1, 1);
+        grid.attach(&timing_pulley_hole_radius_entry, 1, 3, 1, 1);
+
+        frame.set_child(Some(&grid));
+        (
+            frame,
+            timing_pulley_pitch_entry,
+            timing_pulley_teeth_entry,
+            timing_pulley_belt_width_entry,
+            timing_pulley_hole_radius_entry,
+        )
+    }
+
+    pub(crate) fn build_geometry_ops_section() -> (Frame, Entry, Entry, Label, Label) {
         let frame = Self::create_section(&t!("Geometry Operations"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -360,59 +440,37 @@ impl PropertiesPanel {
         offset_label.set_halign(gtk4::Align::Start);
         let offset_entry = Entry::new();
         offset_entry.set_text("1.0");
-        offset_entry.set_hexpand(true);
         let offset_unit_label = Label::new(Some("mm"));
-
-        let fillet_label = Label::new(Some(&t!("Fillet:")));
-        fillet_label.set_halign(gtk4::Align::Start);
-        let fillet_entry = Entry::new();
-        fillet_entry.set_text("2.0");
-        fillet_entry.set_hexpand(true);
-        let fillet_unit_label = Label::new(Some("mm"));
 
         let chamfer_label = Label::new(Some(&t!("Chamfer:")));
         chamfer_label.set_halign(gtk4::Align::Start);
         let chamfer_entry = Entry::new();
         chamfer_entry.set_text("2.0");
-        chamfer_entry.set_hexpand(true);
         let chamfer_unit_label = Label::new(Some("mm"));
 
         grid.attach(&offset_label, 0, 0, 1, 1);
         grid.attach(&offset_entry, 1, 0, 1, 1);
         grid.attach(&offset_unit_label, 2, 0, 1, 1);
-        grid.attach(&fillet_label, 0, 1, 1, 1);
-        grid.attach(&fillet_entry, 1, 1, 1, 1);
-        grid.attach(&fillet_unit_label, 2, 1, 1, 1);
-        grid.attach(&chamfer_label, 0, 2, 1, 1);
-        grid.attach(&chamfer_entry, 1, 2, 1, 1);
-        grid.attach(&chamfer_unit_label, 2, 2, 1, 1);
+        grid.attach(&chamfer_label, 0, 1, 1, 1);
+        grid.attach(&chamfer_entry, 1, 1, 1, 1);
+        grid.attach(&chamfer_unit_label, 2, 1, 1, 1);
 
         frame.set_child(Some(&grid));
-        (
-            frame,
-            offset_entry,
-            fillet_entry,
-            chamfer_entry,
-            offset_unit_label,
-            fillet_unit_label,
-            chamfer_unit_label,
-        )
+        (frame, offset_entry, chamfer_entry, offset_unit_label, chamfer_unit_label)
     }
 
-    // GTK callback closure type inherently complex.
-    #[allow(clippy::type_complexity)]
     pub(crate) fn build_cam_section() -> (
         Frame,
+        CheckButton,
         DropDown,
-        Entry,
-        Entry,
-        Entry,
-        Entry,
-        DropDown,
-        Entry,
-        Label,
-        Label,
-        Label,
+        Entry,  // step_down_entry
+        Entry,  // step_in_entry
+        Entry,  // ramp_angle_entry
+        DropDown, // strategy_combo
+        Entry, // raster_fill_entry
+        Label,  // step_down_unit_label
+        Label,  // step_in_unit_label
+        Label,  // step_in_label
     ) {
         let frame = Self::create_section(&t!("CAM Properties"));
         let grid = gtk4::Grid::builder()
@@ -431,23 +489,14 @@ impl PropertiesPanel {
         op_model.append(&t!("Profile"));
         op_model.append(&t!("Pocket"));
         let op_type_combo = DropDown::new(Some(op_model), None::<Expression>);
-        op_type_combo.set_hexpand(true);
 
-        // Pocket Depth
-        let depth_label = Label::new(Some(&t!("Depth:")));
-        depth_label.set_halign(gtk4::Align::Start);
-        let depth_entry = Entry::new();
-        depth_entry.set_hexpand(true);
-        let depth_unit_label = Label::new(Some("mm"));
-        depth_unit_label.set_width_chars(4);
-        depth_unit_label.set_halign(gtk4::Align::End);
-        depth_unit_label.set_xalign(1.0);
+        let cam_use_global_check = CheckButton::with_label(&t!("Use global values"));
+        cam_use_global_check.set_active(false);
 
         // Step Down
         let step_down_label = Label::new(Some(&t!("Step Down:")));
         step_down_label.set_halign(gtk4::Align::Start);
         let step_down_entry = Entry::new();
-        step_down_entry.set_hexpand(true);
         let step_down_unit_label = Label::new(Some("mm"));
         step_down_unit_label.set_width_chars(4);
         step_down_unit_label.set_halign(gtk4::Align::End);
@@ -457,23 +506,26 @@ impl PropertiesPanel {
         let step_in_label = Label::new(Some(&t!("Step In:")));
         step_in_label.set_halign(gtk4::Align::Start);
         let step_in_entry = Entry::new();
-        step_in_entry.set_hexpand(true);
         let step_in_unit_label = Label::new(Some("mm"));
         step_in_unit_label.set_width_chars(4);
         step_in_unit_label.set_halign(gtk4::Align::End);
         step_in_unit_label.set_xalign(1.0);
 
+        // Desactivar Step In por defecto (Profile es el default)
+        step_in_entry.set_sensitive(false);
+        step_in_label.set_sensitive(false);
+        step_in_unit_label.set_sensitive(false);
+
         // Ramp Angle
         let ramp_angle_label = Label::new(Some(&t!("Ramp Angle:")));
         ramp_angle_label.set_halign(gtk4::Align::Start);
         let ramp_angle_entry = Entry::new();
-        ramp_angle_entry.set_hexpand(true);
         let ramp_angle_unit_label = Label::new(Some("deg"));
         ramp_angle_unit_label.set_width_chars(4);
         ramp_angle_unit_label.set_halign(gtk4::Align::End);
         ramp_angle_unit_label.set_xalign(1.0);
 
-        // Pocket Strategy
+        // Pocket Strategy - Solo para Pocket
         let strategy_label = Label::new(Some(&t!("Strategy:")));
         strategy_label.set_halign(gtk4::Align::Start);
         let strategy_model = StringList::new(&[]);
@@ -481,50 +533,56 @@ impl PropertiesPanel {
         strategy_model.append(&t!("Offset"));
         strategy_model.append(&t!("Adaptive"));
         let strategy_combo = DropDown::new(Some(strategy_model), None::<Expression>);
-        strategy_combo.set_hexpand(true);
 
-        // Raster Fill (inverse inset)
+        // Desactivar Strategy por defecto (Profile es el default)
+        strategy_combo.set_sensitive(false);
+        strategy_label.set_sensitive(false);
+
+        // Raster Fill
         let raster_fill_label = Label::new(Some(&t!("Raster Fill (%):")));
         raster_fill_label.set_halign(gtk4::Align::Start);
         let raster_fill_entry = Entry::new();
-        raster_fill_entry.set_hexpand(true);
         let raster_fill_hint = Label::new(Some("0 = no raster, 100 = full length"));
         raster_fill_hint.add_css_class("dim-label");
         raster_fill_hint.set_halign(gtk4::Align::Start);
 
+        // Desactivar Raster Fill por defecto
+        raster_fill_entry.set_sensitive(false);
+        raster_fill_label.set_sensitive(false);
+        raster_fill_hint.set_sensitive(false);
+
+        // Layout
         grid.attach(&op_label, 0, 0, 1, 1);
         grid.attach(&op_type_combo, 1, 0, 1, 1);
-        grid.attach(&depth_label, 0, 1, 1, 1);
-        grid.attach(&depth_entry, 1, 1, 1, 1);
-        grid.attach(&depth_unit_label, 2, 1, 1, 1);
-        grid.attach(&step_down_label, 0, 2, 1, 1);
-        grid.attach(&step_down_entry, 1, 2, 1, 1);
-        grid.attach(&step_down_unit_label, 2, 2, 1, 1);
-        grid.attach(&step_in_label, 0, 3, 1, 1);
-        grid.attach(&step_in_entry, 1, 3, 1, 1);
-        grid.attach(&step_in_unit_label, 2, 3, 1, 1);
-        grid.attach(&ramp_angle_label, 0, 4, 1, 1);
-        grid.attach(&ramp_angle_entry, 1, 4, 1, 1);
-        grid.attach(&ramp_angle_unit_label, 2, 4, 1, 1);
-        grid.attach(&strategy_label, 0, 5, 1, 1);
-        grid.attach(&strategy_combo, 1, 5, 1, 1);
-        grid.attach(&raster_fill_label, 0, 6, 1, 1);
-        grid.attach(&raster_fill_entry, 1, 6, 1, 1);
-        grid.attach(&raster_fill_hint, 0, 7, 3, 1);
+        grid.attach(&cam_use_global_check, 0, 1, 3, 1);
+        grid.attach(&step_down_label, 0, 4, 1, 1);
+        grid.attach(&step_down_entry, 1, 4, 1, 1);
+        grid.attach(&step_down_unit_label, 2, 4, 1, 1);
+        grid.attach(&step_in_label, 0, 5, 1, 1);
+        grid.attach(&step_in_entry, 1, 5, 1, 1);
+        grid.attach(&step_in_unit_label, 2, 5, 1, 1);
+        grid.attach(&ramp_angle_label, 0, 6, 1, 1);
+        grid.attach(&ramp_angle_entry, 1, 6, 1, 1);
+        grid.attach(&ramp_angle_unit_label, 2, 6, 1, 1);
+        grid.attach(&strategy_label, 0, 7, 1, 1);
+        grid.attach(&strategy_combo, 1, 7, 1, 1);
+        grid.attach(&raster_fill_label, 0, 8, 1, 1);
+        grid.attach(&raster_fill_entry, 1, 8, 1, 1);
+        grid.attach(&raster_fill_hint, 0, 9, 3, 1);
 
         frame.set_child(Some(&grid));
         (
             frame,
+            cam_use_global_check,
             op_type_combo,
-            depth_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
-            depth_unit_label,
             step_down_unit_label,
             step_in_unit_label,
+            step_in_label,
         )
     }
 
@@ -553,36 +611,47 @@ impl PropertiesPanel {
 
         // Feed Rate
         let feed_label = Label::new(Some(&t!("Feed Rate:")));
+        feed_label.set_halign(gtk4::Align::Start);
         let feed_entry = Entry::new();
+        feed_entry.set_max_width_chars(8);
         let feed_unit = Label::new(Some("mm/s"));
         feed_entry.set_text(&RasterImage::default().feed_rate.to_string());
 
         // Travel Rate
         let travel_label = Label::new(Some(&t!("Travel Rate:")));
+        travel_label.set_halign(gtk4::Align::Start);
         let travel_entry = Entry::new();
+        travel_entry.set_max_width_chars(8);
         let travel_unit = Label::new(Some("mm/s"));
         travel_entry.set_text(&RasterImage::default().travel_rate.to_string());
 
         // Min Power
         let min_power_label = Label::new(Some(&t!("Min Power:")));
+        min_power_label.set_halign(gtk4::Align::Start);
         let min_power_entry = Entry::new();
+        min_power_entry.set_max_width_chars(8);
         let power_unit = Label::new(Some("%"));
         min_power_entry.set_text(&RasterImage::default().min_power.to_string());
 
         // Max Power
         let max_power_label = Label::new(Some(&t!("Max Power:")));
+        max_power_label.set_halign(gtk4::Align::Start);
         let max_power_entry = Entry::new();
+        max_power_entry.set_max_width_chars(8);
         let max_power_unit = Label::new(Some("%"));
         max_power_entry.set_text(&RasterImage::default().max_power.to_string());
 
         // PPI
         let ppi_label = Label::new(Some(&t!("Resolution:")));
+        ppi_label.set_halign(gtk4::Align::Start);
         let ppi_entry = Entry::new();
+        ppi_entry.set_max_width_chars(8);
         let ppi_unit = Label::new(Some("PPI"));
         ppi_entry.set_text(&RasterImage::default().ppi.to_string());
 
         // Scan Direction
-        let scan_label = Label::new(Some(&t!("Scan Direction:")));
+        let scan_label = Label::new(Some(&t!("Scan:")));
+        scan_label.set_halign(gtk4::Align::Start);
         let scan_combo = ComboBoxText::new();
         scan_combo.append(Some("horizontal"), &t!("Horizontal"));
         scan_combo.append(Some("vertical"), &t!("Vertical"));
@@ -590,26 +659,31 @@ impl PropertiesPanel {
 
         // Bidirectional
         let bidir_label = Label::new(Some(&t!("Bidirectional:")));
+        bidir_label.set_halign(gtk4::Align::Start);
         let bidir_check = CheckButton::new();
         bidir_check.set_active(RasterImage::default().bidirectional);
 
         // Dithering
         let dither_label = Label::new(Some(&t!("Dithering:")));
+        dither_label.set_halign(gtk4::Align::Start);
         let dither_combo = ComboBoxText::new();
         dither_combo.append(Some("none"), &t!("None"));
         dither_combo.append(Some("threshold"), &t!("Threshold"));
-        dither_combo.append(Some("floyd"), &t!("Floyd-Steinberg"));
+        dither_combo.append(Some("floyd"), &t!("Floyd-Ste."));
         dither_combo.append(Some("atkinson"), &t!("Atkinson"));
         dither_combo.append(Some("bayer"), &t!("Bayer"));
         dither_combo.set_active_id(Some(&RasterImage::default().dithering));
 
         // Invert
         let invert_label = Label::new(Some(&t!("Invert:")));
+        invert_label.set_halign(gtk4::Align::Start);
         let invert_check = CheckButton::new();
 
         // Halftone_threshold
-        let halftone_label = Label::new(Some(&t!("Halftone Threshold:")));
+        let halftone_label = Label::new(Some(&t!("Halftone:")));
+        halftone_label.set_halign(gtk4::Align::Start);
         let halftone_entry = Entry::new();
+        halftone_entry.set_max_width_chars(8);  // <-- Limitar a 8 caracteres
         halftone_entry.set_placeholder_text(Some("0-255"));
         halftone_entry.set_text("127"); // Valor por defecto
         let halftone_range = Label::new(Some("(0-255)"));
@@ -665,6 +739,78 @@ impl PropertiesPanel {
             invert_check,
             dither_combo,
             halftone_entry,
+        )
+    }
+
+    pub(crate) fn build_laser_override_section() -> (
+        Frame,
+        CheckButton, // use_global
+        Entry,       // feed_rate
+        Entry,       // power_percent
+        Entry,       // passes
+    ) {
+        let frame = Self::create_section(&t!("Laser Config (Object)"));
+        let grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(8)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+
+        // Checkbox "Use global values"
+        let use_global_check = CheckButton::new();
+        let use_global_label = Label::new(Some(&t!("Use global values")));
+        use_global_label.set_halign(gtk4::Align::Start);
+        use_global_check.set_active(true); // Por defecto, usar globales
+
+        let global_box = Box::new(Orientation::Horizontal, 8);
+        global_box.append(&use_global_check);
+        global_box.append(&use_global_label);
+
+        // Feed Rate
+        let feed_label = Label::new(Some(&t!("Feed rate:")));
+        let feed_entry = Entry::new();
+        feed_entry.set_max_width_chars(8);
+        feed_entry.set_placeholder_text(Some(&t!("Global")));
+        feed_entry.set_sensitive(false); // Por defecto deshabilitado
+        let feed_unit = Label::new(Some("mm/min"));
+
+        // Power
+        let power_label = Label::new(Some(&t!("Power:")));
+        let power_entry = Entry::new();
+        power_entry.set_max_width_chars(8);
+        power_entry.set_placeholder_text(Some(&t!("Global")));
+        power_entry.set_sensitive(false); // Por defecto deshabilitado
+        let power_unit = Label::new(Some("%"));
+
+        // Passes
+        let passes_label = Label::new(Some(&t!("Passes:")));
+        let passes_entry = Entry::new();
+        passes_entry.set_max_width_chars(8);
+        passes_entry.set_placeholder_text(Some(&t!("Global")));
+        passes_entry.set_sensitive(false); // Por defecto deshabilitado
+
+        // Layout
+        grid.attach(&global_box, 0, 0, 3, 1);
+        grid.attach(&feed_label, 0, 1, 1, 1);
+        grid.attach(&feed_entry, 1, 1, 1, 1);
+        grid.attach(&feed_unit, 2, 1, 1, 1);
+        grid.attach(&power_label, 0, 2, 1, 1);
+        grid.attach(&power_entry, 1, 2, 1, 1);
+        grid.attach(&power_unit, 2, 2, 1, 1);
+        grid.attach(&passes_label, 0, 3, 1, 1);
+        grid.attach(&passes_entry, 1, 3, 1, 1);
+
+        frame.set_child(Some(&grid));
+
+        (
+            frame,
+            use_global_check,
+            feed_entry,
+            power_entry,
+            passes_entry,
         )
     }
 }

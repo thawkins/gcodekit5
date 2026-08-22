@@ -96,6 +96,36 @@ pub fn setup_position_y_handler(
     });
 }
 
+/// Setup position Z entry handler
+#[allow(clippy::type_complexity)]
+pub fn setup_position_z_handler(
+    pos_z_entry: &Entry,
+    state: Shared<DesignerState>,
+    settings: Shared<SettingsPersistence>,
+    redraw_callback: SharedOption<Rc<dyn Fn()>>,
+    updating: Shared<bool>,
+) {
+    pos_z_entry.connect_changed(move |entry| {
+        if *updating.borrow() {
+            return;
+        }
+        let system = settings.borrow().config().ui.measurement_system;
+        if let Ok(val) = units::parse_length(&entry.text(), system) {
+            entry.remove_css_class("entry-invalid");
+            let mut designer_state = state.borrow_mut();
+            if designer_state.selected_count() >= 1 {
+                designer_state.set_selected_start_depth(val as f64);
+            }
+            drop(designer_state);
+            if let Some(ref cb) = *redraw_callback.borrow() {
+                cb();
+            }
+        } else {
+            entry.add_css_class("entry-invalid");
+        }
+    });
+}
+
 /// Setup width entry activate handler
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn setup_width_activate_handler(

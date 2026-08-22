@@ -8,7 +8,7 @@ use lyon::math::{point, Transform};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
-use super::{DesignPath, DesignerShape, Point, Property, PropertyValue};
+use super::{DesignPath, DesignerShape, LaserParams, Point, Property, PropertyValue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignSprocket {
@@ -18,6 +18,7 @@ pub struct DesignSprocket {
     pub roller_diameter: f64,
     pub rotation: f64,
     pub hole_radius: f64,
+    pub laser_params: LaserParams,
 }
 
 impl DesignSprocket {
@@ -29,6 +30,29 @@ impl DesignSprocket {
             roller_diameter: pitch * 0.6,
             rotation: 0.0,
             hole_radius: 0.0,
+            laser_params: LaserParams::default(),
+        }
+    }
+
+    /// Devuelve el diámetro de rodillo estándar para un paso dado (en mm)
+    /// Basado en norma ANSI/ISO para cadenas de rodillos
+    pub fn standard_roller_diameter(pitch_mm: f64) -> f64 {
+        // Tolerancia pequeña para comparar con floats
+        const EPS: f64 = 0.01;
+
+        match pitch_mm {
+            p if (p - 6.35).abs() < EPS => 4.0,     // 25-1 (04C-1)
+            p if (p - 8.0).abs() < EPS => 5.0,      // 35-1 (06C-1)
+            p if (p - 9.525).abs() < EPS => 6.35,   // 40-1 (08A-1)
+            p if (p - 12.7).abs() < EPS => 8.51,    // 50-1 (10A-1)
+            p if (p - 15.875).abs() < EPS => 10.16, // 60-1 (12A-1)
+            p if (p - 19.05).abs() < EPS => 12.07,  // 80-1 (16A-1)
+            p if (p - 25.4).abs() < EPS => 15.88,   // 100-1 (20A-1)
+            p if (p - 31.75).abs() < EPS => 19.05,  // 120-1 (24A-1)
+            p if (p - 38.1).abs() < EPS => 25.4,    // 140-1 (28A-1)
+            p if (p - 44.45).abs() < EPS => 27.94,  // 160-1 (32A-1)
+            p if (p - 50.8).abs() < EPS => 31.75,   // 200-1 (40A-1)
+            _ => pitch_mm * 0.625,                  // Valor por defecto para pasos personalizados
         }
     }
 }

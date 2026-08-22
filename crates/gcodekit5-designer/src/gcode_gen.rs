@@ -4,6 +4,15 @@ use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
 use crate::model::Point;
 use gcodekit5_core::Units;
 
+/// Límites de la máquina para verificación
+#[derive(Debug, Clone)]
+pub struct MachineLimits {
+    pub x_min: f64,
+    pub x_max: f64,
+    pub y_min: f64,
+    pub y_max: f64,
+}
+
 /// G-code generator for converting toolpaths to G-code commands.
 pub struct ToolpathToGcode {
     _units: Units,
@@ -18,6 +27,10 @@ pub struct ToolpathToGcode {
     pub min_point_distance: f64,
     /// Tolerance for curve simplification (Ramer-Douglas-Peucker)
     pub curve_simplification_tolerance: f64,
+    /// Machine Limits
+    pub machine_limits: Option<MachineLimits>,
+    /// Keep Z continuous between passes when possible (same XY rapid).
+    pub continuous_z_between_passes: bool,
 }
 
 impl ToolpathToGcode {
@@ -31,6 +44,8 @@ impl ToolpathToGcode {
             is_laser_2d: false,
             min_point_distance: 0.1,
             curve_simplification_tolerance: 0.05,
+            machine_limits: None,
+            continuous_z_between_passes: false,
         }
     }
 
@@ -44,6 +59,8 @@ impl ToolpathToGcode {
             is_laser_2d: false,
             min_point_distance: 0.1,
             curve_simplification_tolerance: 0.05,
+            machine_limits: None,
+            continuous_z_between_passes: false,
         }
     }
 
@@ -63,6 +80,12 @@ impl ToolpathToGcode {
     /// Recommended values: 0.05 (minimal), 0.10 (light), 0.15 (medium), 0.25 (aggressive)
     pub fn with_curve_tolerance(mut self, tolerance: f64) -> Self {
         self.curve_simplification_tolerance = tolerance;
+        self
+    }
+
+    /// Enable/disable continuous Z between passes in CNC mode.
+    pub fn with_continuous_z_between_passes(mut self, enabled: bool) -> Self {
+        self.continuous_z_between_passes = enabled;
         self
     }
 
@@ -178,12 +201,31 @@ impl ToolpathToGcode {
         total_length: f64,
     ) -> String {
         let mut gcode = String::new();
-        gcode.push_str("; Generated G-code from Designer tool\n");
-        gcode.push_str(&format!("; Tool diameter: {:.2}mm\n", tool_diameter));
-        gcode.push_str(&format!("; Cut depth: {:.2}mm\n", depth));
-        gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
-        gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
+
+        if self.is_laser_2d {
+            gcode.push_str("; Generated Laser G-code from Designer tool\n");
+            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
+            gcode.push_str(&format!("; Laser power (S): {}\n", spindle_speed));
+        } else {
+            gcode.push_str("; Generated G-code from Designer tool\n");
+            gcode.push_str(&format!("; Tool diameter: {:.2}mm\n", tool_diameter));
+            gcode.push_str(&format!("; Cut depth: {:.2}mm\n", depth));
+            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
+            gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
+        }
         gcode.push_str(&format!("; Total path length: {:.2}mm\n", total_length));
+
+        let estimated_minutes = if feed_rate > 0.0 {
+            total_length / feed_rate
+        } else {
+            0.0
+        };
+        let hours = (estimated_minutes / 60.0).floor() as u32;
+        let minutes = (estimated_minutes.rem_euclid(60.0)).round() as u32;
+        gcode.push_str(&format!(
+            "; Estimated time: {}h {}m\n",
+            hours, minutes
+        ));
         gcode.push('\n');
 
         // Setup
@@ -237,6 +279,8 @@ impl ToolpathToGcode {
         let mut last_feed_rate: Option<f64> = None;
         let mut last_point: Option<(f64, f64)> = None;
         let mut line_g01 = true;
+        let mut initial_safe_z_emitted = false;
+        let mut current_xy: Option<(f64, f64)> = None;
 
         let has_z = self.num_axes >= 3 && !self.is_laser_2d;
 
@@ -251,6 +295,29 @@ impl ToolpathToGcode {
                         line_number += 10;
                     }
 
+                    let same_xy = current_xy.is_some_and(|(x, y)| {
+                        (x - segment.end.x).abs() <= 0.001 && (y - segment.end.y).abs() <= 0.001
+                    });
+
+                    // In CNC mode emit safe-Z before first XY rapid. For next rapids,
+                    // keep Z continuous only when explicitly enabled and XY does not change.
+                    let should_retract = has_z
+                        && (!initial_safe_z_emitted
+                            || (!self.continuous_z_between_passes || !same_xy)
+                                && (current_z - self.safe_z).abs() > 0.01);
+
+                    if should_retract {
+                        let line_prefix = self.get_line_prefix(line_number);
+                        gcode.push_str(&format!(
+                            "{}G00 Z{}   ; Retract to safe Z\n",
+                            line_prefix,
+                            self.fmt_coord(self.safe_z)
+                        ));
+                        current_z = self.safe_z;
+                        initial_safe_z_emitted = true;
+                        line_number += 10;
+                    }
+
                     let line_prefix = self.get_line_prefix(line_number);
                     gcode.push_str(&format!(
                         "{}G00 X{} Y{}   ; Rapid move\n",
@@ -261,39 +328,39 @@ impl ToolpathToGcode {
 
                     line_g01 = true;
                     last_point = None;
-                    current_z = self.safe_z;
+                    current_xy = Some((segment.end.x, segment.end.y));
                     line_number += 10;
                 }
 
                 ToolpathSegmentType::LinearMove => {
-                                    // Handle start Z plunge if needed
-                                    if has_z {
-                                        if let Some(sz) = segment.start_z {
-                                            if (current_z - sz).abs() > 0.01 {
-                                                let line_prefix = self.get_line_prefix(line_number);
-                                                gcode.push_str(&format!(
-                                                    "{}G01 Z{} F{:.0}\n",
-                                                    line_prefix,
-                                                    self.fmt_coord(sz),
-                                                    segment.feed_rate
-                                                ));
-                                                line_number += 10;
-                                                current_z = sz;
-                                            }
-                                        } else if segment.z_depth.is_none()
-                                            && (current_z - toolpath.depth).abs() > 0.01
-                                        {
-                                            let line_prefix = self.get_line_prefix(line_number);
-                                            gcode.push_str(&format!(
-                                                "{}G01 Z{} F{:.0}\n",
-                                                line_prefix,
-                                                self.fmt_coord(toolpath.depth),
-                                                segment.feed_rate
-                                            ));
-                                            line_number += 10;
-                                            current_z = toolpath.depth;
-                                        }
-                                    }
+                    // Handle start Z plunge if needed
+                    if has_z {
+                        if let Some(sz) = segment.start_z {
+                            if (current_z - sz).abs() > 0.01 {
+                                let line_prefix = self.get_line_prefix(line_number);
+                                gcode.push_str(&format!(
+                                    "{}G01 Z{} F{:.0}\n",
+                                    line_prefix,
+                                    self.fmt_coord(sz),
+                                    segment.feed_rate
+                                ));
+                                line_number += 10;
+                                current_z = sz;
+                            }
+                        } else if segment.z_depth.is_none()
+                            && (current_z - toolpath.depth).abs() > 0.01
+                        {
+                            let line_prefix = self.get_line_prefix(line_number);
+                            gcode.push_str(&format!(
+                                "{}G01 Z{} F{:.0}\n",
+                                line_prefix,
+                                self.fmt_coord(toolpath.depth),
+                                segment.feed_rate
+                            ));
+                            line_number += 10;
+                            current_z = toolpath.depth;
+                        }
+                    }
                     let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
                         current_z
                     } else {
@@ -373,6 +440,8 @@ impl ToolpathToGcode {
                         feed_rate_cmd
                     ));
 
+                    current_xy = Some((segment.end.x, segment.end.y));
+
                     line_number += 10;
                 }
 
@@ -391,9 +460,7 @@ impl ToolpathToGcode {
                                 line_number += 10;
                                 current_z = sz;
                             }
-                        } else if segment.z_depth.is_none()
-                            && (current_z - toolpath.depth).abs() > 0.01
-                        {
+                        } else if segment.z_depth.is_none() && (current_z - toolpath.depth).abs() > 0.01 {
                             let line_prefix = self.get_line_prefix(line_number);
                             gcode.push_str(&format!(
                                 "{}G01 Z{} F{:.0}\n",
@@ -406,6 +473,14 @@ impl ToolpathToGcode {
                         }
                     }
 
+                    if self.is_laser_2d && !laser_on {
+                        let line_prefix = self.get_line_prefix(line_number);
+                        let laser_power = toolpath.segments.first().map(|s| s.spindle_speed).unwrap_or(1000);
+                        gcode.push_str(&format!("{}M4 S{}       ; Laser ON\n", line_prefix, laser_power));
+                        laser_on = true;
+                        line_number += 10;
+                    }
+
                     let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
                         current_z
                     } else {
@@ -414,88 +489,105 @@ impl ToolpathToGcode {
 
                     let line_prefix = self.get_line_prefix(line_number);
 
-                    // Reset last point for arcs
-                    last_point = None;
+                    let min_radius_mm = 0.25; // Limite de radio mas pequeño
 
-                    // Turn on the laser
-                    if self.is_laser_2d && !laser_on {
-                        let line_prefix = self.get_line_prefix(line_number);
-                        gcode.push_str(&format!(
-                            "{}M4 S{}       ; Laser ON\n",
-                            line_prefix, segment.spindle_speed
-                        ));
-                        laser_on = true;
-                        line_number += 10;
-                    }
-
-                    let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
-                        "G02"
-                    } else {
-                        "G03"
-                    };
-
-                    // Only send feed rate if it changed
-                    let feed_rate_cmd =
-                        if last_feed_rate.is_none_or(|fr| (fr - segment.feed_rate).abs() > 0.1) {
-                            last_feed_rate = Some(segment.feed_rate);
-                            format!(" F{:.0}", segment.feed_rate)
-                        } else {
-                            String::new()
-                        };
-
-                    if let Some(center) = segment.center {
+                    let is_small_arc = if let Some(center) = segment.center {
                         let i = center.x - segment.start.x;
                         let j = center.y - segment.start.y;
+                        let radius = (i * i + j * j).sqrt();
+                        radius < min_radius_mm
+                    } else {
+                        true  // Sin centro, tratar como pequeño
+                    };
 
+                    let feed_rate_cmd = if last_feed_rate.is_none_or(|fr| (fr - segment.feed_rate).abs() > 0.1) {
+                        last_feed_rate = Some(segment.feed_rate);
+                        format!(" F{:.0}", segment.feed_rate)
+                    } else {
+                        String::new()
+                    };
+
+                    if is_small_arc {
+                        // Arco pequeño → convertir a línea recta
                         if has_z && (target_z - current_z).abs() > 0.001 {
                             gcode.push_str(&format!(
-                                "{}{} X{} Y{} Z{} I{} J{}{}\n",
-                                line_prefix,
-                                cmd,
+                                "{}{} X{} Y{} Z{}{}\n",
+                                line_prefix, "G01",
                                 self.fmt_coord(segment.end.x),
                                 self.fmt_coord(segment.end.y),
                                 self.fmt_coord(target_z),
-                                self.fmt_coord(i),
-                                self.fmt_coord(j),
                                 feed_rate_cmd
                             ));
                             current_z = target_z;
                         } else {
                             gcode.push_str(&format!(
-                                "{}{} X{} Y{} I{} J{}{}\n",
-                                line_prefix,
-                                cmd,
+                                "{}{} X{} Y{}{}\n",
+                                line_prefix, "G01",
                                 self.fmt_coord(segment.end.x),
                                 self.fmt_coord(segment.end.y),
-                                self.fmt_coord(i),
-                                self.fmt_coord(j),
                                 feed_rate_cmd
                             ));
                         }
                     } else {
-                        // Fallback to linear if no center provided
-                        if has_z && (target_z - current_z).abs() > 0.001 {
-                            gcode.push_str(&format!(
-                                "{}G01 X{} Y{} Z{}{}\n",
-                                line_prefix,
-                                self.fmt_coord(segment.end.x),
-                                self.fmt_coord(segment.end.y),
-                                self.fmt_coord(target_z),
-                                feed_rate_cmd
-                            ));
-                            current_z = target_z;
+                        // Arco normal → usar G02/G03
+                        if let Some(center) = segment.center {
+                            let i = center.x - segment.start.x;
+                            let j = center.y - segment.start.y;
+                            let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
+                                "G02"
+                            } else {
+                                "G03"
+                            };
+
+                            if has_z && (target_z - current_z).abs() > 0.001 {
+                                gcode.push_str(&format!(
+                                    "{}{} X{} Y{} Z{} I{} J{}{}\n",
+                                    line_prefix, cmd,
+                                    self.fmt_coord(segment.end.x),
+                                    self.fmt_coord(segment.end.y),
+                                    self.fmt_coord(target_z),
+                                    self.fmt_coord(i),
+                                    self.fmt_coord(j),
+                                    feed_rate_cmd
+                                ));
+                                current_z = target_z;
+                            } else {
+                                gcode.push_str(&format!(
+                                    "{}{} X{} Y{} I{} J{}{}\n",
+                                    line_prefix, cmd,
+                                    self.fmt_coord(segment.end.x),
+                                    self.fmt_coord(segment.end.y),
+                                    self.fmt_coord(i),
+                                    self.fmt_coord(j),
+                                    feed_rate_cmd
+                                ));
+                            }
                         } else {
-                            gcode.push_str(&format!(
-                                "{}G01 X{} Y{}{}\n",
-                                line_prefix,
-                                self.fmt_coord(segment.end.x),
-                                self.fmt_coord(segment.end.y),
-                                feed_rate_cmd
-                            ));
+                            // Sin centro → fallback a línea
+                            if has_z && (target_z - current_z).abs() > 0.001 {
+                                gcode.push_str(&format!(
+                                    "{}{} X{} Y{} Z{}{}\n",
+                                    line_prefix, "G01",
+                                    self.fmt_coord(segment.end.x),
+                                    self.fmt_coord(segment.end.y),
+                                    self.fmt_coord(target_z),
+                                    feed_rate_cmd
+                                ));
+                                current_z = target_z;
+                            } else {
+                                gcode.push_str(&format!(
+                                    "{}{} X{} Y{}{}\n",
+                                    line_prefix, "G01",
+                                    self.fmt_coord(segment.end.x),
+                                    self.fmt_coord(segment.end.y),
+                                    feed_rate_cmd
+                                ));
+                            }
                         }
                     }
 
                     line_number += 10;
+                    current_xy = Some((segment.end.x, segment.end.y));
                 }
             }
         }
@@ -519,7 +611,7 @@ impl ToolpathToGcode {
             gcode.push_str("M5          ; Laser OFF (safety)\n");
         }
 
-        if self.num_axes >= 3 && !self.is_laser_2d {
+        if !self.is_laser_2d {
             gcode.push_str(&format!(
                 "G00 Z{:.2}   ; Raise tool to safe height\n",
                 self.safe_z
@@ -530,10 +622,116 @@ impl ToolpathToGcode {
         gcode.push_str("M30         ; End program\n");
         gcode
     }
+
+    pub fn has_boundary_violation(&self, toolpath: &Toolpath) -> bool {
+        let Some(limits) = &self.machine_limits else {
+            return false;
+        };
+
+        if toolpath.depth < 0.0 {
+            return true;
+        }
+
+        let violates_z = |value: Option<f64>| value.is_some_and(|depth| depth < 0.0);
+
+        for segment in &toolpath.segments {
+            // Verificar punto inicial
+            if segment.start.x < limits.x_min || segment.start.x > limits.x_max ||
+               segment.start.y < limits.y_min || segment.start.y > limits.y_max {
+                return true;
+            }
+            // Verificar punto final
+            if segment.end.x < limits.x_min || segment.end.x > limits.x_max ||
+               segment.end.y < limits.y_min || segment.end.y > limits.y_max {
+                return true;
+            }
+            if violates_z(segment.start_z) || violates_z(segment.z_depth) {
+                return true;
+            }
+            // Verificar centro de arco
+            if let Some(center) = segment.center {
+                if center.x < limits.x_min || center.x > limits.x_max ||
+                   center.y < limits.y_min || center.y > limits.y_max {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn with_machine_limits(mut self, limits: MachineLimits) -> Self {
+        self.machine_limits = Some(limits);
+        self
+    }
 }
 
 impl Default for ToolpathToGcode {
     fn default() -> Self {
         Self::new(Units::MM, 10.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_header_includes_estimated_time() {
+        let generator = ToolpathToGcode::new(Units::MM, 10.0);
+        let header = generator.generate_header(3000, 1000.0, 3.175, -5.0, 5000.0);
+
+        assert!(header.contains("; Total path length: 5000.00mm"));
+        assert!(header.contains("; Estimated time: 0h 5m"));
+    }
+
+    #[test]
+    fn has_boundary_violation_checks_z_axis() {
+        let generator = ToolpathToGcode {
+            machine_limits: Some(MachineLimits {
+                x_min: 0.0,
+                x_max: 100.0,
+                y_min: 0.0,
+                y_max: 100.0,
+            }),
+            ..ToolpathToGcode::new(Units::MM, 10.0)
+        };
+
+        let mut toolpath = Toolpath::new(6.0, 1.0);
+        let mut segment = ToolpathSegment::new(
+            ToolpathSegmentType::LinearMove,
+            Point::new(10.0, 10.0),
+            Point::new(20.0, 20.0),
+            1000.0,
+            12000,
+        );
+        segment.start_z = Some(-1.0);
+        segment.z_depth = Some(-1.0);
+        toolpath.add_segment(segment);
+
+        assert!(generator.has_boundary_violation(&toolpath));
+    }
+
+    #[test]
+    fn has_boundary_violation_checks_negative_toolpath_depth() {
+        let generator = ToolpathToGcode {
+            machine_limits: Some(MachineLimits {
+                x_min: 0.0,
+                x_max: 100.0,
+                y_min: 0.0,
+                y_max: 100.0,
+            }),
+            ..ToolpathToGcode::new(Units::MM, 10.0)
+        };
+
+        let mut toolpath = Toolpath::new(6.0, -7.0);
+        toolpath.add_segment(ToolpathSegment::new(
+            ToolpathSegmentType::LinearMove,
+            Point::new(10.0, 10.0),
+            Point::new(20.0, 20.0),
+            1000.0,
+            12000,
+        ));
+
+        assert!(generator.has_boundary_violation(&toolpath));
     }
 }

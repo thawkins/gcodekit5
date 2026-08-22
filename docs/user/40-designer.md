@@ -82,7 +82,7 @@ The layers panel lets you organize shapes into layers:
 
 ## Importing Files
 
-Import external designs via **File → Import**:
+# Import external designs via **File → Import**:
 
 | Format | Description |
 |--------|-------------|
@@ -91,6 +91,20 @@ Import external designs via **File → Import**:
 | **STL** | 3D models for CAM processing |
 
 Imported geometry is scaled correctly to millimeters.
+
+# Import external designs via **File → Import Image**:
+
+| Format | Description |
+|--------|-------------|
+| **JPG** | Raster Image |
+| **PNG** | Raster Image |
+| **BMP** | Raster Image |
+| **TIF** | Raster Image |
+
+- Import image and then select it. With the image selected, the Properties Inspector will display its size and position, as well as the engraving settings: speed, laser power, resolution, etc.
+- Once all properties are configured, click "Frame" to generate the G-code for the rectangle the image will occupy.
+- Then, with the image still selected, click "Generate G-code" button to generate  G-code for the image itself.
+- In Viewer, you will see the image that will be engraved based on the generated G-code. Note that there are two 2.5mm margins on each side if you choose horizontal engraving, or above and below the image if you choose vertical engraving. These are inertial adjustments to increase the engraving speed and ensure continuity. To prevent the laser from going into a negative position, if the image is positioned at X0, Y0, the image will automatically shift an offset of X2.5, Y2.5.
 
 ## Toolpath Generation
 

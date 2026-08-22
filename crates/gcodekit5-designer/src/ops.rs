@@ -4,9 +4,11 @@
 //! on designer shapes using the `csgrs` and `cavalier_contours` libraries.
 //! Includes polyline cleaning utilities for robust boolean results.
 
-use crate::model::{DesignPath, DesignerShape, Shape};
+use crate::model::{DesignPath, DesignerShape, Point, Shape};
 use cavalier_contours::polyline::{PlineSource, PlineSourceMut, PlineVertex, Polyline};
 use csgrs::traits::CSG;
+use lyon::path::iterator::PathIterator;
+use std::f64::consts::PI;
 use std::panic;
 
 pub enum BooleanOp {
@@ -25,6 +27,487 @@ pub fn clean_polyline(mut pline: Polyline) -> Polyline {
         }
     }
     pline
+}
+
+fn cross(ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
+    ax * by - ay * bx
+}
+
+fn extract_open_polyline_points(path: &lyon::path::Path) -> Option<Vec<Point>> {
+    let mut points: Vec<Point> = Vec::new();
+    let mut begin_count = 0usize;
+
+    for event in path.iter().flattened(0.1) {
+        match event {
+            lyon::path::Event::Begin { at } => {
+                begin_count += 1;
+                if begin_count > 1 {
+                    return None;
+                }
+                points.push(Point::new(at.x as f64, at.y as f64));
+            }
+            lyon::path::Event::Line { to, .. } => {
+                points.push(Point::new(to.x as f64, to.y as f64));
+            }
+            lyon::path::Event::End { close, .. } => {
+                if close {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if points.len() < 2 {
+        return None;
+    }
+
+    let mut deduped = Vec::with_capacity(points.len());
+    for p in points {
+        if deduped
+            .last()
+            .map(|q: &Point| (q.x - p.x).hypot(q.y - p.y) > 1e-6)
+            .unwrap_or(true)
+        {
+            deduped.push(p);
+        }
+    }
+
+    if deduped.len() < 2 {
+        None
+    } else {
+        Some(deduped)
+    }
+}
+
+fn extract_closed_polyline_points(path: &lyon::path::Path) -> Option<Vec<Point>> {
+    let mut points: Vec<Point> = Vec::new();
+    let mut begin_count = 0usize;
+    let mut saw_closed_end = false;
+
+    for event in path.iter().flattened(0.1) {
+        match event {
+            lyon::path::Event::Begin { at } => {
+                begin_count += 1;
+                if begin_count > 1 {
+                    return None;
+                }
+                points.push(Point::new(at.x as f64, at.y as f64));
+            }
+            lyon::path::Event::Line { to, .. } => {
+                points.push(Point::new(to.x as f64, to.y as f64));
+            }
+            lyon::path::Event::End { close, .. } => {
+                if !close {
+                    return None;
+                }
+                saw_closed_end = true;
+            }
+            _ => {}
+        }
+    }
+
+    if !saw_closed_end {
+        return None;
+    }
+
+    let mut deduped = Vec::with_capacity(points.len());
+    for p in points {
+        if deduped
+            .last()
+            .map(|q: &Point| (q.x - p.x).hypot(q.y - p.y) > 1e-6)
+            .unwrap_or(true)
+        {
+            deduped.push(p);
+        }
+    }
+
+    if deduped.len() >= 2 {
+        let first = deduped[0];
+        let last = *deduped.last()?;
+        if (first.x - last.x).hypot(first.y - last.y) <= 1e-6 {
+            deduped.pop();
+        }
+    }
+
+    if deduped.len() < 3 {
+        None
+    } else {
+        Some(deduped)
+    }
+}
+
+fn chamfer_closed_points(points: &[Point], distance: f64) -> Vec<Point> {
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+
+    let d_req = distance.max(0.0);
+    if d_req <= 1e-9 {
+        return points.to_vec();
+    }
+
+    let mut out: Vec<Point> = Vec::with_capacity(n * 2);
+    for i in 0..n {
+        let prev = points[(i + n - 1) % n];
+        let cur = points[i];
+        let next = points[(i + 1) % n];
+
+        let vin_x = prev.x - cur.x;
+        let vin_y = prev.y - cur.y;
+        let vout_x = next.x - cur.x;
+        let vout_y = next.y - cur.y;
+
+        let len_in = vin_x.hypot(vin_y);
+        let len_out = vout_x.hypot(vout_y);
+
+        if len_in <= 1e-9 || len_out <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let d = d_req.min(len_in * 0.49).min(len_out * 0.49);
+        if d <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let pin = Point::new(cur.x + (vin_x / len_in) * d, cur.y + (vin_y / len_in) * d);
+        let pout = Point::new(
+            cur.x + (vout_x / len_out) * d,
+            cur.y + (vout_y / len_out) * d,
+        );
+
+        out.push(pin);
+        out.push(pout);
+    }
+
+    out
+}
+
+fn try_open_path_chamfer(path: &DesignPath, distance: f64) -> Option<DesignPath> {
+    let original = path.original_path.as_ref()?;
+    let points = extract_open_polyline_points(original)?;
+
+    if points.len() < 3 {
+        return Some(DesignPath::from_points(&points, false));
+    }
+
+    let d_req = distance.max(0.0);
+    if d_req <= 1e-9 {
+        return Some(DesignPath::from_points(&points, false));
+    }
+
+    let mut out: Vec<Point> = Vec::with_capacity(points.len() * 2);
+    out.push(points[0]);
+
+    for i in 1..points.len() - 1 {
+        let prev = points[i - 1];
+        let cur = points[i];
+        let next = points[i + 1];
+
+        let vin_x = prev.x - cur.x;
+        let vin_y = prev.y - cur.y;
+        let vout_x = next.x - cur.x;
+        let vout_y = next.y - cur.y;
+
+        let len_in = vin_x.hypot(vin_y);
+        let len_out = vout_x.hypot(vout_y);
+
+        if len_in <= 1e-9 || len_out <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let d = d_req.min(len_in * 0.49).min(len_out * 0.49);
+        if d <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let pin = Point::new(cur.x + (vin_x / len_in) * d, cur.y + (vin_y / len_in) * d);
+        let pout = Point::new(
+            cur.x + (vout_x / len_out) * d,
+            cur.y + (vout_y / len_out) * d,
+        );
+
+        out.push(pin);
+        out.push(pout);
+    }
+
+    out.push(*points.last()?);
+    Some(DesignPath::from_points(&out, false))
+}
+
+fn try_closed_path_chamfer(path: &DesignPath, distance: f64) -> Option<DesignPath> {
+    let original = path.original_path.as_ref()?;
+    let points = extract_closed_polyline_points(original)?;
+    let chamfered = chamfer_closed_points(&points, distance);
+    Some(DesignPath::from_points(&chamfered, true))
+}
+
+fn try_open_path_fillet(path: &DesignPath, radius: f64) -> Option<DesignPath> {
+    let original = path.original_path.as_ref()?;
+    let points = extract_open_polyline_points(original)?;
+
+    if points.len() < 3 {
+        return Some(DesignPath::from_points(&points, false));
+    }
+
+    let r_req = radius.max(0.0);
+    if r_req <= 1e-9 {
+        return Some(DesignPath::from_points(&points, false));
+    }
+
+    let mut out: Vec<Point> = Vec::new();
+    out.push(points[0]);
+
+    for i in 1..points.len() - 1 {
+        let prev = points[i - 1];
+        let cur = points[i];
+        let next = points[i + 1];
+
+        let a_x = cur.x - prev.x;
+        let a_y = cur.y - prev.y;
+        let b_x = next.x - cur.x;
+        let b_y = next.y - cur.y;
+
+        let len_a = a_x.hypot(a_y);
+        let len_b = b_x.hypot(b_y);
+
+        if len_a <= 1e-9 || len_b <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let ua_x = a_x / len_a;
+        let ua_y = a_y / len_a;
+        let ub_x = b_x / len_b;
+        let ub_y = b_y / len_b;
+
+        let dot = (-(ua_x * ub_x + ua_y * ub_y)).clamp(-1.0, 1.0);
+        let angle = dot.acos();
+        let tan_half = (angle * 0.5).tan();
+
+        if angle <= 1e-6 || (PI - angle).abs() <= 1e-6 || tan_half.abs() <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let mut t = r_req / tan_half;
+        t = t.min(len_a * 0.49).min(len_b * 0.49);
+        if t <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let tp1 = Point::new(cur.x - ua_x * t, cur.y - ua_y * t);
+        let tp2 = Point::new(cur.x + ub_x * t, cur.y + ub_y * t);
+
+        let turn = cross(ua_x, ua_y, ub_x, ub_y);
+        if turn.abs() <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let (n1_x, n1_y, n2_x, n2_y) = if turn > 0.0 {
+            (-ua_y, ua_x, -ub_y, ub_x)
+        } else {
+            (ua_y, -ua_x, ub_y, -ub_x)
+        };
+
+        let den = cross(n1_x, n1_y, n2_x, n2_y);
+        if den.abs() <= 1e-9 {
+            out.push(tp1);
+            out.push(tp2);
+            continue;
+        }
+
+        let dx = tp2.x - tp1.x;
+        let dy = tp2.y - tp1.y;
+        let s = cross(dx, dy, n2_x, n2_y) / den;
+        let cx = tp1.x + n1_x * s;
+        let cy = tp1.y + n1_y * s;
+        let arc_r = (tp1.x - cx).hypot(tp1.y - cy);
+
+        let a1 = (tp1.y - cy).atan2(tp1.x - cx);
+        let a2 = (tp2.y - cy).atan2(tp2.x - cx);
+        let mut delta = a2 - a1;
+        if turn > 0.0 {
+            if delta < 0.0 {
+                delta += 2.0 * PI;
+            }
+        } else if delta > 0.0 {
+            delta -= 2.0 * PI;
+        }
+
+        let segs = ((delta.abs() / (PI / 18.0)).ceil() as usize).max(2);
+        out.push(tp1);
+        for k in 1..segs {
+            let t_arc = k as f64 / segs as f64;
+            let a = a1 + delta * t_arc;
+            out.push(Point::new(cx + arc_r * a.cos(), cy + arc_r * a.sin()));
+        }
+        out.push(tp2);
+    }
+
+    out.push(*points.last()?);
+    Some(DesignPath::from_points(&out, false))
+}
+
+fn try_closed_path_fillet(path: &DesignPath, radius: f64) -> Option<DesignPath> {
+    let original = path.original_path.as_ref()?;
+
+    let mut points: Vec<Point> = Vec::new();
+    let mut begin_count = 0usize;
+    let mut saw_closed_end = false;
+
+    for event in original.iter().flattened(0.1) {
+        match event {
+            lyon::path::Event::Begin { at } => {
+                begin_count += 1;
+                if begin_count > 1 {
+                    return None;
+                }
+                points.push(Point::new(at.x as f64, at.y as f64));
+            }
+            lyon::path::Event::Line { to, .. } => {
+                points.push(Point::new(to.x as f64, to.y as f64));
+            }
+            lyon::path::Event::End { close, .. } => {
+                if !close {
+                    return None;
+                }
+                saw_closed_end = true;
+            }
+            _ => {}
+        }
+    }
+
+    if !saw_closed_end {
+        return None;
+    }
+
+    let mut deduped = Vec::with_capacity(points.len());
+    for p in points {
+        if deduped
+            .last()
+            .map(|q: &Point| (q.x - p.x).hypot(q.y - p.y) > 1e-6)
+            .unwrap_or(true)
+        {
+            deduped.push(p);
+        }
+    }
+
+    if deduped.len() >= 2 {
+        let first = deduped[0];
+        let last = *deduped.last()?;
+        if (first.x - last.x).hypot(first.y - last.y) <= 1e-6 {
+            deduped.pop();
+        }
+    }
+
+    if deduped.len() < 3 {
+        return None;
+    }
+
+    let r_req = radius.max(0.0);
+    if r_req <= 1e-9 {
+        return Some(DesignPath::from_points(&deduped, true));
+    }
+
+    let n = deduped.len();
+    let mut out: Vec<Point> = Vec::with_capacity(n * 8);
+
+    for i in 0..n {
+        let prev = deduped[(i + n - 1) % n];
+        let cur = deduped[i];
+        let next = deduped[(i + 1) % n];
+
+        let a_x = cur.x - prev.x;
+        let a_y = cur.y - prev.y;
+        let b_x = next.x - cur.x;
+        let b_y = next.y - cur.y;
+
+        let len_a = a_x.hypot(a_y);
+        let len_b = b_x.hypot(b_y);
+        if len_a <= 1e-9 || len_b <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let ua_x = a_x / len_a;
+        let ua_y = a_y / len_a;
+        let ub_x = b_x / len_b;
+        let ub_y = b_y / len_b;
+
+        let dot = (-(ua_x * ub_x + ua_y * ub_y)).clamp(-1.0, 1.0);
+        let angle = dot.acos();
+        let tan_half = (angle * 0.5).tan();
+        if angle <= 1e-6 || (PI - angle).abs() <= 1e-6 || tan_half.abs() <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let mut t = r_req / tan_half;
+        t = t.min(len_a * 0.49).min(len_b * 0.49);
+        if t <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let tp1 = Point::new(cur.x - ua_x * t, cur.y - ua_y * t);
+        let tp2 = Point::new(cur.x + ub_x * t, cur.y + ub_y * t);
+
+        let turn = cross(ua_x, ua_y, ub_x, ub_y);
+        if turn.abs() <= 1e-9 {
+            out.push(cur);
+            continue;
+        }
+
+        let (n1_x, n1_y, n2_x, n2_y) = if turn > 0.0 {
+            (-ua_y, ua_x, -ub_y, ub_x)
+        } else {
+            (ua_y, -ua_x, ub_y, -ub_x)
+        };
+
+        let den = cross(n1_x, n1_y, n2_x, n2_y);
+        if den.abs() <= 1e-9 {
+            out.push(tp1);
+            out.push(tp2);
+            continue;
+        }
+
+        let dx = tp2.x - tp1.x;
+        let dy = tp2.y - tp1.y;
+        let s = cross(dx, dy, n2_x, n2_y) / den;
+        let cx = tp1.x + n1_x * s;
+        let cy = tp1.y + n1_y * s;
+        let arc_r = (tp1.x - cx).hypot(tp1.y - cy);
+
+        let a1 = (tp1.y - cy).atan2(tp1.x - cx);
+        let a2 = (tp2.y - cy).atan2(tp2.x - cx);
+        let mut delta = a2 - a1;
+        if turn > 0.0 {
+            if delta < 0.0 {
+                delta += 2.0 * PI;
+            }
+        } else if delta > 0.0 {
+            delta -= 2.0 * PI;
+        }
+
+        let segs = ((delta.abs() / (PI / 18.0)).ceil() as usize).max(2);
+        out.push(tp1);
+        for k in 1..segs {
+            let t_arc = k as f64 / segs as f64;
+            let a = a1 + delta * t_arc;
+            out.push(Point::new(cx + arc_r * a.cos(), cy + arc_r * a.sin()));
+        }
+        out.push(tp2);
+    }
+
+    Some(DesignPath::from_points(&out, true))
 }
 
 pub fn perform_boolean(a: &Shape, b: &Shape, op: BooleanOp) -> Shape {
@@ -132,6 +615,18 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
 }
 
 pub fn perform_fillet(shape: &Shape, radius: f64) -> Shape {
+    if let Shape::Path(path) = shape {
+        if path.closed {
+            if let Some(result) = try_closed_path_fillet(path, radius) {
+                return Shape::Path(result);
+            }
+        } else {
+            if let Some(result) = try_open_path_fillet(path, radius) {
+                return Shape::Path(result);
+            }
+        }
+    }
+
     // Fillet all corners using the offset trick:
     // 1. Offset inward by radius (rounds convex corners)
     // 2. Offset outward by radius (restores size, keeping rounded corners)
@@ -140,6 +635,28 @@ pub fn perform_fillet(shape: &Shape, radius: f64) -> Shape {
 }
 
 pub fn perform_chamfer(shape: &Shape, distance: f64) -> Shape {
+    if let Shape::Path(path) = shape {
+        if path.closed {
+            if let Some(result) = try_closed_path_chamfer(path, distance) {
+                return Shape::Path(result);
+            }
+        } else {
+            if let Some(result) = try_open_path_chamfer(path, distance) {
+                return Shape::Path(result);
+            }
+        }
+    }
+
+    // For simple closed polygonal shapes, compute chamfer directly on rendered
+    // polyline vertices so the edge distance matches the user-entered value.
+    if matches!(shape, Shape::Rectangle(_) | Shape::Triangle(_) | Shape::Polygon(_)) {
+        let rendered = shape.render();
+        if let Some(points) = extract_closed_polyline_points(&rendered) {
+            let chamfered = chamfer_closed_points(&points, distance);
+            return Shape::Path(DesignPath::from_points(&chamfered, true));
+        }
+    }
+
     // Chamfer using the offset trick + removing bulges (arcs)
     let sketch = shape.as_csg();
     let mp = sketch.to_multipolygon();

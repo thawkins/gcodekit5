@@ -1,4 +1,4 @@
-//! Shared viewport helpers for 2D visualizer rendering.
+//! Shared viewport helpers for visualizer rendering.
 
 /// Bounding box accumulator used while parsing toolpaths.
 #[derive(Debug, Clone, Copy)]
@@ -76,71 +76,5 @@ impl Bounds {
             final_min_z,
             self.max_z + padding_z,
         )
-    }
-}
-
-/// Helper responsible for translating world coordinates into SVG viewport values.
-#[derive(Debug, Clone, Copy)]
-pub struct ViewportTransform {
-    padding: f32,
-}
-
-impl ViewportTransform {
-    pub fn new(padding: f32) -> Self {
-        Self { padding }
-    }
-
-    #[inline]
-    pub fn padding(&self) -> f32 {
-        self.padding
-    }
-
-    /// Compute the SVG viewbox tuple for the provided view configuration.
-    #[allow(clippy::too_many_arguments)]
-    pub fn viewbox(
-        &self,
-        min_x: f32,
-        min_y: f32,
-        zoom_scale: f32,
-        scale_factor: f32,
-        x_offset: f32,
-        y_offset: f32,
-        width: f32,
-        height: f32,
-    ) -> (f32, f32, f32, f32) {
-        let scale = zoom_scale * scale_factor;
-
-        let left = (0.0 - self.padding - x_offset) / scale + min_x;
-        let right = (width - self.padding - x_offset) / scale + min_x;
-
-        let bottom = (0.0 - self.padding + y_offset) / scale + min_y;
-        let top = (height - 0.0 - self.padding + y_offset) / scale + min_y;
-
-        let svg_min_x = left;
-        let svg_min_y = -top;
-        let svg_width = right - left;
-        let svg_height = top - bottom;
-
-        (svg_min_x, svg_min_y, svg_width, svg_height)
-    }
-
-    /// Determine pan offsets that place a world coordinate at a specific screen target.
-    #[allow(clippy::too_many_arguments)]
-    pub fn offsets_to_place_world_point(
-        &self,
-        min_x: f32,
-        min_y: f32,
-        zoom_scale: f32,
-        scale_factor: f32,
-        canvas_height: f32,
-        world_x: f32,
-        world_y: f32,
-        target_screen_x: f32,
-        target_screen_y: f32,
-    ) -> (f32, f32) {
-        let scale = zoom_scale * scale_factor;
-        let x_offset = target_screen_x - ((world_x - min_x) * scale + self.padding);
-        let y_offset = (world_y - min_y) * scale + self.padding - (canvas_height - target_screen_y);
-        (x_offset, y_offset)
     }
 }

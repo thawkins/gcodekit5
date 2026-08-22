@@ -38,6 +38,7 @@ fn format_font_points(mm: f64) -> String {
 
 /// Properties panel showing editable properties for selected shapes.
 #[allow(clippy::type_complexity)]
+#[derive(Clone)]
 pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
     pub(crate) state: Shared<DesignerState>,
@@ -59,6 +60,7 @@ pub struct PropertiesPanel {
     // Property widgets
     pub(crate) pos_x_entry: Entry,
     pub(crate) pos_y_entry: Entry,
+    pub(crate) pos_z_entry: Entry,
     pub(crate) width_entry: Entry,
     pub(crate) height_entry: Entry,
     pub(crate) lock_aspect_ratio: CheckButton,
@@ -76,6 +78,10 @@ pub struct PropertiesPanel {
     pub(crate) polygon_frame: Frame,
     pub(crate) sides_entry: Entry,
 
+    // Path widgets
+    pub(crate) path_frame: Frame,
+    pub(crate) path_closed_check: CheckButton,
+
     // Gear widgets
     pub(crate) gear_frame: Frame,
     pub(crate) gear_module_entry: Entry,
@@ -88,9 +94,16 @@ pub struct PropertiesPanel {
     pub(crate) sprocket_teeth_entry: Entry,
     pub(crate) sprocket_roller_diameter_entry: Entry,
 
+    // Timing pulley widgets
+    pub(crate) timing_pulley_frame: Frame,
+    pub(crate) timing_pulley_pitch_entry: Entry,
+    pub(crate) timing_pulley_teeth_entry: Entry,
+    pub(crate) timing_pulley_belt_width_entry: Entry,
+    pub(crate) timing_pulley_hole_radius_entry: Entry,
+
     // CAM widgets
+    pub(crate) cam_use_global_check: CheckButton,
     pub(crate) op_type_combo: DropDown,
-    pub(crate) depth_entry: Entry,
     pub(crate) step_down_entry: Entry,
     pub(crate) step_in_entry: Entry,
     pub(crate) ramp_angle_entry: Entry,
@@ -99,21 +112,20 @@ pub struct PropertiesPanel {
 
     // Geometry Ops widgets
     pub(crate) offset_entry: Entry,
-    pub(crate) fillet_entry: Entry,
     pub(crate) chamfer_entry: Entry,
 
     // Unit Labels
     pub(crate) x_unit_label: Label,
     pub(crate) y_unit_label: Label,
+    pub(crate) z_unit_label: Label,
     pub(crate) width_unit_label: Label,
     pub(crate) height_unit_label: Label,
     pub(crate) radius_unit_label: Label,
     pub(crate) font_size_unit_label: Label,
-    pub(crate) depth_unit_label: Label,
     pub(crate) step_down_unit_label: Label,
+    step_in_label: Label,
     pub(crate) step_in_unit_label: Label,
     pub(crate) offset_unit_label: Label,
-    pub(crate) fillet_unit_label: Label,
     pub(crate) chamfer_unit_label: Label,
     // Redraw callback
     pub(crate) redraw_callback: SharedOption<Rc<dyn Fn()>>,
@@ -138,6 +150,12 @@ pub struct PropertiesPanel {
     pub(crate) image_invert_check: CheckButton,
     pub(crate) image_dithering_combo: ComboBoxText,
     pub(crate) image_halftone_threshold_entry: Entry,
+    // Laser override widgets
+    pub(crate) laser_override_frame: Frame,
+    pub(crate) laser_use_global_check: CheckButton,
+    pub(crate) laser_feed_rate_entry: Entry,
+    pub(crate) laser_power_entry: Entry,
+    pub(crate) laser_passes_entry: Entry,
 }
 
 impl PropertiesPanel {
@@ -178,7 +196,7 @@ impl PropertiesPanel {
         content.append(&rotation_warning_label);
 
         // Build all UI sections
-        let (pos_frame, pos_x_entry, pos_y_entry, x_unit_label, y_unit_label) =
+        let (pos_frame, pos_x_entry, pos_y_entry, pos_z_entry, x_unit_label, y_unit_label, z_unit_label) =
             Self::build_position_section();
         content.append(&pos_frame);
 
@@ -213,6 +231,9 @@ impl PropertiesPanel {
         let (polygon_frame, sides_entry) = Self::build_polygon_section();
         content.append(&polygon_frame);
 
+        let (path_frame, path_closed_check) = Self::build_path_section();
+        content.append(&path_frame);
+
         let (gear_frame, gear_module_entry, gear_teeth_entry, gear_pressure_angle_entry) =
             Self::build_gear_section();
         content.append(&gear_frame);
@@ -226,28 +247,35 @@ impl PropertiesPanel {
         content.append(&sprocket_frame);
 
         let (
+            timing_pulley_frame,
+            timing_pulley_pitch_entry,
+            timing_pulley_teeth_entry,
+            timing_pulley_belt_width_entry,
+            timing_pulley_hole_radius_entry,
+        ) = Self::build_timing_pulley_section();
+        content.append(&timing_pulley_frame);
+
+        let (
             ops_frame,
             offset_entry,
-            fillet_entry,
             chamfer_entry,
             offset_unit_label,
-            fillet_unit_label,
             chamfer_unit_label,
         ) = Self::build_geometry_ops_section();
         content.append(&ops_frame);
 
         let (
             cam_frame,
+            cam_use_global_check,
             op_type_combo,
-            depth_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
-            depth_unit_label,
             step_down_unit_label,
             step_in_unit_label,
+            step_in_label,
         ) = Self::build_cam_section();
         content.append(&cam_frame);
 
@@ -275,6 +303,15 @@ impl PropertiesPanel {
 
         scrolled.set_child(Some(&content));
 
+        let (
+            laser_override_frame,
+            laser_use_global_check,
+            laser_feed_rate_entry,
+            laser_power_entry,
+            laser_passes_entry,
+        ) = Self::build_laser_override_section();
+        content.append(&laser_override_frame);
+
         let panel = Rc::new(Self {
             widget: scrolled,
             state: state.clone(),
@@ -289,11 +326,13 @@ impl PropertiesPanel {
             polygon_frame,
             gear_frame,
             sprocket_frame,
+            timing_pulley_frame,
             cam_frame,
             ops_frame,
             empty_label,
             pos_x_entry,
             pos_y_entry,
+            pos_z_entry,
             width_entry,
             height_entry,
             rotation_entry,
@@ -305,21 +344,26 @@ impl PropertiesPanel {
             font_italic_check,
             font_size_entry,
             sides_entry,
+            path_frame,
+            path_closed_check,
             gear_module_entry,
             gear_teeth_entry,
             gear_pressure_angle_entry,
             sprocket_pitch_entry,
             sprocket_teeth_entry,
             sprocket_roller_diameter_entry,
+            timing_pulley_pitch_entry,
+            timing_pulley_teeth_entry,
+            timing_pulley_belt_width_entry,
+            timing_pulley_hole_radius_entry,
+            cam_use_global_check,
             op_type_combo,
-            depth_entry,
             step_down_entry,
             step_in_entry,
             ramp_angle_entry,
             strategy_combo,
             raster_fill_entry,
             offset_entry,
-            fillet_entry,
             chamfer_entry,
 
             image_engraving_frame,
@@ -334,18 +378,24 @@ impl PropertiesPanel {
             image_dithering_combo,
             image_halftone_threshold_entry,
 
+            laser_override_frame,
+            laser_use_global_check,
+            laser_feed_rate_entry,
+            laser_power_entry,
+            laser_passes_entry,
+
             header,
             x_unit_label,
             y_unit_label,
+            z_unit_label,
             width_unit_label,
             height_unit_label,
             radius_unit_label,
             font_size_unit_label,
-            depth_unit_label,
             step_down_unit_label,
+            step_in_label,
             step_in_unit_label,
             offset_unit_label,
-            fillet_unit_label,
             chamfer_unit_label,
             lock_aspect_ratio,
             rotation_warning_label,
@@ -390,6 +440,14 @@ impl PropertiesPanel {
             &self.pos_x_entry,
             &self.width_entry,
             &self.height_entry,
+            self.state.clone(),
+            self.settings.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::dimensions::setup_position_z_handler(
+            &self.pos_z_entry,
             self.state.clone(),
             self.settings.clone(),
             self.redraw_callback.clone(),
@@ -486,6 +544,12 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
+        handlers::geometry::setup_path_closed_handler(
+            &self.path_closed_check,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
 
         // Text handlers
         handlers::text::setup_text_content_handler(
@@ -530,17 +594,15 @@ impl PropertiesPanel {
         );
 
         // CAM handlers
-        handlers::cam::setup_operation_type_handler(
-            &self.op_type_combo,
+        handlers::cam::setup_cam_use_global_handler(
+            &self.cam_use_global_check,
             self.state.clone(),
             self.updating.clone(),
         );
 
-        handlers::cam::setup_depth_handler(
-            &self.depth_entry,
+        handlers::cam::setup_operation_type_handler(
             &self.op_type_combo,
             self.state.clone(),
-            self.settings.clone(),
             self.updating.clone(),
         );
 
@@ -600,6 +662,7 @@ impl PropertiesPanel {
 
         handlers::gear_sprocket::setup_sprocket_pitch_handler(
             &self.sprocket_pitch_entry,
+            &self.sprocket_roller_diameter_entry,
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
@@ -619,18 +682,37 @@ impl PropertiesPanel {
             self.updating.clone(),
         );
 
+        handlers::gear_sprocket::setup_timing_pulley_pitch_handler(
+            &self.timing_pulley_pitch_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::gear_sprocket::setup_timing_pulley_teeth_handler(
+            &self.timing_pulley_teeth_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::gear_sprocket::setup_timing_pulley_belt_width_handler(
+            &self.timing_pulley_belt_width_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
+        handlers::gear_sprocket::setup_timing_pulley_hole_radius_handler(
+            &self.timing_pulley_hole_radius_entry,
+            self.state.clone(),
+            self.redraw_callback.clone(),
+            self.updating.clone(),
+        );
+
         // Effects handlers
         handlers::effects::setup_offset_handler(
             &self.offset_entry,
-            self.state.clone(),
-            self.preview_shapes.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-            self.has_focus.clone(),
-        );
-
-        handlers::effects::setup_fillet_handler(
-            &self.fillet_entry,
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
@@ -717,5 +799,8 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
+
+        // Laser override handlers
+        handlers::laser_override::setup_laser_override_handlers(self);
     }
 }

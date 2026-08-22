@@ -30,9 +30,9 @@ impl Default for Camera {
             fov: 45.0,
             aspect_ratio: 1.0,
             near: 0.1,
-            far: 1000.0,
+            far: 10000.0,
             min_distance: 1.0,
-            max_distance: 1000.0,
+            max_distance: 10000.0,
         }
     }
 }
@@ -144,12 +144,43 @@ impl Camera {
     }
 
     pub fn get_projection_matrix(&self) -> Mat4 {
-        Mat4::perspective_rh(
-            self.fov.to_radians(),
-            self.aspect_ratio,
-            self.near,
-            self.far,
-        )
+        let pitch_deg = self.pitch.to_degrees();
+        let yaw_deg = self.yaw.to_degrees();
+        let yaw_norm = ((yaw_deg % 360.0) + 360.0) % 360.0;
+
+        // ★ DETECTAR TODAS LAS VISTAS ORTOGONALES ★
+        // Esto determina qué proyección usar, NO el snap
+        let is_top = (pitch_deg - 90.0).abs() < 5.0;
+        let is_bottom = (pitch_deg + 90.0).abs() < 5.0;
+        let is_front = pitch_deg.abs() < 5.0 && (yaw_norm - 270.0).abs() < 5.0;
+        let is_back = pitch_deg.abs() < 5.0 && (yaw_norm - 90.0).abs() < 5.0;
+        let is_right = pitch_deg.abs() < 5.0 && (yaw_norm - 0.0).abs() < 5.0;
+        let is_left = pitch_deg.abs() < 5.0 && (yaw_norm - 180.0).abs() < 5.0;
+        let is_iso = (pitch_deg - 35.264).abs() < 5.0;
+
+        let is_orthogonal = is_top || is_bottom || is_front || is_back || is_right || is_left || is_iso;
+
+        if is_orthogonal {
+            // PROYECCIÓN ORTOGRÁFICA
+            let half_height = self.distance * (self.fov.to_radians() / 2.0).tan();
+            let half_width = half_height * self.aspect_ratio;
+            Mat4::orthographic_rh(
+                -half_width,
+                half_width,
+                -half_height,
+                half_height,
+                self.near,
+                self.far,
+            )
+        } else {
+            // PROYECCIÓN PERSPECTIVA
+            Mat4::perspective_rh(
+                self.fov.to_radians(),
+                self.aspect_ratio,
+                self.near,
+                self.far,
+            )
+        }
     }
 
     pub fn fit_to_bounds(&mut self, min: Vec3, max: Vec3) {

@@ -17,6 +17,8 @@ ignore = [
     { id = "RUSTSEC-2024-0436", reason = "transitive dep, no direct replacement available" },
     # rusttype - unmaintained, used for text rendering in designer
     { id = "RUSTSEC-2021-0140", reason = "no suitable drop-in replacement for text rendering yet" },
+    # core2 - unmaintained/yanked, reemplazado temporalmente por no-std-io2
+    { id = "RUSTSEC-2026-0105", reason = "yanked crate, patched with no-std-io2 replacement in workspace Cargo.toml" },
 ]
 
 # License checking

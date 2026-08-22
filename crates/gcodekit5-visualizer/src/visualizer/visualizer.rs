@@ -1,8 +1,8 @@
-//! 2D G-Code Visualizer
+//! G-Code Visualizer
 //! Parses G-Code toolpaths for canvas-based visualization
 
 use super::toolpath_cache::ToolpathCache;
-use super::viewport::{Bounds, ViewportTransform};
+use super::viewport::{Bounds};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
@@ -30,16 +30,22 @@ const _GRID_MINOR_STEP_MM: f32 = 1.0;
 const _GRID_MAJOR_VISIBILITY_SCALE: f32 = 0.3;
 const _GRID_MINOR_VISIBILITY_SCALE: f32 = 1.5;
 
-/// Colors according to power
+/// Colors according to power.
+///
+/// Uses detected min/max S range and quantizes the gray ramp to a fixed
+/// number of levels to keep rendering stable for dense raster engravings.
+
 fn intensity_to_color(intensity: f32, max_intensity: f32) -> (f32, f32, f32) {
     if max_intensity <= 0.0 {
         return (0.5, 0.5, 0.5);
     }
-
     // Normalize intensity but inverted: 0 = white, 1 = black
-    let gray = 1.0 - (intensity / max_intensity).clamp(0.0, 1.0);
-
-    (gray, gray, gray)
+    let engraving_color = 1.0 - (intensity / max_intensity).clamp(0.0, 0.5);
+    (
+        engraving_color / 2.0,
+        engraving_color,
+        engraving_color / 2.0,
+    )
 }
 
 /// New Gcode
@@ -191,7 +197,6 @@ pub struct Visualizer {
     /// Scale factor: pixels per mm (default 1.0 = 1px:1mm)
     pub scale_factor: f32,
     toolpath_cache: ToolpathCache,
-    viewport: ViewportTransform,
     /// Dirty flag — set when vertex data needs regeneration
     dirty: bool,
 
@@ -207,6 +212,7 @@ pub struct Visualizer {
 
 impl Visualizer {
     /// Create new visualizer
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel();
 
@@ -225,7 +231,6 @@ impl Visualizer {
             show_grid: true,
             scale_factor: DEFAULT_SCALE_FACTOR,
             toolpath_cache: ToolpathCache::new(),
-            viewport: ViewportTransform::new(CANVAS_PADDING),
             dirty: true,
 
             toolpath_receiver: Arc::new(receiver),
@@ -249,23 +254,6 @@ impl Visualizer {
         self.dirty = false;
     }
 
-    /// Calculate and set offsets to position origin (0,0) at bottom-left of canvas
-    pub fn set_default_view(&mut self, _canvas_width: f32, canvas_height: f32) {
-        let (x_offset, y_offset) = self.viewport.offsets_to_place_world_point(
-            self.min_x,
-            self.min_y,
-            self.zoom_scale,
-            self.scale_factor,
-            canvas_height,
-            0.0,
-            0.0,
-            5.0,
-            canvas_height - 5.0,
-        );
-        self.x_offset = x_offset;
-        self.y_offset = y_offset;
-    }
-
     /// Toggle grid visibility
     pub fn toggle_grid(&mut self) {
         self.show_grid = !self.show_grid;
@@ -284,20 +272,6 @@ impl Visualizer {
     /// Get scale factor
     pub fn get_scale_factor(&self) -> f32 {
         self.scale_factor
-    }
-
-    /// Calculate viewbox for the current view state
-    pub fn get_viewbox(&self, width: f32, height: f32) -> (f32, f32, f32, f32) {
-        self.viewport.viewbox(
-            self.min_x,
-            self.min_y,
-            self.zoom_scale,
-            self.scale_factor,
-            self.x_offset,
-            self.y_offset,
-            width,
-            height,
-        )
     }
 
     /// Extract multiple parameters from G-Code line
@@ -592,24 +566,34 @@ impl Visualizer {
         );
     }
 
-    /// Private auxiliary methods
-    /// Extract all parameters from a G-code line
-    fn extract_all_params(line: &str) -> ExtractedParams {
-        let mut params = ExtractedParams::new();
+/// Extraer todos los parámetros de una línea de G-code sin usar regex
+fn extract_all_params(line: &str) -> ExtractedParams {
+    let mut params = ExtractedParams::new();
+    let chars: Vec<char> = line.chars().collect();
+    let mut i = 0;
 
-        for part in line.split_whitespace() {
-            if part.len() < 2 {
-                continue;
+    while i < chars.len() {
+        let c = chars[i];
+        // Buscar parámetros: X, Y, Z, I, J, S, F
+        if c == 'X' || c == 'Y' || c == 'Z' || c == 'I' || c == 'J' || c == 'S' || c == 'F' {
+            i += 1;
+            let mut num_str = String::new();
+
+            // Leer el número (incluyendo signo negativo y decimal)
+            while i < chars.len() {
+                let ch = chars[i];
+                if ch.is_ascii_digit() || ch == '.' || ch == '-' {
+                    if ch == '.' {
+                    }
+                    num_str.push(ch);
+                    i += 1;
+                } else {
+                    break;
+                }
             }
 
-            let first_char = match part.chars().next() {
-                Some(c) => c,
-                None => continue,
-            };
-
-            let value_str = &part[1..];
-            if let Ok(value) = value_str.parse::<f32>() {
-                match first_char {
+            if let Ok(value) = num_str.parse::<f32>() {
+                match c {
                     'X' => params.x = Some(value),
                     'Y' => params.y = Some(value),
                     'Z' => params.z = Some(value),
@@ -620,56 +604,46 @@ impl Visualizer {
                     _ => {}
                 }
             }
+        } else {
+            i += 1;
         }
-
-        params
     }
 
-    /// Extract the command number G from a line
-    fn extract_gcode_num(line: &str) -> Option<u32> {
-        if !line.starts_with('G') {
+    params
+}
+
+/// Extraer el número del comando G sin usar regex
+fn extract_gcode_num(line: &str) -> Option<u32> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] == 'G' {
+            i += 1;
+            let mut num_str = String::new();
+
+            // Leer los dígitos después de G
+            while i < chars.len() && chars[i].is_ascii_digit() {
+                num_str.push(chars[i]);
+                i += 1;
+            }
+
+            if !num_str.is_empty() {
+                if let Ok(num) = num_str.parse::<u32>() {
+                    return Some(num);
+                }
+            }
             return None;
         }
-        let after_g = &line[1..];
-        // Find end of number
-        let end_idx = after_g
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(after_g.len());
-
-        if end_idx == 0 {
-            return None;
-        }
-
-        after_g[..end_idx].parse::<u32>().ok()
+        i += 1;
     }
+
+    None
+}
 
     /// Get bounds information
     pub fn get_bounds(&self) -> (f32, f32, f32, f32) {
         (self.min_x, self.max_x, self.min_y, self.max_y)
-    }
-
-    pub fn toolpath_svg(&self) -> &str {
-        self.toolpath_cache.toolpath_svg()
-    }
-
-    pub fn rapid_svg(&self) -> &str {
-        self.toolpath_cache.rapid_svg()
-    }
-
-    pub fn g1_svg(&self) -> &str {
-        self.toolpath_cache.g1_svg()
-    }
-
-    pub fn g2_svg(&self) -> &str {
-        self.toolpath_cache.g2_svg()
-    }
-
-    pub fn g3_svg(&self) -> &str {
-        self.toolpath_cache.g3_svg()
-    }
-
-    pub fn g4_svg(&self) -> &str {
-        self.toolpath_cache.g4_svg()
     }
 
     pub fn commands(&self) -> &[GCodeCommand] {
@@ -856,7 +830,7 @@ impl Visualizer {
         self.toolpath_sender.clone()
     }
 
-    /// Obtain the color for a given intensity.
+     /// Obtain the color for a given intensity.
     pub fn get_color_for_intensity(&self, intensity: f32) -> (f32, f32, f32) {
         if !self.use_intensity_colors {
             return (1.0, 1.0, 0.0);
@@ -867,7 +841,7 @@ impl Visualizer {
         }
 
         intensity_to_color(intensity, self.max_intensity)
-    }
+    }   
 
     /// Activate/deactivate colors by intensity
     pub fn toggle_intensity_colors(&mut self) {
