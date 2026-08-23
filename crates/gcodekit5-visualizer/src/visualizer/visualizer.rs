@@ -6,12 +6,10 @@ use super::viewport::{Bounds};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{mpsc, Arc};
 use tracing::{debug, trace};
 
-const CANVAS_PADDING: f32 = core_constants::CANVAS_PADDING_PX as f32;
 const _CANVAS_PADDING_2X: f32 = 40.0;
 const MIN_ZOOM: f32 = 0.1;
 const MAX_ZOOM: f32 = 50.0;
@@ -126,7 +124,7 @@ pub enum GCodeCommand {
         duration: f32,
     },
 }
-
+/*
 /// Coordinate transformation helper
 #[allow(dead_code)]
 struct CoordTransform {
@@ -174,7 +172,7 @@ impl CoordTransform {
         self.world_to_screen(point.x, point.y)
     }
 }
-
+*/
 /// Visualizer state
 #[derive(Debug, Clone)]
 pub struct Visualizer {
@@ -273,7 +271,7 @@ impl Visualizer {
     pub fn get_scale_factor(&self) -> f32 {
         self.scale_factor
     }
-
+/*
     /// Extract multiple parameters from G-Code line
     // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
     #[allow(dead_code)]
@@ -296,7 +294,7 @@ impl Visualizer {
 
         params
     }
-
+*/
     /// Get number of commands parsed
     pub fn get_command_count(&self) -> usize {
         self.toolpath_cache.len()
@@ -860,7 +858,7 @@ impl Default for Visualizer {
         Self::new()
     }
 }
-
+/*
 /// Safely convert a float to i32, clamping to valid range
 #[allow(dead_code)]
 fn safe_to_i32(value: f32) -> i32 {
@@ -869,3 +867,4 @@ fn safe_to_i32(value: f32) -> i32 {
     }
     value.clamp(i32::MIN as f32 + 1.0, i32::MAX as f32 - 1.0) as i32
 }
+*/
