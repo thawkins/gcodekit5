@@ -185,6 +185,13 @@ The object positioning issue when opening "gckd" files.
 <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d1.png" alt="Renderer" width="800">
 
   - For safe toolpath in CNC machining, a "Safety Z Height" parameter has been added from the start of machining to prevent collisions with the workpiece. This height is added to the Stock Material thickness. For example, if we define a material thickness of 10mm and a safety height of 5mm, the tool will begin machining at a height of 15mm and then descend to the first configured machining height, continuing to descend step by step according to the Step Down setting.
+  - To machine chain sprockets and gears, create the element in the Designer, specifying the pitch, number of teeth, etc. Then, create an external offset with the dimension of the milling cutter radius so that the machining is done correctly.
+
+  <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d5.png" alt="Renderer" width="800">
+
+  <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d4.png" alt="Renderer" width="300">
+
+  <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d3.png" alt="Renderer" width="500">
 
 ### 👁️ 3D Visualizer
 - **Real-time 3D Rendering**: Instant visualization of G-code toolpaths for CNC machining. Rendered representation of G-code toolpaths, depths according to the configured tool diameter. This preview is only available with CNC machine selection
