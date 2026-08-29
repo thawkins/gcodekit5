@@ -12,7 +12,7 @@ GCodeKit5 is a Rust-based CNC machine controller providing a modern alternative 
 
 <img src="crates/gcodekit5-ui/resources/help_images/designer.png" alt="Designer" width="800">
 
-## New version tested on Linux (Kubuntu 24.04) with improvements to the Designer module
+## New version tested on Linux (Kubuntu 26.04) with improvements to the Designer module
 - Now you can: correctly import DXF and SVG files
 - Import raster images with the ability to create compositions from multiple images and vector objects, whether created or imported; order canvas objects using the Objects panel, which is used for G-code workflow; and configure G-code generation independently for each image, allowing you to change speed, power, inversion, etc., according to the image's characteristics.
 - You can also independently configure the working properties of vector objects, so with multiple objects on the canvas, you can define a global configuration for them or a specific configuration for some. For example, several objects might use one speed and power for engraving, and then a different object could be defined with a different speed and power for cutting.
@@ -423,6 +423,10 @@ Settings files are stored in platform-specific locations:
 - **macOS**: `~/Library/Application Support/gcodekit5/config.json`
 - **Windows**: `%APPDATA%\gcodekit5\config.json`
 
+## Libraries needed to compile in Kubuntu 26.04
+- **Run**: sudo apt update && sudo apt install -y build-essential pkg-config libglib2.0-dev-bin libglib2.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libpango1.0-dev libgtk-4-dev libudev-dev libadwaita-1-dev libgtksourceview-5-dev
+
+
 ## Development
 
 ### Development Container (Podman)
@@ -599,9 +603,9 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 0.41.0-alpha.1
+**Current Version**: 1.1.0-beta.1
 **Status**: Active Development
-**Stability**: Alpha (breaking changes may occur)
+**Stability**: Beta
 
 ### Recent Updates (1.1.0-beta.1) - Multiple modifications and adjustments
 - The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).
