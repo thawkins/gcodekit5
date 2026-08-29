@@ -424,7 +424,8 @@ Settings files are stored in platform-specific locations:
 - **Windows**: `%APPDATA%\gcodekit5\config.json`
 
 ## Libraries needed to compile in Kubuntu 26.04
-- **Run**: sudo apt update && sudo apt install -y build-essential pkg-config libglib2.0-dev-bin libglib2.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libpango1.0-dev libgtk-4-dev libudev-dev libadwaita-1-dev libgtksourceview-5-dev
+- **Run**:  
+   sudo apt update && sudo apt install -y build-essential pkg-config libglib2.0-dev-bin libglib2.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libpango1.0-dev libgtk-4-dev libudev-dev libadwaita-1-dev libgtksourceview-5-dev
 
 
 ## Development
