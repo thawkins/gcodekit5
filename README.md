@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender for Laser and CNC machine controller writ
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
 [![License: APACHE](https://img.shields.io/badge/license-apache-blue.svg)](LICENSE-APACHE)
-[![Version](https://img.shields.io/badge/Version-0.54.0--alpha.2-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.1.0--beta.1-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -425,7 +425,7 @@ Settings files are stored in platform-specific locations:
 
 ## Libraries needed to compile in Kubuntu 26.04
 - **Run**:  
-   sudo apt update && sudo apt install -y build-essential pkg-config libglib2.0-dev-bin libglib2.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libpango1.0-dev libgtk-4-dev libudev-dev libadwaita-1-dev libgtksourceview-5-dev
+  sudo apt update && sudo apt install -y build-essential pkg-config libglib2.0-dev-bin libglib2.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libpango1.0-dev libgtk-4-dev libudev-dev libadwaita-1-dev libgtksourceview-5-dev
 
 
 ## Development
