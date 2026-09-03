@@ -1,3 +1,12 @@
+## [Unreleased] - 2026-09-03
+
+### Fixed
+- **Laser stalls and stops on long image engravings**: The Machine Control status poller (50ms) and the DirectSender streaming thread were both reading the same serial port independently. Under load, the poller could "steal" the GRBL "ok" acknowledgments meant for the streaming job, desyncing its internal flow-control window. On short jobs this caused occasional stuttering; on long jobs it could eventually make the sender stop feeding new G-code entirely, starving the machine's buffer and bringing the laser to a complete stop.
+  - `DirectSender` is now the sole reader/writer of the serial port while an image engraving job is running; the status poller yields the port for the duration of the job instead of competing for it.
+  - Removed a 30-second "watchdog" recovery mechanism that, on inspection, was placed after the exact loop it was meant to rescue and could never actually trigger during a real stall — no longer needed now that the root cause is fixed.
+  - Verified stable on real hardware with engravings of 216,604 and 158,923 G-code lines, completed with no stutter and no stops.
+  - Trade-off: while an image engraving job is streaming, the live DRO/position and buffer-state readouts in Machine Control no longer update (the progress bar still does, via the engraving job itself), keeping the serial port free of contention for maximum reliability and speed.
+
 ## [1.1.0-beta.1] - 2026-08-03
 
 - The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).

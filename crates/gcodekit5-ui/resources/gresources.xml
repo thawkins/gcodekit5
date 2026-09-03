@@ -13,6 +13,10 @@
     <file compressed="true" alias="poligon.svg">icons/poligon.svg</file>
     <file compressed="true" alias="gear.svg">icons/gear.svg</file>
     <file compressed="true" alias="sprocket.svg">icons/sprocket.svg</file>
+    <file compressed="true" alias="sprocket1.svg">icons/sprocket1.svg</file>
+    <file compressed="true" alias="timingpulley.svg">icons/timingpulley.svg</file>
+    <file compressed="true" alias="Lsupport.svg">icons/Lsupport.svg</file>
+    <file compressed="true" alias="Usupport.svg">icons/Usupport.svg</file>
   </gresource>
   <gresource prefix="/com/gcodekit5/images">
     <file compressed="true" alias="gcodekit5.png">images/gcodekit5.png</file>

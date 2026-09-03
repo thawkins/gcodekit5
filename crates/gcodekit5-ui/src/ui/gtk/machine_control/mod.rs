@@ -2080,6 +2080,12 @@ impl MachineControlView {
                                     return glib::ControlFlow::Break;
                                 }
 
+                                // Ceder el puerto por completo mientras DirectSender graba una imagen:
+                                // evita robar los "ok" que su ventana de flujo necesita contar.
+                                if *is_streaming_poll.lock() {
+                                    return glib::ControlFlow::Continue;
+                                }
+
                                 // Try to read data (non-blocking, quick)
                                 if let Some(mut comm) = communicator_poll.try_lock() {
                                     if let Ok(response_bytes) = comm.receive() {
