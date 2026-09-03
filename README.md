@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender for Laser and CNC machine controller writ
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
 [![License: APACHE](https://img.shields.io/badge/license-apache-blue.svg)](LICENSE-APACHE)
-[![Version](https://img.shields.io/badge/Version-0.54.0--alpha.2-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.1.0--beta.1-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -12,7 +12,7 @@ GCodeKit5 is a Rust-based CNC machine controller providing a modern alternative 
 
 <img src="crates/gcodekit5-ui/resources/help_images/designer.png" alt="Designer" width="800">
 
-## New version tested on Linux (Kubuntu 24.04) with improvements to the Designer module
+## New version tested on Linux (Kubuntu 26.04) with improvements to the Designer module
 - Now you can: correctly import DXF and SVG files
 - Import raster images with the ability to create compositions from multiple images and vector objects, whether created or imported; order canvas objects using the Objects panel, which is used for G-code workflow; and configure G-code generation independently for each image, allowing you to change speed, power, inversion, etc., according to the image's characteristics.
 - You can also independently configure the working properties of vector objects, so with multiple objects on the canvas, you can define a global configuration for them or a specific configuration for some. For example, several objects might use one speed and power for engraving, and then a different object could be defined with a different speed and power for cutting.
@@ -185,6 +185,13 @@ The object positioning issue when opening "gckd" files.
 <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d1.png" alt="Renderer" width="800">
 
   - For safe toolpath in CNC machining, a "Safety Z Height" parameter has been added from the start of machining to prevent collisions with the workpiece. This height is added to the Stock Material thickness. For example, if we define a material thickness of 10mm and a safety height of 5mm, the tool will begin machining at a height of 15mm and then descend to the first configured machining height, continuing to descend step by step according to the Step Down setting.
+  - To machine chain sprockets and gears, create the element in the Designer, specifying the pitch, number of teeth, etc. Then, create an external offset with the dimension of the milling cutter radius so that the machining is done correctly.
+
+  <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d5.png" alt="Renderer" width="800">
+
+  <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d4.png" alt="Renderer" width="300">
+
+  <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d3.png" alt="Renderer" width="500">
 
 ### 👁️ 3D Visualizer
 - **Real-time 3D Rendering**: Instant visualization of G-code toolpaths for CNC machining. Rendered representation of G-code toolpaths, depths according to the configured tool diameter. This preview is only available with CNC machine selection
@@ -416,6 +423,14 @@ Settings files are stored in platform-specific locations:
 - **macOS**: `~/Library/Application Support/gcodekit5/config.json`
 - **Windows**: `%APPDATA%\gcodekit5\config.json`
 
+## Libraries needed to compile in Kubuntu 26.04
+- **Run**:  
+  sudo apt update && sudo apt install -y build-essential pkg-config libglib2.0-dev-bin libglib2.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libpango1.0-dev libgtk-4-dev libudev-dev libadwaita-1-dev libgtksourceview-5-dev
+  
+  - To recognize the language packs, install:  
+  sudo apt update && sudo apt install gettext -y
+
+
 ## Development
 
 ### Development Container (Podman)
@@ -592,9 +607,9 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 0.41.0-alpha.1
+**Current Version**: 1.1.0-beta.1
 **Status**: Active Development
-**Stability**: Alpha (breaking changes may occur)
+**Stability**: Beta
 
 ### Recent Updates (1.1.0-beta.1) - Multiple modifications and adjustments
 - The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).

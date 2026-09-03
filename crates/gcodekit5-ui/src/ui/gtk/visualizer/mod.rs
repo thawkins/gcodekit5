@@ -107,7 +107,6 @@ pub struct GcodeVisualizer {
     pub(crate) _show_grid: CheckButton,
     pub(crate) _show_bounds: CheckButton,
     pub(crate) show_laser: CheckButton,
-     #[allow(dead_code)]
     pub(crate) show_stock_removal: CheckButton,
     #[allow(dead_code)]
     pub(crate) stock_material: SharedOption<StockMaterial>,

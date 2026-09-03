@@ -326,57 +326,70 @@ impl DesignerState {
                         )
                     }
                 }
+
                 crate::model::Shape::Circle(circle) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
+                        // Asegurar que pocket_depth sea positivo
+                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
+                            effective_shape_obj.pocket_depth
+                        } else {
+                            // Si no hay pocket_depth definido, usar un valor por defecto
+                            effective_shape_obj.start_depth.abs().max(0.1)
+                        };
                         (
                             self.toolpath_generator.generate_circle_pocket(
                                 circle,
-                                effective_shape_obj.pocket_depth,
+                                pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_circle_contour(circle, effective_shape_obj.step_down as f64),
-                            false,
+                            .generate_circle_contour(circle, effective_shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
 
                 crate::model::Shape::Line(line) => (
                     self.toolpath_generator
-                        .generate_line_contour(line, effective_shape_obj.step_down as f64),
-                    false,
+                    .generate_line_contour(line, effective_shape_obj.step_down as f64),
+                                                    false,
                 ),
 
                 crate::model::Shape::Ellipse(ellipse) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
+                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
+                            effective_shape_obj.pocket_depth
+                        } else {
+                            effective_shape_obj.start_depth.abs().max(0.1)
+                        };
                         (
                             self.toolpath_generator.generate_ellipse_pocket(
                                 ellipse,
-                                effective_shape_obj.pocket_depth,
+                                pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_ellipse_contour(ellipse, effective_shape_obj.step_down as f64),
-                            false,
+                            .generate_ellipse_contour(ellipse, effective_shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
 
                 crate::model::Shape::Path(path_shape) => {
-                    // 1. We clone so as not to alter the original object on the canvas
+                    // 1. Clonar para no alterar el objeto original
                     let mut rotated_path = path_shape.clone();
 
-                    // 2. We apply the rotation if it exists
+                    // 2. Aplicar rotación si existe
                     if rotated_path.rotation.abs() > f64::EPSILON {
                         let (x1, y1, x2, y2) = rotated_path.bounds();
                         let cx = (x1 + x2) / 2.0;
@@ -386,50 +399,55 @@ impl DesignerState {
                             &nalgebra::Vector3::new(-cx, -cy, 0.0),
                         );
                         let rotation_matrix =
-                            nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
+                        nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
                         let translation_back = nalgebra::Matrix4::new_translation(
                             &nalgebra::Vector3::new(cx, cy, 0.0),
                         );
 
                         let full_transform =
-                            translation_back * rotation_matrix * translation_to_origin;
+                        translation_back * rotation_matrix * translation_to_origin;
 
-                        // Passing Matrix4
                         rotated_path.sketch = rotated_path.sketch.transform(&full_transform);
                     }
 
-                    // 3. We generate the G-code with the object already rotated
                     if effective_shape_obj.operation_type == OperationType::Pocket {
+                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
+                            effective_shape_obj.pocket_depth
+                        } else {
+                            effective_shape_obj.start_depth.abs().max(0.1)
+                        };
                         (
                             self.toolpath_generator.generate_path_pocket(
                                 &rotated_path,
-                                effective_shape_obj.pocket_depth,
+                                pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_path_contour(&rotated_path, effective_shape_obj.step_down as f64),
-                            false,
+                            .generate_path_contour(&rotated_path, effective_shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
 
                 crate::model::Shape::Text(text) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket = self
-                            .toolpath_generator
-                            .generate_text_pocket_toolpath(text, effective_shape_obj.step_down as f64);
+
+                        let pocket = self.toolpath_generator
+                        .generate_text_pocket_toolpath(text, effective_shape_obj.step_down as f64);
+
                         let pocket_len: f64 = pocket.iter().map(|tp| tp.total_length()).sum();
 
                         if pocket_len <= 1e-9 {
+
                             (
                                 self.toolpath_generator
-                                    .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
-                                true,
+                                .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
+                             true,
                             )
                         } else {
                             (pocket, false)
@@ -437,70 +455,97 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
-                            false,
+                            .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
+
                 crate::model::Shape::Triangle(triangle) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
+                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
+                            effective_shape_obj.pocket_depth
+                        } else {
+                            effective_shape_obj.start_depth.abs().max(0.1)
+                        };
                         (
                             self.toolpath_generator.generate_triangle_pocket(
                                 triangle,
-                                effective_shape_obj.pocket_depth,
+                                pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_triangle_contour(triangle, effective_shape_obj.step_down as f64),
-                            false,
+                            .generate_triangle_contour(triangle, effective_shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
+
                 crate::model::Shape::Polygon(polygon) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
+                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
+                            effective_shape_obj.pocket_depth
+                        } else {
+                            effective_shape_obj.start_depth.abs().max(0.1)
+                        };
                         (
                             self.toolpath_generator.generate_polygon_pocket(
                                 polygon,
-                                effective_shape_obj.pocket_depth,
+                                pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                            false,
+                         false,
                         )
                     } else {
                         (
                             self.toolpath_generator
-                                .generate_polygon_contour(polygon, effective_shape_obj.step_down as f64),
-                            false,
+                            .generate_polygon_contour(polygon, effective_shape_obj.step_down as f64),
+                         false,
                         )
                     }
                 }
+
 
                 crate::model::Shape::RasterImage(_) => {
                     // Raster images do not directly generate a toolpath.
                     (Vec::new(), false)
                 }
+
                 _ => {
+                    // Fallback genérico para cualquier otra forma
                     let path = effective_shape.render();
-                    let design_path = crate::model::DesignPath::from_lyon_path(&path);
-                    let toolpaths = if effective_shape_obj.operation_type == OperationType::Pocket {
-                        self.toolpath_generator.generate_path_pocket(
-                            &design_path,
-                            effective_shape_obj.pocket_depth,
-                            effective_shape_obj.step_down as f64,
-                            effective_shape_obj.step_in as f64,
+                    let design_path = crate::PathShape::from_lyon_path(&path);
+
+                    if effective_shape_obj.operation_type == OperationType::Pocket {
+                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
+                            effective_shape_obj.pocket_depth
+                        } else {
+                            effective_shape_obj.start_depth.abs().max(0.1)
+                        };
+                        (
+                            self.toolpath_generator.generate_path_pocket(
+                                &design_path,
+                                pocket_depth,
+                                effective_shape_obj.step_down as f64,
+                                effective_shape_obj.step_in as f64,
+                            ),
+                         false,
                         )
                     } else {
-                        self.toolpath_generator
-                            .generate_path_contour(&design_path, effective_shape_obj.step_down as f64)
-                    };
-                    (toolpaths, false)
+                        (
+                            self.toolpath_generator
+                            .generate_path_contour(&design_path, effective_shape_obj.step_down as f64),
+                         false,
+                        )
+                    }
                 }
+
             };
 
             // ============================================================

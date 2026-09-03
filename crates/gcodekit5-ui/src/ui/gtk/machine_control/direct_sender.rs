@@ -10,7 +10,8 @@ use std::time::Duration;
 
 pub struct DirectSender {
     communicator: ThreadSafe<SerialCommunicator>,
-    is_streaming: Arc<AtomicBool>,
+    // Shared with MachineControlView: the status poller checks this to yield the port during a job.
+    is_streaming: ThreadSafe<bool>,
     should_stop: Arc<AtomicBool>,
     progress_tx: mpsc::Sender<String>,
 }
@@ -22,16 +23,14 @@ impl DirectSender {
         _is_paused: ThreadSafe<bool>,  // Mantenemos el parámetro por compatibilidad pero no lo usamos
         _waiting_for_ack: ThreadSafe<bool>,
     ) -> (Self, mpsc::Receiver<String>) {
-        let streaming_flag = Arc::new(AtomicBool::new(*is_streaming.lock()));
         let stop_flag = Arc::new(AtomicBool::new(false));
-
-        *is_streaming.lock() = streaming_flag.load(Ordering::SeqCst);
+        *is_streaming.lock() = false;
 
         let (tx, rx) = mpsc::channel();
         (
             Self {
                 communicator,
-                is_streaming: streaming_flag,
+                is_streaming,
                 should_stop: stop_flag,
                 progress_tx: tx,
             },
@@ -44,7 +43,7 @@ impl DirectSender {
     }
 
     pub fn send_gcode(&self, content: &str) {
-        if self.is_streaming.load(Ordering::SeqCst) {
+        if *self.is_streaming.lock() {
             return;
         }
 
@@ -66,7 +65,7 @@ impl DirectSender {
             t!("lines")
         ));
 
-        self.is_streaming.store(true, Ordering::SeqCst);
+        *self.is_streaming.lock() = true;
         self.should_stop.store(false, Ordering::SeqCst);
 
         let comm = self.communicator.clone();
@@ -81,9 +80,6 @@ impl DirectSender {
             let total = lines.len();
             let mut last_percent: u32 = 0;
 
-            let mut last_activity = std::time::Instant::now();
-            let mut stalled = false;
-
             while i < total && !stop_flag.load(Ordering::SeqCst) {
                 // Enviar hasta llenar la ventana
                 {
@@ -93,8 +89,6 @@ impl DirectSender {
                             if c.send(cmd.as_bytes()).is_ok() {
                                 lines_in_flight += 1;
                                 i += 1;
-                                last_activity = std::time::Instant::now();
-                                stalled = false;
                             } else {
                                 break;
                             }
@@ -114,10 +108,6 @@ impl DirectSender {
                                 let resp = String::from_utf8_lossy(&data);
                                 let ok_count = resp.matches("ok").count();
                                 lines_in_flight = lines_in_flight.saturating_sub(ok_count);
-                                if ok_count > 0 {
-                                    last_activity = std::time::Instant::now();
-                                    stalled = false;
-                                }
                                 if resp.contains("Grbl") || resp.contains("ALARM") {
                                     stop_flag.store(true, Ordering::SeqCst);
                                     break;
@@ -142,10 +132,6 @@ impl DirectSender {
                             let resp = String::from_utf8_lossy(&data);
                             let ok_count = resp.matches("ok").count();
                             lines_in_flight = lines_in_flight.saturating_sub(ok_count);
-                            if ok_count > 0 {
-                                last_activity = std::time::Instant::now();
-                                stalled = false;
-                            }
 
                             if resp.contains("Grbl") || resp.contains("ALARM") {
                                 stop_flag.store(true, Ordering::SeqCst);
@@ -157,13 +143,6 @@ impl DirectSender {
                     thread::sleep(Duration::from_millis(1));
                 }
 
-                // WATCHDOG: Si pasa 30 segundos sin actividad, asumir que se completó
-                if last_activity.elapsed() > Duration::from_secs(30) && !stalled {
-                    let _ = progress_tx.send("> No activity for 30s, continuing...".to_string());
-                    stalled = true;
-                    lines_in_flight = 0;
-                }
-
                 thread::yield_now();
 
                 let percent = ((i as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u32;
@@ -173,7 +152,7 @@ impl DirectSender {
                 }
             }
 
-            streaming_flag.store(false, Ordering::SeqCst);
+            *streaming_flag.lock() = false;
             let _ = progress_tx.send("Job Completed".to_string());
         });
     }

@@ -21,3 +21,6 @@ mutants-output.txt
 
 # Índices locales de las herramientas de IA de Tim Hawkins
 .ragent/
+
+# Temporary files
+tmp/

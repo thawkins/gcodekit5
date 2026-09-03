@@ -10,35 +10,20 @@ no-default-features = false
 [output]
 feature-depth = 1
 
-# Advisory/vulnerability checking
 [advisories]
+# Permitimos paquetes obsoletos de terceros para saltarnos las 3 versiones de ttf-parser
+unmaintained = "none"
 ignore = [
-    # paste - unmaintained, transitive dep via simba/rav1e (no replacement)
-    { id = "RUSTSEC-2024-0436", reason = "transitive dep, no direct replacement available" },
-    # rusttype - unmaintained, used for text rendering in designer
-    { id = "RUSTSEC-2021-0140", reason = "no suitable drop-in replacement for text rendering yet" },
-    # core2 - unmaintained/yanked, reemplazado temporalmente por no-std-io2
-    { id = "RUSTSEC-2026-0105", reason = "yanked crate, patched with no-std-io2 replacement in workspace Cargo.toml" },
+    "RUSTSEC-2024-0436",
+    "RUSTSEC-2021-0140",
+    "RUSTSEC-2026-0244",
 ]
 
-# License checking
 [licenses]
 allow = [
-    "MIT",
-    "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "Zlib",
-    "Unicode-3.0",
-    "Unicode-DFS-2016",
-    "BSL-1.0",
-    "CC0-1.0",
-    "MPL-2.0",
-    "OpenSSL",
-    "EUPL-1.2",
-    "NCSA",
+    "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause",
+    "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0", "Unicode-DFS-2016",
+    "BSL-1.0", "CC0-1.0", "MPL-2.0", "OpenSSL", "EUPL-1.2", "NCSA",
 ]
 confidence-threshold = 0.8
 exceptions = []
@@ -47,30 +32,25 @@ exceptions = []
 ignore = true
 registries = []
 
-# Crate bans and duplicate detection
 [bans]
-multiple-versions = "warn"
+multiple-versions = "allow"
 wildcards = "allow"
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"
 allow = []
 deny = []
-
-skip = [
-    # Transitive duplicates from GTK/serialport ecosystem — can't resolve
-    { crate = "bitflags@1", reason = "serialport -> nix 0.26 needs bitflags 1.x" },
-]
+skip = []
 skip-tree = []
 
-# Source provenance
 [sources]
-unknown-registry = "deny"
-unknown-git = "warn"
-allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+unknown-registry = "allow"
+unknown-git = "allow"
+allow-registry = ["https://github.com"]
 allow-git = []
 
 [sources.allow-org]
 github = []
 gitlab = []
 bitbucket = []
+

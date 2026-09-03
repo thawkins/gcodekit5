@@ -582,7 +582,7 @@ impl StockSimulator3D {
         *accumulated_distance += segment_distance;
         true
     }
-
+/*
     // Métodos legacy para compatibilidad
     #[allow(dead_code)]
     fn remove_linear(&mut self, start: Vec3, end: Vec3) {
@@ -688,7 +688,7 @@ impl StockSimulator3D {
         }
         true
     }
-
+*/
     pub fn get_mesh(&self) -> Vec<f32> {
         generate_surface_mesh(&self.grid)
     }
