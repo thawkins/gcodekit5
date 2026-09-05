@@ -11,6 +11,12 @@ use crate::{Circle, DrawingMode, Ellipse, Line, Point, Rectangle};
 impl DesignerState {
 
     fn apply_mode_defaults_to_new_object(&self, obj: &mut DrawingObject) {
+        // Factory defaults from DrawingObject::new(), used below to detect
+        // fields the caller hasn't customized yet (they are non-zero so the
+        // usual "still at 0.0" check never applies to them).
+        const FACTORY_STEP_DOWN: f32 = 1.0;
+        const FACTORY_STEP_IN: f32 = 0.5;
+        const FACTORY_RASTER_FILL_RATIO: f64 = 0.5;
 
         let default_props = &self.default_properties_shape;
 
@@ -18,11 +24,19 @@ impl DesignerState {
             obj.start_depth = default_props.start_depth;
         }
 
-        if obj.step_down.abs() < f32::EPSILON && default_props.step_down.abs() > f32::EPSILON {
+        if obj.pocket_depth.abs() < f64::EPSILON && default_props.pocket_depth.abs() > f64::EPSILON {
+            obj.pocket_depth = default_props.pocket_depth;
+        }
+
+        if (obj.step_down - FACTORY_STEP_DOWN).abs() < f32::EPSILON
+            && (default_props.step_down - FACTORY_STEP_DOWN).abs() > f32::EPSILON
+        {
             obj.step_down = default_props.step_down;
         }
 
-        if obj.step_in.abs() < f32::EPSILON && default_props.step_in.abs() > f32::EPSILON {
+        if (obj.step_in - FACTORY_STEP_IN).abs() < f32::EPSILON
+            && (default_props.step_in - FACTORY_STEP_IN).abs() > f32::EPSILON
+        {
             obj.step_in = default_props.step_in;
         }
 
@@ -34,7 +48,9 @@ impl DesignerState {
             obj.pocket_strategy = default_props.pocket_strategy.clone();
         }
 
-        if obj.raster_fill_ratio.abs() < f64::EPSILON && default_props.raster_fill_ratio.abs() > f64::EPSILON {
+        if (obj.raster_fill_ratio - FACTORY_RASTER_FILL_RATIO).abs() < f64::EPSILON
+            && (default_props.raster_fill_ratio - FACTORY_RASTER_FILL_RATIO).abs() > f64::EPSILON
+        {
             obj.raster_fill_ratio = default_props.raster_fill_ratio;
         }
 

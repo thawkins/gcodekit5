@@ -784,19 +784,7 @@ impl DesignerToolbox {
                   tooltip: String,
                   units_kind: UnitsKind|
                   -> Entry {
-                let machine_mode = state.borrow().machine_mode();
-                let display_label = match (label_text.as_str(), machine_mode) {
-                    ("Feed", MachineMode::Laser2D) => t!("Laser Speed"),
-                    ("Feed", MachineMode::Cnc3D) => t!("Feed Rate"),
-                    ("Speed", MachineMode::Laser2D) => t!("Laser Power"),
-                    ("Speed", MachineMode::Cnc3D) => t!("Spindle Speed"),
-                    ("Step Down", MachineMode::Laser2D) => t!("Passes"),
-                    ("Step Down", MachineMode::Cnc3D) => t!("Step Down"),
-                    ("Tool Dia", MachineMode::Laser2D) => t!("Laser Width"),
-                    ("Tool Dia", MachineMode::Cnc3D) => t!("Tool Dia"),
-                    _ => label_text.clone(),
-                };
-                let label = Label::new(Some(&format!("{}:", display_label)));
+                let label = Label::new(Some(""));
                 label.set_halign(Align::Start);
 
                 let entry = Entry::builder().tooltip_text(&tooltip).build();
@@ -819,9 +807,26 @@ impl DesignerToolbox {
                     let units_label = units_label.clone();
                     let getter = getter.clone();
                     let current_units = current_units.clone();
-                    let machine_mode = state.borrow().machine_mode();
+                    let state = state.clone();
+                    let label = label.clone();
 
                     Rc::new(move || {
+                        let machine_mode = state.borrow().machine_mode();
+
+                        // Update the displayed label depending on current machine mode
+                        let display_label = match (label_text.as_str(), machine_mode) {
+                            ("Feed", MachineMode::Laser2D) => t!("Laser Speed"),
+                            ("Feed", MachineMode::Cnc3D) => t!("Feed Rate"),
+                            ("Speed", MachineMode::Laser2D) => t!("Laser Power"),
+                            ("Speed", MachineMode::Cnc3D) => t!("Spindle Speed"),
+                            ("Step Down", MachineMode::Laser2D) => t!("Passes"),
+                            ("Step Down", MachineMode::Cnc3D) => t!("Step Down"),
+                            ("Tool Dia", MachineMode::Laser2D) => t!("Laser Width"),
+                            ("Tool Dia", MachineMode::Cnc3D) => t!("Tool Dia"),
+                            _ => label_text.clone(),
+                        };
+                        label.set_text(&format!("{}:", display_label));
+
                         let val_mm = getter();
                         let units = *current_units.lock();
 
@@ -906,7 +911,7 @@ impl DesignerToolbox {
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f64| state_setter.borrow_mut().set_feed_rate(val));
             create_setting(
-                t!("Feed"),
+                "Feed".to_string(),
                 getter,
                 setter,
                 t!("Feed Rate"),
@@ -922,7 +927,7 @@ impl DesignerToolbox {
             let setter =
                 Rc::new(move |val: f64| state_setter.borrow_mut().set_spindle_speed(val as u32));
             create_setting(
-                t!("Speed"),
+                "Speed".to_string(),
                 getter,
                 setter,
                 t!("Spindle Speed"),
