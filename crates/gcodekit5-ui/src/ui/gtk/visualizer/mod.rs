@@ -932,12 +932,13 @@ impl GcodeVisualizer {
             .build();
         scrollbars_btn.update_property(&[AccessibleProperty::Label(&t!("Toggle Scrollbars"))]);
 
-        // Top View
-        let top_view_btn = Button::builder()
-            .icon_name("view-top-symbolic")
-            .tooltip_text(t!("Top View"))
-            .build();
-        scrollbars_btn.update_property(&[AccessibleProperty::Label(&t!("Top View"))]);
+        // Top View (use embedded GResource image)
+        let top_view_btn = Button::new();
+        let top_view_image = Image::from_resource("/com/gcodekit5/images/top_view.png");
+        top_view_image.set_pixel_size(24);
+        top_view_btn.set_child(Some(&top_view_image));
+        top_view_btn.set_tooltip_text(Some(&t!("Top View")));
+        top_view_btn.update_property(&[AccessibleProperty::Label(&t!("Top View"))]);
 
         // Fit to device area button
         let nav_fit_device_btn = Button::builder()

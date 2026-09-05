@@ -459,6 +459,14 @@ impl DxfParser {
                                 file.add_entity(DxfEntity::Ellipse(ellipse_entity));
                             }
                         }
+                        "SPLINE" => {
+                            i += 1;
+                            if let Ok(spline_entity) = Self::parse_spline(&lines, &mut i) {
+                                if !spline_entity.vertices.is_empty() {
+                                    file.add_entity(DxfEntity::Polyline(spline_entity));
+                                }
+                            }
+                        }
                         _ => i += 1,
                     }
                     continue;
@@ -868,6 +876,175 @@ impl DxfParser {
             layer,
             color,
         })
+    }
+
+    /// Parse a SPLINE entity, approximating the NURBS curve as a polyline.
+    ///
+    /// AutoCAD 2000+ exports (AC1015 and later, e.g. the "2010"/"2018" DXF
+    /// versions) commonly use SPLINE for organic/curved geometry instead of
+    /// flattening it to POLYLINE segments the way older R12 (AC1009) exports
+    /// do. Without this, all spline geometry was silently dropped on import.
+    fn parse_spline(lines: &[&str], index: &mut usize) -> Result<DxfPolyline> {
+        let mut layer = "0".to_string();
+        let mut color = 256u16;
+        let mut flags: i32 = 0;
+        let mut degree: usize = 3;
+        let mut knots: Vec<f64> = Vec::new();
+        let mut weights: Vec<f64> = Vec::new();
+        let mut control_points: Vec<Point> = Vec::new();
+        let mut fit_points: Vec<Point> = Vec::new();
+        let mut pending_ctrl_x: Option<f64> = None;
+        let mut pending_fit_x: Option<f64> = None;
+
+        while *index < lines.len() {
+            let code = lines[*index].trim();
+            *index += 1;
+
+            if *index >= lines.len() {
+                break;
+            }
+
+            let value = lines[*index].trim();
+
+            if code == "0" && !value.is_empty() {
+                *index -= 1;
+                break;
+            }
+
+            match code {
+                "8" => layer = value.to_string(),
+                "62" => color = value.parse().unwrap_or(256),
+                "70" => flags = value.parse().unwrap_or(0),
+                "71" => degree = value.parse::<i64>().unwrap_or(3).max(1) as usize,
+                "40" => knots.push(value.parse().unwrap_or(0.0)),
+                "41" => weights.push(value.parse().unwrap_or(1.0)),
+                "10" => pending_ctrl_x = value.parse().ok(),
+                "20" => {
+                    if let Some(x) = pending_ctrl_x.take() {
+                        control_points.push(Point::new(x, value.parse().unwrap_or(0.0)));
+                    }
+                }
+                "11" => pending_fit_x = value.parse().ok(),
+                "21" => {
+                    if let Some(x) = pending_fit_x.take() {
+                        fit_points.push(Point::new(x, value.parse().unwrap_or(0.0)));
+                    }
+                }
+                _ => {}
+            }
+
+            *index += 1;
+        }
+
+        let closed = flags & 1 != 0;
+        let vertices = Self::sample_spline(&control_points, &knots, &weights, degree)
+            .filter(|v| v.len() >= 2)
+            .unwrap_or(fit_points);
+        let vertex_count = vertices.len();
+
+        Ok(DxfPolyline {
+            vertices,
+            bulges: vec![0.0; vertex_count],
+            closed,
+            layer,
+            color,
+        })
+    }
+
+    /// Sample a (possibly rational) B-spline curve into a polyline approximation.
+    ///
+    /// Returns `None` when the control point / knot vector data is insufficient
+    /// or malformed, so the caller can fall back to fit points instead of
+    /// producing a corrupt/empty curve.
+    fn sample_spline(
+        control_points: &[Point],
+        knots: &[f64],
+        weights: &[f64],
+        degree: usize,
+    ) -> Option<Vec<Point>> {
+        let num_ctrl = control_points.len();
+        if degree == 0 || num_ctrl < degree + 1 || knots.len() < num_ctrl + degree + 1 {
+            return None;
+        }
+
+        let t_min = *knots.get(degree)?;
+        let t_max = *knots.get(num_ctrl)?;
+        if !(t_max > t_min) {
+            return None;
+        }
+
+        // Scale sample density with control point count for smooth curves
+        // without generating excessive geometry for very detailed splines.
+        let samples = (num_ctrl * 8).clamp(32, 400);
+        let mut points = Vec::with_capacity(samples + 1);
+
+        for step in 0..=samples {
+            let t = t_min + (t_max - t_min) * (step as f64 / samples as f64);
+            if let Some(p) = Self::bspline_point(t, degree, control_points, weights, knots) {
+                points.push(p);
+            }
+        }
+
+        Some(points)
+    }
+
+    /// Evaluate a rational B-spline curve at parameter `t` using the rational
+    /// de Boor algorithm (homogeneous coordinates), defaulting weights to 1.0
+    /// for non-rational splines.
+    fn bspline_point(
+        t: f64,
+        degree: usize,
+        control_points: &[Point],
+        weights: &[f64],
+        knots: &[f64],
+    ) -> Option<Point> {
+        let n = control_points.len().checked_sub(1)?;
+        let p = degree;
+
+        // Find the knot span k such that knots[k] <= t < knots[k+1], clamped to [p, n].
+        let mut k = p;
+        for i in p..=n {
+            if *knots.get(i)? <= t {
+                k = i;
+            } else {
+                break;
+            }
+        }
+        k = k.min(n);
+
+        // Homogeneous coordinates (x*w, y*w, w) so rational weights fall out
+        // naturally after the recurrence.
+        let mut d: Vec<(f64, f64, f64)> = Vec::with_capacity(p + 1);
+        for j in 0..=p {
+            let idx = k.checked_sub(p)?.checked_add(j)?;
+            let cp = *control_points.get(idx)?;
+            let w = weights.get(idx).copied().unwrap_or(1.0);
+            d.push((cp.x * w, cp.y * w, w));
+        }
+
+        for r in 1..=p {
+            for j in (r..=p).rev() {
+                let i = k.checked_sub(p)?.checked_add(j)?;
+                let left = *knots.get(i)?;
+                let right = *knots.get(i + p - r + 1)?;
+                let denom = right - left;
+                let alpha = if denom.abs() < 1e-12 {
+                    0.0
+                } else {
+                    (t - left) / denom
+                };
+                d[j].0 = (1.0 - alpha) * d[j - 1].0 + alpha * d[j].0;
+                d[j].1 = (1.0 - alpha) * d[j - 1].1 + alpha * d[j].1;
+                d[j].2 = (1.0 - alpha) * d[j - 1].2 + alpha * d[j].2;
+            }
+        }
+
+        let (x, y, w) = d[p];
+        if w.abs() > 1e-9 {
+            Some(Point::new(x / w, y / w))
+        } else {
+            None
+        }
     }
 
     /// Validate DXF file format
