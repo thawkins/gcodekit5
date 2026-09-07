@@ -117,6 +117,7 @@ pub struct PropertiesPanel {
     // Unit Labels
     pub(crate) x_unit_label: Label,
     pub(crate) y_unit_label: Label,
+    pub(crate) z_label: Label,
     pub(crate) z_unit_label: Label,
     pub(crate) width_unit_label: Label,
     pub(crate) height_unit_label: Label,
@@ -196,8 +197,16 @@ impl PropertiesPanel {
         content.append(&rotation_warning_label);
 
         // Build all UI sections
-        let (pos_frame, pos_x_entry, pos_y_entry, pos_z_entry, x_unit_label, y_unit_label, z_unit_label) =
-            Self::build_position_section();
+        let (
+            pos_frame,
+            pos_x_entry,
+            pos_y_entry,
+            pos_z_entry,
+            x_unit_label,
+            y_unit_label,
+            z_label,
+            z_unit_label,
+        ) = Self::build_position_section();
         content.append(&pos_frame);
 
         let (
@@ -387,6 +396,7 @@ impl PropertiesPanel {
             header,
             x_unit_label,
             y_unit_label,
+            z_label,
             z_unit_label,
             width_unit_label,
             height_unit_label,

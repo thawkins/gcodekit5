@@ -235,13 +235,22 @@ impl FastShapeGallery {
             FastShapeTemplate::new(
                 t!("Slot"),
                 t!("Rectangular slot/cutout"),
-                "rectangle.svg".to_string(),
+                "slot.svg".to_string(),
                 Rc::new(|center| {
-                    Shape::Path(DesignPath::from_lyon_path(&generate_slot(
-                        center, 50.0, // length
-                        20.0, // width
-                        5.0,  // corner radius
-                    )))
+                    use gcodekit5_designer::model::DesignRectangle as Rectangle;
+
+                    let width = 50.0;  // length
+                    let height = 20.0; // width
+
+                    // Calculamos la esquina superior izquierda a partir del centro recibido
+                    let x = center.x - width / 2.0;
+                    let y = center.y - height / 2.0;
+
+                    let mut rect = Rectangle::new(x, y, width, height);
+                    rect.corner_radius = 5.0; // El radio pasa a ser numérico y explícito
+                    rect.is_slot = true;      // Activar el modo Slot nativo del motor
+
+                    Shape::Rectangle(rect)
                 }),
             ),
             FastShapeTemplate::new(

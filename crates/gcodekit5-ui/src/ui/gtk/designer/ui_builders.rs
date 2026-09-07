@@ -2,6 +2,7 @@
 
 use super::*;
 use gcodekit5_core::Shared;
+use gtk4::Image;
 
 impl DesignerView {
     /// Creates the view controls expander for the left sidebar
@@ -343,10 +344,11 @@ impl DesignerView {
             "Fit to Device Working Area"
         ))]);
 
-        let scrollbars_btn = gtk4::Button::builder()
-            .icon_name("view-list-symbolic")
-            .tooltip_text(t!("Toggle Scrollbars"))
-            .build();
+        let scrollbars_btn = gtk4::Button::new();
+        let scrollbars_image = Image::from_resource("/com/gcodekit5/icons/scroll_bars.svg");
+        scrollbars_image.set_pixel_size(24);
+        scrollbars_btn.set_child(Some(&scrollbars_image));
+        scrollbars_btn.set_tooltip_text(Some(&t!("Toggle Scrollbars")));
         scrollbars_btn
             .update_property(&[gtk4::accessible::Property::Label(&t!("Toggle Scrollbars"))]);
 

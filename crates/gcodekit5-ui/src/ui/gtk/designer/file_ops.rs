@@ -324,6 +324,7 @@ impl DesignerView {
         let layers = self.layers.clone();
         let status_label = self.status_label.clone();
         let settings_persistence_clone = self.settings_persistence.clone();
+        let toolbox = self.toolbox.clone();
 
         dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
@@ -405,15 +406,49 @@ impl DesignerView {
                         };
 
                         match result {
-                            Ok(design) => {
+                            Ok(mut design) => {
+                                let unsupported_entities =
+                                    std::mem::take(&mut design.unsupported_entities);
+                                let mut z_metadata = std::mem::take(&mut design.z_metadata);
+                                if z_metadata.len() != design.shapes.len() {
+                                    z_metadata = vec![(0.0, 0.0); design.shapes.len()];
+                                }
+
                                 let mut state = canvas.state.borrow_mut();
 
-                                // Add imported shapes to canvas
-                                for shape in design.shapes {
-                                    state.add_shape_with_undo(shape);
+                                // Add imported shapes to canvas, applying per-shape Z
+                                // depth when the source entity carried elevation/thickness.
+                                let mut imported_with_depth = false;
+                                for (shape, (elevation, thickness)) in
+                                    design.shapes.into_iter().zip(z_metadata)
+                                {
+                                    if elevation.abs() > f64::EPSILON
+                                        || thickness.abs() > f64::EPSILON
+                                    {
+                                        imported_with_depth = true;
+                                        state.add_shape_with_undo_and_depth(
+                                            shape,
+                                            elevation,
+                                            thickness.abs(),
+                                        );
+                                    } else {
+                                        state.add_shape_with_undo(shape);
+                                    }
+                                }
+
+                                // Laser 2D mode ignores per-shape Z, so switch to CNC 3D
+                                // whenever imported geometry actually carries depth.
+                                let switched_to_cnc =
+                                    imported_with_depth && state.machine_mode() != MachineMode::Cnc3D;
+                                if switched_to_cnc {
+                                    state.set_machine_mode(MachineMode::Cnc3D);
                                 }
 
                                 drop(state);
+
+                                if switched_to_cnc {
+                                    toolbox.refresh_settings();
+                                }
 
                                 // Make imported geometry visible immediately
                                 canvas.zoom_fit();
@@ -425,6 +460,35 @@ impl DesignerView {
                                     t!("Imported:"),
                                                                path.display()
                                 ));
+
+                                if switched_to_cnc {
+                                    let parent =
+                                        crate::ui::gtk::file_dialog::parent_window(&canvas.widget);
+                                    crate::ui::gtk::common::dialog::show_warning(
+                                        &t!("3D depth detected"),
+                                        &t!("Object with depth: Switching to CNC 3D mode."),
+                                        parent.as_ref(),
+                                    );
+                                }
+
+                                if !unsupported_entities.is_empty() {
+                                    let details = unsupported_entities
+                                        .iter()
+                                        .map(|(name, count)| format!("{} (x{})", name, count))
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
+                                    let parent =
+                                        crate::ui::gtk::file_dialog::parent_window(&canvas.widget);
+                                    crate::ui::gtk::common::dialog::show_warning(
+                                        &t!("Unsupported 3D solids discarded"),
+                                        &format!(
+                                            "{}\n\n{}",
+                                            t!("This DXF file contains ACIS solid entities (3D solids) that are not supported and were discarded:"),
+                                            details
+                                        ),
+                                        parent.as_ref(),
+                                    );
+                                }
                             }
                             Err(e) => {
                                 error!("Error importing file: {}", e);

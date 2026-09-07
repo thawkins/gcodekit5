@@ -128,7 +128,8 @@ This modular structure enables:
   - Geometric shapes: rectangles, circles, ellipses, triangles
   - Lines, polygons, Bezier curves, and arcs
   - Round rectangles with adjustable corner radius
-- **File Import**: Import SVG and DXF vector files
+- **File Import**: Import SVG and DXF vector files.
+  - DXF files as updated to AutoCAD 2018 (splines). AutoCAD ACIS objects cannot be imported.
 - **SVG to G-Code Conversion**:
   - Full support for SVG group transforms (matrix transformations)
   - Handles complex curved paths with multi-segment cubic/quadratic Bezier curves
@@ -164,7 +165,6 @@ This modular structure enables:
 The object positioning issue when opening "gckd" files.
   - The colors in the viewer have been changed when displaying images alongside vector objects to improve viewing.
   - The active machine name has been added to the status bar.
-  - The import DXF and SVG files has been improved.
   - New icons have been added to the tools.
 
   **Individual properties by object**
@@ -179,6 +179,7 @@ The object positioning issue when opening "gckd" files.
   - The Z coordinate has been implemented in the designer in "CNC 3D" mode to generate three-dimensional toolpaths.
   - Objects in 3D Mode have depth, and machining conditions are configured through Global CAM Properties.
   - You can also define individual properties for each object. Unchecking "Use global values" in the properties panel will apply the new values ​​to the selected object.
+  - **Important:** When working in "CNC 3D" mode, The G-code path begins at the top of material (stock material). The Z-coordinate is entered as a positive value, but Gcodekit5 treats it as a negative value (-Z), representing the machining depth.
 
 <img src="crates/gcodekit5-ui/resources/help_images/visualizer3d2.png" alt="Visualizer" width="800">
 

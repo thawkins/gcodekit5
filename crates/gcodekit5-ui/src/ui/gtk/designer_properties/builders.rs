@@ -21,7 +21,7 @@ impl PropertiesPanel {
     }
 
 
-    pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Entry, Label, Label, Label) {
+    pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -50,7 +50,7 @@ impl PropertiesPanel {
         y_unit_label.set_halign(gtk4::Align::End);
         y_unit_label.set_xalign(1.0);
 
-        let z_label = Label::new(Some(&t!("Z:")));
+        let z_label = Label::new(Some(&t!("(-Z:)")));
         z_label.set_halign(gtk4::Align::Start);
         let pos_z_entry = Entry::new();
         pos_z_entry.set_hexpand(true);
@@ -70,7 +70,16 @@ impl PropertiesPanel {
         grid.attach(&z_unit_label, 2, 2, 1, 1);
 
         frame.set_child(Some(&grid));
-        (frame, pos_x_entry, pos_y_entry, pos_z_entry, x_unit_label, y_unit_label, z_unit_label)
+        (
+            frame,
+            pos_x_entry,
+            pos_y_entry,
+            pos_z_entry,
+            x_unit_label,
+            y_unit_label,
+            z_label,
+            z_unit_label,
+        )
     }
 
     pub(crate) fn build_size_section() -> (Frame, Entry, Entry, CheckButton, Label, Label) {

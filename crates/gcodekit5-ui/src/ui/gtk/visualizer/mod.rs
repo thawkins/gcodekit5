@@ -17,7 +17,7 @@ use gcodekit5_visualizer::visualizer::GCodeCommand;
 use gcodekit5_visualizer::{Camera3D, Visualizer};
 use crate::t;
 use crate::ui::gtk::common::spacing;
-use crate::ui::gtk::osd_format::format_zoom_center_cursor;
+//use crate::ui::gtk::osd_format::format_zoom_center_cursor;
 use crate::ui::gtk::shaders::StockRemovalShaderProgram;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_settings::controller::SettingsController;
@@ -56,7 +56,7 @@ use gcodekit5_core::{shared, shared_none, thread_safe_none, Shared, SharedOption
 use gtk4::prelude::{BoxExt, ButtonExt, CheckButtonExt, WidgetExt};
 use gtk4::{
     accessible::Property as AccessibleProperty, Adjustment, Box, Button,
-    CheckButton, ComboBoxText, DrawingArea, Entry, EventControllerMotion, EventControllerScroll,
+    CheckButton, ComboBoxText, DrawingArea, Entry, EventControllerScroll,
     EventControllerScrollFlags, Expander, GLArea, GestureDrag, Grid, Image, Label, ListBox,
     ListBoxRow, Orientation, Overlay, Paned, Revealer, Scrollbar, SelectionMode, Spinner, Stack,
 };
@@ -127,7 +127,7 @@ pub struct GcodeVisualizer {
     pub(crate) min_s_value: Label,
     pub(crate) max_s_value: Label,
     pub(crate) avg_s_value: Label,
-    pub(crate) _status_label: Label,
+//    pub(crate) _status_label: Label,
     pub(crate) settings_controller: Rc<SettingsController>,
     stock_tool_diameter_entry: Entry,
     stock_tool_diameter_mm: Shared<f32>,
@@ -813,7 +813,7 @@ impl GcodeVisualizer {
         stack.set_hexpand(true);
         stack.set_vexpand(true);
 
-        // 3D Page - CONFIGURACIÓN CORRECTA
+        // 3D Page
         let gl_area = GLArea::builder()
             .hexpand(true)
             .vexpand(true)
@@ -827,7 +827,7 @@ impl GcodeVisualizer {
         gl_area.set_has_depth_buffer(true);
         gl_area.set_auto_render(true);
 
-        // CONECTAR REALIZE - NECESARIO PARA INICIALIZAR
+        // CONECTAR REALIZE
         gl_area.connect_realize(|area| {
             // El contexto GL se activa automáticamente en realize
             // Hacer que el área sea focuseable para recibir eventos
@@ -923,21 +923,23 @@ impl GcodeVisualizer {
         floating_box.set_halign(gtk4::Align::End);
         floating_box.set_valign(gtk4::Align::Start);
         floating_box.set_margin_top(150);
-        floating_box.set_margin_end(10);
+        floating_box.set_margin_end(20);
 
         // Scroll bars
-        let scrollbars_btn = Button::builder()
-            .icon_name("view-list-symbolic")
-            .tooltip_text(t!("Toggle Scrollbars"))
-            .build();
+        let scrollbars_btn = Button::new();
+        let scrollbars_image = Image::from_resource("/com/gcodekit5/icons/scroll_bars.svg");
+        scrollbars_image.set_pixel_size(24);
+        scrollbars_btn.set_child(Some(&scrollbars_image));
+        scrollbars_btn.set_tooltip_text(Some(&t!("Toggle Scrollbars")));
         scrollbars_btn.update_property(&[AccessibleProperty::Label(&t!("Toggle Scrollbars"))]);
 
-        // Top View
-        let top_view_btn = Button::builder()
-            .icon_name("view-top-symbolic")
-            .tooltip_text(t!("Top View"))
-            .build();
-        scrollbars_btn.update_property(&[AccessibleProperty::Label(&t!("Top View"))]);
+        // Top View (use embedded GResource image)
+        let top_view_btn = Button::new();
+        let top_view_image = Image::from_resource("/com/gcodekit5/icons/top_view.svg");
+        top_view_image.set_pixel_size(24);
+        top_view_btn.set_child(Some(&top_view_image));
+        top_view_btn.set_tooltip_text(Some(&t!("Top View")));
+        top_view_btn.update_property(&[AccessibleProperty::Label(&t!("Top View"))]);
 
         // Fit to device area button
         let nav_fit_device_btn = Button::builder()
@@ -981,13 +983,14 @@ impl GcodeVisualizer {
         floating_box.append(&nav_fit_device_btn);
         floating_box.append(&help_btn);
 
+/*
         // Status Panel (Bottom Left)
         let status_box = Box::new(Orientation::Horizontal, 4);
         status_box.add_css_class("visualizer-osd");
         status_box.set_halign(gtk4::Align::Start);
         status_box.set_valign(gtk4::Align::End);
-        status_box.set_margin_bottom(-10);
-        status_box.set_margin_start(20);
+        status_box.set_margin_bottom(20);
+        status_box.set_margin_start(10);
 
         let status_label = Label::builder().label(" ").build();
         status_label.set_hexpand(true);
@@ -997,14 +1000,14 @@ impl GcodeVisualizer {
 
         status_box.append(&status_label);
         status_box.append(&units_badge);
-
+*/
         // Run preview controls (Bottom Left)
         let run_controls_box = Box::new(Orientation::Horizontal, 6);
         run_controls_box.add_css_class("visualizer-osd");
         run_controls_box.set_halign(gtk4::Align::Start);
         run_controls_box.set_valign(gtk4::Align::End);
-        run_controls_box.set_margin_start(20);
-        run_controls_box.set_margin_bottom(24);
+        run_controls_box.set_margin_start(10);
+        run_controls_box.set_margin_bottom(20);
 
         let run_speed_label = Label::new(Some(&t!("Speed")));
         let run_speed_combo = ComboBoxText::new();
@@ -1105,7 +1108,9 @@ impl GcodeVisualizer {
         }
 
         overlay.add_overlay(&floating_box);
-        overlay.add_overlay(&status_box);
+        //Eliminar barra de estado
+//        overlay.add_overlay(&status_box);
+
         overlay.add_overlay(&run_controls_box);
         overlay.add_overlay(&sidebar_show_panel);
         overlay.add_overlay(&sim_panel);
@@ -1190,16 +1195,19 @@ impl GcodeVisualizer {
         // Helper to update status
         let cursor_pos = shared((0.0_f32, 0.0_f32));
         let update_status_fn: Rc<dyn Fn()> = Rc::new({
-            let label = status_label.clone();
-            let units_badge = units_badge.clone();
+//            let label = status_label.clone();
+//            let units_badge = units_badge.clone();
             let empty_box = empty_box.clone();
             let vis = visualizer.clone();
-            let cursor_pos = cursor_pos.clone();
-            let settings = settings_controller.clone();
+//            let cursor_pos = cursor_pos.clone();
+//            let settings = settings_controller.clone();
             move || {
                 let v = vis.borrow();
+
+/*
                 let (cursor_x, cursor_y) = *cursor_pos.borrow();
                 let system = settings.persistence.borrow().config().ui.measurement_system;
+
 
                 // Visualizer offsets are negative of center, so we negate them to show center
                 let center_x = -v.x_offset;
@@ -1215,10 +1223,12 @@ impl GcodeVisualizer {
                 ));
 
                 units_badge.set_text(gcodekit5_core::units::get_unit_label(system));
+*/
+
                 empty_box.set_visible(v.commands().is_empty());
             }
         });
-
+/*
         // Track cursor position in world coordinates
         let motion = EventControllerMotion::new();
         let vis_motion = visualizer.clone();
@@ -1243,8 +1253,9 @@ impl GcodeVisualizer {
             let world_y = -((y - center_y) / s) - v.y_offset as f64;
             *cursor_pos_motion.borrow_mut() = (world_x as f32, world_y as f32);
         });
-        drawing_area.add_controller(motion);
 
+        drawing_area.add_controller(motion);
+*/
         // connect_cliked for top_view_btn
         let cam_top = camera.clone();
         let gl_top = gl_area.clone();
@@ -2313,6 +2324,20 @@ show_stock_removal.connect_toggled(move |checkbox| {
         // Guardar el último valor procesado para detectar cambios
         let last_grid_spacing = std::cell::Cell::new(50.0_f64);
 
+        // Cuando el usuario cambia el combo de tamaño de rejilla, forzar
+        // un redraw del área de dibujo y del GLArea para que la rejilla
+        // se regenere inmediatamente (si está visible).
+        let grid_combo_update = grid_spacing_combo.clone();
+        let da_update = drawing_area.clone();
+        let gl_update = gl_area.clone();
+        let show_grid_update = show_grid.clone();
+        grid_combo_update.connect_changed(move |_| {
+            if show_grid_update.is_active() {
+                da_update.queue_draw();
+                gl_update.queue_render();
+            }
+        });
+
         gl_area.connect_render(move |area, _context| {
             if let Some(err) = area.error() {
                 tracing::error!(error = %err, "GLArea error");
@@ -2813,7 +2838,7 @@ show_stock_removal.connect_toggled(move |checkbox| {
             min_s_value,
             max_s_value,
             avg_s_value,
-            _status_label: status_label,
+//            _status_label: status_label,
             settings_controller,
             stock_tool_diameter_entry,
             stock_tool_diameter_mm: tool_diameter,

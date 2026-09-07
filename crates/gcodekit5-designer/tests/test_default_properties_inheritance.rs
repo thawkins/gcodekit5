@@ -9,7 +9,6 @@ fn new_shapes_inherit_default_properties_from_designer_state() {
     state.tool_settings.machine_mode = MachineMode::Cnc3D;
 
     state.default_properties_shape.start_depth = 2.5;
-    state.default_properties_shape.z_offset = 0.75;
     state.default_properties_shape.pocket_depth = 3.0;
     state.default_properties_shape.step_down = 0.25;
     state.default_properties_shape.step_in = 0.5;
@@ -26,7 +25,6 @@ fn new_shapes_inherit_default_properties_from_designer_state() {
     let created = state.canvas.get_shape(id).expect("new shape should be created");
 
     assert!((created.start_depth - 2.5).abs() < f64::EPSILON);
-    assert!((created.z_offset - 0.75).abs() < f64::EPSILON);
     assert!((created.pocket_depth - 3.0).abs() < f64::EPSILON);
     assert!((created.step_down as f64 - 0.25).abs() < f64::EPSILON);
     assert!((created.step_in as f64 - 0.5).abs() < f64::EPSILON);

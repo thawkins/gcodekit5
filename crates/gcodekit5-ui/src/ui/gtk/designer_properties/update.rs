@@ -276,6 +276,7 @@ impl PropertiesPanel {
 
             // Z position is only editable in CNC/3D mode.
             self.pos_z_entry.set_sensitive(!is_laser);
+            self.z_label.set_sensitive(!is_laser);
 
             // El panel de propiedades láser solo se muestra en modo láser
             self.laser_override_frame
@@ -299,7 +300,12 @@ impl PropertiesPanel {
                     self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
                 }
 
-                self.lock_aspect_ratio.set_active(lock_aspect);
+                // Don't overwrite the forced lock state applied by update_dimensions_ui
+                // for rotated objects, otherwise the checkbox reverts to unchecked while
+                // the entries stay disabled.
+                if rot.abs() <= 0.01 {
+                    self.lock_aspect_ratio.set_active(lock_aspect);
+                }
 
                 // Shape-specific properties
                 match &shape {
