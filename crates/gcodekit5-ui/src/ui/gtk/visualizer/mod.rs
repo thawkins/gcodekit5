@@ -2372,7 +2372,7 @@ show_stock_removal.connect_toggled(move |checkbox| {
                         Ok(mut tool_buffers),
                         Ok(bounds_buffers),
                     ) => {
-                        let grid_data = generate_grid_data(4000.0, 10.0);
+                        let grid_data = generate_grid_data(4000.0, 50.0);
                         grid_buffers.update(&grid_data);
 
                         let axis_data = generate_axis_data(100.0);

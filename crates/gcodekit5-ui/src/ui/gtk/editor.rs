@@ -635,8 +635,12 @@ impl GcodeEditor {
         all_filter.add_pattern("*");
         dialog.add_filter(&all_filter);
 
+        // Use saved last working directory if available
+        super::file_dialog::set_last_working_directory(&dialog, self.settings_controller.as_deref());
+
         let buffer = self.buffer.clone();
         let current_file = self.current_file.clone();
+        let settings_controller = self.settings_controller.clone();
 
         dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
@@ -645,10 +649,21 @@ impl GcodeEditor {
                         match fs::read_to_string(&path) {
                             Ok(content) => {
                                 buffer.set_text(&content);
-                                *current_file.borrow_mut() = Some(path);
+                                *current_file.borrow_mut() = Some(path.clone());
                                 // Move cursor to start
                                 let start_iter = buffer.start_iter();
                                 buffer.place_cursor(&start_iter);
+                                // Save last-used directory to settings so other dialogs default to it
+                                if let Some(controller) = settings_controller.as_ref() {
+                                    if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
+                                        persistence.config_mut().file_processing.output_directory = path.clone();
+
+                                        // Persist config to disk
+                                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
+                                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+                                        let _ = persistence.save_to_file(&config_path);
+                                    }
+                                }
                             }
                             Err(e) => {
                                 error!("Error reading file {}: {}", path.display(), e);

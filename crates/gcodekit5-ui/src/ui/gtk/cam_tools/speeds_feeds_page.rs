@@ -6,6 +6,11 @@ use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
 use std::rc::Rc;
 
+use gcodekit5_core::data::materials::{Material, MaterialCategory, MaterialId, CuttingParameters};
+use gcodekit5_core::data::tools::{Tool, ToolType, ToolCuttingParams, ToolId};
+use gcodekit5_devicedb::model::DeviceProfile;
+use gcodekit5_camtools::speeds_feeds::SpeedsFeedsCalculator;
+
 use super::common::set_paned_initial_fraction;
 use crate::ui::gtk::help_browser;
 use gcodekit5_settings::SettingsController;
@@ -167,18 +172,111 @@ impl SpeedsFeedsTool {
 
         content_box.append(&paned);
 
-        // Calculate button handler - simplified placeholder
         let rpm_label_calc = rpm_label.clone();
         let feed_label_calc = feed_label.clone();
         let source_label_calc = source_label.clone();
         let warnings_label_calc = warnings_label.clone();
 
         calculate_btn.connect_clicked(move |_| {
-            // Placeholder calculation
-            rpm_label_calc.set_text("RPM: 12,000");
-            feed_label_calc.set_text("Feed Rate: 1,500 mm/min");
-            source_label_calc.set_text("Source: Material defaults + Tool specifications");
-            warnings_label_calc.set_text("");
+            // 1. Obtener los IDs seleccionados en la pantalla
+            let selected_material = material_combo.active_id().unwrap_or_else(|| "aluminum".into());
+            let selected_tool = tool_combo.active_id().unwrap_or_else(|| "endmill_6mm".into());
+
+            // 2. Construir el objeto Material emulando la base de datos de manera limpia
+            let (mat_id_str, mat_name, mat_cat) = match selected_material.as_str() {
+                "aluminum" => ("metal_al_6061", "Aluminum 6061", MaterialCategory::NonFerrousMetal),
+                "wood" => ("wood_oak_red", "Wood (Softwood)", MaterialCategory::Wood),
+                "acrylic" => ("plastic_acrylic", "Acrylic", MaterialCategory::Plastic),
+                "steel" => ("metal_steel_mild", "Steel (Mild)", MaterialCategory::FerrousMetal),
+                _ => ("metal_al_6061", "Aluminum 6061", MaterialCategory::NonFerrousMetal),
+            };
+
+            let mut material = Material::new(
+                MaterialId(mat_id_str.to_string()),
+                mat_name.to_string(),
+                mat_cat,
+                "".to_string(),
+            );
+
+            // 3. Crear la herramienta nativa mapeando las geometrías de la interfaz
+            let (t_id, t_name, t_type, t_dia, t_flutes) = match selected_tool.as_str() {
+                "endmill_6mm" => ("endmill_6mm", "6mm Flat End Mill", ToolType::EndMillFlat, 6.0, 2),
+                "endmill_3mm" => ("endmill_3mm", "3mm Ball End Mill", ToolType::EndMillBall, 3.0, 2),
+                "vbit_30deg" => ("vbit_30deg", "V-Bit 30°", ToolType::VBit, 3.175, 1),
+                _ => ("endmill_6mm", "6mm Flat End Mill", ToolType::EndMillFlat, 6.0, 2),
+            };
+
+            let mut tool = Tool::new(
+                ToolId(t_id.to_string()),
+                1,
+                t_name.to_string(),
+                t_type,
+                t_dia,
+                50.0,
+            );
+            tool.flutes = t_flutes;
+
+            tool.params = ToolCuttingParams {
+                rpm: 12000,
+                rpm_range: (8000, 18000),
+                feed_rate: 1500.0,
+                plunge_rate: 750.0,
+                stepover_percent: 50.0,
+                depth_per_pass: 3.0,
+            };
+
+            let tool_type_key = match t_type {
+                ToolType::EndMillFlat => "endmill_flat",
+                ToolType::EndMillBall => "endmill_ball",
+                ToolType::VBit => "vbit",
+                ToolType::DrillBit => "drill",
+                _ => "generic",
+            };
+
+            // 4. Inyectar los parámetros de corte correspondientes
+            let cutting_params = match selected_material.as_str() {
+                "aluminum" => CuttingParameters {
+                    rpm_range: (8000, 12000),
+                    feed_rate_range: (900.0, 2200.0),
+                    surface_speed_m_min: Some(300.0),
+                    chip_load_mm: Some(0.05),
+                    ..Default::default()
+                },
+                "wood" => CuttingParameters {
+                    rpm_range: (16000, 20000),
+                    feed_rate_range: (1200.0, 2000.0),
+                    ..Default::default()
+                },
+                "acrylic" => CuttingParameters {
+                    rpm_range: (18000, 24000),
+                    feed_rate_range: (1000.0, 1800.0),
+                    ..Default::default()
+                },
+                "steel" => CuttingParameters {
+                    rpm_range: (3000, 6000),
+                    feed_rate_range: (300.0, 800.0),
+                    ..Default::default()
+                },
+                _ => Default::default(),
+            };
+            material.set_cutting_params(tool_type_key.to_string(), cutting_params);
+
+            // 5. Perfil de máquina por defecto
+            let device = DeviceProfile::default();
+
+            // 6. EJECUTAR EL CÁLCULO REAL
+            let result = SpeedsFeedsCalculator::calculate(&material, &tool, &device);
+
+            // 7. Pintar los resultados calculados dinámicamente en la interfaz
+            rpm_label_calc.set_text(&format!("RPM: {}", result.rpm));
+            feed_label_calc.set_text(&format!("Feed Rate: {:.0} mm/min", result.feed_rate));
+            source_label_calc.set_text(&format!("Source: {}", result.source));
+
+            if result.warnings.is_empty() {
+                warnings_label_calc.set_text("");
+            } else {
+                warnings_label_calc.set_text(&format!("Warnings: {}", result.warnings.join(", ")));
+            }
         });
 
         Self {

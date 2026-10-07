@@ -20,6 +20,7 @@ pub enum ScanDirection {
     Vertical,
 }
 
+/*
 /// Halftoning method
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HalftoneMethod {
@@ -29,6 +30,7 @@ pub enum HalftoneMethod {
     FloydSteinberg,
     Atkinson,
 }
+*/
 
 /// Structure containing the engraving parameters
 #[derive(Debug, Clone)]
@@ -46,8 +48,8 @@ pub struct EngravingParams {
     pub mirror_x: bool,
     pub mirror_y: bool,
     pub rotation: RotationAngle,
-    pub halftone: HalftoneMethod,
-    pub halftone_threshold: u8,
+//    pub halftone: HalftoneMethod,
+//    pub halftone_threshold: u8,
     pub offset_x: f32,
     pub offset_y: f32,
     pub power_scale: f32,
@@ -70,8 +72,8 @@ impl Default for EngravingParams {
             mirror_x: false,
             mirror_y: false,
             rotation: RotationAngle::Degrees0,
-            halftone: HalftoneMethod::None,
-            halftone_threshold: 127,
+//            halftone: HalftoneMethod::None,
+//            halftone_threshold: 127,
             offset_x: 10.0,
             offset_y: 10.0,
             power_scale: 1000.0,
@@ -218,11 +220,11 @@ impl ImageEngraver {
         if params.invert {
             image::imageops::invert(&mut gray);
         }
-
+/*
         if params.halftone != HalftoneMethod::None {
             Self::apply_halftoning(&mut gray, &params)?;
         }
-
+*/
         Ok(Self {
             image: gray,
             params,
@@ -238,7 +240,7 @@ impl ImageEngraver {
             self.output_height as f32 / self.params.pixels_per_mm(),
         )
     }
-
+/*
     fn apply_halftoning(image: &mut GrayImage, params: &EngravingParams) -> Result<()> {
         let dot_size = 1;
 
@@ -337,6 +339,7 @@ impl ImageEngraver {
             image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
         }
     }
+*/
 
     fn intensity_to_power(&self, intensity: u8) -> u32 {
         let normalized = intensity as f32 / 255.0;
@@ -349,10 +352,11 @@ impl ImageEngraver {
     }
 
     fn quantize_power(&self, power: u32) -> u32 {
+/*
         if self.params.halftone != HalftoneMethod::None {
             return power;
         }
-
+*/
         // Reduce command churn by quantizing grayscale power levels.
         // This keeps tonal shading while avoiding one-pixel power changes.
         const LEVELS: u32 = 64;

@@ -570,6 +570,7 @@ impl DesignerView {
                     mirror_x: false,
                     mirror_y: false,
                     rotation: image_engraver::RotationAngle::Degrees0,
+/*
                     halftone: match raster_image.dithering.as_str() {
                         "threshold" => image_engraver::HalftoneMethod::Threshold,
                         "bayer" => image_engraver::HalftoneMethod::Bayer4x4,
@@ -578,6 +579,7 @@ impl DesignerView {
                         _ => image_engraver::HalftoneMethod::None,
                     },
                     halftone_threshold: raster_image.halftone_threshold,
+*/
                     offset_x: (raster_image.center.x - raster_image.width_mm / 2.0) as f32,
                     offset_y: (raster_image.center.y - raster_image.height_mm / 2.0) as f32,
                     power_scale: 1000.0,

@@ -165,6 +165,7 @@ pub fn main() {
         let content_box = GtkBox::new(Orientation::Vertical, 0);
         content_box.set_vexpand(true);
         let stack_switcher = StackSwitcher::new();
+        stack_switcher.add_css_class("custom-stack-switcher"); // New style
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
 
@@ -301,7 +302,7 @@ pub fn main() {
             Some(machine_control.clone()),
             move |gcode| {
                 editor_for_cam.set_text(&gcode);
-                stack_for_cam.set_visible_child_name("editor");
+                stack_for_cam.set_visible_child_name("visualizer");
                 editor_for_cam.grab_focus();
             },
             Some(designer.clone()),
@@ -348,7 +349,11 @@ pub fn main() {
         );
 
         // 4. Herramientas CAM
-        stack.add_titled(cam_tools_view.widget(), Some("cam_tools"), &t!("CAM Tools"));
+        stack.add_titled(
+            cam_tools_view.widget(),
+            Some("cam_tools"),
+            &t!("CAM Tools")
+        );
 
         // 5. Administrador de dispositivos
         stack.add_titled(
@@ -857,6 +862,7 @@ pub fn main() {
                 }
             }
         });
+
         app.add_action(&redo_action);
 
         let stack_clone = stack.clone();
@@ -873,6 +879,7 @@ pub fn main() {
                 }
             }
         });
+
         app.add_action(&cut_action);
 
         let stack_clone = stack.clone();

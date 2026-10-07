@@ -106,7 +106,7 @@ impl DesignerState {
             grid_spacing_mm: 50.0,
             show_toolpaths: false,
             snap_enabled: true,
-            snap_threshold_mm: 0.5,
+            snap_threshold_mm: 1.0,
             clipboard: Vec::new(),
             default_properties_shape: crate::canvas::DrawingObject::new(
                 0,

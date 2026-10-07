@@ -133,6 +133,7 @@ pub struct DesignerCanvas {
     pub(crate) text_tool_pending_pos: SharedOption<(f64, f64)>,
     pub(crate) device_manager: Option<Arc<DeviceManager>>,
     pub(crate) status_bar: Option<crate::ui::gtk::status_bar::StatusBar>,
+    pub(crate) settings_controller: Option<Rc<SettingsController>>,
 }
 
 impl DesignerCanvas {
@@ -253,6 +254,7 @@ impl DesignerCanvas {
             text_tool_pending_pos: shared_none(),
             device_manager: device_manager.clone(),
             status_bar,
+            settings_controller: settings_controller.clone(),
         });
 
         // Mouse motion tracking
@@ -667,8 +669,14 @@ impl DesignerCanvas {
         use gtk4::FileChooserDialog;
         use gtk4::ResponseType;
 
+        // Almacenamos los strings en variables para que vivan lo suficiente en memoria
+        let title_str = t!("Import Image");
+        let filter_name_str = t!("Image files");
+        let cancel_str = t!("Cancel");
+        let import_str = t!("Import");
+
         let dialog = FileChooserDialog::builder()
-            .title("Import Image")
+            .title(&title_str) // <-- Traducido
             .action(FileChooserAction::Open)
             .transient_for(
                 &self
@@ -688,19 +696,35 @@ impl DesignerCanvas {
         filter.add_mime_type("image/bmp");
         filter.add_mime_type("image/tiff");
         filter.add_mime_type("image/webp");
-        filter.set_name(Some("Image files"));
+        filter.set_name(Some(&filter_name_str));
         dialog.add_filter(&filter);
 
+        // Usamos referencias del String generado por t! para que GTK lo acepte
         dialog.add_buttons(&[
-            ("Cancel", ResponseType::Cancel),
-            ("Import", ResponseType::Accept),
+            (&cancel_str, ResponseType::Cancel),
+            (&import_str, ResponseType::Accept),
         ]);
 
         let canvas = self.clone();
+        let settings_controller = self.settings_controller.clone();
+        // Apply last working directory from settings
+        super::file_dialog::set_last_working_directory(&dialog, self.settings_controller.as_deref());
+
         dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
                 if let Some(file) = dialog.file() {
                     if let Some(path) = file.path() {
+                        // Persist last-used directory so subsequent dialogs default to it
+                        if let Some(controller) = settings_controller.as_ref() {
+                            if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
+                                persistence.config_mut().file_processing.output_directory = path.clone();
+
+                                let config_path = gcodekit5_settings::SettingsManager::config_file_path()
+                                    .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+                                let _ = persistence.save_to_file(&config_path);
+                            }
+                        }
+
                         canvas.process_imported_image(path);
                     }
                 }
@@ -715,7 +739,7 @@ impl DesignerCanvas {
     fn process_imported_image(&self, path: std::path::PathBuf) {
         use gcodekit5_designer::image_importer::ImageImporter;
         if let Some(status_bar) = &self.status_bar {
-            status_bar.set_state("Importing image...");
+            status_bar.set_state(&t!("Importing image..."));
         }
 
         let canvas = self.clone();
@@ -731,13 +755,13 @@ impl DesignerCanvas {
                     canvas.widget.queue_draw();
 
                     if let Some(status_bar) = &status_bar {
-                        status_bar.set_state("Image imported successfully");
+                        status_bar.set_state(&t!("Image imported successfully"));
                     }
                 }
                 Err(e) => {
                     tracing::error!("Image import failed: {}", e);
                     if let Some(status_bar) = &status_bar {
-                        status_bar.set_state(&format!("Import error: {}", e));
+                        status_bar.set_state(&format!("{}: {}", t!("Import error"), e));
                     }
                 }
             }
