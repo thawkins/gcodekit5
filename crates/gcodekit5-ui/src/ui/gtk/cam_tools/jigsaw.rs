@@ -2,7 +2,7 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, Entry, FileChooserAction, FileChooserDialog, Label,
+    Align, Box, Button, Entry, FileChooserAction, FileChooserDialog, Label,
     Orientation, Paned, ResponseType, ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
@@ -24,18 +24,18 @@ struct JigsawWidgets {
     height: Entry,
     pieces_across: Entry,
     pieces_down: Entry,
-    kerf: Entry,
+//    kerf: Entry,
     seed: Entry,
     tab_size: Entry,
     jitter: Entry,
     corner_radius: Entry,
-    passes: Entry,
-    power: Entry,
-    feed_rate: Entry,
-    z_step_down: Entry,
-    offset_x: Entry,
-    offset_y: Entry,
-    home_before: CheckButton,
+//    passes: Entry,
+//    power: Entry,
+//    feed_rate: Entry,
+//    z_step_down: Entry,
+//    offset_x: Entry,
+//    offset_y: Entry,
+//    home_before: CheckButton,
 }
 
 pub struct JigsawTool {
@@ -47,6 +47,7 @@ impl JigsawTool {
         stack: &Stack,
         settings: Rc<SettingsController>,
         on_generate: Rc<F>,
+        designer_view: Option<Rc<crate::ui::gtk::designer::DesignerView>>,
     ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
 
@@ -120,15 +121,17 @@ impl JigsawTool {
             create_dimension_row(&t!("Height:"), 150.0, &settings);
         let pieces_across = Entry::builder().text("4").valign(Align::Center).build();
         let pieces_down = Entry::builder().text("3").valign(Align::Center).build();
-        let (kerf_row, kerf, kerf_unit) = create_dimension_row(&t!("Kerf:"), 0.5, &settings);
+//        let (kerf_row, kerf, kerf_unit) = create_dimension_row(&t!("Kerf:"), 0.5, &settings);
         let seed = Entry::builder().text("42").valign(Align::Center).build();
         let tab_size = Entry::builder().text("20").valign(Align::Center).build();
         let jitter = Entry::builder().text("4").valign(Align::Center).build();
         let (corner_radius_row, corner_radius, corner_radius_unit) =
             create_dimension_row(&t!("Corner Radius:"), 2.0, &settings);
+/*
         let passes = Entry::builder().text("3").valign(Align::Center).build();
         let power = Entry::builder().text("1000").valign(Align::Center).build();
         let feed_rate = Entry::builder().text("500").valign(Align::Center).build();
+
         let (z_step_down_row, z_step_down, z_step_down_unit) =
             create_dimension_row(&t!("Z Step Down:"), 0.5, &settings);
         let (offset_x_row, offset_x, offset_x_unit) =
@@ -139,7 +142,7 @@ impl JigsawTool {
             .active(false)
             .valign(Align::Center)
             .build();
-
+*/
         // Groups
         let dim_group = PreferencesGroup::builder()
             .title(t!("Puzzle Dimensions"))
@@ -159,7 +162,7 @@ impl JigsawTool {
         let param_group = PreferencesGroup::builder()
             .title(t!("Puzzle Parameters"))
             .build();
-        param_group.add(&kerf_row);
+//        param_group.add(&kerf_row);
         param_group.add(&Self::create_row(&t!("Tab Size (%):"), &tab_size));
         param_group.add(&Self::create_row(&t!("Jitter (%):"), &jitter));
 
@@ -175,28 +178,28 @@ impl JigsawTool {
 
         scroll_content.append(&param_group);
 
-        let laser_group = PreferencesGroup::builder()
-            .title(t!("Laser Settings"))
-            .build();
-        laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
-        laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
-        laser_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
-        laser_group.add(&z_step_down_row);
-        scroll_content.append(&laser_group);
+//        let laser_group = PreferencesGroup::builder()
+//            .title(t!("Laser Settings"))
+//            .build();
+//        laser_group.add(&Self::create_row(&t!("Passes:"), &passes));
+//        laser_group.add(&Self::create_row(&t!("Power (S):"), &power));
+//        laser_group.add(&Self::create_row(&t!("Feed Rate:"), &feed_rate));
+//        laser_group.add(&z_step_down_row);
+//        scroll_content.append(&laser_group);
 
-        let offset_group = PreferencesGroup::builder()
-            .title(t!("Work Offsets"))
-            .build();
-        offset_group.add(&offset_x_row);
-        offset_group.add(&offset_y_row);
+//        let offset_group = PreferencesGroup::builder()
+//            .title(t!("Work Offsets"))
+//            .build();
+//        offset_group.add(&offset_x_row);
+//        offset_group.add(&offset_y_row);
 
-        let home_row = ActionRow::builder()
-            .title(t!("Home Device Before Start"))
-            .build();
-        home_row.add_suffix(&home_before);
-        offset_group.add(&home_row);
+//        let home_row = ActionRow::builder()
+//            .title(t!("Home Device Before Start"))
+//            .build();
+//        home_row.add_suffix(&home_before);
+//        offset_group.add(&home_row);
 
-        scroll_content.append(&offset_group);
+//        scroll_content.append(&offset_group);
 
         right_panel.append(&scrolled);
 
@@ -229,19 +232,22 @@ impl JigsawTool {
             height,
             pieces_across,
             pieces_down,
-            kerf,
+//            kerf,
             seed,
             tab_size,
             jitter,
             corner_radius,
-            passes,
-            power,
-            feed_rate,
-            z_step_down,
-            offset_x,
-            offset_y,
-            home_before,
+//            passes,
+//            power,
+//            feed_rate,
+//            z_step_down,
+//            offset_x,
+//            offset_y,
+//            home_before,
         });
+
+        // Clone stack for switching to Designer tab after generation
+//        let stack_clone_for_switch = stack.clone();
 
         // Unit update listener
         {
@@ -249,11 +255,11 @@ impl JigsawTool {
             let w = widgets.clone();
             let width_unit = width_unit.clone();
             let height_unit = height_unit.clone();
-            let kerf_unit = kerf_unit.clone();
+//            let kerf_unit = kerf_unit.clone();
             let corner_radius_unit = corner_radius_unit.clone();
-            let z_step_down_unit = z_step_down_unit.clone();
-            let offset_x_unit = offset_x_unit.clone();
-            let offset_y_unit = offset_y_unit.clone();
+//            let z_step_down_unit = z_step_down_unit.clone();
+//            let offset_x_unit = offset_x_unit.clone();
+//            let offset_y_unit = offset_y_unit.clone();
 
             let last_system = Rc::new(Cell::new(
                 settings.persistence.borrow().config().ui.measurement_system,
@@ -281,11 +287,11 @@ impl JigsawTool {
 
                         update_entry(&w.width, &width_unit);
                         update_entry(&w.height, &height_unit);
-                        update_entry(&w.kerf, &kerf_unit);
+//                        update_entry(&w.kerf, &kerf_unit);
                         update_entry(&w.corner_radius, &corner_radius_unit);
-                        update_entry(&w.z_step_down, &z_step_down_unit);
-                        update_entry(&w.offset_x, &offset_x_unit);
-                        update_entry(&w.offset_y, &offset_y_unit);
+//                        update_entry(&w.z_step_down, &z_step_down_unit);
+//                        update_entry(&w.offset_x, &offset_x_unit);
+//                        update_entry(&w.offset_y, &offset_y_unit);
 
                         last_system.set(new_system);
                     }
@@ -296,10 +302,11 @@ impl JigsawTool {
         // Connect Generate
         let w_gen = widgets.clone();
         let on_gen = on_generate.clone();
+        let designer_view_clone_for_new = designer_view.clone();
         let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&w_gen, &settings_gen);
-            let home_before = w_gen.home_before.is_active();
+ //           let home_before = w_gen.home_before.is_active();
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
@@ -337,7 +344,7 @@ impl JigsawTool {
             let progress_window_clone = progress_window.clone();
             let progress_bar_clone = progress_bar.clone();
 
-            let (result_tx, result_rx) = std::sync::mpsc::channel();
+            let (result_tx, result_rx) = std::sync::mpsc::channel::<Result<(String, Vec<Vec<(f64, f64)>>), String>>();
             let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
 
             let cancel_tx_clone = cancel_tx.clone();
@@ -346,22 +353,26 @@ impl JigsawTool {
             });
 
             // Spawn background thread
+            let _designer_view_thread = designer_view_clone_for_new.clone();
+
             std::thread::spawn(move || {
-                let result = (|| -> Result<String, String> {
+                let result = (|| -> Result<(String, Vec<Vec<(f64, f64)>>), String> {
                     if cancel_rx.try_recv().is_ok() {
                         return Err(t!("Cancelled by user"));
                     }
                     let mut maker = JigsawPuzzleMaker::new(params)?;
                     maker.generate()?;
+                    // Capture generated paths in-memory for designer import
+                    let paths = maker.paths_as_f64();
                     let mut gcode = maker.to_gcode(500.0, 1.0);
 
                     // Handle homing
                     gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
+//                    if home_before {
+//                        gcode = format!("$H\n{}", gcode);
+//                    }
 
-                    Ok(gcode)
+                    Ok((gcode, paths))
                 })();
 
                 let _ = result_tx.send(result);
@@ -369,13 +380,57 @@ impl JigsawTool {
 
             // Simulate progress since JigsawPuzzleMaker doesn't have progress callback yet
             let mut progress = 0.0;
+            let designer_view_clone = designer_view_clone_for_new.clone();
+            // Clone stack for moving into the timeout closure without consuming the outer variable
+//            let stack_clone_for_timeout = stack_clone_for_switch.clone();
+
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                 // Check for result
                 if let Ok(result) = result_rx.try_recv() {
                     progress_window_clone.close();
 
                     match result {
-                        Ok(gcode) => {
+                        Ok((gcode, paths)) => {
+                            // If a designer view was provided, import paths into the designer
+                            if let Some(designer_rc) = designer_view_clone.as_ref() {
+                                // Add paths to the designer canvas
+                                if let Ok(mut state) = designer_rc.canvas.state.try_borrow_mut() {
+                                    let total = paths.len();
+                                    let mut added_ids: Vec<u64> = Vec::new();
+                                    for (i, p) in paths.iter().enumerate() {
+                                        let vertices: Vec<gcodekit5_designer::model::Point> =
+                                            p.iter().map(|(x, y)| gcodekit5_designer::model::Point::new(*x, *y)).collect();
+
+                                        // Border is the last path -> closed polygon. Others -> open path.
+                                        let closed = i + 1 == total;
+                                        let path_shape = gcodekit5_designer::model::DesignPath::from_points(&vertices, closed);
+                                        // Use state.add_shape_with_undo to record undo history and obtain the new id.
+                                        let id = state.add_shape_with_undo(gcodekit5_designer::model::Shape::Path(path_shape));
+                                        added_ids.push(id);
+                                    }
+
+                                    // If multiple shapes were added, group them so they move together.
+                                    if added_ids.len() > 1 {
+                                        let group_id = state.canvas.generate_id();
+                                        let group_cmd = gcodekit5_designer::commands::DesignerCommand::GroupShapes(
+                                            gcodekit5_designer::commands::GroupShapes { ids: added_ids.clone(), group_id },
+                                        );
+                                        state.push_command(group_cmd);
+                                    }
+                                }
+
+                                // Refresh UI
+                                designer_rc.layers.refresh(&designer_rc.canvas.state);
+                                designer_rc.canvas.widget.queue_draw();
+
+                                // Switch to Designer tab so user can edit imported paths
+                                if let Some(parent) = designer_rc.widget.parent() {
+                                    if let Ok(parent_stack) = parent.downcast::<gtk4::Stack>() {
+                                        parent_stack.set_visible_child_name("designer");
+                                    }
+                                }
+                            }
+
                             on_gen_clone(gcode);
                         }
                         Err(e) => {
@@ -454,17 +509,17 @@ impl JigsawTool {
             height: units::parse_length(&w.height.text(), system).unwrap_or(150.0),
             pieces_across: w.pieces_across.text().parse().unwrap_or(4),
             pieces_down: w.pieces_down.text().parse().unwrap_or(3),
-            kerf: units::parse_length(&w.kerf.text(), system).unwrap_or(0.5),
+//            kerf: units::parse_length(&w.kerf.text(), system).unwrap_or(0.5),
             seed: w.seed.text().parse::<u32>().unwrap_or(42), // Handles empty or invalid
             tab_size_percent: w.tab_size.text().parse().unwrap_or(20.0),
             jitter_percent: w.jitter.text().parse().unwrap_or(4.0),
             corner_radius: units::parse_length(&w.corner_radius.text(), system).unwrap_or(2.0),
-            laser_passes: w.passes.text().parse().unwrap_or(3),
-            laser_power: w.power.text().parse().unwrap_or(1000),
-            feed_rate: w.feed_rate.text().parse().unwrap_or(500.0),
-            z_step_down: units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.5),
-            offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
-            offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
+//            laser_passes: w.passes.text().parse().unwrap_or(3),
+//            laser_power: w.power.text().parse().unwrap_or(1000),
+//            feed_rate: w.feed_rate.text().parse().unwrap_or(500.0),
+//            z_step_down: units::parse_length(&w.z_step_down.text(), system).unwrap_or(0.5),
+//            offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
+//            offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
             num_axes: crate::device_status::get_active_num_axes(),
         }
     }
@@ -538,21 +593,21 @@ impl JigsawTool {
         w.height.set_text(&units::format_length(p.height, system));
         w.pieces_across.set_text(&p.pieces_across.to_string());
         w.pieces_down.set_text(&p.pieces_down.to_string());
-        w.kerf.set_text(&units::format_length(p.kerf, system));
+//        w.kerf.set_text(&units::format_length(p.kerf, system));
         w.seed.set_text(&p.seed.to_string());
         w.tab_size.set_text(&p.tab_size_percent.to_string());
         w.jitter.set_text(&p.jitter_percent.to_string());
         w.corner_radius
             .set_text(&units::format_length(p.corner_radius, system));
-        w.passes.set_text(&p.laser_passes.to_string());
-        w.power.set_text(&p.laser_power.to_string());
-        w.feed_rate.set_text(&p.feed_rate.to_string());
-        w.z_step_down
-            .set_text(&units::format_length(p.z_step_down, system));
-        w.offset_x
-            .set_text(&units::format_length(p.offset_x, system));
-        w.offset_y
-            .set_text(&units::format_length(p.offset_y, system));
+//        w.passes.set_text(&p.laser_passes.to_string());
+//        w.power.set_text(&p.laser_power.to_string());
+//        w.feed_rate.set_text(&p.feed_rate.to_string());
+//        w.z_step_down
+//            .set_text(&units::format_length(p.z_step_down, system));
+//        w.offset_x
+//            .set_text(&units::format_length(p.offset_x, system));
+//        w.offset_y
+//            .set_text(&units::format_length(p.offset_y, system));
     }
 }
 

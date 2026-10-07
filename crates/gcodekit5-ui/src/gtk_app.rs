@@ -302,7 +302,7 @@ pub fn main() {
             Some(machine_control.clone()),
             move |gcode| {
                 editor_for_cam.set_text(&gcode);
-                stack_for_cam.set_visible_child_name("editor");
+                stack_for_cam.set_visible_child_name("visualizer");
                 editor_for_cam.grab_focus();
             },
             Some(designer.clone()),

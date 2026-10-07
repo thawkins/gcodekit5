@@ -11,17 +11,17 @@ pub struct PuzzleParameters {
     pub height: f32,
     pub pieces_across: i32,
     pub pieces_down: i32,
-    pub kerf: f32,
-    pub laser_passes: i32,
-    pub laser_power: i32,
-    pub feed_rate: f32,
-    pub z_step_down: f32,
+//    pub kerf: f32,
+//    pub laser_passes: i32,
+//    pub laser_power: i32,
+//    pub feed_rate: f32,
+//    pub z_step_down: f32,
     pub seed: u32,
     pub tab_size_percent: f32,
     pub jitter_percent: f32,
     pub corner_radius: f32,
-    pub offset_x: f32,
-    pub offset_y: f32,
+//    pub offset_x: f32,
+//    pub offset_y: f32,
     /// Number of axes on the target device (default 3).
     #[serde(default = "default_num_axes")]
     pub num_axes: u8,
@@ -38,17 +38,17 @@ impl Default for PuzzleParameters {
             height: 150.0,
             pieces_across: 4,
             pieces_down: 3,
-            kerf: 0.5,
-            laser_passes: 3,
-            laser_power: 1000,
-            feed_rate: 500.0,
-            z_step_down: 0.5,
+//            kerf: 0.5,
+//            laser_passes: 3,
+//            laser_power: 1000,
+//            feed_rate: 500.0,
+//            z_step_down: 0.5,
             seed: 42,
             tab_size_percent: 20.0,
             jitter_percent: 4.0,
             corner_radius: 2.0,
-            offset_x: 10.0,
-            offset_y: 10.0,
+//            offset_x: 10.0,
+//            offset_y: 10.0,
             num_axes: 3,
         }
     }
@@ -117,9 +117,9 @@ impl JigsawPuzzleMaker {
             return Err("Pieces too small (minimum 15mm per piece)".to_string());
         }
 
-        if params.kerf < 0.0 || params.kerf > 2.0 {
-            return Err("Kerf must be between 0 and 2mm".to_string());
-        }
+//        if params.kerf < 0.0 || params.kerf > 2.0 {
+//            return Err("Kerf must be between 0 and 2mm".to_string());
+//        }
 
         if params.tab_size_percent < 10.0 || params.tab_size_percent > 30.0 {
             return Err("Tab size must be between 10% and 30%".to_string());
@@ -149,9 +149,6 @@ impl JigsawPuzzleMaker {
         let tab_width = piece_width * (self.params.tab_size_percent / 100.0);
         let tab_height = piece_height * (self.params.tab_size_percent / 200.0);
 
-        // Generate outer border with corner radius
-        self.generate_border();
-
         // Generate vertical cuts with jitter
         for col in 1..self.params.pieces_across {
             let base_x = col as f32 * piece_width;
@@ -167,6 +164,9 @@ impl JigsawPuzzleMaker {
             let y = base_y + self.uniform(-jitter_range, jitter_range);
             self.generate_horizontal_cut(y, piece_width, tab_width, tab_height);
         }
+
+        // Generate outer border with corner radius last
+        self.generate_border();
 
         Ok(())
     }
@@ -436,160 +436,23 @@ impl JigsawPuzzleMaker {
         )
     }
 
-    pub fn to_gcode(&self, plunge_rate: f32, cut_depth: f32) -> String {
+    pub fn to_gcode(&self, _plunge_rate: f32, _cut_depth: f32) -> String {
+        // G-code generation is disabled: Designer handles export now.
+        // Keep a compatible return value (safe placeholder) so callers still receive valid text.
         let mut gcode = String::new();
-
-        gcode.push_str("; Jigsaw Puzzle Maker G-code\n");
-        gcode.push_str("; Enhanced with features from https://github.com/Draradech/jigsaw\n");
-        gcode.push_str(&format!(
-            "; Puzzle: {}x{} mm\n",
-            self.params.width, self.params.height
-        ));
-        gcode.push_str(&format!(
-            "; Pieces: {}x{} ({})\n",
-            self.params.pieces_across,
-            self.params.pieces_down,
-            self.params.pieces_across * self.params.pieces_down
-        ));
-        gcode.push_str(&format!("; Kerf: {} mm\n", self.params.kerf));
-        gcode.push_str(&format!("; Laser passes: {}\n", self.params.laser_passes));
-        gcode.push_str(&format!("; Laser power: S{}\n", self.params.laser_power));
-        gcode.push_str(&format!(
-            "; Feed rate: {:.0} mm/min\n",
-            self.params.feed_rate
-        ));
-        gcode.push_str(";\n");
-
-        gcode.push_str("; Puzzle Parameters:\n");
-        gcode.push_str(&format!(
-            ";   Seed: {} (for reproducible patterns)\n",
-            self.params.seed
-        ));
-        gcode.push_str(&format!(
-            ";   Tab size: {:.1}%\n",
-            self.params.tab_size_percent
-        ));
-        gcode.push_str(&format!(
-            ";   Jitter: {:.1}% (randomness in piece positions)\n",
-            self.params.jitter_percent
-        ));
-        gcode.push_str(&format!(
-            ";   Corner radius: {:.1} mm\n",
-            self.params.corner_radius
-        ));
-        gcode.push_str(";\n");
-
-        gcode.push_str("; Puzzle Layout:\n");
-        gcode.push_str(&format!(
-            ";   Total pieces: {}\n",
-            self.params.pieces_across * self.params.pieces_down
-        ));
-        let piece_w = self.params.width / self.params.pieces_across as f32;
-        let piece_h = self.params.height / self.params.pieces_down as f32;
-        gcode.push_str(&format!(
-            ";   Piece size: {:.1}x{:.1} mm\n",
-            piece_w, piece_h
-        ));
-        gcode.push('\n');
-
-        gcode.push_str("; Initialization sequence\n");
-        gcode.push_str("G21 ; Set units to millimeters\n");
-        gcode.push_str("G90 ; Absolute positioning\n");
-        gcode.push_str("G17 ; XY plane selection\n");
-        gcode.push('\n');
-
-        gcode.push_str("; Home and set work coordinate system\n");
-        gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset\n");
-        } else {
-            gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 offset\n");
-        }
-        gcode.push_str("G54 ; Select work coordinate system 1\n");
-        gcode.push_str(&format!(
-            "G0 X{:.1} Y{:.1} ; Move to work origin\n",
-            self.params.offset_x, self.params.offset_y
-        ));
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
-        } else {
-            gcode.push_str("G10 L20 P1 X0 Y0 ; Set current position as work zero\n");
-        }
-        if self.params.num_axes >= 3 {
-            gcode.push_str(&format!(
-                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-                5.0, self.params.feed_rate
-            ));
-        }
-        gcode.push('\n');
-
-        for (i, path) in self.paths.iter().enumerate() {
-            if i == 0 {
-                gcode.push_str("; Outer border\n");
-            } else if i <= self.params.pieces_across as usize {
-                gcode.push_str(&format!("; Vertical cut {}\n", i));
-            } else {
-                gcode.push_str(&format!(
-                    "; Horizontal cut {}\n",
-                    i - self.params.pieces_across as usize
-                ));
-            }
-
-            if let Some(first_point) = path.first() {
-                gcode.push_str(&format!(
-                    "G0 X{:.2} Y{:.2} ; Rapid to start\n",
-                    first_point.x, first_point.y
-                ));
-                if self.params.num_axes >= 3 {
-                    gcode.push_str(&format!(
-                        "G1 Z{:.2} F{:.0} ; Plunge\n",
-                        -cut_depth, plunge_rate
-                    ));
-                }
-
-                for pass_num in 1..=self.params.laser_passes {
-                    let z_depth = -(pass_num as f32 - 1.0) * self.params.z_step_down;
-                    gcode.push_str(&format!(
-                        "; Pass {}/{} at Z{:.2}\n",
-                        pass_num, self.params.laser_passes, z_depth
-                    ));
-
-                    if pass_num > 1 && self.params.num_axes >= 3 {
-                        gcode.push_str(&format!("G0 Z{:.2} ; Move to pass depth\n", z_depth));
-                    }
-
-                    gcode.push_str(&format!("M3 S{} ; Laser on\n", self.params.laser_power));
-
-                    for point in path.iter().skip(1) {
-                        gcode.push_str(&format!(
-                            "G1 X{:.2} Y{:.2} F{:.0}\n",
-                            point.x, point.y, self.params.feed_rate
-                        ));
-                    }
-
-                    gcode.push_str("M5 ; Laser off\n");
-
-                    if pass_num < self.params.laser_passes {
-                        gcode.push_str(&format!(
-                            "G0 X{:.2} Y{:.2} ; Return to start for next pass\n",
-                            first_point.x, first_point.y
-                        ));
-                    }
-                }
-            }
-
-            if self.params.num_axes >= 3 {
-                gcode.push_str(&format!("G0 Z{:.2} ; Retract\n\n", 5.0));
-            }
-        }
-
-        gcode.push_str("M5 ; Ensure laser off\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G0 Z10.0 ; Move to safe height\n");
-        }
-        gcode.push_str("G0 X0 Y0 ; Return to origin\n");
-        gcode.push_str("M2 ; Program end\n");
-
+        gcode.push_str("; G-code generation for JigsawPuzzleMaker has been disabled.\n");
+        gcode.push_str("; Use the Designer to edit paths and export G-code with per-path parameters.\n");
+        gcode.push_str("; This placeholder emits no motion commands.\n");
+        gcode.push_str("M5 ; ensure spindle/laser off\n");
+        gcode.push_str("M2 ; program end\n");
         gcode
+    }
+
+    /// Return the generated paths as Vec of Vec of (f64, f64) points for UI/Designer consumption.
+    pub fn paths_as_f64(&self) -> Vec<Vec<(f64, f64)>> {
+        self.paths
+            .iter()
+            .map(|p| p.iter().map(|pt| (pt.x as f64, pt.y as f64)).collect())
+            .collect()
     }
 }
