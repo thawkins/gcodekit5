@@ -236,6 +236,112 @@ impl Canvas {
         }
     }
 
+/// Calcula el nuevo orden si se mueven los seleccionados al principio.
+/// Devuelve `None` si no hay selección, si no cambia nada, o si partiría un grupo.
+pub fn move_selected_to_top(&self) -> Option<Vec<u64>> {
+    let ids = self.shape_store.selected_ids();
+    if ids.is_empty() {
+        return None;
+    }
+    let new_order = Self::compute_order_move_ids_to_top(self.shape_store.draw_order(), &ids);
+    if new_order == *self.shape_store.draw_order() {
+        return None;
+    }
+    if self.shape_store.would_split_group_with_order(&new_order) {
+        return None;
+    }
+    Some(new_order)
+}
+
+pub fn move_selected_to_bottom(&self) -> Option<Vec<u64>> {
+    let ids = self.shape_store.selected_ids();
+    if ids.is_empty() {
+        return None;
+    }
+    let new_order = Self::compute_order_move_ids_to_bottom(self.shape_store.draw_order(), &ids);
+    if new_order == *self.shape_store.draw_order() {
+        return None;
+    }
+    if self.shape_store.would_split_group_with_order(&new_order) {
+        return None;
+    }
+    Some(new_order)
+}
+
+pub fn move_selected_up(&self) -> Option<Vec<u64>> {
+    let ids = self.shape_store.selected_ids();
+    if ids.is_empty() {
+        return None;
+    }
+    let new_order = Self::compute_order_move_ids_up(self.shape_store.draw_order(), &ids);
+    if new_order == *self.shape_store.draw_order() {
+        return None;
+    }
+    if self.shape_store.would_split_group_with_order(&new_order) {
+        return None;
+    }
+    Some(new_order)
+}
+
+pub fn move_selected_down(&self) -> Option<Vec<u64>> {
+    let ids = self.shape_store.selected_ids();
+    if ids.is_empty() {
+        return None;
+    }
+    let new_order = Self::compute_order_move_ids_down(self.shape_store.draw_order(), &ids);
+    if new_order == *self.shape_store.draw_order() {
+        return None;
+    }
+    if self.shape_store.would_split_group_with_order(&new_order) {
+        return None;
+    }
+    Some(new_order)
+}
+
+    fn compute_order_move_ids_to_top(order: &[u64], ids: &[u64]) -> Vec<u64> {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let (selected, rest): (Vec<u64>, Vec<u64>) =
+            order.iter().copied().partition(|id| id_set.contains(id));
+        let mut new_order = selected;
+        new_order.extend(rest);
+        new_order
+    }
+
+    fn compute_order_move_ids_to_bottom(order: &[u64], ids: &[u64]) -> Vec<u64> {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let (selected, rest): (Vec<u64>, Vec<u64>) =
+            order.iter().copied().partition(|id| id_set.contains(id));
+        let mut new_order = rest;
+        new_order.extend(selected);
+        new_order
+    }
+
+    fn compute_order_move_ids_up(order: &[u64], ids: &[u64]) -> Vec<u64> {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let mut new_order = order.to_vec();
+        for i in 1..new_order.len() {
+            let prev_selected = id_set.contains(&new_order[i - 1]);
+            let curr_selected = id_set.contains(&new_order[i]);
+            if curr_selected && !prev_selected {
+                new_order.swap(i - 1, i);
+            }
+        }
+        new_order
+    }
+
+    fn compute_order_move_ids_down(order: &[u64], ids: &[u64]) -> Vec<u64> {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let mut new_order = order.to_vec();
+        for i in (0..new_order.len().saturating_sub(1)).rev() {
+            let next_selected = id_set.contains(&new_order[i + 1]);
+            let curr_selected = id_set.contains(&new_order[i]);
+            if curr_selected && !next_selected {
+                new_order.swap(i, i + 1);
+            }
+        }
+        new_order
+    }
+
     pub fn select_at(
         &mut self,
         point: &Point,
@@ -554,6 +660,7 @@ impl Canvas {
         self.select_shape(first_id, false);
         Some(first_id)
     }
+
 }
 
 impl Default for Canvas {

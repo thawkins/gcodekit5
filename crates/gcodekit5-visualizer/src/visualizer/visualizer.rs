@@ -2,7 +2,7 @@
 //! Parses G-Code toolpaths for canvas-based visualization
 
 use super::toolpath_cache::ToolpathCache;
-use super::viewport::{Bounds};
+use super::viewport::Bounds;
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
@@ -271,30 +271,30 @@ impl Visualizer {
     pub fn get_scale_factor(&self) -> f32 {
         self.scale_factor
     }
-/*
-    /// Extract multiple parameters from G-Code line
-    // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
-    #[allow(dead_code)]
-    fn extract_params(line: &str, param_names: &[char]) -> HashMap<char, f32> {
-        let mut params = HashMap::new();
+    /*
+        /// Extract multiple parameters from G-Code line
+        // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
+        #[allow(dead_code)]
+        fn extract_params(line: &str, param_names: &[char]) -> HashMap<char, f32> {
+            let mut params = HashMap::new();
 
-        for part in line.split_whitespace() {
-            if part.len() < 2 {
-                continue;
-            }
-            let Some(first_char) = part.chars().next() else {
-                continue;
-            };
-            if param_names.contains(&first_char) {
-                if let Ok(value) = part[1..].parse::<f32>() {
-                    params.insert(first_char, value);
+            for part in line.split_whitespace() {
+                if part.len() < 2 {
+                    continue;
+                }
+                let Some(first_char) = part.chars().next() else {
+                    continue;
+                };
+                if param_names.contains(&first_char) {
+                    if let Ok(value) = part[1..].parse::<f32>() {
+                        params.insert(first_char, value);
+                    }
                 }
             }
-        }
 
-        params
-    }
-*/
+            params
+        }
+    */
     /// Get number of commands parsed
     pub fn get_command_count(&self) -> usize {
         self.toolpath_cache.len()
@@ -564,80 +564,79 @@ impl Visualizer {
         );
     }
 
-/// Extraer todos los parámetros de una línea de G-code sin usar regex
-fn extract_all_params(line: &str) -> ExtractedParams {
-    let mut params = ExtractedParams::new();
-    let chars: Vec<char> = line.chars().collect();
-    let mut i = 0;
+    /// Extraer todos los parámetros de una línea de G-code sin usar regex
+    fn extract_all_params(line: &str) -> ExtractedParams {
+        let mut params = ExtractedParams::new();
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
 
-    while i < chars.len() {
-        let c = chars[i];
-        // Buscar parámetros: X, Y, Z, I, J, S, F
-        if c == 'X' || c == 'Y' || c == 'Z' || c == 'I' || c == 'J' || c == 'S' || c == 'F' {
-            i += 1;
-            let mut num_str = String::new();
+        while i < chars.len() {
+            let c = chars[i];
+            // Buscar parámetros: X, Y, Z, I, J, S, F
+            if c == 'X' || c == 'Y' || c == 'Z' || c == 'I' || c == 'J' || c == 'S' || c == 'F' {
+                i += 1;
+                let mut num_str = String::new();
 
-            // Leer el número (incluyendo signo negativo y decimal)
-            while i < chars.len() {
-                let ch = chars[i];
-                if ch.is_ascii_digit() || ch == '.' || ch == '-' {
-                    if ch == '.' {
+                // Leer el número (incluyendo signo negativo y decimal)
+                while i < chars.len() {
+                    let ch = chars[i];
+                    if ch.is_ascii_digit() || ch == '.' || ch == '-' {
+                        if ch == '.' {}
+                        num_str.push(ch);
+                        i += 1;
+                    } else {
+                        break;
                     }
-                    num_str.push(ch);
-                    i += 1;
-                } else {
-                    break;
                 }
-            }
 
-            if let Ok(value) = num_str.parse::<f32>() {
-                match c {
-                    'X' => params.x = Some(value),
-                    'Y' => params.y = Some(value),
-                    'Z' => params.z = Some(value),
-                    'I' => params.i = Some(value),
-                    'J' => params.j = Some(value),
-                    'S' => params.s = Some(value),
-                    'F' => params.f = Some(value),
-                    _ => {}
+                if let Ok(value) = num_str.parse::<f32>() {
+                    match c {
+                        'X' => params.x = Some(value),
+                        'Y' => params.y = Some(value),
+                        'Z' => params.z = Some(value),
+                        'I' => params.i = Some(value),
+                        'J' => params.j = Some(value),
+                        'S' => params.s = Some(value),
+                        'F' => params.f = Some(value),
+                        _ => {}
+                    }
                 }
-            }
-        } else {
-            i += 1;
-        }
-    }
-
-    params
-}
-
-/// Extraer el número del comando G sin usar regex
-fn extract_gcode_num(line: &str) -> Option<u32> {
-    let chars: Vec<char> = line.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        if chars[i] == 'G' {
-            i += 1;
-            let mut num_str = String::new();
-
-            // Leer los dígitos después de G
-            while i < chars.len() && chars[i].is_ascii_digit() {
-                num_str.push(chars[i]);
+            } else {
                 i += 1;
             }
-
-            if !num_str.is_empty() {
-                if let Ok(num) = num_str.parse::<u32>() {
-                    return Some(num);
-                }
-            }
-            return None;
         }
-        i += 1;
+
+        params
     }
 
-    None
-}
+    /// Extraer el número del comando G sin usar regex
+    fn extract_gcode_num(line: &str) -> Option<u32> {
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            if chars[i] == 'G' {
+                i += 1;
+                let mut num_str = String::new();
+
+                // Leer los dígitos después de G
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    num_str.push(chars[i]);
+                    i += 1;
+                }
+
+                if !num_str.is_empty() {
+                    if let Ok(num) = num_str.parse::<u32>() {
+                        return Some(num);
+                    }
+                }
+                return None;
+            }
+            i += 1;
+        }
+
+        None
+    }
 
     /// Get bounds information
     pub fn get_bounds(&self) -> (f32, f32, f32, f32) {
@@ -828,7 +827,7 @@ fn extract_gcode_num(line: &str) -> Option<u32> {
         self.toolpath_sender.clone()
     }
 
-     /// Obtain the color for a given intensity.
+    /// Obtain the color for a given intensity.
     pub fn get_color_for_intensity(&self, intensity: f32) -> (f32, f32, f32) {
         if !self.use_intensity_colors {
             return (1.0, 1.0, 0.0);
@@ -839,7 +838,7 @@ fn extract_gcode_num(line: &str) -> Option<u32> {
         }
 
         intensity_to_color(intensity, self.max_intensity)
-    }   
+    }
 
     /// Activate/deactivate colors by intensity
     pub fn toggle_intensity_colors(&mut self) {

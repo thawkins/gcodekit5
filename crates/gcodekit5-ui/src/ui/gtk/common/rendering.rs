@@ -26,7 +26,6 @@ impl GridSpacing {
         let pixels_per_unit = zoom * base_spacing;
 
         if pixels_per_unit < 5.0 {
-
             // Too crowded, use coarser spacing
             if pixels_per_unit * 10.0 < 5.0 {
                 GridSpacing::Coarse(base_spacing * 100.0)
@@ -378,4 +377,3 @@ pub fn calculate_viewport_bounds(
 
     (min_x, min_y.min(max_y), max_x, min_y.max(max_y))
 }
-

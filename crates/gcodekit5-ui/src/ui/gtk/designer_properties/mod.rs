@@ -149,8 +149,8 @@ pub struct PropertiesPanel {
     pub(crate) image_scan_direction_combo: ComboBoxText,
     pub(crate) image_bidirectional_check: CheckButton,
     pub(crate) image_invert_check: CheckButton,
-    pub(crate) image_dithering_combo: ComboBoxText,
-    pub(crate) image_halftone_threshold_entry: Entry,
+    //    pub(crate) image_dithering_combo: ComboBoxText,
+    //    pub(crate) image_halftone_threshold_entry: Entry,
     // Laser override widgets
     pub(crate) laser_override_frame: Frame,
     pub(crate) laser_use_global_check: CheckButton,
@@ -264,13 +264,8 @@ impl PropertiesPanel {
         ) = Self::build_timing_pulley_section();
         content.append(&timing_pulley_frame);
 
-        let (
-            ops_frame,
-            offset_entry,
-            chamfer_entry,
-            offset_unit_label,
-            chamfer_unit_label,
-        ) = Self::build_geometry_ops_section();
+        let (ops_frame, offset_entry, chamfer_entry, offset_unit_label, chamfer_unit_label) =
+            Self::build_geometry_ops_section();
         content.append(&ops_frame);
 
         let (
@@ -298,8 +293,8 @@ impl PropertiesPanel {
             image_scan_direction_combo,
             image_bidirectional_check,
             image_invert_check,
-            image_dithering_combo,
-            image_halftone_threshold_entry,
+            //            image_dithering_combo,
+            //            image_halftone_threshold_entry,
         ) = Self::build_image_engraving_section();
         content.append(&image_engraving_frame);
 
@@ -384,9 +379,8 @@ impl PropertiesPanel {
             image_scan_direction_combo,
             image_bidirectional_check,
             image_invert_check,
-            image_dithering_combo,
-            image_halftone_threshold_entry,
-
+            //            image_dithering_combo,
+            //            image_halftone_threshold_entry,
             laser_override_frame,
             laser_use_global_check,
             laser_feed_rate_entry,
@@ -795,21 +789,21 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
+        /*
+                handlers::image::setup_dithering_handler(
+                    &self.image_dithering_combo,
+                    self.state.clone(),
+                    self.redraw_callback.clone(),
+                    self.updating.clone(),
+                );
 
-        handlers::image::setup_dithering_handler(
-            &self.image_dithering_combo,
-            self.state.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::image::setup_halftone_threshold_handler(
-            &self.image_halftone_threshold_entry,
-            self.state.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
+                handlers::image::setup_halftone_threshold_handler(
+                    &self.image_halftone_threshold_entry,
+                    self.state.clone(),
+                    self.redraw_callback.clone(),
+                    self.updating.clone(),
+                );
+        */
         // Laser override handlers
         handlers::laser_override::setup_laser_override_handlers(self);
     }

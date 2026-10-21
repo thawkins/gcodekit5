@@ -68,10 +68,12 @@ impl BitmapEngravingTool {
         header.set_margin_end(12);
 
         let back_btn = Button::builder().icon_name("go-previous-symbolic").build();
+
         let stack_clone = stack.clone();
         back_btn.connect_clicked(move |_| {
             stack_clone.set_visible_child_name("dashboard");
         });
+
         header.append(&back_btn);
 
         let title = Label::builder()
@@ -512,18 +514,19 @@ impl BitmapEngravingTool {
                 let result = BitmapImageEngraver::from_file(&image_path_thread, params)
                     .and_then(|engraver| {
                         engraver.generate_gcode_with_progress(|progress| {
-                            // Check for cancellation
                             if cancel_rx.try_recv().is_ok() {
                                 return; // Abort
                             }
-                            // Send progress update
                             let _ = progress_tx.send(progress);
                         })
                     })
-                    .map(|mut gcode| {
-                        gcode = gcode.replace("$H\n", "").replace("$H", "");
+                    .map(|gcode| {
+                        // If homing check button is active
                         if home_before {
-                            format!("$H\n{}", gcode)
+                            let target_position = "G17 ; XY plane selection\n\n";
+                            let homing_block = "G17 ; XY plane selection\n\n; Home device\n$H ; Home all axes (bottom-left corner)\n\n";
+
+                            gcode.replace(target_position, homing_block)
                         } else {
                             gcode
                         }
@@ -532,6 +535,7 @@ impl BitmapEngravingTool {
                 // Send result back
                 let _ = result_tx.send(result);
             });
+
 
             // Poll for progress and result on main thread
             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
@@ -708,6 +712,7 @@ impl BitmapEngravingTool {
             offset_x: w.offset_x.text().parse().unwrap_or(10.0),
             offset_y: w.offset_y.text().parse().unwrap_or(10.0),
             num_axes: crate::device_status::get_active_num_axes(),
+            home_before: false,
         }
     }
 

@@ -1,3 +1,4 @@
+//! gcodekit5-devicedb/src/model.rs
 //! # Device Data Model
 //!
 //! Defines the data structures for CNC device profiles, including
@@ -38,19 +39,43 @@ pub enum ControllerType {
     Smoothieware,
     FluidNC,
     Marlin,
+    Repetier,
+}
+
+impl ControllerType {
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Grbl => "GRBL",
+            Self::GrblHal => "grblHAL",
+            Self::TinyG => "TinyG",
+            Self::G2Core => "g2core",
+            Self::Smoothieware => "Smoothieware",
+            Self::FluidNC => "FluidNC",
+            Self::Marlin => "Marlin",
+            Self::Repetier => "Repetier",
+        }
+    }
+
+    /// Parses `ControllerType`
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "GRBL" | "Grbl" => Some(Self::Grbl),
+            "grblHAL" | "GrblHal" => Some(Self::GrblHal),
+            "TinyG" => Some(Self::TinyG),
+            "g2core" | "G2Core" => Some(Self::G2Core),
+            "Smoothieware" => Some(Self::Smoothieware),
+            "FluidNC" => Some(Self::FluidNC),
+            "Marlin" => Some(Self::Marlin),
+            "Repetier" => Some(Self::Repetier),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for ControllerType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Grbl => write!(f, "GRBL"),
-            Self::GrblHal => write!(f, "grblHAL"),
-            Self::TinyG => write!(f, "TinyG"),
-            Self::G2Core => write!(f, "g2core"),
-            Self::Smoothieware => write!(f, "Smoothieware"),
-            Self::FluidNC => write!(f, "FluidNC"),
-            Self::Marlin => write!(f, "Marlin"),
-        }
+        f.write_str(self.as_str())
     }
 }
 

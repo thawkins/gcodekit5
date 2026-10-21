@@ -462,13 +462,7 @@ pub fn generate_tool_marker_data() -> Vec<f32> {
     vertex
 }
 
-fn push_triangle(
-    vertex: &mut Vec<f32>,
-    p1: &Point3D,
-    p2: &Point3D,
-    p3: &Point3D,
-    color: [f32; 4],
-) {
+fn push_triangle(vertex: &mut Vec<f32>, p1: &Point3D, p2: &Point3D, p3: &Point3D, color: [f32; 4]) {
     // Point 1
     vertex.push(p1.x);
     vertex.push(p1.y);

@@ -165,29 +165,53 @@ pub fn generate_surface_mesh(grid: &VoxelGrid) -> Vec<f32> {
         let c = if is_outer { color } else { color_inner };
 
         // Triangle 1: v1, v2, v3
-        vertices.push(v1.x); vertices.push(v1.y); vertices.push(v1.z);
-        vertices.push(normal.x); vertices.push(normal.y); vertices.push(normal.z);
+        vertices.push(v1.x);
+        vertices.push(v1.y);
+        vertices.push(v1.z);
+        vertices.push(normal.x);
+        vertices.push(normal.y);
+        vertices.push(normal.z);
         vertices.extend_from_slice(&c);
 
-        vertices.push(v2.x); vertices.push(v2.y); vertices.push(v2.z);
-        vertices.push(normal.x); vertices.push(normal.y); vertices.push(normal.z);
+        vertices.push(v2.x);
+        vertices.push(v2.y);
+        vertices.push(v2.z);
+        vertices.push(normal.x);
+        vertices.push(normal.y);
+        vertices.push(normal.z);
         vertices.extend_from_slice(&c);
 
-        vertices.push(v3.x); vertices.push(v3.y); vertices.push(v3.z);
-        vertices.push(normal.x); vertices.push(normal.y); vertices.push(normal.z);
+        vertices.push(v3.x);
+        vertices.push(v3.y);
+        vertices.push(v3.z);
+        vertices.push(normal.x);
+        vertices.push(normal.y);
+        vertices.push(normal.z);
         vertices.extend_from_slice(&c);
 
         // Triangle 2: v1, v3, v4
-        vertices.push(v1.x); vertices.push(v1.y); vertices.push(v1.z);
-        vertices.push(normal.x); vertices.push(normal.y); vertices.push(normal.z);
+        vertices.push(v1.x);
+        vertices.push(v1.y);
+        vertices.push(v1.z);
+        vertices.push(normal.x);
+        vertices.push(normal.y);
+        vertices.push(normal.z);
         vertices.extend_from_slice(&c);
 
-        vertices.push(v3.x); vertices.push(v3.y); vertices.push(v3.z);
-        vertices.push(normal.x); vertices.push(normal.y); vertices.push(normal.z);
+        vertices.push(v3.x);
+        vertices.push(v3.y);
+        vertices.push(v3.z);
+        vertices.push(normal.x);
+        vertices.push(normal.y);
+        vertices.push(normal.z);
         vertices.extend_from_slice(&c);
 
-        vertices.push(v4.x); vertices.push(v4.y); vertices.push(v4.z);
-        vertices.push(normal.x); vertices.push(normal.y); vertices.push(normal.z);
+        vertices.push(v4.x);
+        vertices.push(v4.y);
+        vertices.push(v4.z);
+        vertices.push(normal.x);
+        vertices.push(normal.y);
+        vertices.push(normal.z);
         vertices.extend_from_slice(&c);
     };
 
@@ -487,7 +511,8 @@ impl StockSimulator3D {
 
             // Calcular distancia acumulada al inicio del bloque
             let block_start_fraction = block_start as f32 / steps as f32;
-            let distance_at_block_start = *accumulated_distance + segment_distance * block_start_fraction;
+            let distance_at_block_start =
+                *accumulated_distance + segment_distance * block_start_fraction;
 
             // Progreso basado en distancia real recorrida
             let progress = (distance_at_block_start / total_distance).clamp(0.0, 1.0);
@@ -557,7 +582,8 @@ impl StockSimulator3D {
 
             // Calcular distancia acumulada al inicio del bloque
             let block_start_fraction = block_start as f32 / steps as f32;
-            let distance_at_block_start = *accumulated_distance + segment_distance * block_start_fraction;
+            let distance_at_block_start =
+                *accumulated_distance + segment_distance * block_start_fraction;
 
             // Progreso basado en distancia real recorrida
             let progress = (distance_at_block_start / total_distance).clamp(0.0, 1.0);
@@ -582,113 +608,113 @@ impl StockSimulator3D {
         *accumulated_distance += segment_distance;
         true
     }
-/*
-    // Métodos legacy para compatibilidad
-    #[allow(dead_code)]
-    fn remove_linear(&mut self, start: Vec3, end: Vec3) {
-        let dist = start.distance(end);
-        let steps = ((dist / (self.grid.resolution * 0.5)).ceil() as usize).max(1);
-        for i in 0..=steps {
-            let t = i as f32 / steps as f32;
-            let pos = start.lerp(end, t);
-            self.remove_at_tool_tip(pos);
+    /*
+        // Métodos legacy para compatibilidad
+        #[allow(dead_code)]
+        fn remove_linear(&mut self, start: Vec3, end: Vec3) {
+            let dist = start.distance(end);
+            let steps = ((dist / (self.grid.resolution * 0.5)).ceil() as usize).max(1);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let pos = start.lerp(end, t);
+                self.remove_at_tool_tip(pos);
+            }
         }
-    }
 
-    #[allow(dead_code)]
-    fn remove_linear_cancellable<F>(&mut self, start: Vec3, end: Vec3, _on_progress: &mut F) -> bool
-    where
-        F: FnMut(f32) -> bool,
-    {
-        let dist = start.distance(end);
-        let steps = ((dist / (self.grid.resolution * 0.5)).ceil() as usize).max(1);
-        for i in 0..=steps {
-            let t = i as f32 / steps as f32;
-            let pos = start.lerp(end, t);
-            self.remove_at_tool_tip(pos);
+        #[allow(dead_code)]
+        fn remove_linear_cancellable<F>(&mut self, start: Vec3, end: Vec3, _on_progress: &mut F) -> bool
+        where
+            F: FnMut(f32) -> bool,
+        {
+            let dist = start.distance(end);
+            let steps = ((dist / (self.grid.resolution * 0.5)).ceil() as usize).max(1);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let pos = start.lerp(end, t);
+                self.remove_at_tool_tip(pos);
+            }
+            true
         }
-        true
-    }
 
-    #[allow(dead_code)]
-    fn remove_arc(&mut self, start: Vec3, end: Vec3, center: Vec3, clockwise: bool) {
-        let radius = (start - center).length();
-        let start_angle = (start.y - center.y).atan2(start.x - center.x);
-        let end_angle = (end.y - center.y).atan2(end.x - center.x);
-        let angle_span = if clockwise {
-            if end_angle > start_angle {
-                end_angle - start_angle - 2.0 * std::f32::consts::PI
+        #[allow(dead_code)]
+        fn remove_arc(&mut self, start: Vec3, end: Vec3, center: Vec3, clockwise: bool) {
+            let radius = (start - center).length();
+            let start_angle = (start.y - center.y).atan2(start.x - center.x);
+            let end_angle = (end.y - center.y).atan2(end.x - center.x);
+            let angle_span = if clockwise {
+                if end_angle > start_angle {
+                    end_angle - start_angle - 2.0 * std::f32::consts::PI
+                } else {
+                    end_angle - start_angle
+                }
             } else {
-                end_angle - start_angle
+                if end_angle < start_angle {
+                    end_angle - start_angle + 2.0 * std::f32::consts::PI
+                } else {
+                    end_angle - start_angle
+                }
+            };
+            let arc_length = radius * angle_span.abs();
+            let resolution = self.grid.resolution;
+            let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
+            let steps = steps.max(1);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let angle = start_angle + angle_span * t;
+                let point = Vec3::new(
+                    center.x + radius * angle.cos(),
+                    center.y + radius * angle.sin(),
+                    start.z + (end.z - start.z) * t,
+                );
+                self.remove_at_tool_tip(point);
             }
-        } else {
-            if end_angle < start_angle {
-                end_angle - start_angle + 2.0 * std::f32::consts::PI
-            } else {
-                end_angle - start_angle
-            }
-        };
-        let arc_length = radius * angle_span.abs();
-        let resolution = self.grid.resolution;
-        let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
-        let steps = steps.max(1);
-        for i in 0..=steps {
-            let t = i as f32 / steps as f32;
-            let angle = start_angle + angle_span * t;
-            let point = Vec3::new(
-                center.x + radius * angle.cos(),
-                center.y + radius * angle.sin(),
-                start.z + (end.z - start.z) * t,
-            );
-            self.remove_at_tool_tip(point);
         }
-    }
 
-    #[allow(dead_code)]
-    fn remove_arc_cancellable<F>(
-        &mut self,
-        start: Vec3,
-        end: Vec3,
-        center: Vec3,
-        clockwise: bool,
-        _on_progress: &mut F,
-    ) -> bool
-    where
-        F: FnMut(f32) -> bool,
-    {
-        let radius = (start - center).length();
-        let start_angle = (start.y - center.y).atan2(start.x - center.x);
-        let end_angle = (end.y - center.y).atan2(end.x - center.x);
-        let angle_span = if clockwise {
-            if end_angle > start_angle {
-                end_angle - start_angle - 2.0 * std::f32::consts::PI
+        #[allow(dead_code)]
+        fn remove_arc_cancellable<F>(
+            &mut self,
+            start: Vec3,
+            end: Vec3,
+            center: Vec3,
+            clockwise: bool,
+            _on_progress: &mut F,
+        ) -> bool
+        where
+            F: FnMut(f32) -> bool,
+        {
+            let radius = (start - center).length();
+            let start_angle = (start.y - center.y).atan2(start.x - center.x);
+            let end_angle = (end.y - center.y).atan2(end.x - center.x);
+            let angle_span = if clockwise {
+                if end_angle > start_angle {
+                    end_angle - start_angle - 2.0 * std::f32::consts::PI
+                } else {
+                    end_angle - start_angle
+                }
             } else {
-                end_angle - start_angle
+                if end_angle < start_angle {
+                    end_angle - start_angle + 2.0 * std::f32::consts::PI
+                } else {
+                    end_angle - start_angle
+                }
+            };
+            let arc_length = radius * angle_span.abs();
+            let resolution = self.grid.resolution;
+            let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
+            let steps = steps.max(1);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let angle = start_angle + angle_span * t;
+                let point = Vec3::new(
+                    center.x + radius * angle.cos(),
+                    center.y + radius * angle.sin(),
+                    start.z + (end.z - start.z) * t,
+                );
+                self.remove_at_tool_tip(point);
             }
-        } else {
-            if end_angle < start_angle {
-                end_angle - start_angle + 2.0 * std::f32::consts::PI
-            } else {
-                end_angle - start_angle
-            }
-        };
-        let arc_length = radius * angle_span.abs();
-        let resolution = self.grid.resolution;
-        let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
-        let steps = steps.max(1);
-        for i in 0..=steps {
-            let t = i as f32 / steps as f32;
-            let angle = start_angle + angle_span * t;
-            let point = Vec3::new(
-                center.x + radius * angle.cos(),
-                center.y + radius * angle.sin(),
-                start.z + (end.z - start.z) * t,
-            );
-            self.remove_at_tool_tip(point);
+            true
         }
-        true
-    }
-*/
+    */
     pub fn get_mesh(&self) -> Vec<f32> {
         generate_surface_mesh(&self.grid)
     }

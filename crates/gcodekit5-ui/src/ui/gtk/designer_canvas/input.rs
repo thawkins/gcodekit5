@@ -172,7 +172,7 @@ impl DesignerCanvas {
         {
             let mut points = self.polyline_points.borrow_mut();
             if is_polyline_mode && !points.is_empty() {
-                tracing::info!("Polyline mode with points - finishing polyline");
+//                println!("Polyline mode with points - finishing polyline");
                 if points.len() >= 2 {
                     // Create polyline
                     let path_shape = PathShape::from_points(&points, true); // Close polyline
@@ -277,8 +277,8 @@ impl DesignerCanvas {
             menu_box.append(&separator);
 
             let union_button = Button::with_label("Union");
-            let difference_button = Button::with_label("Difference");
-            let intersection_button = Button::with_label("Intersection");
+            let difference_button = Button::with_label(&t!("Difference"));
+            let intersection_button = Button::with_label(&t!("Intersection"));
             menu_box.append(&union_button);
             menu_box.append(&difference_button);
             menu_box.append(&intersection_button);
@@ -338,20 +338,20 @@ impl DesignerCanvas {
         };
 
         // Edit - only show items that are actionable
-        vbox.append(&create_item("Cut", "cut"));
-        vbox.append(&create_item("Copy", "copy"));
+        vbox.append(&create_item(&t!("Cut"), "cut"));
+        vbox.append(&create_item(&t!("Copy"), "copy"));
         if can_paste {
-            vbox.append(&create_item("Paste", "paste"));
+            vbox.append(&create_item(&t!("Paste"), "paste"));
         }
-        vbox.append(&create_item("Delete", "delete"));
+        vbox.append(&create_item(&t!("Delete"), "delete"));
 
         vbox.append(&Separator::new(Orientation::Horizontal));
 
         if can_group {
-            vbox.append(&create_item("Group", "group"));
+            vbox.append(&create_item(&t!("Group"), "group"));
         }
         if can_ungroup {
-            vbox.append(&create_item("Ungroup", "ungroup"));
+            vbox.append(&create_item(&t!("Ungroup"), "ungroup"));
         }
 
         if can_group || can_ungroup {
@@ -359,70 +359,18 @@ impl DesignerCanvas {
         }
 
         if can_boolean {
-            vbox.append(&create_item("Union", "boolean_union"));
-            vbox.append(&create_item("Diff", "boolean_difference"));
-            vbox.append(&create_item("Inter", "boolean_intersection"));
+            vbox.append(&create_item(&t!("Union"), "boolean_union"));
+            vbox.append(&create_item(&t!("Diff"), "boolean_difference"));
+            vbox.append(&create_item(&t!("Inter"), "boolean_intersection"));
             vbox.append(&Separator::new(Orientation::Horizontal));
         }
 
-        vbox.append(&create_item("Mirror on X", "mirror_x"));
-        vbox.append(&create_item("Mirror on Y", "mirror_y"));
-
-        // Rotate menu is always shown since we have a selection
-        {
-            let rotate_btn = gtk4::Button::builder()
-                .label("Rotate ▸")
-                .has_frame(false)
-                .halign(gtk4::Align::Start)
-                .build();
-
-            let rotate_menu = Popover::new();
-            rotate_menu.set_parent(&rotate_btn);
-            rotate_menu.set_has_arrow(false);
-            rotate_menu.set_position(gtk4::PositionType::Right);
-
-            let rotate_vbox = Box::new(Orientation::Vertical, 0);
-            rotate_vbox.add_css_class("context-menu");
-
-            // Helper for rotate items
-            let create_rotate_item = |label: &str, angle_degrees: f64| {
-                let btn = gtk4::Button::builder()
-                    .label(label)
-                    .has_frame(false)
-                    .halign(gtk4::Align::Start)
-                    .build();
-
-                let canvas = self.clone();
-                let menu_clone = menu.clone(); // Main menu
-                let rotate_menu_clone = rotate_menu.clone();
-                let angle_radians = angle_degrees.to_radians();
-
-                btn.connect_clicked(move |_| {
-                    rotate_menu_clone.popdown();
-                    menu_clone.popdown();
-                    canvas.set_selected_rotation(angle_radians);
-                });
-                btn
-            };
-
-            rotate_vbox.append(&create_rotate_item("90° CW", -90.0));
-            rotate_vbox.append(&create_rotate_item("90° CCW", 90.0));
-            rotate_vbox.append(&create_rotate_item("45° CW", -45.0));
-            rotate_vbox.append(&create_rotate_item("45° CCW", 45.0));
-            rotate_vbox.append(&create_rotate_item("180°", 180.0));
-
-            rotate_menu.set_child(Some(&rotate_vbox));
-
-            rotate_btn.connect_clicked(move |_| {
-                rotate_menu.popup();
-            });
-
-            vbox.append(&rotate_btn);
-        }
+        vbox.append(&create_item(&t!("Mirror on X"), "mirror_x"));
+        vbox.append(&create_item(&t!("Mirror on Y"), "mirror_y"));
 
         if can_align {
             let align_btn = gtk4::Button::builder()
-                .label("Align ▸")
+                .label(&t!("Align ▸"))
                 .has_frame(false)
                 .halign(gtk4::Align::Start)
                 .build();
@@ -464,12 +412,12 @@ impl DesignerCanvas {
                 btn
             };
 
-            align_vbox.append(&create_align_item("Align Left", "align_left"));
-            align_vbox.append(&create_align_item("Align Right", "align_right"));
-            align_vbox.append(&create_align_item("Align Top", "align_top"));
-            align_vbox.append(&create_align_item("Align Bottom", "align_bottom"));
-            align_vbox.append(&create_align_item("Align Center X", "align_center_x"));
-            align_vbox.append(&create_align_item("Align Center Y", "align_center_y"));
+            align_vbox.append(&create_align_item(&t!("Align Left"), "align_left"));
+            align_vbox.append(&create_align_item(&t!("Align Right"), "align_right"));
+            align_vbox.append(&create_align_item(&t!("Align Top"), "align_top"));
+            align_vbox.append(&create_align_item(&t!("Align Bottom"), "align_bottom"));
+            align_vbox.append(&create_align_item(&t!("Align Center X"), "align_center_x"));
+            align_vbox.append(&create_align_item(&t!("Align Center Y"), "align_center_y"));
 
             align_menu.set_child(Some(&align_vbox));
 
@@ -1165,35 +1113,72 @@ impl DesignerCanvas {
                 // Check if we're resizing
                 if let Some((handle, shape_id)) = *self.active_resize_handle.borrow() {
                     self.apply_resize(handle, shape_id, current_x, current_y, shift_pressed);
+                // Modification for SNAP while moving
                 } else {
-                    let mut state = self.state.borrow_mut();
-                    // Check if we have a selection - if so, move it; otherwise, marquee select
-                    if state.canvas.selection_manager.selected_id().is_some() {
-                        // Calculate delta from last update (incremental movement)
-                        let last_offset = *self.last_drag_offset.borrow();
-                        let mut delta_x = (offset_x - last_offset.0) / zoom;
-                        let mut delta_y = (offset_y - last_offset.1) / zoom;
+                    // 1. Obtener datos de zoom y estado de selección haciendo un préstamo inmutable rápido y soltándolo de inmediato
+                    let (has_selection, zoom) = {
+                        let state = self.state.borrow();
+                        (
+                            state.canvas.selection_manager.selected_id().is_some(),
+                            state.canvas.zoom(),
+                        )
+                    };
 
-                        if shift_pressed {
-                            // Constrain movement to X or Y axis based on total drag
-                            let total_dx = current_x - start.0;
-                            let total_dy = current_y - start.1;
+                    if has_selection {
+                        // 2. Calcular la posición absoluta actual del cursor en el canvas basada en el inicio
+                        let raw_current_x = start.0 + (offset_x / zoom);
+                        let raw_current_y = start.1 - (offset_y / zoom);
+
+                        // 3. Aplicar la restricción de Shift si está presionado (restringir a un solo eje)
+                        let (constrained_x, constrained_y) = if shift_pressed {
+                            let total_dx = raw_current_x - start.0;
+                            let total_dy = raw_current_y - start.1;
 
                             if total_dx.abs() > total_dy.abs() {
-                                delta_y = 0.0;
+                                (raw_current_x, start.1) // Solo movimiento en X
                             } else {
-                                delta_x = 0.0;
+                                (start.0, raw_current_y) // Solo movimiento en Y
                             }
+                        } else {
+                            (raw_current_x, raw_current_y)
+                        };
+
+                        // 4. Aplicar el SNAP a la posición absoluta destino (aquí snap_canvas_point hará su borrow sin conflictos)
+                        let (snapped_dest_x, snapped_dest_y) =
+                            self.snap_canvas_point(constrained_x, constrained_y);
+
+                        // 5. Calcular el punto donde nos encontrábamos en el frame anterior
+                        let last_offset = *self.last_drag_offset.borrow();
+                        let raw_last_x = start.0 + (last_offset.0 / zoom);
+                        let raw_last_y = start.1 - (last_offset.1 / zoom);
+
+                        let (constrained_last_x, constrained_last_y) = if shift_pressed {
+                            let total_dx = raw_last_x - start.0;
+                            let total_dy = raw_last_y - start.1;
+                            if total_dx.abs() > total_dy.abs() {
+                                (raw_last_x, start.1)
+                            } else {
+                                (start.0, raw_last_y)
+                            }
+                        } else {
+                            (raw_last_x, raw_last_y)
+                        };
+                        let (snapped_last_x, snapped_last_y) =
+                            self.snap_canvas_point(constrained_last_x, constrained_last_y);
+
+                        // 6. El delta incremental es la diferencia entre los puntos con SNAP
+                        let delta_x = snapped_dest_x - snapped_last_x;
+                        let delta_y = snapped_dest_y - snapped_last_y;
+
+                        // 7. Abrimos el préstamo mutable de forma aislada y segura para mover el objeto
+                        {
+                            let mut state = self.state.borrow_mut();
+                            state.canvas.move_selected(delta_x, delta_y);
                         }
 
-                        // Apply incremental movement directly to canvas (without undo)
-                        // We'll create the undo command when drag ends
-                        state.canvas.move_selected(delta_x, -delta_y);
-
-                        // Update last offset
+                        // 8. Actualizar el último offset de arrastre
                         *self.last_drag_offset.borrow_mut() = (offset_x, offset_y);
                     }
-                    // Marquee selection is shown by the preview rectangle (handled in draw)
                 }
             } else if tool == DesignerTool::Pan {
                 // Handle panning
@@ -1321,7 +1306,7 @@ impl DesignerCanvas {
 
                     let mut state = self.state.borrow_mut();
 
-                    // If we were resizing, create an undo command for the resize
+                    // If we were resizing, create an undo comlet last_offset = *self.last_drag_offset.borrow();mand for the resize
                     if was_resizing {
                         if let Some(originals) = resize_originals {
                             let mut commands = Vec::new();

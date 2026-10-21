@@ -3,13 +3,13 @@
 use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::designer_state::MachineMode;
+use crate::gcode_gen::MachineLimits;
 use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
 use crate::ToolpathToGcode;
 use csgrs::traits::CSG;
 use gcodekit5_core::Units;
-use crate::gcode_gen::MachineLimits;
 
 impl DesignerState {
     fn shape_embedded_laser_use_global(shape: &DrawingObject) -> bool {
@@ -181,10 +181,9 @@ impl DesignerState {
         let mut gcode_gen = ToolpathToGcode::new(Units::MM, safe_z)
             .with_continuous_z_between_passes(self.tool_settings.continuous_z_between_passes);
 
-
-    if let Some(limits) = machine_limits {
-        gcode_gen = gcode_gen.with_machine_limits(limits);
-    }
+        if let Some(limits) = machine_limits {
+            gcode_gen = gcode_gen.with_machine_limits(limits);
+        }
 
         // Use state mode:
         match self.machine_mode() {
@@ -284,8 +283,7 @@ impl DesignerState {
                 .set_pocket_strategy(effective_shape_obj.pocket_strategy);
             self.toolpath_generator
                 .set_start_depth(toolpath_start_depth);
-            self.toolpath_generator
-                .set_cut_depth(toolpath_cut_depth);
+            self.toolpath_generator.set_cut_depth(toolpath_cut_depth);
             self.toolpath_generator
                 .set_step_in(effective_shape_obj.step_in as f64);
             self.toolpath_generator
@@ -320,8 +318,10 @@ impl DesignerState {
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                                .generate_rectangle_contour(rect, effective_shape_obj.step_down as f64),
+                            self.toolpath_generator.generate_rectangle_contour(
+                                rect,
+                                effective_shape_obj.step_down as f64,
+                            ),
                             false,
                         )
                     }
@@ -343,21 +343,23 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_circle_contour(circle, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_circle_contour(
+                                circle,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
 
                 crate::model::Shape::Line(line) => (
                     self.toolpath_generator
-                    .generate_line_contour(line, effective_shape_obj.step_down as f64),
-                                                    false,
+                        .generate_line_contour(line, effective_shape_obj.step_down as f64),
+                    false,
                 ),
 
                 crate::model::Shape::Ellipse(ellipse) => {
@@ -374,13 +376,15 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_ellipse_contour(ellipse, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_ellipse_contour(
+                                ellipse,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
@@ -399,13 +403,13 @@ impl DesignerState {
                             &nalgebra::Vector3::new(-cx, -cy, 0.0),
                         );
                         let rotation_matrix =
-                        nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
+                            nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
                         let translation_back = nalgebra::Matrix4::new_translation(
                             &nalgebra::Vector3::new(cx, cy, 0.0),
                         );
 
                         let full_transform =
-                        translation_back * rotation_matrix * translation_to_origin;
+                            translation_back * rotation_matrix * translation_to_origin;
 
                         rotated_path.sketch = rotated_path.sketch.transform(&full_transform);
                     }
@@ -423,31 +427,35 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_path_contour(&rotated_path, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_path_contour(
+                                &rotated_path,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
 
                 crate::model::Shape::Text(text) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-
-                        let pocket = self.toolpath_generator
-                        .generate_text_pocket_toolpath(text, effective_shape_obj.step_down as f64);
+                        let pocket = self.toolpath_generator.generate_text_pocket_toolpath(
+                            text,
+                            effective_shape_obj.step_down as f64,
+                        );
 
                         let pocket_len: f64 = pocket.iter().map(|tp| tp.total_length()).sum();
 
                         if pocket_len <= 1e-9 {
-
                             (
-                                self.toolpath_generator
-                                .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
-                             true,
+                                self.toolpath_generator.generate_text_toolpath(
+                                    text,
+                                    effective_shape_obj.step_down as f64,
+                                ),
+                                true,
                             )
                         } else {
                             (pocket, false)
@@ -455,8 +463,8 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator
-                            .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
-                         false,
+                                .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
+                            false,
                         )
                     }
                 }
@@ -475,13 +483,15 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_triangle_contour(triangle, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_triangle_contour(
+                                triangle,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
@@ -500,17 +510,18 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_polygon_contour(polygon, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_polygon_contour(
+                                polygon,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
-
 
                 crate::model::Shape::RasterImage(_) => {
                     // Raster images do not directly generate a toolpath.
@@ -535,17 +546,18 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_path_contour(&design_path, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_path_contour(
+                                &design_path,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
-
             };
 
             // ============================================================
@@ -681,8 +693,8 @@ impl DesignerState {
                     mirror_x: false,
                     mirror_y: false,
                     rotation: crate::engraving::RotationAngle::Degrees0,
-                    halftone: crate::engraving::HalftoneMethod::None,
-                    halftone_threshold: 128,
+                    //                    halftone: crate::engraving::HalftoneMethod::None,
+                    //                    halftone_threshold: 128,
                     offset_x: start_x as f32,
                     offset_y: start_y as f32,
                     power_scale: 1000.0,

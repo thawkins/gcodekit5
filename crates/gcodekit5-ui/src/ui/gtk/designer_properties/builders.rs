@@ -5,7 +5,6 @@ use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
 impl PropertiesPanel {
-
     pub(crate) fn create_section(title: &str) -> Frame {
         let frame = Frame::new(None);
 
@@ -15,13 +14,13 @@ impl PropertiesPanel {
         title_label.set_margin_start(8);
         title_label.set_margin_top(4);
         title_label.set_margin_bottom(4);
-//        title_label.add_css_class("section-title"); // ← Opcional para CSS
+        //        title_label.add_css_class("section-title"); // ← Opcional para CSS
         frame.set_label_widget(Some(&title_label));
         frame
     }
 
-
-    pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
+    pub(crate) fn build_position_section(
+    ) -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -465,21 +464,27 @@ impl PropertiesPanel {
         grid.attach(&chamfer_unit_label, 2, 1, 1, 1);
 
         frame.set_child(Some(&grid));
-        (frame, offset_entry, chamfer_entry, offset_unit_label, chamfer_unit_label)
+        (
+            frame,
+            offset_entry,
+            chamfer_entry,
+            offset_unit_label,
+            chamfer_unit_label,
+        )
     }
 
     pub(crate) fn build_cam_section() -> (
         Frame,
         CheckButton,
         DropDown,
-        Entry,  // step_down_entry
-        Entry,  // step_in_entry
-        Entry,  // ramp_angle_entry
+        Entry,    // step_down_entry
+        Entry,    // step_in_entry
+        Entry,    // ramp_angle_entry
         DropDown, // strategy_combo
-        Entry, // raster_fill_entry
-        Label,  // step_down_unit_label
-        Label,  // step_in_unit_label
-        Label,  // step_in_label
+        Entry,    // raster_fill_entry
+        Label,    // step_down_unit_label
+        Label,    // step_in_unit_label
+        Label,    // step_in_label
     ) {
         let frame = Self::create_section(&t!("CAM Properties"));
         let grid = gtk4::Grid::builder()
@@ -605,8 +610,8 @@ impl PropertiesPanel {
         ComboBoxText, // scan_direction
         CheckButton,  // bidirectional
         CheckButton,  // invert
-        ComboBoxText, // dithering
-        Entry,        // halftone_threshold
+                      //        ComboBoxText, // dithering
+                      //        Entry,        // halftone_threshold
     ) {
         let frame = Self::create_section(&t!("Laser Engraving"));
         let grid = gtk4::Grid::builder()
@@ -671,18 +676,18 @@ impl PropertiesPanel {
         bidir_label.set_halign(gtk4::Align::Start);
         let bidir_check = CheckButton::new();
         bidir_check.set_active(RasterImage::default().bidirectional);
-
-        // Dithering
-        let dither_label = Label::new(Some(&t!("Dithering:")));
-        dither_label.set_halign(gtk4::Align::Start);
-        let dither_combo = ComboBoxText::new();
-        dither_combo.append(Some("none"), &t!("None"));
-        dither_combo.append(Some("threshold"), &t!("Threshold"));
-        dither_combo.append(Some("floyd"), &t!("Floyd-Ste."));
-        dither_combo.append(Some("atkinson"), &t!("Atkinson"));
-        dither_combo.append(Some("bayer"), &t!("Bayer"));
-        dither_combo.set_active_id(Some(&RasterImage::default().dithering));
-
+        /*
+                // Dithering
+                let dither_label = Label::new(Some(&t!("Dithering:")));
+                dither_label.set_halign(gtk4::Align::Start);
+                let dither_combo = ComboBoxText::new();
+                dither_combo.append(Some("none"), &t!("None"));
+                dither_combo.append(Some("threshold"), &t!("Threshold"));
+                dither_combo.append(Some("floyd"), &t!("Floyd-Ste."));
+                dither_combo.append(Some("atkinson"), &t!("Atkinson"));
+                dither_combo.append(Some("bayer"), &t!("Bayer"));
+                dither_combo.set_active_id(Some(&RasterImage::default().dithering));
+        */
         // Invert
         let invert_label = Label::new(Some(&t!("Invert:")));
         invert_label.set_halign(gtk4::Align::Start);
@@ -692,7 +697,7 @@ impl PropertiesPanel {
         let halftone_label = Label::new(Some(&t!("Halftone:")));
         halftone_label.set_halign(gtk4::Align::Start);
         let halftone_entry = Entry::new();
-        halftone_entry.set_max_width_chars(8);  // <-- Limitar a 8 caracteres
+        halftone_entry.set_max_width_chars(8); // <-- Limitar a 8 caracteres
         halftone_entry.set_placeholder_text(Some("0-255"));
         halftone_entry.set_text("127"); // Valor por defecto
         let halftone_range = Label::new(Some("(0-255)"));
@@ -728,12 +733,12 @@ impl PropertiesPanel {
         grid.attach(&invert_label, 0, 7, 1, 1);
         grid.attach(&invert_check, 1, 7, 1, 1);
 
-        grid.attach(&dither_label, 0, 8, 1, 1);
-        grid.attach(&dither_combo, 1, 8, 1, 1);
+        //        grid.attach(&dither_label, 0, 8, 1, 1);
+        //        grid.attach(&dither_combo, 1, 8, 1, 1);
 
-        grid.attach(&halftone_label, 0, 9, 1, 1);
-        grid.attach(&halftone_entry, 1, 9, 1, 1);
-        grid.attach(&halftone_range, 2, 9, 1, 1);
+        //        grid.attach(&halftone_label, 0, 9, 1, 1);
+        //        grid.attach(&halftone_entry, 1, 9, 1, 1);
+        //        grid.attach(&halftone_range, 2, 9, 1, 1);
 
         frame.set_child(Some(&grid));
         (
@@ -746,8 +751,8 @@ impl PropertiesPanel {
             scan_combo,
             bidir_check,
             invert_check,
-            dither_combo,
-            halftone_entry,
+            //            dither_combo,
+            //            halftone_entry,
         )
     }
 

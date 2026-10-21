@@ -3,18 +3,19 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-05-15 17:54+0200\n"
+"PO-Revision-Date: 2026-10-20 18:41+0200\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 3.4.2\n"
+"X-Generator: Poedit 3.9\n"
 "X-Poedit-KeywordsList: t;t:1\n"
 "X-Poedit-Basepath: ../crates/gcodekit5-ui/src/ui/gtk/cam_tools\n"
 "X-Poedit-SearchPath-0: vector_engraving.rs\n"
 
+# crates/gcodekit5-ui/src/gtk_app.rs
 msgid "About"
 msgstr "Acerca de"
 
@@ -39,6 +40,9 @@ msgstr "Editar"
 msgid "Emergency stop (Ctrl-X)"
 msgstr "Emergencia Stop (Ctrl-X)"
 
+msgid "Import Image..."
+msgstr "Importar Imagen..."
+
 msgid "Export G-Code..."
 msgstr "Exportar G-code..."
 
@@ -48,13 +52,11 @@ msgstr "Exportar SVG..."
 msgid "File"
 msgstr "Archivo"
 
-#. Polling is now handled centrally by MachineControlView to avoid race conditions on serial read
-#. Add Editor to Stack
 msgid "GCode Toolkit for CNC/Laser Machines"
 msgstr "Kit de herramientas GCode para máquinas CNC/Láser"
 
 msgid "GCodeKit Contributors"
-msgstr "Tim Hawkins y colaboradores de GCodeKit"
+msgstr "Tim Hawkins y colaboradores de GCodeKit (feveal)"
 
 msgid "GCodeKit5"
 msgstr "GCodeKit5"
@@ -103,6 +105,159 @@ msgstr "Guardar como..."
 
 msgid "Undo"
 msgstr "Deshacer"
+
+msgid "New 2D"
+msgstr "Nuevo 2D"
+
+msgid "New 3D"
+msgstr "Nuevo 3D"
+
+# crates/gcodekit5-ui/src/ui/gtk/settings.rs
+msgid "Controller"
+msgstr "Controlador"
+
+msgid "User Interface"
+msgstr "Interfaz de Usuario"
+
+msgid "File Processing"
+msgstr "Procesamiento de archivo"
+
+msgid "Shortcuts"
+msgstr "Atajos"
+
+msgid "Advanced"
+msgstr "Avanzado"
+
+msgid "Select Directory"
+msgstr "Selecciona Directorio"
+
+# crates/gcodekit5-settings/src/persistence.rs
+msgid "Measurement System"
+msgstr "Sistema de Medida"
+
+msgid "Units for display and input (Metric/mm or Imperial/inch)"
+msgstr "Unidades para visualización y entrada (métricas/mm o imperiales/pulgadas)"
+
+msgid "Feed Rate Units"
+msgstr "Unidades de Velocidad"
+
+msgid "Default Directory"
+msgstr "Directorio por defecto"
+
+msgid "Units for feed rate display and input"
+msgstr "Unidades para visualización e introducción de velocidad de alimentación"
+
+msgid "Default directory for file operations"
+msgstr "Directorio predeterminado para operaciones de archivos"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Light"
+msgstr "Claro"
+
+msgid "Dark"
+msgstr "Oscuro"
+
+msgid "Theme"
+msgstr "Tema"
+
+msgid "Application color theme (Light, Dark, or System default)"
+msgstr "Tema de color de la aplicación (Claro, Oscuro o Predeterminado del sistema)"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "User interface language (requires restart)"
+msgstr "Idioma de la interfaz de usuario (requiere reiniciar)"
+
+msgid "CamTools"
+msgstr "Herramientas CAM"
+
+msgid "Config"
+msgstr "Configuración"
+
+msgid "Devices"
+msgstr "Dispositivos"
+
+msgid "Tools"
+msgstr "Herramientas"
+
+msgid "Startup Tab"
+msgstr "Pestaña de inicio"
+
+msgid "Tab to show when application starts"
+msgstr "Pestaña de inicio de la aplicación"
+
+msgid "Show About on Startup"
+msgstr "Mostrar Acerca de... al inicio"
+
+msgid "Show the About dialog for 15 seconds when the application starts"
+msgstr "Mostrar diálogo Acerca de... durante 15 segundos al inicio"
+
+msgid "Grid Major Line Width (px)"
+msgstr "Ancho de línea principal de la cuadrícula (px)"
+
+msgid "Thickness in pixels for coarse grid lines (default: 2)"
+msgstr "Grosor en píxeles para líneas de cuadrícula gruesas (predeterminado: 2)"
+
+msgid "Grid Minor Line Width (px)"
+msgstr "Ancho de línea menor de la cuadrícula (px)"
+
+msgid "Thickness in pixels for fine grid lines (default: 1)"
+msgstr "Grosor en píxeles para líneas de cuadrícula finas (predeterminado: 1)"
+
+msgid "Preserve Comments"
+msgstr "Conservar comentarios"
+
+msgid "Keep G-code comments during file processing"
+msgstr "Conserva los comentarios del G-code al procesar el archivo"
+
+# crates/gcodekit5-ui/src/ui/gtk/designer/file_ops.rs
+msgid "Import SVG File"
+msgstr "Importar archivo SVG"
+
+msgid "Import STL File (3D Shadow)"
+msgstr "Importar archivo STL (Sombras 3D)"
+
+msgid "SVG Files"
+msgstr "Archivos SVG"
+
+msgid "DXF Files"
+msgstr "Archivos DXF"
+
+msgid "STL Files"
+msgstr "Archivos STL"
+
+msgid "Saved:"
+msgstr "Guardado:"
+
+msgid "Export SVG"
+msgstr "Exportar SVG"
+
+msgid "New 2D design created"
+msgstr "Nuevo diseño 2D creado"
+
+msgid "New 3D design created"
+msgstr "Nuevo diseño 3D creado"
+
+msgid "Out of limits warning"
+msgstr "Advertencia Fuera de Límites"
+
+msgid "The generated G-code contains coordinates outside the machine working area (Negative values). Review the path before sending it to the machine."
+msgstr "El G-code generado contiene coordenadas fuera del área de trabajo de la máquina (Valores Negativos). Revise las trayectorias antes de enviarlo a la máquina."
+
+msgid "3D depth detected"
+msgstr "Profundidad 3D detectada"
+
+msgid "Object with depth: Switching to CNC 3D mode."
+msgstr "Objeto con profundidad: Cambiando al modo CNC 3D."
+
+msgid "Unsupported 3D solids discarded"
+msgstr "Se descartaron los sólidos 3D no soportados"
+
+msgid "This DXF file contains ACIS solid entities (3D solids) that are not supported and were discarded:"
+msgstr "Este archivo DXF contiene entidades sólidas ACIS (sólidos 3D) que no son compatibles y fueron descartadas:"
 
 # crates/gcodekit5-settings/src/config.rs
 msgid "Machine Control"
@@ -236,30 +391,6 @@ msgstr "Configuración de Herramientas…"
 msgid "Tool Parameters"
 msgstr "Parametros de la herramienta"
 
-msgid "Starting laser engraving:"
-msgstr "Iniciando grabado láser:"
-
-msgid "lines"
-msgstr "líneas"
-
-msgid "Work completed."
-msgstr "Trabajo finalizado."
-
-msgid "Work stopped."
-msgstr "Trabajo detenido."
-
-msgid "Stopping..."
-msgstr "Deteniendo..."
-
-msgid "Paused"
-msgstr "Pausado"
-
-msgid "Resuming"
-msgstr "Reanudando"
-
-msgid "Unlocking..."
-msgstr "Desbloqueando..."
-
 msgid "Stock Width"
 msgstr "Ancho en bruto"
 
@@ -279,16 +410,10 @@ msgid "Stock material thickness"
 msgstr "Grosor del material en bruto"
 
 msgid "Safe Z Height"
-msgstr "Altura Z Seguridad"
+msgstr "Altura Z de Seguridad"
 
 msgid "Safe height for rapid moves"
 msgstr "Altura en Z para movimientos rápidos"
-
-msgid "Resolution"
-msgstr "Resolucion"
-
-msgid "Simulation resolution (lower = more detail)"
-msgstr "Resolución de simulación (menor = mayor detalle)"
 
 msgid "Show Stock Removal"
 msgstr "Mostrar eliminacion de material"
@@ -307,6 +432,78 @@ msgstr "Parametros en bruto"
 
 msgid "Generate G-Code"
 msgstr "Generar G-Code"
+
+# crates/gcodekit5-ui/src/ui/gtk/designer_canvas/mod.rs
+msgid "Raster image import is only available in 2D mode"
+msgstr "La importación de imágenes raster solo está disponible en modo 2D"
+
+# crates/gcodekit5-ui/src/ui/gtk/status_bar.rs
+msgid "Elapsed"
+msgstr "Transcurrido"
+
+msgid "Remaining"
+msgstr "Restante"
+
+msgid "No device selected"
+msgstr "Dispositivo no seleccionado"
+
+msgid "Importing image..."
+msgstr "Importando Imagen..."
+
+msgid "Image files"
+msgstr "Archivos de Imagen"
+
+msgid "Image imported successfully"
+msgstr "Imagen importada correctamente"
+
+msgid "Image import failed: {}"
+msgstr "Error al importar imagen: {}"
+
+msgid "Import error"
+msgstr "Error de Importación"
+
+# crates/gcodekit5-ui/src/ui/gtk/machine_control/direct_sender.rs
+msgid "> Starting work:"
+msgstr "> Iniciando trabajo:"
+
+msgid "lines"
+msgstr "líneas"
+
+msgid "> No activity for 30s, continuing..."
+msgstr "> Sin actividad durante 30 segundos, continúa..."
+
+msgid "> Engraving completed"
+msgstr "> Grabado completado"
+
+msgid "> Starting job (Simple Mode):"
+msgstr "> Iniciando trabajo (Modo simple):"
+
+msgid "> Send error, stopping..."
+msgstr "> Error al enviar, deteniendo..."
+
+msgid "> Machine error: {}"
+msgstr "> Error en Máquina: {}"
+
+msgid "> Resuming... (waiting {}s on line {})"
+msgstr "> Reanudando... (esperando {}s en línea {}"
+
+msgid "> {} in: {}:{:02}"
+msgstr "> {} en: {}:{:02}"
+
+msgid "Job completed"
+msgstr "Trabajo finalizado"
+
+msgid "Stopping..."
+msgstr "Deteniendo..."
+
+msgid "Paused"
+msgstr "Pausado"
+
+msgid "Resuming"
+msgstr "Reanudando"
+
+msgid "Unlocking..."
+msgstr "Desbloqueando..."
 
 # crates/gcodekit5-ui/src/ui/gtk/designer.rs
 msgid "View Controls"
@@ -345,8 +542,23 @@ msgstr "Ajustar al Area de trabajo"
 msgid "Toggle Scrollbars"
 msgstr "Barras de desplazamiento si/no"
 
-msgid "Keyboard Shortcuts"
-msgstr "Atajos de Teclado"
+msgid "Top View"
+msgstr "Vista Superior"
+
+msgid "Mouse Controls"
+msgstr "Controles de Ratón"
+
+msgid "* Use mouse to orbit, pan and zoom *"
+msgstr "* Use el ratón para Orbita, encuadre y zoom *"
+
+msgid "Shift+Left button+Drag: Pan"
+msgstr "Shift+botón izq.+arrastrar: Encuadre"
+
+msgid "Mouse wheel: Zoom+/-"
+msgstr "Rueda del Ratón: Zoom +/-"
+
+msgid "Left Button+Drag: Orbit"
+msgstr "Botón izq.+arrastrar: Orbita"
 
 msgid "Designer shortcuts"
 msgstr "Atajos de diseño"
@@ -385,7 +597,7 @@ msgid "Grid spacing"
 msgstr "Espaciado de Rejilla"
 
 msgid "Snap"
-msgstr "Ajustar"
+msgstr "Forzar Cursor"
 
 msgid "Snap threshold"
 msgstr "Umbral de ajuste"
@@ -450,7 +662,7 @@ msgstr "Error exportando G-Code:"
 msgid "Nothing to export"
 msgstr "Nada que exportar"
 
-# crates/gcodekit5-ui/src/ui/gtk/visualizer.rs
+# crates/gcodekit5-ui/src/ui/gtk/visualizer/mod.rs
 msgid "Hide Sidebar"
 msgstr "Ocultar barra lateral"
 
@@ -493,11 +705,35 @@ msgstr "Abra un archivo para vista previa de las trayectorias."
 msgid "Visualizer shortcuts"
 msgstr "Atajos del visualizador"
 
+msgid "Speed"
+msgstr "Velocidad"
+
+msgid "Preview playback speed"
+msgstr "Previsualizar trayectoria"
+
+msgid "Play preview"
+msgstr "Reproducir previsalización"
+
+msgid "Pause preview"
+msgstr "Pausar previsalización"
+
+msgid "Stop preview"
+msgstr "Parar previsalización"
+
+msgid "The simulation has a resolution of "
+msgstr "La simulación tiene una resolución de "
+
+msgid "mm. Cuts smaller than "
+msgstr "mm. Un corte menor de "
+
+msgid "mm will not be visually displayed, but the G-code will execute correctly."
+msgstr "mm. no se visualizará, pero el Gcode se ejecutará correctamente."
+
 # crates/gcodekit5-ui/src/ui/gtk/device_manager.rs
 msgid "Delete “{}”? This cannot be undone."
 msgstr "Borrar \"{}\"? No se puede deshacer."
 
-# crates/gcodekit5-ui/src/ui/gtk/machine_control.rs
+# crates/gcodekit5-ui/src/ui/gtk/machine_control/mod.rs
 msgid "No ports available"
 msgstr "No hay puertos disponibles"
 
@@ -687,6 +923,19 @@ msgstr "Error al conectar"
 msgid "No valid G-Code lines found."
 msgstr "No se encontraron líneas de G-Code válidas."
 
+msgid "✅ Work completed in:"
+msgstr "✅ Trabajo completado en:"
+
+msgid "Connection rejected: active machine is configured as {} but the device responded as {}. Change the active machine in the Device Manager."
+msgstr "Conexión rechazada: la máquina activa está configurada como {}, pero el dispositivo respondió como {}. Cambie la máquina activa en el Administrador de dispositivos."
+
+# crates/gcodekit5-ui/src/ui/gtk/cam-tools/mod.rs
+msgid "Select a tool"
+msgstr "Seleccione Herramienta"
+
+msgid "Choose a tool from the list to see details."
+msgstr "Seleccione una herramienta de la lista para ver los detalles."
+
 # crates/gcodekit5-ui/src/ui/gtk/cam-tools/bitmap_engraving.rs
 msgid "Convert bitmap images to G-code for laser engraving. Supports various halftoning methods and image transformations."
 msgstr "Convierte imágenes de mapa de bits a G-code para grabado láser. Admite diversos métodos de tramado y transformaciones de imagen."
@@ -706,8 +955,8 @@ msgstr "Ruta de la imagen:"
 msgid "Scanning"
 msgstr "Escaneando"
 
-msgid "Scan Direction:"
-msgstr "Dirección de Escaneo:"
+msgid "Scan:"
+msgstr "Escaneo:"
 
 msgid "Pixels per mm:"
 msgstr "Pixels por mm:"
@@ -741,9 +990,6 @@ msgstr "Método:"
 
 msgid "Dot Size:"
 msgstr "Tamaño de Punto:"
-
-msgid "Threshold:"
-msgstr "Límite:"
 
 msgid "Select Image"
 msgstr "Seleccionar imagen"
@@ -781,7 +1027,7 @@ msgstr "Guardar parámetros"
 msgid "Load Parameters"
 msgstr "Cargar parámetros"
 
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/vector_engraving.rs
+# crates/gcodekit5-ui/src/ui/gtk/cam_tools/vector_engraving.rs
 msgid "Convert vector graphics (SVG, DXF) to G-code for laser cutting/engraving. Supports hatching, multi-pass, and path optimization."
 msgstr "Convierte gráficos vectoriales (SVG, DXF) a G-code para corte/grabado láser. Admite sombreado, pasadas múltiples y optimización de trayectoria."
 
@@ -822,7 +1068,7 @@ msgid "Spindle Speed:"
 msgstr "Velocidad de husillo:"
 
 msgid "Travel Rate:"
-msgstr "Velocidad en vacío:"
+msgstr "Vel. en vacío:"
 
 msgid "Cut Power (%):"
 msgstr "Potencia de corte (%):"
@@ -867,7 +1113,7 @@ msgid "Work Offsets"
 msgstr "Offsets de trabajo"
 
 msgid "Home Device Before Start"
-msgstr "Iniciar Dispositivo antes de comenzar"
+msgstr "Hacer 'Homing' antes de iniciar"
 
 msgid "Unknown file extension"
 msgstr "Extensión no reconocida"
@@ -881,7 +1127,7 @@ msgstr "Fallo leyendo SVG"
 msgid "Failed to load DXF"
 msgstr "Fallo leyendo DXF"
 
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs
+# crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs
 msgid "Tabbed Box Maker"
 msgstr "Creador de cajas con pestañas"
 
@@ -899,12 +1145,6 @@ msgstr "Grabador de imágenes por láser"
 
 msgid "Convert raster images to G-code for laser engraving"
 msgstr "Convierte imágenes rasterizadas a G-code para grabado láser"
-
-msgid "Laser Vector Engraver"
-msgstr "Grabador vectorial por láser"
-
-msgid "Convert SVG and DXF vector files to G-code"
-msgstr "Convierte archivos vectoriales SVG y DXF a G-code"
 
 msgid "Speeds and Feeds Calculator"
 msgstr "Calculadora de velocidades y avances"
@@ -948,9 +1188,12 @@ msgstr "calculadoras"
 msgid "maintenance"
 msgstr "mantenimiento"
 
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/tabbed_box.rs
-msgid "Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."
-msgstr "Genera G-code para hacer cajas cortadas con láser/CNC con uniones dentadas, basado en el algoritmo boxes.py."
+# crates/gcodekit5-ui/src/ui/gtk/cam_tools/tabbed_box.rs
+msgid "Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm. For more cases involving boxes and other objects, it is recommended to use the "
+msgstr "Generar G-code para cajas cortadas con Láser/CNC con uniones dentadas basado en el algoritmo boxes.py. Para más casos de cajas y otros objetos, se recomienda utilizar "
+
+msgid ". Install the Extension in Inkscape. There, generate the models and save them as SVG files. Then import the SVG file into the Designer, rearrange the objects as needed, and generate the G-code to send to the machine."
+msgstr ". Instala la extensión en Inkscape. Allí, genera los modelos y guárdalos como archivos SVG. Luego, importa el archivo SVG en el Diseñador, reorganiza los objetos según sea necesario y genera el G-code para enviarlo a la máquina."
 
 msgid "X (Width):"
 msgstr "X (Ancho):"
@@ -1069,7 +1312,7 @@ msgstr "Generando Caja"
 msgid "Generating box panels..."
 msgstr "Generando paneles de caja..."
 
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/cam_tools/jigsaw.rs
+# crates/gcodekit5-ui/src/ui/gtk/cam_tools/jigsaw.rs
 msgid "Create custom jigsaw puzzle patterns from images or blank material. Features Draradech's algorithm for unique pieces."
 msgstr "Crea patrones personalizados para puzzles a partir de imágenes o material en blanco. Incorpora el algoritmo de Draradech para piezas únicas."
 
@@ -1124,7 +1367,38 @@ msgstr "Generación de Puzzle Fallida"
 msgid "Failed to generate puzzle"
 msgstr "Fallo al Generar el Puzzle"
 
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
+# crates/gcodekit5-ui/src/ui/gtk/fast_shape_gallery.rs
+msgid "Spur Gear"
+msgstr "Engranaje recto"
+
+msgid "Standard involute spur gear"
+msgstr "Engranaje recto de perfil evolvente estándar"
+
+msgid "Timing Pulley"
+msgstr "Polea de distribución"
+
+msgid "XL timing belt pulley"
+msgstr "Correa dentada XL"
+
+msgid "Chain sprocket for #40 chain"
+msgstr "Piñón de cadena #40"
+
+msgid "Rectangular slot/cutout"
+msgstr "Ranura/recorte rectangular"
+
+msgid "L-Bracket"
+msgstr "Soporte en L"
+
+msgid "U-Bracket"
+msgstr "Soporte en U"
+
+msgid "L-shaped bracket with holes"
+msgstr "Soporte en L con agujeros"
+
+msgid "U-shaped channel bracket"
+msgstr "Soporte en U con agujeros"
+
+# crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
 msgid "Position"
 msgstr "Posición"
 
@@ -1132,7 +1406,7 @@ msgid "Size"
 msgstr "Tamaño"
 
 msgid "Lock Aspect:"
-msgstr "Bloquear Aspecto:"
+msgstr "Bloquear:"
 
 msgid "Angle:"
 msgstr "Angulo:"
@@ -1197,11 +1471,6 @@ msgstr "Estrategia:"
 msgid "Raster Fill (%):"
 msgstr "Relleno Raster (%):"
 
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
-msgid "Select a shape to edit its properties"
-msgstr "Seleccione una forma para editar sus propiedades"
-
-# gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/builders.rs
 msgid "Laser Engraving"
 msgstr "Grabado Láser"
 
@@ -1217,5 +1486,236 @@ msgstr "Resolución:"
 msgid "Dithering:"
 msgstr "Tramado:"
 
-msgid "Halftone Threshold:"
-msgstr "Umbral Semitonos:"
+msgid "Halftone:"
+msgstr "Semitonos:"
+
+msgid "Import SVG"
+msgstr "Importar SVG"
+
+msgid "Import DXF"
+msgstr "Importar DXF"
+
+msgid "Import STL"
+msgstr "Importar STL"
+
+msgid "Import Image"
+msgstr "Importar Imagen"
+
+msgid "Belt Width:"
+msgstr "Ancho Correa:"
+
+msgid "Hole Radius:"
+msgstr "Radio agujero:"
+
+msgid "Radius:"
+msgstr "Radio:"
+
+msgid "Closed:"
+msgstr "Cerrada:"
+
+# crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
+msgid "Select a shape to edit its properties"
+msgstr "Seleccione una forma para editar sus propiedades"
+
+# crates/gcodekit5-ui/src/ui/gtk/designer_layers_rs
+msgid "Objects"
+msgstr "Objetos"
+
+msgid "Move to start"
+msgstr "Mover a inicio"
+
+msgid "Move up"
+msgstr "Subir uno"
+
+msgid "Move down"
+msgstr "Bajar uno"
+
+msgid "Move to end"
+msgstr "Mover al final"
+
+msgid "It cannot be moved"
+msgstr "No se puede mover"
+
+msgid "The move would split a group. The members of a group must remain contiguous."
+msgstr "El movimiento partiría un grupo. Los miembros de un grupo deben permanecer contiguos."
+
+# crates/gcodekit5-ui/src/ui/gtk/editor.rs
+msgid "Calculating..."
+msgstr "Calculando..."
+
+msgid "0 matches"
+msgstr "0 coincidencias"
+
+msgid "of"
+msgstr "de"
+
+msgid "matches"
+msgstr "coincidencias"
+
+msgid "Search..."
+msgstr "Buscar..."
+
+msgid "Previous Match"
+msgstr "Coincidencia anterior"
+
+msgid "Next Match"
+msgstr "Siguiente coincidencia"
+
+msgid "Replace with ..."
+msgstr "Reemplazar con ..."
+
+msgid "Replace"
+msgstr "Reemplazar"
+
+msgid "Replace All"
+msgstr "Reemplazar todo"
+
+msgid "Please wait"
+msgstr "Espere por favor"
+
+msgid "Open G-Code File"
+msgstr "Abrir Archivo G-Code"
+
+msgid "Error Reading File"
+msgstr "Error leyendo archivo"
+
+msgid "Could not open"
+msgstr "No puedo abrirlo"
+
+msgid "Error Saving File"
+msgstr "Error guardando archivo"
+
+msgid "Could not save"
+msgstr "No se pudo guardar"
+
+msgid "Save G-Code File"
+msgstr "Guardar Archivo G-Code"
+
+# crates/gcodekit5-ui/src/ui/gtk/help_browser.rs
+msgid "🏠 Index"
+msgstr "🏠 Índice"
+
+msgid "🛠️ Preferences"
+msgstr "🛠️ Preferencias"
+
+msgid "✏️ Designer"
+msgstr "✏️ Diseñador"
+
+msgid "👁️ Visualizer"
+msgstr "👁️ Visualizador"
+
+msgid "⚙️ Machine Control"
+msgstr "⚙️ Control de Máquina"
+
+msgid "      •📝 G-code Editor"
+msgstr "      •📝 Editor de G-code"
+
+msgid "      •💻 Device console"
+msgstr "      •💻 Consola de Dispositivo"
+
+msgid "🧰 CAM Tools"
+msgstr "🧰 Herramientas CAM"
+
+msgid "      •📦 Tabbed Box Maker"
+msgstr "      •📦 Creador de Cajas"
+
+msgid "      •🧩 Jigsaw Puzzle Generator"
+msgstr "      •🧩 Generador de Puzles"
+
+msgid "      •🖼️ Laser Image Engraver"
+msgstr "      •🖼️ Grabador de Imágenes"
+
+msgid "      •🖩 Speed and Feeds Calculator"
+msgstr "      •🖩 Calculadora de Velocidades"
+
+msgid "      •🔧 Spoilboard Surfacing"
+msgstr "      •🔧 Nivelación de Sufridera"
+
+msgid "      •📏 Create Spoilboard Grid"
+msgstr "      •📏 Crear Rejilla en Sufridera"
+
+msgid "      •📠 Gerber To G-code"
+msgstr "      •📠 Gerber a G-code"
+
+msgid "      •🔧 Dirll Press"
+msgstr "      •🔧 Taladro de Columna"
+
+msgid "🔌 Device Manager"
+msgstr "🔌 Gestor de Dispositivos"
+
+msgid "⚙️ Device Config"
+msgstr "⚙️ Configuración de Dispositivo"
+
+msgid "🔨 CNC Tools"
+msgstr "🔨 Herramientas CNC"
+
+msgid "📦 Materials"
+msgstr "📦 Materiales"
+
+msgid "GCodeKit5 Help"
+msgstr "Ayuda Gcodekit5"
+
+msgid "Back"
+msgstr "Atrás"
+
+msgid "Forward"
+msgstr "Adelante"
+
+msgid "Help (F1)"
+msgstr "Ayuda (F1)"
+
+# crates/gcodekit5-ui/src/ui/gtk/designer_canvas/input.rs
+msgid "Delete"
+msgstr "Borrar"
+
+msgid "Group"
+msgstr "Agrupar"
+
+msgid "Ungroup"
+msgstr "Desagrupar"
+
+msgid "Align"
+msgstr "Alinear"
+
+msgid "Difference"
+msgstr "Diferencia"
+
+msgid "Intersection"
+msgstr "Intersección"
+
+msgid "Union"
+msgstr "Union"
+
+msgid "Diff"
+msgstr "Difer"
+
+msgid "Inter"
+msgstr "Inter"
+
+msgid "Mirror on X"
+msgstr "Simetria X"
+
+msgid "Mirror on Y"
+msgstr "Simetria Y"
+
+msgid "Align ▸"
+msgstr "Alinear ▸"
+
+msgid "Align Left"
+msgstr "Izquierda"
+
+msgid "Align Right"
+msgstr "Derecha"
+
+msgid "Align Top"
+msgstr "Arriba"
+
+msgid "Align Bottom"
+msgstr "Abajo"
+
+msgid "Align Center X"
+msgstr "Centrado en X"
+
+msgid "Align Center Y"
+msgstr "Centrado en Y"
+

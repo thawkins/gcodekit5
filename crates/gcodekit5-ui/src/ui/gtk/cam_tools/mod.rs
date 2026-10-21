@@ -8,7 +8,7 @@ mod common;
 mod drill_press;
 mod gerber;
 mod jigsaw;
-mod speeds_feeds;
+mod speeds_feeds_page;
 mod spoilboard_grid;
 mod spoilboard_surfacing;
 mod tabbed_box;
@@ -19,11 +19,10 @@ pub use bitmap_engraving::BitmapEngravingTool;
 pub use drill_press::DrillPressTool;
 pub use gerber::GerberTool;
 pub use jigsaw::JigsawTool;
-pub use speeds_feeds::SpeedsFeedsTool;
+pub use speeds_feeds_page::SpeedsFeedsTool;
 pub use spoilboard_grid::SpoilboardGridTool;
 pub use spoilboard_surfacing::SpoilboardSurfacingTool;
 pub use tabbed_box::TabbedBoxMaker;
-// pub use vector_engraving::VectorEngravingTool;
 
 use common::set_paned_initial_fraction;
 
@@ -80,17 +79,14 @@ impl CamToolsView {
 
         // Placeholders for other tools
         // Jigsaw Puzzle Tool
-        let jigsaw_tool = JigsawTool::new(&stack, settings.clone(), on_generate.clone());
+        let jigsaw_tool = JigsawTool::new(&stack, settings.clone(), designer_view.clone());
+
         stack.add_named(jigsaw_tool.widget(), Some("jigsaw"));
 
         // Bitmap Engraving Tool
         let bitmap_tool = BitmapEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(bitmap_tool.widget(), Some("laser_image"));
-/*
-        // Vector Engraving Tool
-        let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
-        stack.add_named(vector_tool.widget(), Some("laser_vector"));
-*/
+
         // Speeds & Feeds Calculator
         let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
         stack.add_named(feeds_tool.widget(), Some("feeds"));
@@ -141,17 +137,17 @@ impl CamToolsView {
         fn get_tools() -> Vec<Tool> {
             vec![
                 Tool {
-                    page: "tabbed_box",
-                    title: t!("Tabbed Box Maker"),
-                    desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
-                    icon: "object-select-symbolic",
-                    category: t!("generators"),
-                },
-                Tool {
                     page: "jigsaw",
                     title: t!("Jigsaw Puzzle Generator"),
                     desc: t!("Create custom jigsaw puzzle patterns from images"),
-                    icon: "image-x-generic-symbolic",
+                    icon: "/com/gcodekit5/icons/puzzle-piece.svg",
+                    category: t!("generators"),
+                },
+                Tool {
+                    page: "tabbed_box",
+                    title: t!("Tabbed Box Maker"),
+                    desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
+                    icon: "/com/gcodekit5/icons/boxes.svg",
                     category: t!("generators"),
                 },
                 Tool {
@@ -161,15 +157,6 @@ impl CamToolsView {
                     icon: "camera-photo-symbolic",
                     category: t!("engraving"),
                 },
-/*
-                Tool {
-                    page: "laser_vector",
-                    title: t!("Laser Vector Engraver"),
-                    desc: t!("Convert SVG and DXF vector files to G-code"),
-                    icon: "insert-image-symbolic",
-                    category: t!("engraving"),
-                },
-*/
                 Tool {
                     page: "feeds",
                     title: t!("Speeds and Feeds Calculator"),
@@ -301,7 +288,11 @@ impl CamToolsView {
             h.set_margin_start(12);
             h.set_margin_end(12);
 
-            let icon = Image::from_icon_name(tool.icon);
+            let icon = if tool.icon.starts_with('/') {
+                Image::from_resource(tool.icon)
+            } else {
+                Image::from_icon_name(tool.icon)
+            };
             icon.set_pixel_size(24);
             icon.set_valign(Align::Start);
 

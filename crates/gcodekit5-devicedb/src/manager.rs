@@ -1,3 +1,4 @@
+//! gcodekit5-devicedb/src/manager.rs
 //! # Device Manager
 //!
 //! Handles loading, saving, and managing CNC device profiles.

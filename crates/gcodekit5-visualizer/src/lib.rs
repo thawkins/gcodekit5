@@ -9,17 +9,17 @@ pub mod helpers;
 pub mod utils;
 pub mod visualizer;
 
-pub use visualizer::{
-    generate_surface_mesh, Camera, Camera3D, GCodeCommand, Point3D,
-    Renderer, Scene, StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer,
-    VisualizerControls, VoxelGrid,
-};
 pub use gcode::{
     stream::{FileStreamReader, GcodeStreamReader, PausableStream, StringStreamReader},
     CommandId, CommandLengthProcessor, CommandListener, CommandListenerHandle,
     CommandNumberGenerator, CommandProcessor, CommandResponse, CommandState, CommentProcessor,
     DecimalProcessor, EmptyLineRemoverProcessor, GcodeCommand, GcodeParser, GcodeState, ModalState,
     ProcessorConfig, ProcessorHandle, ProcessorPipeline, ProcessorRegistry, WhitespaceProcessor,
+};
+pub use visualizer::{
+    generate_surface_mesh, Camera, Camera3D, GCodeCommand, Point3D, Renderer, Scene,
+    StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer, VisualizerControls,
+    VoxelGrid,
 };
 
 pub use utils::{

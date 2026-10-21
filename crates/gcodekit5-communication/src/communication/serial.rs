@@ -205,7 +205,7 @@ fn check_virtual_ports(port_infos: &mut Vec<SerialPortInfo>) {
 
             // Check if the port exists and is accessible
             if std::path::Path::new(port_name).exists() {
-                tracing::info!("Found virtual serial port: {}", port_name);
+                tracing::debug!("Found virtual serial port: {}", port_name);
                 port_infos.push(SerialPortInfo::new(*port_name, *description));
             }
         }

@@ -1,3 +1,5 @@
+//! gcodekit5-ui/src/ui/gtk/machine_control/mod.rs
+//
 //! # Machine Control Panel
 //!
 //! UI panel for real-time CNC machine control including jogging,
@@ -23,21 +25,24 @@ use gtk4::{
     PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, ToggleButton,
 };
 use std::cell::Cell;
-
+use std::cell::RefCell;
 use crate::device_status;
 use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
-use crate::ui::gtk::machine_control::direct_sender::DirectSender;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
+// Helper function to disable connection-dependent buttons
+use crate::ui::gtk::machine_control::state::set_controls_enabled;
 use gcodekit5_core::{
     thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption,
 };
 use std::rc::Rc;
+use gcodekit5_communication::firmware::grbl::GrblSender;
+use gcodekit5_communication::firmware::repetier::RepetierSender;
+use gcodekit5_communication::firmware::Sender;
 
-mod direct_sender;
 mod state;
 mod ui_builders;
 
@@ -157,7 +162,7 @@ pub struct MachineControlView {
     pub current_units: ThreadSafe<MeasurementSystem>,
     pub last_overrides: ThreadSafe<OverrideState>,
     pub job_start_time: ThreadSafeOption<std::time::Instant>,
-    pub direct_sender: ThreadSafeOption<DirectSender>,
+    pub active_sender: Rc<RefCell<Option<Rc<dyn Sender>>>>,
 }
 
 impl MachineControlView {
@@ -173,9 +178,6 @@ impl MachineControlView {
         widget.set_vexpand(true);
 
         use crate::ui::gtk::machine_control::ui_builders::make_section;
-
-        // Helper function to disable connection-dependent buttons
-        use crate::ui::gtk::machine_control::state::set_controls_enabled;
 
         // ═════════════════════════════════════════════
         // LEFT SIDEBAR
@@ -375,8 +377,6 @@ impl MachineControlView {
         disabled_reason_label.set_single_line_mode(true);
         disabled_reason_label.set_ellipsize(EllipsizeMode::End);
         sidebar.append(&disabled_reason_label);
-
-        // widget.append(&sidebar); // Moved to Paned setup
 
         // ═════════════════════════════════════════════
         // MAIN AREA
@@ -722,14 +722,14 @@ impl MachineControlView {
         let inner_paned = Paned::new(Orientation::Horizontal);
         inner_paned.set_start_child(Some(&main_scroller));
 
-        // ==========================================
-        // PANEL DERECHO DIVIDIDO VERTICALMENTE
-        // ==========================================
+        // ===============================
+        // Vertically split right panel
+        // ===============================
         let right_vpaned = Paned::new(Orientation::Vertical);
         right_vpaned.set_vexpand(true);
         right_vpaned.set_hexpand(true);
 
-        // ---- Editor de G-code (PARTE SUPERIOR) ----
+        // ---- G-code editor (TOP) ----
         let editor_scroller = ScrolledWindow::new();
         editor_scroller.set_policy(PolicyType::Automatic, PolicyType::Automatic);
         editor_scroller.set_vexpand(true);
@@ -746,7 +746,7 @@ impl MachineControlView {
             editor_scroller.set_child(Some(&placeholder));
         }
 
-        // Toolbar para el editor
+        // Toolbar for editor
         let editor_header = Box::new(Orientation::Horizontal, 6);
         editor_header.set_margin_start(6);
         editor_header.set_margin_end(6);
@@ -772,7 +772,7 @@ impl MachineControlView {
 
         right_vpaned.set_start_child(Some(&editor_container));
 
-        // ---- Consola del dispositivo (PARTE INFERIOR) ----
+        // ---- Device console (BOTTOM) ----
         let console_container = Box::new(Orientation::Vertical, 10);
         console_container.set_hexpand(true);
         console_container.set_vexpand(true);
@@ -822,7 +822,7 @@ impl MachineControlView {
 
         right_vpaned.set_end_child(Some(&console_scroller));
 
-        // Configurar porcentaje (70% editor, 30% consola)
+        // Device console (BOTTOM)
         let right_vpaned_sized = Rc::new(Cell::new(false));
         right_vpaned.add_tick_callback({
             let right_vpaned_sized = right_vpaned_sized.clone();
@@ -833,7 +833,7 @@ impl MachineControlView {
                 }
                 let height = right_vpaned.height();
                 if height > 0 {
-                    // 70% para el editor (arriba), 30% para la consola (abajo)
+                    // 70% for the publisher (top), 30% for the console (bottom)
                     right_vpaned.set_position((height as f64 * 0.7) as i32);
                     right_vpaned_sized.set(true);
                 }
@@ -841,7 +841,7 @@ impl MachineControlView {
             }
         });
 
-        // Conectar botones del editor
+        // Connect editor buttons
         if let Some(editor) = &editor {
             let editor_clone = editor.clone();
             clear_editor_btn.connect_clicked(move |_| {
@@ -854,39 +854,12 @@ impl MachineControlView {
             });
         }
 
-        // Conectar botones de consola
+        // Connect console buttons
         {
             let console_view = device_console.clone();
             console_clear_btn.connect_clicked(move |_| {
                 if let Some(c) = console_view.as_ref() {
                     c.clear_log();
-                }
-            });
-        }
-
-        {
-            let console_view = device_console.clone();
-            let console_container = console_container.clone();
-            console_copy_err_btn.connect_clicked(move |_| {
-                let Some(c) = console_view.as_ref() else {
-                    return;
-                };
-                let text = c.get_log_text();
-                let mut last = None;
-                for line in text.lines().rev() {
-                    let l = line.trim();
-                    if l.is_empty() || l == "ok" || l.starts_with('<') {
-                        continue;
-                    }
-                    let low = l.to_lowercase();
-                    if low.contains("error") || low.contains("alarm") {
-                        last = Some(l.to_string());
-                        break;
-                    }
-                }
-                if let Some(line) = last {
-                    let clipboard = console_container.display().clipboard();
-                    clipboard.set_text(&line);
                 }
             });
         }
@@ -965,7 +938,7 @@ impl MachineControlView {
             }
         });
 
-        // No reducir del tamaño menor definido
+        // Do not reduce below the defined minimum size.
         widget.set_shrink_start_child(false);
 
         let communicator = thread_safe(SerialCommunicator::new());
@@ -1166,7 +1139,7 @@ impl MachineControlView {
                 spindle: 100,
             }),
             job_start_time: thread_safe_none(),
-            direct_sender: thread_safe_none(),
+            active_sender: Rc::new(RefCell::new(None)),
         };
 
         // Keep internal jog values in base units (mm, mm/min)
@@ -1359,35 +1332,33 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let view_pause = view.clone();
 
-        // Boton de pausa
+            // Pause button
             view.pause_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> ! (Pause)\n");
-                }
 
                 {
                     let mut comm = communicator.lock();
 
-                    // Detectar modo láser: leer $32, si no disponible → CNC (false)
+                    // Detect laser mode: read $32; if not available → CNC (false)
                     let is_laser = device_status::get_grbl_setting(32)
                         .and_then(|v| v.parse::<i32>().ok())
                         .map(|v| v == 1)
-                        .unwrap_or(false);  // ← Default: CNC
+                        .unwrap_or(false); // ← Default: CNC
 
                     if !is_laser {
-                        // CNC: Enviar M5 para detener el spindle
+                        // CNC: Send M5 to stop the spindle
                         let _ = comm.send_command("M5");
                         if let Some(c) = console.as_ref() {
                             c.append_log("> M5 (Spindle off)\n");
                         }
                     }
-                    // Láser: solo enviar ! (GRBL apaga el láser automáticamente)
+                    // Laser: send only ! (GRBL automatically turns off the laser)
                     let _ = comm.send(b"!");
                 }
 
                 *is_paused.lock() = true;
 
-                if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
+                let sender_opt = view_pause.active_sender.borrow();
+                if let Some(sender) = sender_opt.as_ref() {
                     sender.pause();
                 }
             });
@@ -1395,16 +1366,17 @@ impl MachineControlView {
             // Unlock button handler
             let communicator_unlock = view.communicator.clone();
             let console_unlock = view.device_console.clone();
-            let direct_sender_unlock = view.direct_sender.clone();
+            let active_sender_unlock = view.active_sender.clone();
 
             view.unlock_btn.connect_clicked(move |_| {
-                if let Some(c) = console_unlock.as_ref() {
-                    c.append_log("> $X (Unlock)\n");
-                }
 
-                if let Some(sender) = direct_sender_unlock.lock().as_ref() {
+                let sender_opt = active_sender_unlock.borrow();
+                if let Some(sender) = sender_opt.as_ref() {
                     sender.unlock();
                 } else {
+                    if let Some(c) = console_unlock.as_ref() {
+                        c.append_log("> $X\n");
+                    }
                     let mut comm = communicator_unlock.lock();
                     let _ = comm.send_command("$X");
                 }
@@ -1421,17 +1393,15 @@ impl MachineControlView {
             let view_resume = view.clone();
 
             view.resume_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> ~ (Resume)\n");
-                }
+
                 {
                     let mut comm = communicator.lock();
                     let _ = comm.send(b"~");
                 }
                 *is_paused.lock() = false;
 
-                // Resume DirectSender if it exists - use view_resume
-                if let Some(sender) = view_resume.direct_sender.lock().as_ref() {
+                let sender_opt = view_resume.active_sender.borrow();
+                if let Some(sender) = sender_opt.as_ref() {
                     sender.resume();
                 }
 
@@ -1463,19 +1433,22 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let view_stop = view.clone();
 
-            view.stop_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> 0x18 (Stop)\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(&[0x18]);
-                }
 
-                // Stop DirectSender if it exists - use view_stop
-                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
-                    sender.stop();
-                }
+view.stop_btn.connect_clicked(move |_| {
+    // El `0x18` lo envía el sender ahora.
+    let sender_opt = view_stop.active_sender.borrow();
+    if let Some(sender) = sender_opt.as_ref() {
+        sender.stop();
+    } else {
+        // Fallback: si no hay sender, enviamos `0x18` directamente
+        // (por ejemplo, si el usuario aún no ha enviado nada).
+        if let Some(c) = console.as_ref() {
+            c.append_log("> 0x18 (Stop)\n");
+        }
+        let mut comm = communicator.lock();
+        let _ = comm.send(&[0x18]);
+    }
+
 
                 *is_streaming.lock() = false;
                 *is_paused.lock() = false;
@@ -1486,7 +1459,7 @@ impl MachineControlView {
                 if let Some(sb) = status_bar.as_ref() {
                     sb.set_progress(0.0, "", "");
                 }
-                // Reactivar botón Send al parar
+                // Re-enable Send button upon stopping
                 view_stop.send_btn.set_sensitive(true);
                 view_stop.stop_btn.set_sensitive(true);
             });
@@ -1524,37 +1497,61 @@ impl MachineControlView {
                     dialog.show();
                     return;
                 }
-                // Habilitar botones de control al iniciar
+                // Enable control buttons on startup
                 view_clone.stop_btn.set_sensitive(true);
                 view_clone.pause_btn.set_sensitive(true);
                 view_clone.resume_btn.set_sensitive(true);
 
-                // Deshabilitar send_btn durante la ejecución
+                // Disable send_btn during execution.
                 view_clone.send_btn.set_sensitive(false);
 
-                // Usar DirectSender
-                let (sender, receiver) = DirectSender::new(
-                    communicator_clone.clone(),
-                    view_clone.is_streaming.clone(),
-                    view_clone.is_paused.clone(),
-                    view_clone.waiting_for_ack.clone(),
+                // Build the protocol-specific sender and store it as `Rc<dyn Sender>`.
+                let active_ct = crate::device_status::get_active_controller_type();
+                let protocol = gcodekit5_communication::firmware::protocol_profile(
+                    active_ct.as_deref().unwrap_or("")
                 );
+                let is_repetier = protocol.sender
+                    == gcodekit5_communication::firmware::SenderKind::FlowControl;
 
-                // Guardar el sender en direct_sender para pausa/stop
-                *view_clone.direct_sender.lock() = Some(sender.clone());
+                let (sender, receiver): (Rc<dyn Sender>, std::sync::mpsc::Receiver<String>) = if is_repetier {
+                    let (rep_sender, rx) = RepetierSender::new(
+                        communicator_clone.clone(),
+                        view_clone.is_streaming.clone(),
+                        view_clone.is_paused.clone(),
+                        view_clone.waiting_for_ack.clone(),
+                    );
+                    (Rc::new(rep_sender), rx)
+                } else {
+                    let (grbl_sender, rx) = GrblSender::new(
+                        communicator_clone.clone(),
+                        view_clone.is_streaming.clone(),
+                        view_clone.is_paused.clone(),
+                        view_clone.waiting_for_ack.clone(),
+                    );
+                    (Rc::new(grbl_sender), rx)
+                };
+
+                // Store the active sender
+                *view_clone.active_sender.borrow_mut() = Some(sender.clone());
+
+                // Kick off streaming through the trait
+                sender.send_gcode(&content);
+
+                // Save the global start time of the job
+                *view_clone.job_start_time.lock() = Some(std::time::Instant::now());
+
+                let receiver = std::rc::Rc::new(receiver);
 
                 let status_bar = view_clone.status_bar.clone();
                 let job_start_time = view_clone.job_start_time.clone();
                 let view_timeout = view_clone.clone();
                 let is_streaming_timeout = view_clone.is_streaming.clone();
 
-                let receiver = std::sync::Mutex::new(receiver);
-
-                // Timeout para leer progreso
+                // Timeout for reading progress
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                    let receiver_guard = receiver.lock().unwrap();
-                    while let Ok(message) = receiver_guard.try_recv() {
-                        // println!("🔍 Mensaje recibido: '{}'", message);
+
+                    while let Ok(message) = receiver.try_recv() {
+                        tracing::debug!("🔍 Message received: '{}'", message);
 
                         if message.starts_with('>') {
                             if let Some(console) = view_timeout.device_console.as_ref() {
@@ -1563,7 +1560,7 @@ impl MachineControlView {
                             continue;
                         }
 
-                        // Mostrar barra de progreso
+                        // Show progress bar
                         if message.starts_with('*') {
                             if let Some(sb) = status_bar.as_ref() {
                                 let percent_str =
@@ -1603,7 +1600,6 @@ impl MachineControlView {
                 });
 
                 *view_clone.job_start_time.lock() = Some(std::time::Instant::now());
-                sender.send_gcode(&content);
             });
         }
 
@@ -1619,23 +1615,6 @@ impl MachineControlView {
                     let mut comm = communicator.lock();
                     let _ = comm.send_command("$H");
                 }
-            });
-        }
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let view_unlock = view.clone();
-
-            view.unlock_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> $X\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send_command("$X");
-                }
-                view_unlock.pause_btn.set_sensitive(true);
-                view_unlock.resume_btn.set_sensitive(true);
             });
         }
 
@@ -1842,61 +1821,12 @@ impl MachineControlView {
             if is_connected {
                 // Disconnect
                 let mut comm = view_clone.communicator.lock();
+
                 match comm.disconnect() {
                     Ok(_) => {
-                        set_button_icon_label(&view_clone.connect_btn, "network-wired-symbolic", &t!("Connect"));
-                        view_clone.connect_btn.remove_css_class("destructive-action");
-                        view_clone.connect_btn.add_css_class("suggested-action");
-                        view_clone.port_combo.set_sensitive(true);
-                        view_clone.refresh_btn.set_sensitive(true);
-
-                        view_clone.conn_status_port.set_text(&t!("Port: -"));
-                        view_clone.conn_status_baud.set_text(&t!("Baud: 115200"));
-                        view_clone.conn_status_state.set_text(&t!("State: Disconnected"));
-                        view_clone.state_label.set_text(&t!("Disconnected"));
-                        view_clone.disabled_reason_label.set_text(&t!("Connect to enable controls."));
-
-                        // Update global device status
-                        device_status::update_connection_status(false, None);
-
-                        // Disable all controls on disconnect
-                        set_controls_enabled(
-                            &view_clone.send_btn,
-                            &view_clone.stop_btn,
-                            &view_clone.pause_btn,
-                            &view_clone.resume_btn,
-                            &view_clone.home_btn,
-                            &view_clone.unlock_btn,
-                            &view_clone.wcs_btns,
-                            &view_clone.x_zero_btn,
-                            &view_clone.y_zero_btn,
-                            &view_clone.z_zero_btn,
-                            &view_clone.zero_all_btn,
-                            &view_clone.goto_zero_btn,
-                            &view_clone.step_combo,
-                            &view_clone.jog_feed_entry,
-                            &view_clone.jog_x_pos,
-                            &view_clone.jog_x_neg,
-                            &view_clone.jog_y_pos,
-                            &view_clone.jog_y_neg,
-                            &view_clone.jog_z_pos,
-                            &view_clone.jog_z_neg,
-                            &view_clone.estop_btn,
-                            false,
-                        );
-
-                        // Update StatusBar
-                        if let Some(ref status_bar) = view_clone.status_bar {
-                            status_bar.set_connected(false, "");
-                        }
-
-                        // Log to device console
-                        if let Some(ref console) = view_clone.device_console {
-                            console.append_log(&format!("{}\n", t!("Disconnected")));
-                        }
+                        view_clone.set_ui_disconnected();
                     }
                     Err(e) => {
-                        // Log error to device console
                         if let Some(ref console) = view_clone.device_console {
                             console.append_log(&format!("{}: {}\n", t!("Error disconnecting"), e));
                         }
@@ -1925,6 +1855,38 @@ impl MachineControlView {
 
                     match result {
                         Ok(_) => {
+
+                            // Compute the active profile once so it is available
+                            // to later blocks (e.g. the init-commands dispatcher).
+                            {
+                                use gcodekit5_communication::firmware::ControllerProtocol;
+                                let active_ct = crate::device_status::get_active_controller_type();
+                                let configured = ControllerProtocol::from_str(
+                                    active_ct.as_deref().unwrap_or("")
+                                );
+                                let profile = gcodekit5_communication::firmware::protocol_profile(
+                                    configured.as_str()
+                                );
+
+                                if let Some(mut comm) = view_clone.communicator.try_lock() {
+                                    comm.set_configured_protocol(configured);
+                                }
+
+                                tracing::debug!(
+                                    "Config applied to the communicator: {:?}",
+                                    configured
+                                );
+
+                                if let Some(ref console) = view_clone.device_console {
+                                    let protocol_template =
+                                        t!("→ Protocol: {}\n  sender: {}");
+                                    let protocol_msg = format!("{}", protocol_template)
+                                        .replacen("{}", &profile.display_name, 1)
+                                        .replacen("{}", &format!("{:?}", profile.sender), 1);
+                                    console.append_log(&format!("{}\n", protocol_msg));
+                                }
+                            };
+
                             set_button_icon_label(&view_clone.connect_btn, "network-offline-symbolic", &t!("Disconnect"));
                             view_clone.connect_btn.remove_css_class("suggested-action");
                             view_clone.connect_btn.add_css_class("destructive-action");
@@ -1952,7 +1914,7 @@ impl MachineControlView {
                                 console.append_log(&format!(
                                     "{} {}\n",
                                     t!("Connected to"),
-                                                            port_name
+                                        port_name
                                 ));
                             }
 
@@ -1985,43 +1947,54 @@ impl MachineControlView {
                             // Unlock button should initially be disabled until ALARM state is detected
                             view_clone.unlock_btn.set_sensitive(false);
 
-                            // Trigger startup banner (some firmwares only emit it after reset) and then query firmware + settings.
-                            // Important: some controllers ignore commands sent immediately after Ctrl-X.
-                            { let mut comm = view_clone.communicator.lock();
-                                if let Some(c) = view_clone.device_console.as_ref() { c.append_log("> 0x18 (Reset)\n"); }
-                                let _ = comm.send(&[0x18]); // Ctrl-X (soft reset)
+                            // Enviar reset universal. Es la única forma fiable de forzar
+                            // al firmware a emitir su banner de arranque, que es lo que la
+                            // autodetección necesita.
+                            {
+                                let mut comm = view_clone.communicator.lock();
+                                if let Some(c) = view_clone.device_console.as_ref() {
+                                    c.append_log("> 0x18 (Reset)\n");
+                                }
+                                let _ = comm.send(&[0x18]);
                             }
 
-                            {
-                                let communicator_init = view_clone.communicator.clone();
-                                let console = view_clone.device_console.clone();
-                                glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
-                                    if let Some(mut comm) = communicator_init.try_lock() {
-                                        if comm.is_connected() {
-                                            if let Some(c) = console.as_ref() { c.append_log("> $I\n"); }
-                                            let _ = comm.send_command("$I");
-                                        }
-                                    }
-                                    glib::ControlFlow::Break
-                                });
-                            }
+                            // Send the protocol's init commands, spaced by a small
+                            // delay so the firmware has time to process each one.
+                            // The first command is usually the identity query
+                            // ($I, M115, ...). No settings are touched here:
+                            // `$10` and friends are firmware-variant-dependent
+                            // and must not be forced by the app.
+                            //
+                            // The profile is recomputed here on purpose:
+                            // the earlier `profile` lives inside a narrower
+                            // block and is not visible at this point.
+                            let active_ct = crate::device_status::get_active_controller_type();
+                            let init_commands = gcodekit5_communication::firmware::protocol_profile(
+                                active_ct.as_deref().unwrap_or("")
+                            ).init_commands;
+                            let communicator_init = view_clone.communicator.clone();
+                            let console_init = view_clone.device_console.clone();
 
-                            {
-                                let communicator_init = view_clone.communicator.clone();
-                                let console = view_clone.device_console.clone();
-                                glib::timeout_add_local(std::time::Duration::from_millis(800), move || {
-                                    if let Some(mut comm) = communicator_init.try_lock() {
-                                        if comm.is_connected() {
-                                            if let Some(c) = console.as_ref() { c.append_log("> $$\n"); }
-                                            let _ = comm.send_command("$$");
-                                            // Ensure status report mask includes Overrides (32) and Feed/Speed (8)
-                                            // $10=47 (1+2+4+8+32) = WPos | Buf | Ln | FS | Ov
-                                            if let Some(c) = console.as_ref() { c.append_log("> $10=47\n"); }
-                                            let _ = comm.send_command("$10=47");
+                            for (i, cmd) in init_commands.iter().enumerate() {
+                                let cmd = cmd.to_string();
+                                let delay_ms = 250 + (i as u64) * 300;
+                                let communicator_init = communicator_init.clone();
+                                let console_init = console_init.clone();
+
+                                glib::timeout_add_local(
+                                    std::time::Duration::from_millis(delay_ms),
+                                    move || {
+                                        if let Some(mut comm) = communicator_init.try_lock() {
+                                            if comm.is_connected() {
+                                                if let Some(c) = console_init.as_ref() {
+                                                    c.append_log(&format!("> {}\n", cmd));
+                                                }
+                                                let _ = comm.send_command(&cmd);
+                                            }
                                         }
-                                    }
-                                    glib::ControlFlow::Break
-                                });
+                                        glib::ControlFlow::Break
+                                    },
+                                );
                             }
 
                             // Simple polling using glib::timeout_add_local - runs on main thread, no blocking
@@ -2058,7 +2031,13 @@ impl MachineControlView {
 
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
-                            let mut firmware_detected = false;
+
+                            let mut cycles_since_connect = 0u32;
+                            let mut last_checked_detected: gcodekit5_communication::firmware::ControllerProtocol =
+                                gcodekit5_communication::firmware::ControllerProtocol::Unknown;
+                            let mut timeout_check_done = false;
+
+                            let view_for_poll = view_clone.clone();
 
                             // Cache the last known Work Coordinate Offset (WCO)
                             // This allows us to derive WPos from MPos even when WCO isn't in every status report
@@ -2066,6 +2045,7 @@ impl MachineControlView {
 
                             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                                 query_counter += 1;
+                                cycles_since_connect += 1;
 
                                 // Check if still connected
                                 let is_connected = {
@@ -2077,11 +2057,51 @@ impl MachineControlView {
                                 };
 
                                 if !is_connected {
+                                    view_for_poll.report_connection_error(
+                                        &t!("Connection lost (cable disconnected or firmware reset).")
+                                    );
                                     return glib::ControlFlow::Break;
                                 }
 
-                                // Ceder el puerto por completo mientras DirectSender graba una imagen:
-                                // evita robar los "ok" que su ventana de flujo necesita contar.
+
+
+
+                                {
+                                        use gcodekit5_communication::firmware::ControllerProtocol;
+
+                                        // Leemos ambos protocolos: configurado (fuente de
+                                        // verdad, fijado por la UI al conectar) y detectado
+                                        // (autodetección, solo informativo).
+                                        let (configured, detected) = {
+                                            if let Some(comm) = communicator_poll.try_lock() {
+                                                (comm.configured_protocol(), comm.detected_protocol())
+                                            } else {
+                                                (ControllerProtocol::Unknown, ControllerProtocol::Unknown)
+                                            }
+                                        };
+
+                                        let timeout_reached = cycles_since_connect >= 40;   // ~2 segundos
+
+                                        let detected_changed = detected != last_checked_detected;
+                                        let should_check =
+                                            (detected != ControllerProtocol::Unknown && detected_changed)
+                                            || (timeout_reached && !timeout_check_done);
+
+                                        if should_check {
+                                            if view_for_poll.check_protocol_coherence(configured, detected) {
+
+                                                if let Some(mut comm) = communicator_poll.try_lock() {
+                                                    let _ = comm.disconnect();
+                                                }
+                                                return glib::ControlFlow::Break;
+                                            }
+                                            last_checked_detected = detected;
+                                            if timeout_reached {
+                                                timeout_check_done = true;
+                                            }
+                                        }
+                                    }
+
                                 if *is_streaming_poll.lock() {
                                     return glib::ControlFlow::Continue;
                                 }
@@ -2089,10 +2109,10 @@ impl MachineControlView {
                                 // Try to read data (non-blocking, quick)
                                 if let Some(mut comm) = communicator_poll.try_lock() {
                                     if let Ok(response_bytes) = comm.receive() {
-                                        if !response_bytes.is_empty() {
-                                            let s = String::from_utf8_lossy(&response_bytes);
+                                if !response_bytes.is_empty() {
+                                    let s = String::from_utf8_lossy(&response_bytes);
 
-                                            response_buffer.push_str(&s);
+                                    response_buffer.push_str(&s);
 
                                             // Process complete lines (support both \n and \r line endings)
                                             while let Some(idx) = {
@@ -2108,7 +2128,7 @@ impl MachineControlView {
                                                 let line = response_buffer[..idx].trim().to_string();
                                                 response_buffer.drain(..idx + 1);
 
-                                                // --- Tiempo total de trabajo
+                                                // --- Total working time ---
                                                 if line.contains("Program End") {
                                                     let elapsed = job_start_time_poll.lock().map_or(0.0, |start| start.elapsed().as_secs_f64());
                                                     let mins = (elapsed / 60.0).floor() as u32;
@@ -2124,24 +2144,13 @@ impl MachineControlView {
                                                     }
                                                     *job_start_time_poll.lock() = None;
 
-                                                    // Limpiar barra de progreso
+                                                    // Clear progress bar
                                                     if let Some(sb) = status_bar_poll.as_ref() {
                                                         sb.set_progress(0.0, "", "");
                                                     }
                                                 }
 
                                                 if line.is_empty() { continue; }
-
-                                                // Detect firmware version info
-                                                if !firmware_detected && (line.starts_with("[VER:") || line.contains("Grbl")) {
-                                                    use gcodekit5_communication::firmware::firmware_detector::FirmwareDetector;
-                                                    if let Ok(detection) = FirmwareDetector::parse_response(&line) {
-                                                        let fw_type = format!("{:?}", detection.firmware_type);
-                                                        let fw_version = detection.version_string.clone();
-                                                        device_status::update_firmware_info(fw_type, fw_version, None);
-                                                        firmware_detected = true;
-                                                    }
-                                                }
 
                                                 // Capture GRBL $$ settings lines into global state (for Device Config / CAM).
                                                 if line.starts_with('$') && line.contains('=') {
@@ -2256,9 +2265,9 @@ impl MachineControlView {
 
                                                         for cls in [
                                                             "state-idle",
-                                                    "state-run",
-                                                    "state-hold",
-                                                    "state-alarm",
+                                                            "state-run",
+                                                            "state-hold",
+                                                            "state-alarm",
                                                         ] {
                                                             state_label_poll.remove_css_class(cls);
                                                         }
@@ -2281,7 +2290,6 @@ impl MachineControlView {
                                                             sb.set_state(&state);
                                                         }
 
-
                                                         // If machine is Idle and not streaming, just clear the timer without showing duplicate message
                                                         if state == "Idle" && !*is_streaming_poll.lock() {
                                                             let mut start_time = job_start_time_poll.lock();
@@ -2290,7 +2298,6 @@ impl MachineControlView {
                                                                 if let Some(sb) = status_bar_poll.as_ref() {
                                                                     sb.set_progress(0.0, "", "");
                                                                 }
-                                                                // NO mostrar mensaje de tiempo aquí - ya se muestra con "Program End"
                                                             }
                                                         }
 
@@ -2423,8 +2430,8 @@ impl MachineControlView {
                                                         state_buffer_label_poll.set_text(&format!(
                                                             "{} {}/{}",
                                                             t!("Buffer:"),
-                                                                                                  buffer.plan,
-                                                                                                  buffer.rx
+                                                            buffer.plan,
+                                                            buffer.rx
                                                         ));
                                                         device_status::update_buffer_state(buffer);
                                                     }
@@ -2461,8 +2468,8 @@ impl MachineControlView {
                                                         state_feed_label_poll.set_text(&format!(
                                                             "{} {} {}",
                                                             t!("Feed:"),
-                                                                                                feed,
-                                                                                                units
+                                                            feed,
+                                                            units
                                                         ));
 
                                                         // Calculate adjusted feed
@@ -2489,8 +2496,7 @@ impl MachineControlView {
                                                     if let Some(spindle_speed) = display_spindle {
                                                         state_spindle_label_poll.set_text(&format!(
                                                             "{} {} S",
-                                                            t!("Spindle:"),
-                                                                                                   spindle_speed
+                                                            t!("Spindle:"),                                                                                                   spindle_speed
                                                         ));
 
                                                         // Calculate adjusted spindle
@@ -2528,9 +2534,13 @@ impl MachineControlView {
                                         }
                                     }
 
-                                    // Send status query every ~250ms (every 5 cycles of 50ms)
+                                    // Send status query every ~250ms (every 5 cycles of 50ms).
                                     if query_counter.is_multiple_of(5) {
-                                        let _ = comm.send(b"?");
+                                        if comm.configured_protocol()
+                                            != gcodekit5_communication::firmware::ControllerProtocol::Repetier
+                                        {
+                                            let _ = comm.send(b"?");
+                                        }
                                     }
                                 }
 
@@ -2539,14 +2549,9 @@ impl MachineControlView {
                         }
                         Err(e) => {
                             view_clone.connect_btn.set_sensitive(true);
-                            view_clone.state_label.set_text(&t!("Disconnected"));
-                            view_clone.conn_status_state.set_text(&t!("State: Disconnected"));
-                            view_clone.disabled_reason_label.set_text(&t!("Connect to enable controls."));
-
-                            // Log error to device console
-                            if let Some(ref console) = view_clone.device_console {
-                                console.append_log(&format!("{}: {}\n", t!("Error connecting"), e));
-                            }
+                            view_clone.report_connection_error(
+                                &(t!("Failed to connect: ") + &e.to_string())
+                            );
                         }
                     }
                 }
@@ -2607,6 +2612,124 @@ impl MachineControlView {
         };
 
         sb.set_progress(percentage, &format_time(elapsed), &format_time(remaining));
+    }
+
+    /// Check whether the configured protocol matches the detected one
+    fn check_protocol_coherence(
+        &self,
+        configured: gcodekit5_communication::firmware::ControllerProtocol,
+        detected: gcodekit5_communication::firmware::ControllerProtocol,
+    ) -> bool {
+        use gcodekit5_communication::firmware::ControllerProtocol;
+
+        let configured_profile = gcodekit5_communication::firmware::protocol_profile(
+            configured.as_str()
+        );
+        if !configured_profile.announces_identity {
+            tracing::debug!(
+                "Coherencia: {:?} no anuncia identidad. Chequeo omitido.",
+                configured
+            );
+            return false;
+        }
+
+        if detected == ControllerProtocol::Unknown {
+            tracing::debug!(
+                "Coherencia: detección aún Unknown (config={:?}). No se rechaza.",
+                configured
+            );
+            return false;
+        }
+
+        if configured == detected {
+            tracing::debug!(
+                "Coherencia OK: config y detección coinciden ({:?})",
+                configured
+            );
+            return false;
+        }
+
+        let translated_template = t!("Connection rejected: active machine is configured as {} but the device responded as {}. Change the active machine in the Device Manager.");
+
+        let reason = format!("{}", translated_template)
+            .replacen("{}", &configured.to_string(), 1)
+            .replacen("{}", &detected.to_string(), 1);
+
+        self.report_connection_error(&reason);
+        true
+    }
+
+    /// Updates the UI to the "disconnected" state
+    fn set_ui_disconnected(&self) {
+        // Connect button → change text/icon to "Connect"
+        set_button_icon_label(&self.connect_btn, "network-wired-symbolic", &t!("Connect"));
+        self.connect_btn.remove_css_class("destructive-action");
+        self.connect_btn.add_css_class("suggested-action");
+
+        // Restore port selection and refresh
+        self.port_combo.set_sensitive(true);
+        self.refresh_btn.set_sensitive(true);
+
+        // Sidebar tags
+        self.conn_status_port.set_text(&t!("Port: -"));
+        self.conn_status_baud.set_text(&t!("Baud: 115200"));
+        self.conn_status_state.set_text(&t!("State: Disconnected"));
+        self.state_label.set_text(&t!("Disconnected"));
+        self.disabled_reason_label.set_text(&t!("Connect to enable controls."));
+
+        // Global state
+        device_status::update_connection_status(false, None);
+
+        // Disable all controls
+        set_controls_enabled(
+            &self.send_btn,
+            &self.stop_btn,
+            &self.pause_btn,
+            &self.resume_btn,
+            &self.home_btn,
+            &self.unlock_btn,
+            &self.wcs_btns,
+            &self.x_zero_btn,
+            &self.y_zero_btn,
+            &self.z_zero_btn,
+            &self.zero_all_btn,
+            &self.goto_zero_btn,
+            &self.step_combo,
+            &self.jog_feed_entry,
+            &self.jog_x_pos,
+            &self.jog_x_neg,
+            &self.jog_y_pos,
+            &self.jog_y_neg,
+            &self.jog_z_pos,
+            &self.jog_z_neg,
+            &self.estop_btn,
+            false,
+        );
+
+        // StatusBar
+        if let Some(ref sb) = self.status_bar {
+            sb.set_connected(false, "");
+        }
+
+        // Log en consola
+        if let Some(ref console) = self.device_console {
+            console.append_log(&format!("{}\n", t!("Disconnected")));
+        }
+    }
+
+    fn set_ui_disconnected_with_reason(&self, reason: &str) {
+        self.set_ui_disconnected();
+        self.disabled_reason_label.set_text(reason);
+    }
+
+    fn report_connection_error(&self, reason: &str) {
+        tracing::debug!("Connection error: {}", reason);
+
+        if let Some(ref console) = self.device_console {
+            console.append_log(&format!("❌ {}\n", reason));
+        }
+
+        self.set_ui_disconnected_with_reason(reason);
     }
 }
 

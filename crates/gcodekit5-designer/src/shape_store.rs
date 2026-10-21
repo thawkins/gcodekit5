@@ -290,6 +290,124 @@ impl ShapeStore {
     pub fn draw_order(&self) -> &Vec<u64> {
         &self.draw_order
     }
+
+    /// Devuelve los IDs seleccionados, en el orden actual de `draw_order`.
+    fn selected_ids_in_order(&self) -> Vec<u64> {
+        self.draw_order
+            .iter()
+            .copied()
+            .filter(|id| self.shapes.get(id).map(|o| o.selected).unwrap_or(false))
+            .collect()
+    }
+
+    /// Devuelve los IDs seleccionados (en orden de `draw_order`).
+    pub fn selected_ids(&self) -> Vec<u64> {
+        self.selected_ids_in_order()
+    }
+
+    /// Mueve los IDs dados al principio del `draw_order`, manteniendo su orden
+    /// relativo y el del resto. Los IDs que no existan se ignoran.
+    pub fn move_ids_to_top(&mut self, ids: &[u64]) {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let (selected, rest): (Vec<u64>, Vec<u64>) = self
+            .draw_order
+            .drain(..)
+            .partition(|id| id_set.contains(id));
+        self.draw_order = selected;
+        self.draw_order.extend(rest);
+    }
+
+    /// Mueve los IDs dados al final del `draw_order`, manteniendo su orden
+    /// relativo y el del resto.
+    pub fn move_ids_to_bottom(&mut self, ids: &[u64]) {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let (selected, rest): (Vec<u64>, Vec<u64>) = self
+            .draw_order
+            .drain(..)
+            .partition(|id| id_set.contains(id));
+        self.draw_order = rest;
+        self.draw_order.extend(selected);
+    }
+
+    /// Mueve los IDs dados una posición hacia arriba en el `draw_order`.
+    /// Los seleccionados no se adelantan entre sí.
+    pub fn move_ids_up(&mut self, ids: &[u64]) {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        for i in 1..self.draw_order.len() {
+            let prev_selected = id_set.contains(&self.draw_order[i - 1]);
+            let curr_selected = id_set.contains(&self.draw_order[i]);
+            if curr_selected && !prev_selected {
+                self.draw_order.swap(i - 1, i);
+            }
+        }
+    }
+
+    /// Mueve los IDs dados una posición hacia abajo en el `draw_order`.
+    /// Los seleccionados no se adelantan entre sí.
+    pub fn move_ids_down(&mut self, ids: &[u64]) {
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        for i in (0..self.draw_order.len().saturating_sub(1)).rev() {
+            let next_selected = id_set.contains(&self.draw_order[i + 1]);
+            let curr_selected = id_set.contains(&self.draw_order[i]);
+            if curr_selected && !next_selected {
+                self.draw_order.swap(i, i + 1);
+            }
+        }
+    }
+
+    /// Comprueba si mover `id` a `target_idx` dejaría algún grupo partido
+    /// (con miembros en posiciones no contiguas del `draw_order`).
+    /// No modifica el estado.
+    pub fn would_split_group(&self, id: u64, target_idx: usize) -> bool {
+        if !self.shapes.contains_key(&id) {
+            return false;
+        }
+
+        let mut new_order: Vec<u64> = self.draw_order.clone();
+        if let Some(pos) = new_order.iter().position(|&x| x == id) {
+            new_order.remove(pos);
+        }
+        let insert_pos = target_idx.min(new_order.len());
+        new_order.insert(insert_pos, id);
+
+        self.has_split_group_in(&new_order)
+    }
+
+    /// Comprueba si el `draw_order` dado deja algún grupo partido.
+    pub fn would_split_group_with_order(&self, new_order: &[u64]) -> bool {
+        self.has_split_group_in(new_order)
+    }
+
+    /// Devuelve true si hay algún grupo con miembros en posiciones no contiguas.
+    fn has_split_group_in(&self, order: &[u64]) -> bool {
+        let mut groups: std::collections::HashMap<u64, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (pos, &shape_id) in order.iter().enumerate() {
+            if let Some(obj) = self.shapes.get(&shape_id) {
+                if let Some(gid) = obj.group_id {
+                    groups.entry(gid).or_default().push(pos);
+                }
+            }
+        }
+
+        for positions in groups.values() {
+            if positions.is_empty() {
+                continue;
+            }
+            let min = *positions.iter().min().unwrap();
+            let max = *positions.iter().max().unwrap();
+            if positions.len() != (max - min + 1) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Reemplaza el `draw_order` por el dado. No comprueba nada.
+    pub fn apply_order(&mut self, new_order: Vec<u64>) {
+        self.draw_order = new_order;
+    }
+
 }
 
 impl Default for ShapeStore {

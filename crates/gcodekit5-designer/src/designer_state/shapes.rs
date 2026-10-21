@@ -9,7 +9,6 @@ use crate::shapes::OperationType;
 use crate::{Circle, DrawingMode, Ellipse, Line, Point, Rectangle};
 
 impl DesignerState {
-
     fn apply_mode_defaults_to_new_object(&self, obj: &mut DrawingObject) {
         // Factory defaults from DrawingObject::new(), used below to detect
         // fields the caller hasn't customized yet (they are non-zero so the
@@ -24,7 +23,8 @@ impl DesignerState {
             obj.start_depth = default_props.start_depth;
         }
 
-        if obj.pocket_depth.abs() < f64::EPSILON && default_props.pocket_depth.abs() > f64::EPSILON {
+        if obj.pocket_depth.abs() < f64::EPSILON && default_props.pocket_depth.abs() > f64::EPSILON
+        {
             obj.pocket_depth = default_props.pocket_depth;
         }
 
@@ -70,7 +70,9 @@ impl DesignerState {
             obj.use_custom_values = true;
         }
 
-        if obj.operation_type == OperationType::Profile && default_props.operation_type != OperationType::Profile {
+        if obj.operation_type == OperationType::Profile
+            && default_props.operation_type != OperationType::Profile
+        {
             obj.operation_type = default_props.operation_type;
         }
     }

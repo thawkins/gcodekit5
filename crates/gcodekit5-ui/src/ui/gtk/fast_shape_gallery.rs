@@ -192,7 +192,6 @@ impl FastShapeGallery {
                     ))
                 }),
             ),
-
             FastShapeTemplate::new(
                 t!("Sprocket"),
                 t!("Chain sprocket for #40 chain"),
@@ -204,8 +203,6 @@ impl FastShapeGallery {
                     ))
                 }),
             ),
-
-
             FastShapeTemplate::new(
                 t!("Timing Pulley"),
                 t!("XL timing belt pulley"),
@@ -239,7 +236,7 @@ impl FastShapeGallery {
                 Rc::new(|center| {
                     use gcodekit5_designer::model::DesignRectangle as Rectangle;
 
-                    let width = 50.0;  // length
+                    let width = 50.0; // length
                     let height = 20.0; // width
 
                     // Calculamos la esquina superior izquierda a partir del centro recibido
@@ -248,7 +245,7 @@ impl FastShapeGallery {
 
                     let mut rect = Rectangle::new(x, y, width, height);
                     rect.corner_radius = 5.0; // El radio pasa a ser numérico y explícito
-                    rect.is_slot = true;      // Activar el modo Slot nativo del motor
+                    rect.is_slot = true; // Activar el modo Slot nativo del motor
 
                     Shape::Rectangle(rect)
                 }),

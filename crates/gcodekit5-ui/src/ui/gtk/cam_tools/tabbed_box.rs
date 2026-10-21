@@ -103,7 +103,7 @@ impl TabbedBoxMaker {
             .halign(Align::Start)
             .build();
 
-let desc_lbl = Label::builder()
+        let desc_lbl = Label::builder()
     .label(&format!(
         r#"{} <a href="https://github.com/florianfesti/boxes">{}</a> {}"#,
         t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm. For more cases involving boxes and other objects, it is recommended to use the "),

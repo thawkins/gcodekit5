@@ -608,10 +608,53 @@ You may choose either license for your use of this software.
 
 ## Project Status
 
-**Current Version**: 1.1.0-beta.1
-**Status**: Active Development
-**Stability**: Beta
+  - **Current Version**: 1.2.0-beta.2
+  - **Status**: Active Development
+  - **Stability**: Beta
 
+
+### Recent Updates (1.2.0-beta.2) - refactor: consolidate Sender trait, enforce protocol consistency, and dead code cleanup (2026-10-20)
+- This update consolidates communication architecture, enforces strict protocol validation, and removes obsolete code. All changes have been verified in real-world environments
+
+ ***Key Changes***
+
+ - **Repetier Compatibility:**
+	- Transparent Translation: The processor automatically converts G10 L20 (Zero All) to G92.
+	- Pen Plotter Mode: Maps laser commands (M3/M4 → G0 Z0, M5 → G0 Z5) and discards redundant trailing M5 commands.
+- **Non-functional protocols are indicated as (not supported)** and cannot be selected. The code for            these protocols has been left in the firmware for future implementations.
+- **Logging & Telemetry:**
+	- Centralized command logging directly within the Sender implementations, eliminating duplicate or inaccurate logs in the UI.
+- **Communication Abstraction:**
+	- Introduced a unified Sender trait (gcodekit5-communication/src/firmware/sender.rs) with flow control methods (send_gcode, pause, resume, stop, unlock, is_streaming).
+	- Implemented by GrblSender and RepetierSender (formerly DirectSender, moved to core).
+	- The UI (MachineControlView) now manages the active sender agnostically via Rc<RefCell<Option<Rc<dyn Sender>>>>.
+- **Protocol Management & Consistency:**
+	- Added init_commands to ProtocolProfile (removing hardcoded $10=47 and the redundant identity_query).
+	- Enforced strict validation: Case-insensitive detection of expanded signatures (GRBL) and automatic connection rejection on protocol mismatch.
+	- Injects 0x18 on connection to force the firmware boot banner.
+	
+- **Dead Code Cleanup:**
+	- Various files and functions
+ 
+**Verification Tests (Real Hardware)**
+
+- Ray5 (GRBL): Full streaming, pause/resume, and recovery cycle (E-Stop → Unlock → Resume work without resetting).
+- ANET A8 (Repetier): Connection, streaming flow control with resends, and functional pen plotter mode using a marker.
+
+**Designer:**
+
+  - In the Designer, the selection of objects and groups within the object list has been improved.
+  - The ability to delete objects and groups from the object list using the "Delete" key has been added.
+
+## [Unreleased] - 2026-09-03
+
+### Fixed
+- **Laser stalls and stops on long image engravings**: The Machine Control status poller (50ms) and the DirectSender streaming thread were both reading the same serial port independently. Under load, the poller could "steal" the GRBL "ok" acknowledgments meant for the streaming job, desyncing its internal flow-control window. On short jobs this caused occasional stuttering; on long jobs it could eventually make the sender stop feeding new G-code entirely, starving the machine's buffer and bringing the laser to a complete stop.
+  - `DirectSender` is now the sole reader/writer of the serial port while an image engraving job is running; the status poller yields the port for the duration of the job instead of competing for it.
+  - Removed a 30-second "watchdog" recovery mechanism that, on inspection, was placed after the exact loop it was meant to rescue and could never actually trigger during a real stall — no longer needed now that the root cause is fixed.
+  - Verified stable on real hardware with engravings of 216,604 and 158,923 G-code lines, completed with no stutter and no stops.
+  - Trade-off: while an image engraving job is streaming, the live DRO/position and buffer-state readouts in Machine Control no longer update (the progress bar still does, via the engraving job itself), keeping the serial port free of contention for maximum reliability and speed.
+  
 ### Recent Updates (1.1.0-beta.1) - Multiple modifications and adjustments
 - The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).
 - In 3D mode, the Z coordinate is implemented to generate 3D G-code with passes based on the machining parameters in the Global or specific properties of each object.
@@ -622,7 +665,7 @@ You may choose either license for your use of this software.
 - Play/pause/stop buttons and playback speed values ​​have been added to the viewer for simulating the tool's path on screen.
 - The shapes in the Shape Gallery have been corrected, and parametric mode has been added to the timing belt pulley, which previously lacked it.
 - Some errors in creating chamfers and radii on shape objects have been fixed.
-
+ 
 ### Recent Updates (1.0.0-alpha.1) - Multiple modifications and adjustments
 - Triangle generation in the designer has been corrected. Triangles can now be generated in all four positions and true symmetry can be applied. Previously, they could only be generated in one position.
 - The bounds of the triangles are now generated correctly and updated when the triangle is rotated.

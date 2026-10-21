@@ -1,3 +1,36 @@
+### Recent Updates (1.2.0-beta.2) - refactor: consolidate Sender trait, enforce protocol consistency, and dead code cleanup (2026-10-20)
+- This update consolidates communication architecture, enforces strict protocol validation, and removes obsolete code. All changes have been verified in real-world environments
+
+ ***Key Changes***
+
+ - **Repetier Compatibility:**
+	- Transparent Translation: The processor automatically converts G10 L20 (Zero All) to G92.
+	- Pen Plotter Mode: Maps laser commands (M3/M4 → G0 Z0, M5 → G0 Z5) and discards redundant trailing M5 commands.
+- **Non-functional protocols are indicated as (not supported)** and cannot be selected. The code for            these protocols has been left in the firmware for future implementations.
+- **Logging & Telemetry:**
+	- Centralized command logging directly within the Sender implementations, eliminating duplicate or inaccurate logs in the UI.
+- **Communication Abstraction:**
+	- Introduced a unified Sender trait (gcodekit5-communication/src/firmware/sender.rs) with flow control methods (send_gcode, pause, resume, stop, unlock, is_streaming).
+	- Implemented by GrblSender and RepetierSender (formerly DirectSender, moved to core).
+	- The UI (MachineControlView) now manages the active sender agnostically via Rc<RefCell<Option<Rc<dyn Sender>>>>.
+- **Protocol Management & Consistency:**
+	- Added init_commands to ProtocolProfile (removing hardcoded $10=47 and the redundant identity_query).
+	- Enforced strict validation: Case-insensitive detection of expanded signatures (GRBL) and automatic connection rejection on protocol mismatch.
+	- Injects 0x18 on connection to force the firmware boot banner.
+	
+- **Dead Code Cleanup:**
+	- Various files and functions
+ 
+**Verification Tests (Real Hardware)**
+
+- Ray5 (GRBL): Full streaming, pause/resume, and recovery cycle (E-Stop → Unlock → Resume work without resetting).
+- ANET A8 (Repetier): Connection, streaming flow control with resends, and functional pen plotter mode using a marker.
+
+**Designer:**
+
+  - In the Designer, the selection of objects and groups within the object list has been improved.
+  - The ability to delete objects and groups from the object list using the "Delete" key has been added.
+
 ## [Unreleased] - 2026-09-03
 
 ### Fixed

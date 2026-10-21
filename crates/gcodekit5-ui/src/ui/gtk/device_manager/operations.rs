@@ -1,3 +1,4 @@
+//! gcodekit5-ui/src/ui/gtk/device_manager/operations.rs
 //! Event handlers and operations for the device manager window.
 
 use super::*;
@@ -266,8 +267,8 @@ impl DeviceManagerWindow {
             if let Some(txt) = self.edit_device_type.active_text() {
                 model.device_type = txt.to_string();
             }
-            if let Some(txt) = self.edit_controller_type.active_text() {
-                model.controller_type = txt.to_string();
+            if let Some(id) = self.edit_controller_type.active_id() {
+                model.controller_type = id.to_string();
             }
 
             // Connection
@@ -424,11 +425,30 @@ impl DeviceManagerWindow {
             } else {
                 0.0
             };
+
             model.max_feed_rate = format!("{:.0}", max_feed_mm_per_min);
             model.max_s_value = format!("{:.0}", max_s_value);
             model.max_spindle_speed_rpm = max_spindle_speed_rpm.to_string();
             model.cnc_spindle_watts = format!("{:.0}", spindle_watts);
             model.laser_watts = format!("{:.0}", laser_watts);
+
+            // Validación específica: rechazar protocolos no soportados
+            // antes de intentar guardar. El registro de protocolos es la
+            // fuente de verdad sobre qué está implementado.
+            let protocol = gcodekit5_communication::firmware::protocol_profile(
+                &model.controller_type
+            );
+            if !protocol.is_supported {
+                self.show_error_dialog(
+                    "Unsupported controller",
+                    &format!(
+                        "The selected controller \"{}\" is not supported yet. \
+                         Please choose a supported one and try again.",
+                        protocol.display_name
+                    ),
+                );
+                return;
+            }
 
             // Save
             if let Err(e) = self.controller.update_profile_from_ui(model) {
@@ -545,20 +565,6 @@ impl DeviceManagerWindow {
             if let Ok(val) = laser_mode.parse::<u32>() {
                 model.has_laser = val == 1;
             }
-        }
-
-        // Update firmware version if available
-        if let Some(fw_version) = &status.firmware_version {
-            model.description = format!(
-                "{} (Firmware: {})",
-                model
-                    .description
-                    .split('(')
-                    .next()
-                    .unwrap_or(&model.description)
-                    .trim(),
-                fw_version
-            );
         }
 
         // Reload the updated model into the form

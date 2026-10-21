@@ -674,4 +674,3 @@ impl SlicedJob {
             .map_err(|e| anyhow!("Failed to write layer info: {}", e))
     }
 }
-

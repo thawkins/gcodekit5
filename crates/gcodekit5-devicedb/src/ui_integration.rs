@@ -1,3 +1,4 @@
+//! gcodekit5-devicedb/src/ui_integration.rs
 //! # Device Database UI Integration
 //!
 //! Provides helper functions and view models for displaying
@@ -116,15 +117,11 @@ impl DeviceUiController {
             _ => anyhow::bail!("Unknown device type: {}", ui_model.device_type),
         };
 
-        profile.controller_type = match ui_model.controller_type.as_str() {
-            "GRBL" => ControllerType::Grbl,
-            "TinyG" => ControllerType::TinyG,
-            "g2core" => ControllerType::G2Core,
-            "Smoothieware" => ControllerType::Smoothieware,
-            "FluidNC" => ControllerType::FluidNC,
-            "Marlin" => ControllerType::Marlin,
-            _ => anyhow::bail!("Unknown controller type: {}", ui_model.controller_type),
-        };
+        profile.controller_type = ControllerType::from_str(&ui_model.controller_type)
+            .ok_or_else(|| anyhow::anyhow!(
+                "Unknown controller type: {}",
+                ui_model.controller_type
+            ))?;
 
         let mut x_min: f64 = ui_model
             .x_min

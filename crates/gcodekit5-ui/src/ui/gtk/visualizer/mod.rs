@@ -10,21 +10,21 @@
 
 mod gl_loader;
 
+use crate::t;
+use crate::ui::gtk::common::spacing;
 use gcodekit5_core::constants as core_constants;
-use gcodekit5_designer::stock_removal::{StockMaterial};
+use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_visualizer::visualizer::GCodeCommand;
 use gcodekit5_visualizer::{Camera3D, Visualizer};
-use crate::t;
-use crate::ui::gtk::common::spacing;
 //use crate::ui::gtk::osd_format::format_zoom_center_cursor;
 use crate::ui::gtk::shaders::StockRemovalShaderProgram;
 use crate::ui::gtk::status_bar::StatusBar;
+use gcodekit5_designer::designer_state::MachineMode;
+use gcodekit5_designer::DesignerState;
 use gcodekit5_settings::controller::SettingsController;
 use gcodekit5_settings::manager::SettingsManager;
 use gcodekit5_visualizer::visualizer::{generate_surface_mesh, StockSimulator3D};
-use gcodekit5_designer::designer_state::MachineMode;
-use gcodekit5_designer::DesignerState;
 use glam::Vec3;
 
 const STOCK_REMOVAL_RESOLUTION: f32 = 0.19; // Resolución cambiada de 0.25 a 0.19
@@ -55,10 +55,10 @@ use gl_loader::load_gl_func;
 use gcodekit5_core::{shared, shared_none, thread_safe_none, Shared, SharedOption};
 use gtk4::prelude::{BoxExt, ButtonExt, CheckButtonExt, WidgetExt};
 use gtk4::{
-    accessible::Property as AccessibleProperty, Adjustment, Box, Button,
-    CheckButton, ComboBoxText, DrawingArea, Entry, EventControllerScroll,
-    EventControllerScrollFlags, Expander, GLArea, GestureDrag, Grid, Image, Label, ListBox,
-    ListBoxRow, Orientation, Overlay, Paned, Revealer, Scrollbar, SelectionMode, Spinner, Stack,
+    accessible::Property as AccessibleProperty, Adjustment, Box, Button, CheckButton, ComboBoxText,
+    DrawingArea, Entry, EventControllerScroll, EventControllerScrollFlags, Expander, GLArea,
+    GestureDrag, Grid, Image, Label, ListBox, ListBoxRow, Orientation, Overlay, Paned, Revealer,
+    Scrollbar, SelectionMode, Spinner, Stack,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -127,7 +127,7 @@ pub struct GcodeVisualizer {
     pub(crate) min_s_value: Label,
     pub(crate) max_s_value: Label,
     pub(crate) avg_s_value: Label,
-//    pub(crate) _status_label: Label,
+    //    pub(crate) _status_label: Label,
     pub(crate) settings_controller: Rc<SettingsController>,
     stock_tool_diameter_entry: Entry,
     stock_tool_diameter_mm: Shared<f32>,
@@ -545,8 +545,7 @@ impl GcodeVisualizer {
                 STOCK_REMOVAL_RESOLUTION + 0.01,
                 t!("mm will not be visually displayed, but the G-code will execute correctly.")
             ))
-
-        .build();
+            .build();
         show_stock_removal.set_visible(enable_stock_removal_3d);
 
         // Stock configuration
@@ -817,27 +816,26 @@ impl GcodeVisualizer {
         let gl_area = GLArea::builder()
             .hexpand(true)
             .vexpand(true)
-            .has_depth_buffer(true)      // Habilitar depth buffer
+            .has_depth_buffer(true) // Habilitar depth buffer
             .has_stencil_buffer(false)
-            .auto_render(true)           // Renderizar automáticamente
+            .auto_render(true) // Renderizar automáticamente
             .build();
         gl_area.set_required_version(3, 3);
 
-        // CONFIGURAR EL CONTEXTO ANTES DE USARLO
+        // Configure the context before using it.
         gl_area.set_has_depth_buffer(true);
         gl_area.set_auto_render(true);
 
-        // CONECTAR REALIZE
+        // Connect realize
         gl_area.connect_realize(|area| {
-            // El contexto GL se activa automáticamente en realize
-            // Hacer que el área sea focuseable para recibir eventos
+            // The GL context is automatically activated in realize
+            // Make the area focusable to receive events.
             area.set_can_focus(true);
             area.grab_focus();
         });
 
-        // CONECTAR UNMAP - Limpiar recursos cuando se oculta
+        // Connect UNMAP - Clean up resources when hidden
         gl_area.connect_unmap(|_area| {
-            // El contexto se libera automáticamente
         });
 
         // 3D Scrollbars
@@ -946,7 +944,8 @@ impl GcodeVisualizer {
             .icon_name("preferences-desktop-display-symbolic")
             .tooltip_text(t!("Fit to Device Working Area"))
             .build();
-        nav_fit_device_btn.update_property(&[AccessibleProperty::Label(&t!("Fit to Device Working Area"))]);
+        nav_fit_device_btn
+            .update_property(&[AccessibleProperty::Label(&t!("Fit to Device Working Area"))]);
 
         let help_btn = Button::builder()
             .label("?")
@@ -963,7 +962,9 @@ impl GcodeVisualizer {
             help_box.set_margin_end(12);
             help_box.set_margin_top(12);
             help_box.set_margin_bottom(12);
-            help_box.append(&Label::new(Some(&t!("* Use mouse to orbit, pan and zoom *"))));
+            help_box.append(&Label::new(Some(&t!(
+                "* Use mouse to orbit, pan and zoom *"
+            ))));
             help_box.append(&Label::new(Some(&t!("Shift+Left button+Drag: Pan"))));
             help_box.append(&Label::new(Some(&t!("Mouse wheel: Zoom+/-"))));
             help_box.append(&Label::new(Some(&t!("Left Button+Drag: Orbit"))));
@@ -983,24 +984,6 @@ impl GcodeVisualizer {
         floating_box.append(&nav_fit_device_btn);
         floating_box.append(&help_btn);
 
-/*
-        // Status Panel (Bottom Left)
-        let status_box = Box::new(Orientation::Horizontal, 4);
-        status_box.add_css_class("visualizer-osd");
-        status_box.set_halign(gtk4::Align::Start);
-        status_box.set_valign(gtk4::Align::End);
-        status_box.set_margin_bottom(20);
-        status_box.set_margin_start(10);
-
-        let status_label = Label::builder().label(" ").build();
-        status_label.set_hexpand(true);
-
-        let units_badge = Label::new(Some(""));
-        units_badge.add_css_class("osd-units-badge");
-
-        status_box.append(&status_label);
-        status_box.append(&units_badge);
-*/
         // Run preview controls (Bottom Left)
         let run_controls_box = Box::new(Orientation::Horizontal, 6);
         run_controls_box.add_css_class("visualizer-osd");
@@ -1108,9 +1091,6 @@ impl GcodeVisualizer {
         }
 
         overlay.add_overlay(&floating_box);
-        //Eliminar barra de estado
-//        overlay.add_overlay(&status_box);
-
         overlay.add_overlay(&run_controls_box);
         overlay.add_overlay(&sidebar_show_panel);
         overlay.add_overlay(&sim_panel);
@@ -1164,7 +1144,7 @@ impl GcodeVisualizer {
                 };
             drop(vis);
 
-            // Comprobar contenido
+            // Check content
             let has_content = (max_x - min_x).abs() > 0.001 || (max_y - min_y).abs() > 0.001;
 
             if has_content {
@@ -1195,67 +1175,16 @@ impl GcodeVisualizer {
         // Helper to update status
         let cursor_pos = shared((0.0_f32, 0.0_f32));
         let update_status_fn: Rc<dyn Fn()> = Rc::new({
-//            let label = status_label.clone();
-//            let units_badge = units_badge.clone();
+            //            let label = status_label.clone();
+            //            let units_badge = units_badge.clone();
             let empty_box = empty_box.clone();
             let vis = visualizer.clone();
-//            let cursor_pos = cursor_pos.clone();
-//            let settings = settings_controller.clone();
             move || {
                 let v = vis.borrow();
-
-/*
-                let (cursor_x, cursor_y) = *cursor_pos.borrow();
-                let system = settings.persistence.borrow().config().ui.measurement_system;
-
-
-                // Visualizer offsets are negative of center, so we negate them to show center
-                let center_x = -v.x_offset;
-                let center_y = -v.y_offset;
-
-                label.set_text(&format_zoom_center_cursor(
-                    v.zoom_scale as f64,
-                    center_x,
-                    center_y,
-                    cursor_x,
-                    cursor_y,
-                    system,
-                ));
-
-                units_badge.set_text(gcodekit5_core::units::get_unit_label(system));
-*/
-
                 empty_box.set_visible(v.commands().is_empty());
             }
         });
-/*
-        // Track cursor position in world coordinates
-        let motion = EventControllerMotion::new();
-        let vis_motion = visualizer.clone();
-        let da_motion = drawing_area.clone();
-        let cursor_pos_motion = cursor_pos.clone();
-        motion.connect_motion(move |_, x, y| {
-            let v = vis_motion.borrow();
-            let width = da_motion.width() as f64;
-            let height = da_motion.height() as f64;
-            if width <= 0.0 || height <= 0.0 {
-                return;
-            }
 
-            let center_x = width / 2.0;
-            let center_y = height / 2.0;
-            let s = v.zoom_scale as f64;
-            if s == 0.0 {
-                return;
-            }
-
-            let world_x = (x - center_x) / s - v.x_offset as f64;
-            let world_y = -((y - center_y) / s) - v.y_offset as f64;
-            *cursor_pos_motion.borrow_mut() = (world_x as f32, world_y as f32);
-        });
-
-        drawing_area.add_controller(motion);
-*/
         // connect_cliked for top_view_btn
         let cam_top = camera.clone();
         let gl_top = gl_area.clone();
@@ -1971,263 +1900,270 @@ impl GcodeVisualizer {
         let sim_progress_label_toggle = sim_progress_label.clone();
         let status_bar_sim = status_bar.clone();
 
-// ============================================================
-// STOCK REMOVAL TOGGLED - VERSIÓN CON CANAL PARA PROGRESO
-// ============================================================
-show_stock_removal.connect_toggled(move |checkbox| {
-    if checkbox.is_active() {
-        // Check if simulation is already running
-        if *simulation_running_flag.borrow() {
-            return;
-        }
-
-        sim_cancel_flag.store(false, std::sync::atomic::Ordering::SeqCst);
-        sim_progress_flag.store(0, std::sync::atomic::Ordering::Relaxed);
-        sim_progress_label_toggle.set_text("0%");
-        sim_panel_toggle.set_visible(true);
-
-        if let Some(sb) = status_bar_sim.as_ref() {
-            let cancel_flag = sim_cancel_flag.clone();
-            let show_stock = checkbox.clone();
-            let panel = sim_panel_toggle.clone();
-            sb.set_progress(0.1, "0s", "");
-            sb.set_cancel_action(Some(std::boxed::Box::new(move || {
-                cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                panel.set_visible(false);
-                show_stock.set_active(false);
-            })));
-        }
-
-        *simulation_running_flag.borrow_mut() = true;
-
-        let started_at = std::time::Instant::now();
-
-        // Run simulation when enabled
-        let vis = visualizer_stock.borrow();
-
-        if let Some(stock) = stock_material_stock.borrow().as_ref() {
-            // Run simulation in background thread
-            let stock_clone = stock.clone();
-            let tool_radius_value = *tool_diameter_stock.borrow() / 2.0;
-            let result_3d_ref = stock_simulator_3d_stock.clone();
-            let gl_ref = gl_update.clone();
-
-            // Convert GCode commands to toolpath segments for 3D
-            use gcodekit5_visualizer::{ToolpathSegment, ToolpathSegmentType};
-            let mut toolpath_segments_3d = Vec::new();
-
-            for cmd in vis.commands() {
-                match cmd {
-                    GCodeCommand::Move {
-                        from, to, rapid, ..
-                    } => {
-                        let seg_type = if *rapid {
-                            ToolpathSegmentType::RapidMove
-                        } else {
-                            ToolpathSegmentType::LinearMove
-                        };
-                        let start_z = from.z;
-                        let end_z = to.z;
-                        toolpath_segments_3d.push(ToolpathSegment {
-                            segment_type: seg_type,
-                            start: (from.x, from.y, start_z),
-                            end: (to.x, to.y, end_z),
-                            center: None,
-                            feed_rate: 100.0,
-                            spindle_speed: 3000.0,
-                        });
-                    }
-                    GCodeCommand::Arc {
-                        from,
-                        to,
-                        center,
-                        clockwise,
-                        ..
-                    } => {
-                        let seg_type = if *clockwise {
-                            ToolpathSegmentType::ArcCW
-                        } else {
-                            ToolpathSegmentType::ArcCCW
-                        };
-                        let start_z = from.z;
-                        let end_z = to.z;
-                        toolpath_segments_3d.push(ToolpathSegment {
-                            segment_type: seg_type,
-                            start: (from.x, from.y, start_z),
-                            end: (to.x, to.y, end_z),
-                            center: Some((center.x, center.y)),
-                            feed_rate: 100.0,
-                            spindle_speed: 3000.0,
-                        });
-                    }
-                    GCodeCommand::Dwell { .. } => {
-                        // Dwell commands don't remove material, skip
-                    }
-                }
-            }
-
-            // Use Arc<Mutex<>> for thread-safe sharing
-            let result_arc = thread_safe_none();
-            let result_arc_clone = result_arc.clone();
-
-            let cancel_thread = sim_cancel_flag.clone();
-            let progress_thread = sim_progress_flag.clone();
-
-            // ============================================================
-            // CREAR CANAL PARA EL PROGRESO
-            // ============================================================
-            let (progress_tx, progress_rx) = std::sync::mpsc::channel();
-
-            // ✅ USAR Arc<AtomicBool> - SIN importar Borrow
-            let render_ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let render_ready_clone = render_ready.clone();
-
-            std::thread::spawn(move || {
-                use gcodekit5_visualizer::{StockSimulator3D, VoxelGrid};
-
-                let resolution = STOCK_REMOVAL_RESOLUTION; 
-                let _grid = VoxelGrid::new(
-                    stock_clone.width,
-                    stock_clone.height,
-                    stock_clone.thickness,
-                    resolution,
-                );
-
-                let mut simulator = StockSimulator3D::new(
-                    stock_clone.width,
-                    stock_clone.height,
-                    stock_clone.thickness,
-                    resolution,
-                    tool_radius_value,
-                );
-
-                let cancel = cancel_thread.clone();
-                let progress = progress_thread.clone();
-                let tx = progress_tx.clone();
-
-                let _ = simulator.simulate_toolpath_with_progress(&toolpath_segments_3d, |p| {
-                    // Enviar progreso por el canal
-                    let _ = tx.send(p);
-
-                    // Actualizar también la variable atómica para compatibilidad
-                    if p > 0.0 {
-                        progress.store(
-                            (p * 100.0).round() as usize,
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
-                    }
-                    !cancel.load(std::sync::atomic::Ordering::SeqCst)
-                });
-
-                progress.store(100, std::sync::atomic::Ordering::Relaxed);
-                // Enviar 100% al final
-                let _ = progress_tx.send(1.0);
-
-                let result_sim = simulator;
-
-                // Store in Arc
-                *result_arc_clone.lock() = Some(result_sim);
-                // ✅ Usar store en lugar de borrow_mut
-                render_ready_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-            });
-
-            // ============================================================
-            // IMPROVED POLLER WITH CHANNEL
-            // ============================================================
-            let result_arc_poll = result_arc.clone();
-            let sim_running_poll = simulation_running_flag.clone();
-            let pending_flag = stock_simulation_3d_pending_toggle.clone();
-            let sim_cancel_flag_poll = sim_cancel_flag.clone();
-            let sim_panel_toggle_poll = sim_panel_toggle.clone();
-            let sim_progress_label_poll = sim_progress_label_toggle.clone();
-            let sb_poll = status_bar_sim.clone();
-            let render_ready_poll = render_ready.clone();
-
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                // 1. Actualizar progreso desde el canal
-                while let Ok(p) = progress_rx.try_recv() {
-                    let pct = (p * 100.0).round() as usize;
-                    sim_progress_label_poll.set_text(&format!("{}%", pct));
-                    if let Some(sb) = sb_poll.as_ref() {
-                        let elapsed = started_at.elapsed().as_secs_f64();
-                        sb.set_progress((pct as f64).max(0.1), &format!("{:.0}s", elapsed), "");
-                    }
+        // ============================================================
+        // STOCK REMOVAL TOGGLED - VERSIÓN CON CANAL PARA PROGRESO
+        // ============================================================
+        show_stock_removal.connect_toggled(move |checkbox| {
+            if checkbox.is_active() {
+                // Check if simulation is already running
+                if *simulation_running_flag.borrow() {
+                    return;
                 }
 
-                // 2. Verificar cancelación
-                if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
-                    *sim_running_poll.borrow_mut() = false;
-                    sim_panel_toggle_poll.set_visible(false);
-                    if let Some(sb) = sb_poll.as_ref() {
-                        sb.set_progress(0.0, "", "");
-                        sb.set_cancel_action(None);
-                    }
-                    return glib::ControlFlow::Break;
+                sim_cancel_flag.store(false, std::sync::atomic::Ordering::SeqCst);
+                sim_progress_flag.store(0, std::sync::atomic::Ordering::Relaxed);
+                sim_progress_label_toggle.set_text("0%");
+                sim_panel_toggle.set_visible(true);
+
+                if let Some(sb) = status_bar_sim.as_ref() {
+                    let cancel_flag = sim_cancel_flag.clone();
+                    let show_stock = checkbox.clone();
+                    let panel = sim_panel_toggle.clone();
+                    sb.set_progress(0.1, "0s", "");
+                    sb.set_cancel_action(Some(std::boxed::Box::new(move || {
+                        cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        panel.set_visible(false);
+                        show_stock.set_active(false);
+                    })));
                 }
 
-                // 3. Verificar si el renderizado está listo
-                // ✅ Usar load en lugar de borrow
-                if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst) {
-                    if let Some(mut guard) = result_arc_poll.try_lock() {
-                        if let Some(result_simulator) = guard.take() {
-                            if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
-                                *sim_running_poll.borrow_mut() = false;
-                                sim_panel_toggle_poll.set_visible(false);
-                                if let Some(sb) = sb_poll.as_ref() {
-                                    sb.set_progress(0.0, "", "");
-                                    sb.set_cancel_action(None);
-                                }
-                                return glib::ControlFlow::Break;
+                *simulation_running_flag.borrow_mut() = true;
+
+                let started_at = std::time::Instant::now();
+
+                // Run simulation when enabled
+                let vis = visualizer_stock.borrow();
+
+                if let Some(stock) = stock_material_stock.borrow().as_ref() {
+                    // Run simulation in background thread
+                    let stock_clone = stock.clone();
+                    let tool_radius_value = *tool_diameter_stock.borrow() / 2.0;
+                    let result_3d_ref = stock_simulator_3d_stock.clone();
+                    let gl_ref = gl_update.clone();
+
+                    // Convert GCode commands to toolpath segments for 3D
+                    use gcodekit5_visualizer::{ToolpathSegment, ToolpathSegmentType};
+                    let mut toolpath_segments_3d = Vec::new();
+
+                    for cmd in vis.commands() {
+                        match cmd {
+                            GCodeCommand::Move {
+                                from, to, rapid, ..
+                            } => {
+                                let seg_type = if *rapid {
+                                    ToolpathSegmentType::RapidMove
+                                } else {
+                                    ToolpathSegmentType::LinearMove
+                                };
+                                let start_z = from.z;
+                                let end_z = to.z;
+                                toolpath_segments_3d.push(ToolpathSegment {
+                                    segment_type: seg_type,
+                                    start: (from.x, from.y, start_z),
+                                    end: (to.x, to.y, end_z),
+                                    center: None,
+                                    feed_rate: 100.0,
+                                    spindle_speed: 3000.0,
+                                });
                             }
+                            GCodeCommand::Arc {
+                                from,
+                                to,
+                                center,
+                                clockwise,
+                                ..
+                            } => {
+                                let seg_type = if *clockwise {
+                                    ToolpathSegmentType::ArcCW
+                                } else {
+                                    ToolpathSegmentType::ArcCCW
+                                };
+                                let start_z = from.z;
+                                let end_z = to.z;
+                                toolpath_segments_3d.push(ToolpathSegment {
+                                    segment_type: seg_type,
+                                    start: (from.x, from.y, start_z),
+                                    end: (to.x, to.y, end_z),
+                                    center: Some((center.x, center.y)),
+                                    feed_rate: 100.0,
+                                    spindle_speed: 3000.0,
+                                });
+                            }
+                            GCodeCommand::Dwell { .. } => {
+                                // Dwell commands don't remove material, skip
+                            }
+                        }
+                    }
 
-                            // Asignar el simulador
-                            *result_3d_ref.borrow_mut() = Some(result_simulator);
-                            *pending_flag.borrow_mut() = true;
+                    // Use Arc<Mutex<>> for thread-safe sharing
+                    let result_arc = thread_safe_none();
+                    let result_arc_clone = result_arc.clone();
+
+                    let cancel_thread = sim_cancel_flag.clone();
+                    let progress_thread = sim_progress_flag.clone();
+
+                    // ===============================
+                    // Create a channel for progress
+                    // ===============================
+                    let (progress_tx, progress_rx) = std::sync::mpsc::channel();
+
+                    // ✅ USAR Arc<AtomicBool> - SIN importar Borrow
+                    let render_ready =
+                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    let render_ready_clone = render_ready.clone();
+
+                    std::thread::spawn(move || {
+                        use gcodekit5_visualizer::{StockSimulator3D, VoxelGrid};
+
+                        let resolution = STOCK_REMOVAL_RESOLUTION;
+                        let _grid = VoxelGrid::new(
+                            stock_clone.width,
+                            stock_clone.height,
+                            stock_clone.thickness,
+                            resolution,
+                        );
+
+                        let mut simulator = StockSimulator3D::new(
+                            stock_clone.width,
+                            stock_clone.height,
+                            stock_clone.thickness,
+                            resolution,
+                            tool_radius_value,
+                        );
+
+                        let cancel = cancel_thread.clone();
+                        let progress = progress_thread.clone();
+                        let tx = progress_tx.clone();
+
+                        let _ =
+                            simulator.simulate_toolpath_with_progress(&toolpath_segments_3d, |p| {
+                                // Send progress via the channel
+                                let _ = tx.send(p);
+
+                                // Update the atomic variable for compatibility.
+                                if p > 0.0 {
+                                    progress.store(
+                                        (p * 100.0).round() as usize,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                }
+                                !cancel.load(std::sync::atomic::Ordering::SeqCst)
+                            });
+
+                        progress.store(100, std::sync::atomic::Ordering::Relaxed);
+                        // Send 100% at the end
+                        let _ = progress_tx.send(1.0);
+
+                        let result_sim = simulator;
+
+                        // Store in Arc
+                        *result_arc_clone.lock() = Some(result_sim);
+                        // ✅ Usar store en lugar de borrow_mut
+                        render_ready_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                    });
+
+                    // ============================================================
+                    // IMPROVED POLLER WITH CHANNEL
+                    // ============================================================
+                    let result_arc_poll = result_arc.clone();
+                    let sim_running_poll = simulation_running_flag.clone();
+                    let pending_flag = stock_simulation_3d_pending_toggle.clone();
+                    let sim_cancel_flag_poll = sim_cancel_flag.clone();
+                    let sim_panel_toggle_poll = sim_panel_toggle.clone();
+                    let sim_progress_label_poll = sim_progress_label_toggle.clone();
+                    let sb_poll = status_bar_sim.clone();
+                    let render_ready_poll = render_ready.clone();
+
+                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                        // Update progress from the channel
+                        while let Ok(p) = progress_rx.try_recv() {
+                            let pct = (p * 100.0).round() as usize;
+                            sim_progress_label_poll.set_text(&format!("{}%", pct));
+                            if let Some(sb) = sb_poll.as_ref() {
+                                let elapsed = started_at.elapsed().as_secs_f64();
+                                sb.set_progress(
+                                    (pct as f64).max(0.1),
+                                    &format!("{:.0}s", elapsed),
+                                    "",
+                                );
+                            }
+                        }
+
+                        // Verify cancellation
+                        if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
                             *sim_running_poll.borrow_mut() = false;
-
-                            // Ocultar panel de progreso
                             sim_panel_toggle_poll.set_visible(false);
                             if let Some(sb) = sb_poll.as_ref() {
                                 sb.set_progress(0.0, "", "");
                                 sb.set_cancel_action(None);
                             }
-
-                            // Forzar renderizado
-                            gl_ref.queue_render();
-
-                            // ✅ Detener el poller AHORA
                             return glib::ControlFlow::Break;
                         }
+
+                        // Check if the rendering is ready.
+                        if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst) {
+                            if let Some(mut guard) = result_arc_poll.try_lock() {
+                                if let Some(result_simulator) = guard.take() {
+                                    if sim_cancel_flag_poll
+                                        .load(std::sync::atomic::Ordering::SeqCst)
+                                    {
+                                        *sim_running_poll.borrow_mut() = false;
+                                        sim_panel_toggle_poll.set_visible(false);
+                                        if let Some(sb) = sb_poll.as_ref() {
+                                            sb.set_progress(0.0, "", "");
+                                            sb.set_cancel_action(None);
+                                        }
+                                        return glib::ControlFlow::Break;
+                                    }
+
+                                    // Assign the simulator
+                                    *result_3d_ref.borrow_mut() = Some(result_simulator);
+                                    *pending_flag.borrow_mut() = true;
+                                    *sim_running_poll.borrow_mut() = false;
+
+                                    // Hide progress panel
+                                    sim_panel_toggle_poll.set_visible(false);
+                                    if let Some(sb) = sb_poll.as_ref() {
+                                        sb.set_progress(0.0, "", "");
+                                        sb.set_cancel_action(None);
+                                    }
+
+                                    // Force rendering
+                                    gl_ref.queue_render();
+
+                                    // Stop the poll NOW
+                                    return glib::ControlFlow::Break;
+                                }
+                            }
+                        }
+
+                        glib::ControlFlow::Continue
+                    });
+                } else {
+                    if let Some(sb) = status_bar_sim.as_ref() {
+                        sb.set_progress(0.0, "", "");
+                        sb.set_cancel_action(None);
                     }
+                    *stock_simulator_3d_stock.borrow_mut() = None;
+                    *simulation_running_flag.borrow_mut() = false;
+                    sim_panel_toggle.set_visible(false);
+                }
+            } else {
+                // Clear simulation when disabled
+                sim_cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                sim_progress_flag.store(0, std::sync::atomic::Ordering::Relaxed);
+                sim_progress_label_toggle.set_text("");
+                if let Some(sb) = status_bar_sim.as_ref() {
+                    sb.set_progress(0.0, "", "");
+                    sb.set_cancel_action(None);
                 }
 
-                glib::ControlFlow::Continue
-            });
-        } else {
-            if let Some(sb) = status_bar_sim.as_ref() {
-                sb.set_progress(0.0, "", "");
-                sb.set_cancel_action(None);
+                *stock_simulator_3d_stock.borrow_mut() = None;
+                *simulation_running_flag.borrow_mut() = false;
+                sim_panel_toggle.set_visible(false);
+                gl_update.queue_render();
             }
-            *stock_simulator_3d_stock.borrow_mut() = None;
-            *simulation_running_flag.borrow_mut() = false;
-            sim_panel_toggle.set_visible(false);
-        }
-    } else {
-        // Clear simulation when disabled
-        sim_cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-        sim_progress_flag.store(0, std::sync::atomic::Ordering::Relaxed);
-        sim_progress_label_toggle.set_text("");
-        if let Some(sb) = status_bar_sim.as_ref() {
-            sb.set_progress(0.0, "", "");
-            sb.set_cancel_action(None);
-        }
-
-        *stock_simulator_3d_stock.borrow_mut() = None;
-        *simulation_running_flag.borrow_mut() = false;
-        sim_panel_toggle.set_visible(false);
-        gl_update.queue_render();
-    }
-});
+        });
 
         // Stock dimension entry handlers
         let stock_material_width = stock_material.clone();
@@ -2321,12 +2257,12 @@ show_stock_removal.connect_toggled(move |checkbox| {
         let show_stock_removal_3d = show_stock_removal.clone();
 
         let grid_spacing_mm_render = grid_spacing_mm.clone();
-        // Guardar el último valor procesado para detectar cambios
+        // Save the last processed value to detect changes.
         let last_grid_spacing = std::cell::Cell::new(50.0_f64);
 
-        // Cuando el usuario cambia el combo de tamaño de rejilla, forzar
-        // un redraw del área de dibujo y del GLArea para que la rejilla
-        // se regenere inmediatamente (si está visible).
+        // When the user changes the grid size combo box, force
+        // a redraw of the drawing area and the GLArea so that the grid
+        // regenerates immediately (if visible)
         let grid_combo_update = grid_spacing_combo.clone();
         let da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
@@ -2372,7 +2308,7 @@ show_stock_removal.connect_toggled(move |checkbox| {
                         Ok(mut tool_buffers),
                         Ok(bounds_buffers),
                     ) => {
-                        let grid_data = generate_grid_data(4000.0, 10.0);
+                        let grid_data = generate_grid_data(4000.0, 50.0);
                         grid_buffers.update(&grid_data);
 
                         let axis_data = generate_axis_data(100.0);
@@ -2442,7 +2378,7 @@ show_stock_removal.connect_toggled(move |checkbox| {
                 }
                 drop(vis);
 
-                // --- Actualización dinámica de la rejilla ---
+                // --- Dynamic grid update ---
                 let current_spacing = grid_spacing_mm_render.get();
                 if current_spacing != last_grid_spacing.get() {
                     let grid_data = generate_grid_data(4000.0, current_spacing as f32);
@@ -2538,24 +2474,24 @@ show_stock_removal.connect_toggled(move |checkbox| {
                         if let (Some(shader), Some(buffers)) =
                             (&state.stock_removal_shader, &state.stock_removal_buffers)
                         {
-                            // Configurar estado de renderizado para sólido opaco
+                            // Set render state to opaque solid
                             unsafe {
-                                // Deshabilitar blending para evitar transparencias
+                                // Disable blending to avoid transparency
                                 gl.disable(glow::BLEND);
-                                // Habilitar depth test para correcta profundidad
+                                // Enable depth test for correct depth
                                 gl.enable(glow::DEPTH_TEST);
-                                // Configurar depth function para que funcione correctamente
+                                // Configure the depth function to work correctly.
                                 gl.depth_func(glow::LESS);
-                                // Habilitar back-face culling para eliminar caras internas
+                                // Enable back-face culling to remove internal faces
                                 gl.enable(glow::CULL_FACE);
                                 gl.cull_face(glow::BACK);
-                                // Orientación de caras: CCW (counter-clockwise)
+                                // Face orientation: CCW (counter-clockwise)
                                 gl.front_face(glow::CCW);
                             }
 
                             shader.bind();
 
-                            // Configurar matriz MVP
+                            // Configure MVP matrix
                             if let Some(loc) = shader.get_uniform_location("uModelViewProjection") {
                                 unsafe {
                                     gl.uniform_matrix_4_f32_slice(
@@ -2583,13 +2519,13 @@ show_stock_removal.connect_toggled(move |checkbox| {
                                 }
                             }
 
-                            // Dibujar el mesh
+                            // Draw the mesh
                             buffers.draw();
 
-                            // Restaurar estado
+                            // Restore state
                             unsafe {
                                 gl.disable(glow::CULL_FACE);
-                                // NO deshabilitar depth test porque el toolpath lo necesita
+                                // Do NOT disable depth testing, as the toolpath requires it
                             }
 
                             shader.unbind();
@@ -2599,8 +2535,8 @@ show_stock_removal.connect_toggled(move |checkbox| {
                     }
                 }
 
-                // Después de dibujar el stock removal, dibujar el toolpath
-                // Draw Toolpath (asegurar que se dibuja encima del stock)
+                // After drawing the stock removal, draw the toolpath
+                // Draw Toolpath (ensure it is drawn on top of the stock)
                 if show_rapid_3d.is_active() || show_cut_3d.is_active() {
                     state.shader.bind();
 
@@ -2614,7 +2550,7 @@ show_stock_removal.connect_toggled(move |checkbox| {
                         }
                     }
 
-                    // Dibujar con depth test activo pero con offset para evitar z-fighting
+                    // Draw with depth testing enabled but with an offset to avoid z-fighting.
                     unsafe {
                         gl.enable(glow::POLYGON_OFFSET_FILL);
                         gl.polygon_offset(-1.0, -1.0);
@@ -2838,7 +2774,7 @@ show_stock_removal.connect_toggled(move |checkbox| {
             min_s_value,
             max_s_value,
             avg_s_value,
-//            _status_label: status_label,
+            //            _status_label: status_label,
             settings_controller,
             stock_tool_diameter_entry,
             stock_tool_diameter_mm: tool_diameter,
@@ -2872,11 +2808,11 @@ show_stock_removal.connect_toggled(move |checkbox| {
         drop(cache);
 
         // ============================================================
-        // ✅ DETECTAR SI ES 2D SEGÚN MACHINE_MODE
+        //        Detect if it is 2D based on MACHINE_MODE.
         // ============================================================
         let is_2d = self.is_machine_2d();
 
-        // Ocultar/mostrar el checkbox de simulación
+        // Show/hide the simulation checkbox
         self.show_stock_removal.set_visible(!is_2d);
         if is_2d {
             self.show_stock_removal.set_active(false);
@@ -2945,15 +2881,14 @@ show_stock_removal.connect_toggled(move |checkbox| {
             self.avg_s_value.set_text(&t!("N/A"));
         }
 
-        let (min_x, max_x, min_y, max_y, min_z, max_z) = vis
-            .get_cutting_bounds()
-            .unwrap_or_else(|| {
+        let (min_x, max_x, min_y, max_y, min_z, max_z) =
+            vis.get_cutting_bounds().unwrap_or_else(|| {
                 let (min_x, max_x, min_y, max_y) = vis.get_bounds();
                 (min_x, max_x, min_y, max_y, vis.min_z, vis.max_z)
             });
         drop(vis);
 
-        // ★ Sincronizar stock con el diseñador ★
+        // ★ Synchronize stock with designer ★
         self.sync_stock_from_designer();
 
         // Force 3D top view and fit whenever G-code is loaded
@@ -2973,23 +2908,25 @@ show_stock_removal.connect_toggled(move |checkbox| {
         self.drawing_area.queue_draw();
     }
 
-    /// Detecta si la máquina está en modo 2D (Láser)
+    /// Detects whether the machine is in 2D mode (Laser).
     fn is_machine_2d(&self) -> bool {
         if let Some(state) = self.designer_state.as_ref() {
             let mode = state.borrow().machine_mode();
             return mode == MachineMode::Laser2D;
         }
-        false  // Por defecto, asumir 3D
+        false // Assume 3D by default
     }
 
     pub fn sync_stock_from_designer(&self) {
         if let Some(state) = self.designer_state.as_ref() {
             if let Some(stock) = &state.borrow().stock_material {
-                self.stock_width_entry.set_text(&format!("{:.1}", stock.width));
-                self.stock_height_entry.set_text(&format!("{:.1}", stock.height));
-                self.stock_thickness_entry.set_text(&format!("{:.1}", stock.thickness));
+                self.stock_width_entry
+                    .set_text(&format!("{:.1}", stock.width));
+                self.stock_height_entry
+                    .set_text(&format!("{:.1}", stock.height));
+                self.stock_thickness_entry
+                    .set_text(&format!("{:.1}", stock.thickness));
             }
         }
     }
 }
-

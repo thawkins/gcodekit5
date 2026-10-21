@@ -35,5 +35,5 @@ pub use toolpath_cache::ToolpathCache;
 pub use toolpath_rendering::{
     ArcSegment, LineSegment, MovementType, PathSegment, Toolpath, ToolpathStats,
 };
-pub use viewport::{Bounds};
+pub use viewport::Bounds;
 pub use visualizer::{GCodeCommand, Point3D, Visualizer};

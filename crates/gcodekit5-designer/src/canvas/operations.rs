@@ -2,9 +2,9 @@
 
 use super::types::{Alignment, DrawingObject};
 use crate::model::{
-    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape, LaserParams,
+    DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
-    DesignTriangle as Triangle, DesignerShape, Point, RasterImage, Shape, ShapeType,
+    DesignTriangle as Triangle, DesignerShape, LaserParams, Point, RasterImage, Shape, ShapeType,
 };
 
 use crate::spatial_index::Bounds;
