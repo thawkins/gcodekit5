@@ -26,7 +26,10 @@ allow = [
     "BSL-1.0", "CC0-1.0", "MPL-2.0", "OpenSSL", "EUPL-1.2", "NCSA",
 ]
 confidence-threshold = 0.8
-exceptions = []
+exceptions = [
+    # Pure-Rust libbzip2 port pulled in by zip 9 (bzip2 support); permissive BSD-style licence.
+    { allow = ["bzip2-1.0.6"], crate = "libbz2-rs-sys" },
+]
 
 [licenses.private]
 ignore = true
