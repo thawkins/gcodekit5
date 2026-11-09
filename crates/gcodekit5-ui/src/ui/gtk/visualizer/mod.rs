@@ -12,6 +12,7 @@ mod gl_loader;
 
 use crate::t;
 use crate::ui::gtk::common::spacing;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_devicedb::DeviceManager;
@@ -84,16 +85,16 @@ use gl_loader::load_gl_func;
 use gcodekit5_core::{shared, shared_none, thread_safe_none, Shared, SharedOption};
 use gtk4::prelude::{BoxExt, ButtonExt, CheckButtonExt, WidgetExt};
 use gtk4::{
-    accessible::Property as AccessibleProperty, Adjustment, Box, Button, CheckButton, ComboBoxText,
-    DrawingArea, Entry, EventControllerScroll, EventControllerScrollFlags, Expander, GLArea,
-    GestureDrag, Grid, Image, Label, ListBox, ListBoxRow, Orientation, Overlay, Paned, Revealer,
-    Scrollbar, SelectionMode, Spinner, Stack,
+    accessible::Property as AccessibleProperty, Adjustment, Box, Button, CheckButton, DrawingArea,
+    Entry, EventControllerScroll, EventControllerScrollFlags, Expander, GLArea, GestureDrag, Grid,
+    Image, Label, ListBox, ListBoxRow, Orientation, Overlay, Paned, Revealer, Scrollbar,
+    SelectionMode, Spinner, Stack,
 };
 use std::rc::Rc;
 use std::sync::Arc;
 
 // Render cache for expensive computations
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(crate) struct RenderCache {
     pub(crate) cutting_bounds: Option<(f32, f32, f32, f32, f32, f32)>,
     pub(crate) _rapid_lines: usize,
@@ -111,15 +112,6 @@ pub(crate) struct RendererState {
     bounds_buffers: RenderBuffers,
     stock_removal_shader: Option<StockRemovalShaderProgram>,
     stock_removal_buffers: Option<RenderBuffers>,
-}
-
-impl Default for RenderCache {
-    fn default() -> Self {
-        Self {
-            cutting_bounds: None,
-            _rapid_lines: 0,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -526,7 +518,7 @@ impl GcodeVisualizer {
         let grid_spacing_label = Label::new(Some(&t!("Grid spacing")));
         grid_spacing_label.add_css_class("caption");
 
-        let grid_spacing_combo = ComboBoxText::new();
+        let grid_spacing_combo = new_text_dropdown();
         grid_spacing_combo.set_tooltip_text(Some(&t!("Grid spacing")));
 
         let system = settings_controller
@@ -1058,7 +1050,7 @@ impl GcodeVisualizer {
         run_controls_box.set_margin_bottom(20);
 
         let run_speed_label = Label::new(Some(&t!("Speed")));
-        let run_speed_combo = ComboBoxText::new();
+        let run_speed_combo = new_text_dropdown();
         run_speed_combo.append(Some("slow"), &t!("Slow"));
         run_speed_combo.append(Some("normal"), &t!("Normal"));
         run_speed_combo.append(Some("fast"), &t!("Fast"));

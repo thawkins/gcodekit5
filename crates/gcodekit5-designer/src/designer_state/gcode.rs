@@ -228,10 +228,8 @@ impl DesignerState {
                 continue;
             };
 
-            if !selected_ids.is_empty() {
-                if !selected_ids.contains(&shape_obj.id) {
-                    continue; // Saltar si no está en la selección
-                }
+            if !selected_ids.is_empty() && !selected_ids.contains(&shape_obj.id) {
+                continue; // Saltar si no está en la selección
             }
 
             let effective_shape_obj = if self.machine_mode() == MachineMode::Cnc3D {

@@ -10,6 +10,7 @@ mod handlers;
 mod update;
 
 use crate::t;
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gcodekit5_core::units;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
 use gcodekit5_designer::designer_state::DesignerState;
@@ -19,7 +20,6 @@ use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
-use gtk4::ComboBoxText;
 use gtk4::{
     Box, CheckButton, DropDown, Entry, EventControllerFocus, Expression, Frame, Label, Orientation,
     ScrolledWindow, StringList,
@@ -146,10 +146,10 @@ pub struct PropertiesPanel {
     pub(crate) image_min_power_entry: Entry,
     pub(crate) image_max_power_entry: Entry,
     pub(crate) image_ppi_entry: Entry,
-    pub(crate) image_scan_direction_combo: ComboBoxText,
+    pub(crate) image_scan_direction_combo: DropDown,
     pub(crate) image_bidirectional_check: CheckButton,
     pub(crate) image_invert_check: CheckButton,
-    pub(crate) image_dithering_combo: ComboBoxText,
+    pub(crate) image_dithering_combo: DropDown,
     pub(crate) image_halftone_threshold_entry: Entry,
     // Laser override widgets
     pub(crate) laser_override_frame: Frame,

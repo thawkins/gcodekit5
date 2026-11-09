@@ -284,7 +284,7 @@ pub struct FileProcessingSettings {
     pub output_directory: PathBuf,
     /// Number of recent files to track
     pub recent_files_count: usize,
-    /// Whether to add N[nnn] line numbers in generated G-code
+    /// Whether to add `N[nnn]` line numbers in generated G-code
     pub line_numbers_enabled: bool,
 }
 

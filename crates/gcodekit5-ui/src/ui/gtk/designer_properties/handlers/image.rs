@@ -4,11 +4,12 @@
 //! Text entries apply on commit (Enter / focus-out) via [`super::connect_entry_commit`].
 
 use super::{change_selected_with_undo, connect_entry_commit};
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gcodekit5_core::{Shared, SharedOption};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::{RasterImage, Shape};
 use gtk4::prelude::*;
-use gtk4::{CheckButton, ComboBoxText, Entry};
+use gtk4::{CheckButton, DropDown, Entry};
 use std::rc::Rc;
 
 /// Callback type used to redraw the canvas and refresh the panel.
@@ -178,7 +179,7 @@ pub fn setup_ppi_handler(
 
 /// Setup handler for image scan direction combo box.
 pub fn setup_scan_direction_handler(
-    combo: &ComboBoxText,
+    combo: &DropDown,
     state: Shared<DesignerState>,
     redraw_callback: RedrawCallback,
     updating: Shared<bool>,
@@ -240,7 +241,7 @@ pub fn setup_invert_handler(
 
 /// Setup handler for image dithering combo box.
 pub fn setup_dithering_handler(
-    combo: &ComboBoxText,
+    combo: &DropDown,
     state: Shared<DesignerState>,
     redraw_callback: RedrawCallback,
     updating: Shared<bool>,

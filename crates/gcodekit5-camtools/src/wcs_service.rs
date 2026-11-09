@@ -7,7 +7,7 @@
 //! ## Features
 //!
 //! - Auto-update WCS (G54-G59) from probe results
-//! - Generate G10 L2 P<n> commands for persistent offsets
+//! - Generate `G10 L2 P<n>` commands for persistent offsets
 //! - Generate G92 commands for temporary offsets (needs the current machine position, see
 //!   [`WcsUpdateService::set_machine_position`])
 //! - Generate G43.1 commands for tool-length offsets

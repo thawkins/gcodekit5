@@ -3,13 +3,14 @@
 //! Provides a gallery interface for quick insertion of parametric shapes with predefined parameters.
 
 use crate::t;
+use crate::ui::gtk::common::dialog_window::DialogWindow;
 use gcodekit5_core::{shared_none, SharedOption};
 use gcodekit5_designer::model::{
     DesignGear, DesignPath, DesignSprocket, ParametricPathSource, Point, Shape,
 };
 use gcodekit5_designer::parametric_shapes::*;
 use gtk4::prelude::*;
-use gtk4::{Box, Dialog, FlowBox, Frame, Image, Label, Orientation, ResponseType, ScrolledWindow};
+use gtk4::{Box, FlowBox, Frame, Image, Label, Orientation, ResponseType, ScrolledWindow};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -41,20 +42,15 @@ impl FastShapeTemplate {
 /// Fast shape gallery dialog
 #[allow(clippy::type_complexity)]
 pub struct FastShapeGallery {
-    dialog: Dialog,
+    dialog: DialogWindow,
     templates: Vec<FastShapeTemplate>,
     on_shape_selected: SharedOption<std::boxed::Box<dyn Fn(Shape) + 'static>>,
 }
 
 impl FastShapeGallery {
     pub fn new() -> Rc<Self> {
-        let dialog = Dialog::builder()
-            .title(t!("Fast Shapes"))
-            .modal(true)
-            .resizable(true)
-            .default_width(600)
-            .default_height(400)
-            .build();
+        let dialog = DialogWindow::new(&t!("Fast Shapes"), true);
+        dialog.set_default_size(600, 400);
 
         dialog.add_button(&t!("Close"), ResponseType::Close);
         dialog.connect_response(|d, _| d.hide());

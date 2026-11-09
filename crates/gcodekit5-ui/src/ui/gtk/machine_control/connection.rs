@@ -647,20 +647,12 @@ impl MachineControlView {
 
     /// Shows a modal "Controller error" dialog.
     pub(crate) fn show_controller_error(&self, secondary: &str) {
-        let dialog = gtk4::MessageDialog::builder()
-            .message_type(gtk4::MessageType::Error)
-            .buttons(gtk4::ButtonsType::Ok)
-            .text(t!("Controller error"))
-            .secondary_text(secondary)
-            .build();
-        dialog.connect_response(|d, _| d.close());
-        if let Some(root) = self.widget.root() {
-            if let Ok(win) = root.downcast::<gtk4::Window>() {
-                dialog.set_transient_for(Some(&win));
-                dialog.set_modal(true);
-            }
-        }
-        dialog.show();
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        crate::ui::gtk::common::dialog::show_error(
+            &t!("Controller error"),
+            secondary,
+            parent.as_ref(),
+        );
     }
 
     /// Appends a line to the device console, if there is one.

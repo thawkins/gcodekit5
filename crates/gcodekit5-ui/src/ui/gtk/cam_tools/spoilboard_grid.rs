@@ -1,9 +1,11 @@
 //! Spoilboard Grid Tool
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Paned, ScrolledWindow,
+    Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -25,7 +27,7 @@ struct SpoilboardGridWidgets {
     grid_spacing: Entry,
     feed_rate: Entry,
     laser_power: Entry,
-    laser_mode: ComboBoxText,
+    laser_mode: DropDown,
     home_before: CheckButton,
 }
 
@@ -110,7 +112,7 @@ impl SpoilboardGridTool {
         let feed_rate = Entry::builder().text("1000").valign(Align::Center).build();
         let laser_power = Entry::builder().text("1000").valign(Align::Center).build();
 
-        let laser_mode = ComboBoxText::new();
+        let laser_mode = new_text_dropdown();
         laser_mode.append(Some("M3"), "M3 (Constant Power)");
         laser_mode.append(Some("M4"), "M4 (Dynamic Power)");
         laser_mode.set_active_id(Some("M4"));
@@ -300,17 +302,8 @@ impl SpoilboardGridTool {
     }
 
     fn save_params(w: &SpoilboardGridWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
-        dialog.set_current_name("grid_params.json");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Parameters");
+        dialog.set_initial_name(Some("grid_params.json"));
 
         let system = settings.persistence.borrow().config().ui.measurement_system;
         let w_clone = Rc::new((
@@ -325,42 +318,26 @@ impl SpoilboardGridTool {
                 .unwrap_or_else(|| "M4".to_string()),
         ));
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        let json = serde_json::json!({
-                            "width": w_clone.0,
-                            "height": w_clone.1,
-                            "grid_spacing": w_clone.2,
-                            "feed_rate": w_clone.3,
-                            "laser_power": w_clone.4,
-                            "laser_mode": w_clone.5,
-                        });
-                        let _ = fs::write(
-                            path,
-                            serde_json::to_string_pretty(&json).unwrap_or_default(),
-                        );
-                    }
-                }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let json = serde_json::json!({
+                    "width": w_clone.0,
+                    "height": w_clone.1,
+                    "grid_spacing": w_clone.2,
+                    "feed_rate": w_clone.3,
+                    "laser_power": w_clone.4,
+                    "laser_mode": w_clone.5,
+                });
+                let _ = fs::write(
+                    path,
+                    serde_json::to_string_pretty(&json).unwrap_or_default(),
+                );
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &SpoilboardGridWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Parameters");
 
         let w_clone = Rc::new((
             w.width.clone(),
@@ -372,47 +349,37 @@ impl SpoilboardGridTool {
         ));
         let settings_clone = settings.clone();
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content)
-                            {
-                                let system = settings_clone
-                                    .persistence
-                                    .borrow()
-                                    .config()
-                                    .ui
-                                    .measurement_system;
-                                if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
-                                    w_clone.0.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
-                                    w_clone.1.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_f64())
-                                {
-                                    w_clone.2.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-                                    w_clone.3.set_text(v);
-                                }
-                                if let Some(v) = params.get("laser_power").and_then(|v| v.as_str())
-                                {
-                                    w_clone.4.set_text(v);
-                                }
-                                if let Some(v) = params.get("laser_mode").and_then(|v| v.as_str()) {
-                                    w_clone.5.set_active_id(Some(v));
-                                }
-                            }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                if let Ok(content) = fs::read_to_string(path) {
+                    if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content) {
+                        let system = settings_clone
+                            .persistence
+                            .borrow()
+                            .config()
+                            .ui
+                            .measurement_system;
+                        if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                            w_clone.0.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                            w_clone.1.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_f64()) {
+                            w_clone.2.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                            w_clone.3.set_text(v);
+                        }
+                        if let Some(v) = params.get("laser_power").and_then(|v| v.as_str()) {
+                            w_clone.4.set_text(v);
+                        }
+                        if let Some(v) = params.get("laser_mode").and_then(|v| v.as_str()) {
+                            w_clone.5.set_active_id(Some(v));
                         }
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 }

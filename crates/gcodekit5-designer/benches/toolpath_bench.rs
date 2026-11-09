@@ -1,7 +1,7 @@
 //! Performance benchmarks for toolpath generation, G-code generation,
 //! spatial index operations, and DXF parsing.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use gcodekit5_core::Units;
 use gcodekit5_designer::dxf_parser::DxfParser;
 use gcodekit5_designer::gcode_gen::ToolpathToGcode;
@@ -11,6 +11,7 @@ use gcodekit5_designer::toolpath::{
     Toolpath, ToolpathGenerator, ToolpathSegment, ToolpathSegmentType,
 };
 use gcodekit5_designer::{Bounds, Circle, Rectangle};
+use std::hint::black_box;
 
 // ---------------------------------------------------------------------------
 // Toolpath generation benchmarks

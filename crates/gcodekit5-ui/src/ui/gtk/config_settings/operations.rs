@@ -4,14 +4,15 @@
 //! configuration settings. Handles communication with the
 //! connected CNC device.
 
+use crate::ui::gtk::common::dialog_window::DialogWindow;
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gcodekit5_communication::firmware::grbl::settings::SettingsManager;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
 use gcodekit5_core::{shared, Shared, SharedOption, ThreadSafe};
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{
-    Align, Box, Dialog, DialogFlags, Entry, Grid, Label, ListBoxRow, Orientation, ResponseType,
-};
+use gtk4::{Align, Box, Entry, Grid, Label, ListBoxRow, Orientation, ResponseType};
 
 use super::ConfigSettingRow;
 use super::ConfigSettingsView;
@@ -386,15 +387,12 @@ impl ConfigSettingsView {
             return;
         };
 
-        let dialog = Dialog::with_buttons(
-            Some(&format!("{} ${}", t!("Edit Setting"), setting.number)),
-            Some(&window),
-            DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
-            &[
-                (t!("Cancel").as_str(), ResponseType::Cancel),
-                (t!("Save").as_str(), ResponseType::Accept),
-            ],
-        );
+        let dialog =
+            DialogWindow::new(&format!("{} ${}", t!("Edit Setting"), setting.number), true);
+        dialog.set_transient_for(Some(&window));
+        dialog.window().set_destroy_with_parent(true);
+        dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
+        dialog.add_button(&t!("Save"), ResponseType::Accept);
 
         let content = dialog.content_area();
         content.set_spacing(10);
@@ -478,7 +476,7 @@ impl ConfigSettingsView {
             dialog.close();
         });
 
-        dialog.show();
+        dialog.present();
     }
 
     pub(crate) fn save_to_file(&self) {
@@ -487,37 +485,24 @@ impl ConfigSettingsView {
             return;
         };
 
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(&t!("Export Settings")),
-            Some(&window),
-            gtk4::FileChooserAction::Save,
-            &[
-                (t!("Cancel").as_str(), ResponseType::Cancel),
-                (t!("Save").as_str(), ResponseType::Accept),
-            ],
-        );
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Export Settings"));
+        dialog.set_initial_name(Some("grbl_settings.json"));
 
         let status_label = self.status_label.clone();
         let manager = self.settings_manager.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let res = manager.borrow().export_to_file(&path);
-                    match res {
-                        Ok(_) => status_label.set_text(&format!(
-                            "{} {}",
-                            t!("Exported settings to"),
-                            path.display()
-                        )),
-                        Err(e) => status_label.set_text(&format!("{} {}", t!("Export failed:"), e)),
-                    }
+        dialog.pick_save(Some(&window), move |file| {
+            if let Some(path) = file.path() {
+                let res = manager.borrow().export_to_file(&path);
+                match res {
+                    Ok(_) => status_label.set_text(&format!(
+                        "{} {}",
+                        t!("Exported settings to"),
+                        path.display()
+                    )),
+                    Err(e) => status_label.set_text(&format!("{} {}", t!("Export failed:"), e)),
                 }
             }
-            dialog.set_current_name("grbl_settings.json");
-            dialog.close();
         });
-
-        dialog.show();
     }
 
     pub(crate) fn load_from_file(&self) {
@@ -526,39 +511,26 @@ impl ConfigSettingsView {
             return;
         };
 
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(&t!("Import Settings")),
-            Some(&window),
-            gtk4::FileChooserAction::Open,
-            &[
-                (t!("Cancel").as_str(), ResponseType::Cancel),
-                (t!("Open").as_str(), ResponseType::Accept),
-            ],
-        );
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Import Settings"));
 
         let status_label = self.status_label.clone();
         let manager = self.settings_manager.clone();
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let res = manager.borrow_mut().import_from_file(&path);
-                    match res {
-                        Ok(_) => {
-                            status_label.set_text(&format!(
-                                "{} {}",
-                                t!("Imported settings from"),
-                                path.display()
-                            ));
-                        }
-                        Err(e) => status_label.set_text(&format!("{} {}", t!("Import failed:"), e)),
+        dialog.pick_open(Some(&window), move |file| {
+            if let Some(path) = file.path() {
+                let res = manager.borrow_mut().import_from_file(&path);
+                match res {
+                    Ok(_) => {
+                        status_label.set_text(&format!(
+                            "{} {}",
+                            t!("Imported settings from"),
+                            path.display()
+                        ));
                     }
+                    Err(e) => status_label.set_text(&format!("{} {}", t!("Import failed:"), e)),
                 }
             }
-            dialog.close();
         });
-
-        dialog.show();
     }
 
     pub(crate) fn restore_to_device(&self) {

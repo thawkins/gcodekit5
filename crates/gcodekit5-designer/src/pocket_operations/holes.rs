@@ -653,7 +653,9 @@ impl PocketGenerator {
             xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
             let mut spans: Vec<(Point, Point)> = xs
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .filter(|c| c[1] - c[0] > 1e-6)
                 .map(|c| {
                     let (sx, ex) = if bidirectional && !forward {

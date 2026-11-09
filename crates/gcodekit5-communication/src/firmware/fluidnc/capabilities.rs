@@ -54,7 +54,7 @@ impl FluidNCCapabilities {
     /// Check if an axis is supported
     pub fn supports_axis(&self, axis: char) -> bool {
         match axis.to_ascii_uppercase() {
-            'X' | 'Y' | 'Z' => true,
+            'X'..='Z' => true,
             'A' | 'B' => self.axes >= 4,
             'C' => self.axes >= 5,
             'U' => self.axes >= 6,

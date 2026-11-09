@@ -214,7 +214,8 @@ fn insert_inline_image(
 
                 if let Some(pixbuf) = scaled {
                     // Crear la imagen
-                    let picture = gtk4::Picture::for_pixbuf(&pixbuf);
+                    let picture =
+                        gtk4::Picture::for_paintable(&gtk4::gdk::Texture::for_pixbuf(&pixbuf));
                     picture.set_margin_top(5);
                     picture.set_margin_bottom(5);
                     picture.set_margin_start(5);
@@ -598,7 +599,7 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
 
     let window = Window::builder()
         .application(&app)
-        .title(&t!("GCodeKit5 Help"))
+        .title(t!("GCodeKit5 Help"))
         .default_width(1000)
         .default_height(700)
         .build();
@@ -648,7 +649,7 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
 
     // CSS para estilo consistente (sin pango)
     let provider = gtk4::CssProvider::new();
-    provider.load_from_data(
+    provider.load_from_string(
         "
         .help-sidebar {
             background-color: @theme_bg_color;
@@ -780,11 +781,8 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
 
                 // Comprobamos si la página nueva coincide con la que tocaría por historial
                 // (Si coincide, significa que el cambio viene de los botones, no del usuario pulsando un link)
-                let es_boton_atras = hist.back_stack.last().map_or(false, |p| p == &new_page_str);
-                let es_boton_adelante = hist
-                    .forward_stack
-                    .last()
-                    .map_or(false, |p| p == &new_page_str);
+                let es_boton_atras = hist.back_stack.last() == Some(&new_page_str);
+                let es_boton_adelante = hist.forward_stack.last() == Some(&new_page_str);
 
                 if !es_boton_atras && !es_boton_adelante {
                     // El usuario ha pinchado un link o el sidebar: guardamos historial manual
@@ -862,22 +860,21 @@ fn clean_html_tags(text: &str) -> String {
                 }
             } else if tag.starts_with("li") {
                 result.push_str("  • ");
-            } else if tag.starts_with("tr") || tag.starts_with("/tr") {
+            } else if tag.starts_with("tr")
+                || tag.starts_with("/tr")
+                || tag.starts_with("table")
+                || tag.starts_with("/table")
+                || tag.starts_with('p')
+                || tag == "br"
+                || tag == "br/"
+            {
                 result.push('\n');
-            } else if tag.starts_with("td") {
+            } else if tag.starts_with("td") || tag.starts_with("/td") {
                 result.push_str("  ");
-            } else if tag.starts_with("/td") {
-                result.push_str("  ");
-            } else if tag.starts_with("table") || tag.starts_with("/table") {
-                result.push_str("\n");
-            } else if tag.starts_with("p") {
-                result.push_str("\n");
-            } else if tag == "br" || tag == "br/" {
-                result.push_str("\n");
             } else if tag.starts_with("span") {
                 // Ignorar spans
             } else if tag.starts_with("div") {
-                result.push_str("\n");
+                result.push('\n');
             } else {
                 // Otras etiquetas: ignorar
             }

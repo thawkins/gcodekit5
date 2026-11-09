@@ -3,10 +3,12 @@
 //! Provides a comprehensive UI for the feeds and speeds calculator with
 //! integration to Tools, Materials, and Devices databases.
 
+use crate::ui::gtk::common::dialog_window::DialogWindow;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Dialog, Label, ListBox, ListBoxRow, Orientation,
-    Paned, ResponseType, ScrolledWindow, SpinButton, Stack, Window,
+    Align, Box, Button, CheckButton, Label, ListBox, ListBoxRow, Orientation, Paned, ResponseType,
+    ScrolledWindow, SpinButton, Stack, Window,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -495,7 +497,7 @@ impl SpeedsFeedsTool {
         // Operation Group
         let operation_group = PreferencesGroup::builder().title(t!("Operation")).build();
 
-        let operation_combo = ComboBoxText::new();
+        let operation_combo = new_text_dropdown();
         operation_combo.append(Some("slotting"), &t!("Slotting"));
         operation_combo.append(Some("pocketing"), &t!("Pocketing"));
         operation_combo.append(Some("profiling"), &t!("Profiling"));
@@ -671,15 +673,8 @@ impl SpeedsFeedsTool {
                                   .map(|d| (d.max_spindle_speed_rpm, d.has_spindle, d.cnc_spindle_watts as f32 / 1000.0))
                                   .unwrap_or((0, false, 0.0));                // Check if spindle is configured
                 if !has_spindle {
-                    let dialog = gtk4::MessageDialog::builder()
-                        .title(t!("No Spindle Configured"))
-                        .text(t!("The active device does not have a spindle configured. Please configure a spindle in the Device Manager."))
-                        .message_type(gtk4::MessageType::Warning)
-                        .buttons(gtk4::ButtonsType::Ok)
-                        .modal(true)
-                        .build();
-                    dialog.connect_response(|d, _| d.close());
-                    dialog.show();
+                    crate::ui::gtk::common::dialog::show_warning(&t!("No Spindle Configured"), &t!("The active device does not have a spindle configured. Please configure a spindle in the Device Manager."), None);
+
                     return;
                 }
 
@@ -694,15 +689,8 @@ impl SpeedsFeedsTool {
 
                 if !missing_params.is_empty() {
                     let param_list = missing_params.join(", ");
-                    let dialog = gtk4::MessageDialog::builder()
-                        .title(t!("Spindle Configuration Required"))
-                        .text(format!("The following spindle parameters are not configured:\n\n{}\n\nPlease configure these values in the Device Manager.", param_list))
-                        .message_type(gtk4::MessageType::Warning)
-                        .buttons(gtk4::ButtonsType::Ok)
-                        .modal(true)
-                        .build();
-                    dialog.connect_response(|d, _| d.close());
-                    dialog.show();
+                    crate::ui::gtk::common::dialog::show_warning(&t!("Spindle Configuration Required"), &format!("The following spindle parameters are not configured:\n\n{}\n\nPlease configure these values in the Device Manager.", param_list), None);
+
                     return;
                 }
 
@@ -791,11 +779,8 @@ pub struct ToolSelectionDialog;
 
 impl ToolSelectionDialog {
     pub fn show(parent: &Window, on_select: impl Fn(&Tool) + 'static) {
-        let dialog = Dialog::builder()
-            .title(t!("Select Tool"))
-            .modal(true)
-            .transient_for(parent)
-            .build();
+        let dialog = DialogWindow::new(&t!("Select Tool"), true);
+        dialog.set_transient_for(Some(parent));
 
         dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
         dialog.add_button(&t!("Select"), ResponseType::Accept);
@@ -960,7 +945,7 @@ impl ToolSelectionDialog {
                 dialog.close();
             }
         });
-        dialog.show();
+        dialog.present();
     }
 }
 
@@ -969,11 +954,8 @@ pub struct MaterialSelectionDialog;
 
 impl MaterialSelectionDialog {
     pub fn show(parent: &Window, on_select: impl Fn(&Material) + 'static) {
-        let dialog = Dialog::builder()
-            .title(t!("Select Material"))
-            .modal(true)
-            .transient_for(parent)
-            .build();
+        let dialog = DialogWindow::new(&t!("Select Material"), true);
+        dialog.set_transient_for(Some(parent));
 
         dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
         dialog.add_button(&t!("Select"), ResponseType::Accept);
@@ -991,7 +973,7 @@ impl MaterialSelectionDialog {
         content.append(&search_entry);
 
         // Category filter
-        let category_combo = ComboBoxText::new();
+        let category_combo = new_text_dropdown();
         category_combo.append(Some("all"), &t!("All Categories"));
         category_combo.append(Some("metal"), &t!("Metals"));
         category_combo.append(Some("wood"), &t!("Wood"));
@@ -1160,7 +1142,7 @@ impl MaterialSelectionDialog {
             }
         });
 
-        dialog.show();
+        dialog.present();
     }
 }
 

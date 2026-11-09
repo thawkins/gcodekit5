@@ -1,10 +1,13 @@
 //! # Standardized Dialog Creation
 //!
 //! Provides consistent dialog creation patterns across the UI.
-//! Uses MessageDialog as the base (widely supported) with standardized styling.
+//! Built on `gtk4::AlertDialog` (GTK 4.10+), which replaces the deprecated
+//! `MessageDialog`. `MessageType` is kept in [`DialogConfig`] for API stability, but
+//! `AlertDialog` shows no type icon, so it does not change what is displayed.
 
+use crate::t;
 use gtk4::prelude::*;
-use gtk4::{ButtonsType, MessageDialog, MessageType, ResponseType, Widget, Window};
+use gtk4::{AlertDialog, ButtonsType, MessageType, ResponseType, Widget, Window};
 
 /// Standard dialog configuration
 #[derive(Debug, Clone)]
@@ -66,33 +69,54 @@ pub fn show_message_dialog(
     parent: Option<&Window>,
     callback: Option<Box<dyn FnOnce(ResponseType)>>,
 ) {
-    let mut builder = MessageDialog::builder()
-        .message_type(config.message_type)
-        .buttons(config.buttons)
-        .text(&config.title)
-        .secondary_text(&config.message);
+    let detail = match &config.secondary_text {
+        Some(secondary) => format!("{}\n\n{}", config.message, secondary),
+        None => config.message.clone(),
+    };
 
-    if let Some(secondary) = &config.secondary_text {
-        builder = builder.secondary_text(secondary);
+    // Buttons in display order, with the response each one reports. The first
+    // entry is what Escape/close maps to when the dialog has a cancel choice.
+    let buttons: Vec<(String, ResponseType)> = match config.buttons {
+        ButtonsType::None => Vec::new(),
+        ButtonsType::Close => vec![(t!("Close"), ResponseType::Close)],
+        ButtonsType::Cancel => vec![(t!("Cancel"), ResponseType::Cancel)],
+        ButtonsType::YesNo => vec![(t!("No"), ResponseType::No), (t!("Yes"), ResponseType::Yes)],
+        ButtonsType::OkCancel => vec![
+            (t!("Cancel"), ResponseType::Cancel),
+            (t!("OK"), ResponseType::Ok),
+        ],
+        // `Ok` and any future variant of this non-exhaustive GTK enum.
+        _ => vec![(t!("OK"), ResponseType::Ok)],
+    };
+
+    let labels: Vec<&str> = buttons.iter().map(|(label, _)| label.as_str()).collect();
+    let dialog = AlertDialog::builder()
+        .message(config.title.as_str())
+        .detail(detail.as_str())
+        .modal(config.modal)
+        .build();
+    if !labels.is_empty() {
+        dialog.set_buttons(&labels);
+        let last = labels.len() as i32 - 1;
+        dialog.set_default_button(last);
+        if labels.len() > 1 {
+            dialog.set_cancel_button(0);
+        }
     }
 
-    if let Some(win) = parent {
-        builder = builder.transient_for(win).modal(config.modal);
-    }
-
-    let dialog = builder.build();
-
-    // Use Cell to allow moving the callback out of the Fn closure
-    let callback_cell = std::cell::Cell::new(callback);
-
-    dialog.connect_response(move |d, response| {
-        d.destroy();
-        if let Some(cb) = callback_cell.take() {
+    let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
+    dialog.choose(parent, gtk4::gio::Cancellable::NONE, move |result| {
+        // Escape or closing the window reports an error, which MessageDialog
+        // reported as `DeleteEvent`.
+        let response = result
+            .ok()
+            .and_then(|index| usize::try_from(index).ok())
+            .and_then(|index| responses.get(index).copied())
+            .unwrap_or(ResponseType::DeleteEvent);
+        if let Some(cb) = callback {
             cb(response);
         }
     });
-
-    dialog.show();
 }
 
 /// Show an error dialog

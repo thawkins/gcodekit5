@@ -4,6 +4,7 @@
 //! selection tools, and design operation buttons.
 
 use crate::t;
+use crate::ui::gtk::common::dialog_window::DialogWindow;
 use crate::ui::gtk::fast_shape_gallery::FastShapeGallery;
 use gcodekit5_core::units::MeasurementSystem;
 use gcodekit5_core::{shared, thread_safe, Shared, SharedVec, ThreadSafe};
@@ -13,8 +14,8 @@ use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, Dialog, Entry, Frame, Grid, Image, Label, Orientation,
-    PolicyType, ResponseType, ScrolledWindow,
+    Align, Box, Button, CheckButton, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
+    ResponseType, ScrolledWindow,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -663,11 +664,7 @@ impl DesignerToolbox {
             update_stock_settings_btn();
         }
 
-        let stock_settings_dialog = Dialog::builder()
-            .title(t!("Stock Settings"))
-            .modal(true)
-            .resizable(true)
-            .build();
+        let stock_settings_dialog = DialogWindow::new(&t!("Stock Settings"), true);
         stock_settings_dialog.set_default_size(520, 520);
         stock_settings_dialog.add_button(&t!("Close"), ResponseType::Close);
         stock_settings_dialog.connect_response(|d, _| d.hide());
@@ -1096,12 +1093,8 @@ impl DesignerToolbox {
             tool_settings_changed,
         );
 
-        let dialog = Dialog::builder()
-            .title(t!("Tool Settings"))
-            .modal(true)
-            .resizable(true)
-            .transient_for(parent)
-            .build();
+        let dialog = DialogWindow::new(&t!("Tool Settings"), true);
+        dialog.set_transient_for(Some(parent));
 
         dialog.set_default_size(520, 520);
         dialog.add_button(&t!("Close"), ResponseType::Close);

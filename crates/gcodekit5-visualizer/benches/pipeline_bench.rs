@@ -1,7 +1,8 @@
 //! Performance benchmarks for the G-code processing pipeline,
 //! state updates, and file statistics.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use std::sync::Arc;
 
 use gcodekit5_visualizer::{

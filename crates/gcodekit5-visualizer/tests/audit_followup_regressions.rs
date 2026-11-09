@@ -190,7 +190,7 @@ fn test_stock_removal_with_bottom_zero_stock_top() {
 fn test_stock_removal_mesh_is_in_work_coordinates() {
     let sim = StockSimulator3D::new(2.0, 2.0, 5.0, 1.0, 0.5);
     let mesh = sim.get_mesh();
-    let zs: Vec<f32> = mesh.chunks_exact(10).map(|v| v[2]).collect();
+    let zs: Vec<f32> = mesh.as_chunks::<10>().0.iter().map(|v| v[2]).collect();
     let min = zs.iter().copied().fold(f32::INFINITY, f32::min);
     let max = zs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     assert!((min + 5.0).abs() < 1e-4, "bottom at -thickness, got {min}");

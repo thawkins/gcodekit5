@@ -4,12 +4,12 @@
 //! operations for material definitions including feed rates,
 //! spindle speeds, and depth-of-cut parameters per tool type.
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, ButtonsType, CheckButton, ComboBoxText, Entry, Frame, Grid, Image, Label,
-    ListBox, ListBoxRow, MessageDialog, MessageType, Orientation, Paned, PolicyType, ResponseType,
-    ScrolledWindow, SearchEntry, SelectionMode, SpinButton, Stack, StackSwitcher, TextView,
-    WrapMode,
+    Align, Box, Button, CheckButton, DropDown, Entry, Frame, Grid, Image, Label, ListBox,
+    ListBoxRow, Orientation, Paned, PolicyType, ResponseType, ScrolledWindow, SearchEntry,
+    SelectionMode, SpinButton, Stack, StackSwitcher, TextView, WrapMode,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -26,26 +26,26 @@ pub struct MaterialsManagerView {
     backend: Shared<MaterialsManagerBackend>,
     materials_list: ListBox,
     search_entry: SearchEntry,
-    category_filter: ComboBoxText,
+    category_filter: DropDown,
     right_panel_stack: Stack,
 
     // Edit form widgets
     edit_id_row: Grid,
     edit_id: Entry,
     edit_name: Entry,
-    edit_category: ComboBoxText,
+    edit_category: DropDown,
     edit_subcategory: Entry,
     edit_description: TextView,
     edit_density: SpinButton,
     edit_machinability: SpinButton,
     edit_tensile_strength: Entry,
     edit_melting_point: Entry,
-    edit_chip_type: ComboBoxText,
-    edit_heat_sensitivity: ComboBoxText,
-    edit_abrasiveness: ComboBoxText,
-    edit_surface_finish: ComboBoxText,
-    edit_dust_hazard: ComboBoxText,
-    edit_fume_hazard: ComboBoxText,
+    edit_chip_type: DropDown,
+    edit_heat_sensitivity: DropDown,
+    edit_abrasiveness: DropDown,
+    edit_surface_finish: DropDown,
+    edit_dust_hazard: DropDown,
+    edit_fume_hazard: DropDown,
     edit_coolant_required: CheckButton,
     edit_notes: TextView,
 
@@ -118,7 +118,7 @@ impl MaterialsManagerView {
         sidebar.append(&search_entry);
 
         // Category filter
-        let category_filter = ComboBoxText::new();
+        let category_filter = new_text_dropdown();
         category_filter.append(Some("all"), "All Categories");
         category_filter.append(Some("wood"), "Wood");
         category_filter.append(Some("eng_wood"), "Engineered Wood");
@@ -326,7 +326,7 @@ impl MaterialsManagerView {
         Grid,
         Entry,
         Entry,
-        ComboBoxText,
+        DropDown,
         Entry,
         TextView,
     ) {
@@ -367,7 +367,7 @@ impl MaterialsManagerView {
         cat_grid.set_row_spacing(5);
         let cat_label = Label::new(Some("Category:"));
         cat_label.set_halign(Align::Start);
-        let edit_category = ComboBoxText::new();
+        let edit_category = new_text_dropdown();
         edit_category.append(Some("wood"), "Wood");
         edit_category.append(Some("eng_wood"), "Engineered Wood");
         edit_category.append(Some("plastic"), "Plastic");
@@ -472,13 +472,7 @@ impl MaterialsManagerView {
         )
     }
 
-    fn create_machining_tab() -> (
-        ScrolledWindow,
-        ComboBoxText,
-        ComboBoxText,
-        ComboBoxText,
-        ComboBoxText,
-    ) {
+    fn create_machining_tab() -> (ScrolledWindow, DropDown, DropDown, DropDown, DropDown) {
         let scroll = ScrolledWindow::new();
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
 
@@ -492,7 +486,7 @@ impl MaterialsManagerView {
         // Chip type
         let chip_label = Label::new(Some("Chip Type:"));
         chip_label.set_halign(Align::Start);
-        let edit_chip_type = ComboBoxText::new();
+        let edit_chip_type = new_text_dropdown();
         edit_chip_type.append(Some("continuous"), "Continuous");
         edit_chip_type.append(Some("segmented"), "Segmented");
         edit_chip_type.append(Some("granular"), "Granular");
@@ -505,7 +499,7 @@ impl MaterialsManagerView {
         // Heat sensitivity
         let heat_label = Label::new(Some("Heat Sensitivity:"));
         heat_label.set_halign(Align::Start);
-        let edit_heat_sensitivity = ComboBoxText::new();
+        let edit_heat_sensitivity = new_text_dropdown();
         edit_heat_sensitivity.append(Some("low"), "Low");
         edit_heat_sensitivity.append(Some("moderate"), "Moderate");
         edit_heat_sensitivity.append(Some("high"), "High");
@@ -517,7 +511,7 @@ impl MaterialsManagerView {
         // Abrasiveness
         let abr_label = Label::new(Some("Abrasiveness:"));
         abr_label.set_halign(Align::Start);
-        let edit_abrasiveness = ComboBoxText::new();
+        let edit_abrasiveness = new_text_dropdown();
         edit_abrasiveness.append(Some("low"), "Low");
         edit_abrasiveness.append(Some("moderate"), "Moderate");
         edit_abrasiveness.append(Some("high"), "High");
@@ -529,7 +523,7 @@ impl MaterialsManagerView {
         // Surface finish
         let surf_label = Label::new(Some("Surface Finish:"));
         surf_label.set_halign(Align::Start);
-        let edit_surface_finish = ComboBoxText::new();
+        let edit_surface_finish = new_text_dropdown();
         edit_surface_finish.append(Some("excellent"), "Excellent");
         edit_surface_finish.append(Some("good"), "Good");
         edit_surface_finish.append(Some("fair"), "Fair");
@@ -548,7 +542,7 @@ impl MaterialsManagerView {
         )
     }
 
-    fn create_safety_tab() -> (ScrolledWindow, ComboBoxText, ComboBoxText, CheckButton) {
+    fn create_safety_tab() -> (ScrolledWindow, DropDown, DropDown, CheckButton) {
         let scroll = ScrolledWindow::new();
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
 
@@ -562,7 +556,7 @@ impl MaterialsManagerView {
         // Dust hazard
         let dust_label = Label::new(Some("Dust Hazard:"));
         dust_label.set_halign(Align::Start);
-        let edit_dust_hazard = ComboBoxText::new();
+        let edit_dust_hazard = new_text_dropdown();
         edit_dust_hazard.append(Some("none"), "None");
         edit_dust_hazard.append(Some("minimal"), "Minimal");
         edit_dust_hazard.append(Some("moderate"), "Moderate");
@@ -575,7 +569,7 @@ impl MaterialsManagerView {
         // Fume hazard
         let fume_label = Label::new(Some("Fume Hazard:"));
         fume_label.set_halign(Align::Start);
-        let edit_fume_hazard = ComboBoxText::new();
+        let edit_fume_hazard = new_text_dropdown();
         edit_fume_hazard.append(Some("none"), "None");
         edit_fume_hazard.append(Some("minimal"), "Minimal");
         edit_fume_hazard.append(Some("moderate"), "Moderate");
@@ -1125,19 +1119,7 @@ impl MaterialsManagerView {
                 let backend = self.backend.clone();
                 let view = Rc::new(self.clone());
 
-                let dialog = MessageDialog::builder()
-                    .transient_for(&window)
-                    .modal(true)
-                    .message_type(MessageType::Warning)
-                    .buttons(ButtonsType::YesNo)
-                    .text("Delete Material?")
-                    .secondary_text(format!(
-                        "Are you sure you want to delete '{}' ({} )?\n\nThis action cannot be undone.",
-                        mat_name, mat_id.0
-                    ))
-                    .build();
-
-                dialog.connect_response(move |dialog, response| {
+                crate::ui::gtk::common::dialog::show_question("Delete Material?", &format!("Are you sure you want to delete '{}' ({} )?\n\nThis action cannot be undone.", mat_name, mat_id.0), Some(&window), move |response| {
                     if response == ResponseType::Yes {
                         let mut backend_mut = backend.borrow_mut();
                         backend_mut.remove_material(&mat_id);
@@ -1146,10 +1128,7 @@ impl MaterialsManagerView {
                         view.load_materials();
                         view.cancel_edit();
                     }
-                    dialog.close();
-                });
-
-                dialog.show();
+});
             }
         }
     }

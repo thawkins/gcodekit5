@@ -49,10 +49,8 @@ fn extract_open_polyline_points(path: &lyon::path::Path) -> Option<Vec<Point>> {
             lyon::path::Event::Line { to, .. } => {
                 points.push(Point::new(to.x as f64, to.y as f64));
             }
-            lyon::path::Event::End { close, .. } => {
-                if close {
-                    return None;
-                }
+            lyon::path::Event::End { close, .. } if close => {
+                return None;
             }
             _ => {}
         }

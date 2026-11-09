@@ -133,10 +133,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "measurement_system",
-                &t!("Measurement System"),
+                t!("Measurement System"),
                 SettingValue::Enum(ui.measurement_system.to_string(), systems),
             )
-            .with_description(&t!(
+            .with_description(t!(
                 "Units for display and input (Metric/mm or Imperial/inch)"
             ))
             .with_category(SettingsCategory::General),
@@ -152,10 +152,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "feed_rate_units",
-                &t!("Feed Rate Units"),
+                t!("Feed Rate Units"),
                 SettingValue::Enum(ui.feed_rate_units.to_string(), feed_units),
             )
-            .with_description(&t!("Units for feed rate display and input"))
+            .with_description(t!("Units for feed rate display and input"))
             .with_category(SettingsCategory::General),
         );
 
@@ -163,10 +163,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "default_directory",
-                &t!("Default Directory"),
+                t!("Default Directory"),
                 SettingValue::Path(file.output_directory.to_string_lossy().to_string()),
             )
-            .with_description(&t!("Default directory for file operations"))
+            .with_description(t!("Default directory for file operations"))
             .with_category(SettingsCategory::General),
         );
     }
@@ -184,10 +184,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "theme",
-                &t!("Theme"),
+                t!("Theme"),
                 SettingValue::Enum(ui.theme.to_string(), themes),
             )
-            .with_description(&t!(
+            .with_description(t!(
                 "Application color theme (Light, Dark, or System default)"
             ))
             .with_category(SettingsCategory::UserInterface),
@@ -215,10 +215,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "language",
-                &t!("Language"),
+                t!("Language"),
                 SettingValue::Enum(current_language.to_string(), languages),
             )
-            .with_description(&t!("User interface language (requires restart)"))
+            .with_description(t!("User interface language (requires restart)"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -253,7 +253,7 @@ impl SettingsPersistence {
                 t!("Startup Tab"),
                 SettingValue::Enum(current_startup_tab.to_string(), startup_tabs),
             )
-            .with_description(&t!("Tab to show when application starts"))
+            .with_description(t!("Tab to show when application starts"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -321,10 +321,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "show_about_on_startup",
-                &t!("Show About on Startup"),
+                t!("Show About on Startup"),
                 SettingValue::Boolean(ui.show_about_on_startup),
             )
-            .with_description(&t!(
+            .with_description(t!(
                 "Show the About dialog for 15 seconds when the application starts"
             ))
             .with_category(SettingsCategory::UserInterface),
@@ -334,12 +334,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "grid_major_line_width",
-                &t!("Grid Major Line Width (px)"),
+                t!("Grid Major Line Width (px)"),
                 SettingValue::String(ui.grid_major_line_width.to_string()),
             )
-            .with_description(&t!(
-                "Thickness in pixels for coarse grid lines (default: 2)"
-            ))
+            .with_description(t!("Thickness in pixels for coarse grid lines (default: 2)"))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -347,10 +345,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "grid_minor_line_width",
-                &t!("Grid Minor Line Width (px)"),
+                t!("Grid Minor Line Width (px)"),
                 SettingValue::String(ui.grid_minor_line_width.to_string()),
             )
-            .with_description(&t!("Thickness in pixels for fine grid lines (default: 1)"))
+            .with_description(t!("Thickness in pixels for fine grid lines (default: 1)"))
             .with_category(SettingsCategory::UserInterface),
         );
     }
@@ -363,10 +361,10 @@ impl SettingsPersistence {
         dialog.add_setting(
             Setting::new(
                 "preserve_comments",
-                &t!("Preserve Comments"),
+                t!("Preserve Comments"),
                 SettingValue::Boolean(file.preserve_comments),
             )
-            .with_description(&t!("Keep G-code comments during file processing"))
+            .with_description(t!("Keep G-code comments during file processing"))
             .with_category(SettingsCategory::FileProcessing),
         );
 

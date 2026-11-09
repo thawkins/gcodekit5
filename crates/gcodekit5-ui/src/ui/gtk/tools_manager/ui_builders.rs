@@ -4,6 +4,7 @@
 //! including tool list, detail forms, and action buttons.
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gtk4::{Grid, WrapMode};
 
 impl ToolsManagerView {
@@ -12,10 +13,10 @@ impl ToolsManagerView {
         Entry,
         SpinButton,
         Entry,
-        ComboBoxText,
-        ComboBoxText,
-        ComboBoxText,
-        ComboBoxText,
+        DropDown,
+        DropDown,
+        DropDown,
+        DropDown,
     ) {
         let scroll = ScrolledWindow::new();
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
@@ -59,7 +60,7 @@ impl ToolsManagerView {
         // Tool Type
         let type_label = Label::new(Some("Tool Type:"));
         type_label.set_halign(Align::Start);
-        let edit_tool_type = ComboBoxText::new();
+        let edit_tool_type = new_text_dropdown();
         edit_tool_type.append_text("Flat End Mill");
         edit_tool_type.append_text("Ball End Mill");
         edit_tool_type.append_text("Corner Radius End Mill");
@@ -77,7 +78,7 @@ impl ToolsManagerView {
         // Material
         let mat_label = Label::new(Some("Tool Material:"));
         mat_label.set_halign(Align::Start);
-        let edit_material = ComboBoxText::new();
+        let edit_material = new_text_dropdown();
         edit_material.append_text("HSS");
         edit_material.append_text("Carbide");
         edit_material.append_text("Coated Carbide");
@@ -90,7 +91,7 @@ impl ToolsManagerView {
         // Coating
         let coating_label = Label::new(Some("Coating:"));
         coating_label.set_halign(Align::Start);
-        let edit_coating = ComboBoxText::new();
+        let edit_coating = new_text_dropdown();
         edit_coating.append_text("None");
         edit_coating.append_text("TiN");
         edit_coating.append_text("TiAlN");
@@ -104,7 +105,7 @@ impl ToolsManagerView {
         // Shank
         let shank_label = Label::new(Some("Shank:"));
         shank_label.set_halign(Align::Start);
-        let edit_shank = ComboBoxText::new();
+        let edit_shank = new_text_dropdown();
         edit_shank.append_text("Derived (Straight from shaft Ø)");
         edit_shank.append_text("Collet");
         edit_shank.append_text("Tapered");
