@@ -118,7 +118,7 @@ pub struct EngravingParameters {
     pub offset_y: f32,
     /// Number of axes on the target device (default 3).
     pub num_axes: u8,
-    /// Home (`$H`) and clear the G54 X/Y offset before engraving (default `false`).
+    /// Home (`$H`) before engraving, keeping the G54 work offsets (default `false`).
     ///
     /// See [`crate::job_preamble`]. The engraver never moves Z, so the focus height set by
     /// the user is kept either way.

@@ -127,17 +127,15 @@ fn test_laser_no_homing_or_z_moves_by_default_and_offsets_applied() {
 }
 
 #[test]
-fn test_laser_homing_preamble_keeps_z_offset() {
+fn test_laser_homing_preamble_keeps_work_offsets() {
     let params = EngravingParameters {
         home_before_job: true,
         ..small_engraver_params()
     };
     let gcode = engrave(GrayImage::from_pixel(4, 4, Luma([0])), params);
     assert!(gcode.contains("$H"));
-    assert!(gcode.contains("G10 L2 P1 X0 Y0 "));
-    assert!(!gcode
-        .lines()
-        .any(|l| l.starts_with("G10") && l.contains('Z')));
+    // Homing keeps the user's G54 offsets: X/Y are not reset to the homing switches.
+    assert!(!gcode.lines().any(|l| l.starts_with("G10")), "{gcode}");
     assert!(z_moves(&gcode).is_empty());
 }
 
