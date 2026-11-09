@@ -397,17 +397,12 @@ impl ShapeStore {
             }
         }
 
-        for positions in groups.values() {
-            if positions.is_empty() {
-                continue;
-            }
-            let min = *positions.iter().min().unwrap();
-            let max = *positions.iter().max().unwrap();
-            if positions.len() != (max - min + 1) {
-                return true;
-            }
-        }
-        false
+        groups.values().any(
+            |positions| match (positions.iter().min(), positions.iter().max()) {
+                (Some(&min), Some(&max)) => positions.len() != max - min + 1,
+                _ => false,
+            },
+        )
     }
 
     /// Reemplaza el `draw_order` por el dado. No comprueba nada.

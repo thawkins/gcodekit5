@@ -123,7 +123,10 @@ impl MachineControlView {
         self.update_job_controls();
     }
 
-    /// Emergency stop: stops any job and soft-resets the controller (Ctrl-X).
+    /// Emergency stop: stops any job and halts the controller.
+    ///
+    /// GRBL-style controllers get a soft reset (Ctrl-X, `0x18`); flow-control protocols
+    /// (Repetier) have no realtime reset and get their firmware emergency stop, `M112`.
     pub fn emergency_stop(&self) {
         // Signal the sender's worker *before* sending the reset. The GRBL worker re-checks
         // this flag while holding the communicator lock, so once we hold the lock below no
@@ -135,7 +138,11 @@ impl MachineControlView {
 
         {
             let mut comm = self.communicator.lock();
-            let _ = comm.send(&[0x18]);
+            if Self::is_flow_control_protocol() {
+                let _ = comm.send_command("M112");
+            } else {
+                let _ = comm.send(&[0x18]);
+            }
         }
 
         *self.is_streaming.lock() = false;
@@ -160,7 +167,12 @@ impl MachineControlView {
 
         // Match StatusBar eStop behavior
         if let Some(c) = self.device_console.as_ref() {
-            c.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
+            let msg = if Self::is_flow_control_protocol() {
+                t!("Emergency stop (M112)")
+            } else {
+                t!("Emergency stop (Ctrl-X)")
+            };
+            c.append_log(&format!("{}\n", msg));
         }
     }
 }

@@ -405,6 +405,27 @@ fn test_optimizer_m5_matches_whole_word_only() {
     );
 }
 
+#[test]
+fn test_optimizer_keeps_block_delete_lines_and_the_unconditional_ones_after_them() {
+    let to_lines = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+
+    // `/M5` may be skipped, so the unconditional M5 after it must stay.
+    assert_eq!(
+        GCodeOptimizer::remove_redundant_m5(&to_lines(&["/M5", "M5"])),
+        vec!["/M5", "M5"]
+    );
+    // `/T1` may be skipped, so the plain T1 before M6 must stay.
+    assert_eq!(
+        GCodeOptimizer::remove_redundant_tools(&to_lines(&["/T1", "T1", "M6"])),
+        vec!["/T1", "T1", "M6"]
+    );
+    // A tool selected before an optional block is unknown after it.
+    assert_eq!(
+        GCodeOptimizer::remove_redundant_tools(&to_lines(&["T1", "/T2", "T1"])),
+        vec!["T1", "/T2", "T1"]
+    );
+}
+
 // ---- Item 10: unit-aware presets ----
 
 #[test]

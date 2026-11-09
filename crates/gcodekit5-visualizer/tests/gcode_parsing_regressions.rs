@@ -292,3 +292,16 @@ fn test_probe_sequence_retracts_between_points() {
     let next_xy = seq.find("G0 X10").expect("second point");
     assert!(seq[probe..next_xy].contains("G0 Z"));
 }
+
+#[test]
+fn test_arc_segment_short_arc_at_large_radius_is_not_a_full_circle() {
+    // Clockwise from (10000, 0) to (10000, -0.005) about the origin: a ~0.005 mm arc whose
+    // angle is tiny. It must not be mistaken for a full circle (~62832 mm).
+    let arc = ArcSegment::new(
+        Vector3::new(10000.0, 0.0, 0.0),
+        Vector3::new(10000.0, -0.005, 0.0),
+        Vector3::new(0.0, 0.0, 0.0),
+        true,
+    );
+    assert!(arc.length() < 1.0, "length {}", arc.length());
+}

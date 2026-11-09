@@ -12,7 +12,7 @@ env:
 jobs:
   clippy-unwrap-check:
     name: Check for unwrap() usage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +61,7 @@ jobs:
 
   unwrap-audit:
     name: Unwrap Audit Report
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 
@@ -94,7 +94,7 @@ jobs:
 
   fmt-check:
     name: Format Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +108,7 @@ jobs:
 
   dependency-audit:
     name: Dependency Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 

@@ -42,6 +42,13 @@ impl GCodeOptimizer {
                 last_was_m5 = false;
                 continue;
             }
+            // An optional (block-delete) line may be skipped by the controller, so it can
+            // never stand in for the unconditional stop that follows it.
+            if is_block_delete(line) {
+                result.push(line.clone());
+                last_was_m5 = false;
+                continue;
+            }
             let line_words = words(line);
             if line_words.is_empty() {
                 result.push(line.clone());
@@ -80,6 +87,13 @@ impl GCodeOptimizer {
                 result.push(line.clone());
                 continue;
             }
+            // An optional (block-delete) line may be skipped, so after it the selected tool
+            // is unknown.
+            if is_block_delete(line) {
+                result.push(line.clone());
+                last_tool = None;
+                continue;
+            }
             if let Some(tool) = single_word(&words(line), 'T') {
                 if last_tool != Some(tool) {
                     result.push(line.clone());
@@ -106,4 +120,9 @@ impl GCodeOptimizer {
         optimized = Self::remove_redundant_tools(&optimized);
         optimized
     }
+}
+
+/// Whether `line` is an optional block (starts with the block-delete character `/`).
+fn is_block_delete(line: &str) -> bool {
+    line.trim_start().starts_with('/')
 }
