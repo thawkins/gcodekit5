@@ -366,6 +366,10 @@ impl StatusParser {
         }
     }
 
+    pub fn parse_probe_pin(status_line: &str) -> Option<bool> {
+        Self::extract_field(status_line, "Pn:").map(|pins| pins.contains('P'))
+    }
+
     /// Parse complete status line into all components.
     ///
     /// Note: GRBL can be configured (via $10) to report either `MPos` or `WPos`.
@@ -380,6 +384,7 @@ impl StatusParser {
             overrides: Self::parse_overrides(status_line),
             feed_rate: Self::parse_feed_rate(status_line),
             spindle_speed: Self::parse_spindle_speed(status_line),
+            probe_pin: Self::parse_probe_pin(status_line),
         };
 
         // Derive missing coordinate space when possible.
@@ -418,4 +423,6 @@ pub struct FullStatus {
     pub feed_rate: Option<f64>,
     /// Spindle speed
     pub spindle_speed: Option<u32>,
+    /// Probe pin state (`Pn:P` indicates probe is triggered)
+    pub probe_pin: Option<bool>,
 }

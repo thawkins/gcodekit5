@@ -4,9 +4,13 @@
 //!
 //! Usage:
 //! ```rust
-//! use crate::ui::gtk::common::spacing;
-//! widget.set_margin_top(spacing::MEDIUM);
-//! box_layout.set_spacing(spacing::SMALL);
+//! use gcodekit5_ui::ui::gtk::common::spacing;
+//! use gtk4::prelude::*;
+//!
+//! fn apply_spacing(widget: &gtk4::Widget, box_layout: &gtk4::Box) {
+//!     widget.set_margin_top(spacing::MEDIUM);
+//!     box_layout.set_spacing(spacing::SMALL);
+//! }
 //! ```
 
 /// Extra small spacing (2px) - for tight packing

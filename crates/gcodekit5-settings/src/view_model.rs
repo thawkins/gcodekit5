@@ -53,6 +53,8 @@ pub enum SettingsCategory {
     FileProcessing,
     /// Keyboard shortcuts
     KeyboardShortcuts,
+    /// Machine and axis configuration
+    Machine,
     /// Advanced options
     Advanced,
 }
@@ -65,6 +67,7 @@ impl std::fmt::Display for SettingsCategory {
             Self::UserInterface => write!(f, "User Interface"),
             Self::FileProcessing => write!(f, "File Processing"),
             Self::KeyboardShortcuts => write!(f, "Keyboard Shortcuts"),
+            Self::Machine => write!(f, "Machine"),
             Self::Advanced => write!(f, "Advanced"),
         }
     }

@@ -210,6 +210,7 @@ impl SettingsController {
             "general" => SettingsCategory::General,
             "ui" => SettingsCategory::UserInterface,
             "file" => SettingsCategory::FileProcessing,
+            "machine" => SettingsCategory::Machine,
             "shortcuts" => SettingsCategory::KeyboardShortcuts,
             "advanced" => SettingsCategory::Advanced,
             _ => SettingsCategory::Controller,

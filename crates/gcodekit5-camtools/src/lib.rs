@@ -11,6 +11,8 @@
 //! - **Drill Press**: Specialized drilling cycles including peck drilling and helical interpolation
 //! - **Laser Engraver**: Specialized processing for laser cutting and engraving
 //! - **Arc Expander**: Arc interpolation and expansion
+//! - **Probe Routines**: Touch probe operations for work coordinate setup
+//! - **WCS Service**: Work coordinate system offset management from probe results
 //!
 //! ## Supporting Infrastructure
 //!
@@ -36,12 +38,14 @@ mod hatch_test;
 pub mod jigsaw_puzzle;
 pub mod laser_engraver;
 pub mod optimizer;
+pub mod probe_routines;
 pub mod speeds_feeds;
 pub mod spoilboard_grid;
 pub mod spoilboard_surfacing;
 pub mod stats;
 pub mod tabbed_box;
 pub mod validator;
+pub mod wcs_service;
 
 // UI module
 pub mod advanced_features_panel;
@@ -64,7 +68,13 @@ pub use laser_engraver::{
     ScanDirection,
 };
 pub use optimizer::GCodeOptimizer;
-pub use speeds_feeds::{CalculationResult, SpeedsFeedsCalculator};
+pub use probe_routines::{defaults as probe_defaults, ProbeRoutineEngine, ProbeRoutineOutput};
+pub use speeds_feeds::{
+    calculate_speeds_feeds, CalculationInput, CalculationResult, DeviceLimits,
+    DeviceRecommendations, FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors,
+    OperationType, SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
+    SpeedsFeedsMaterialService, SpeedsFeedsToolService,
+};
 pub use spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
 pub use spoilboard_surfacing::{SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters};
 pub use stats::StatsCalculator;
@@ -72,3 +82,4 @@ pub use tabbed_box::{
     BoxParameters, BoxType, FingerJointSettings, FingerStyle, KeyDividerType, TabbedBoxMaker,
 };
 pub use validator::GCodeValidator;
+pub use wcs_service::{PersistentProbeResults, WcsUpdateConfig, WcsUpdateResult, WcsUpdateService};

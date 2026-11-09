@@ -13,6 +13,7 @@ pub mod override_manager;
 pub mod response_parser;
 pub mod settings;
 pub mod status_parser;
+pub mod test;
 pub mod utils;
 
 pub use capabilities::{

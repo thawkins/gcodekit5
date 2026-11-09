@@ -84,6 +84,28 @@ pub enum ControllerError {
         reason: String,
     },
 
+    /// Probe operation timed out
+    #[error("Probe timeout after {timeout_ms}ms")]
+    ProbeTimeout {
+        /// The timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
+
+    /// Probe triggered unexpectedly before the probe command
+    #[error("Unexpected probe trigger")]
+    ProbeUnexpectedTrigger,
+
+    /// Probe remained closed (stuck) after a retract cycle
+    #[error("Probe stuck closed — check probe wiring")]
+    ProbeStuck,
+
+    /// Probing is not supported by the current firmware or configuration
+    #[error("Probing not supported: {reason}")]
+    ProbeNotSupported {
+        /// The reason probing is unavailable.
+        reason: String,
+    },
+
     /// Homing cycle failed
     #[error("Homing failed: {reason}")]
     HomingFailed {

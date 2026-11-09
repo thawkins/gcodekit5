@@ -168,7 +168,16 @@ impl CNCPoint {
         self.c = c;
     }
 
-    /// Convert this point to a different unit
+    /// Convert this point to a different unit.
+    ///
+    /// Only the linear axes (X, Y, Z) are scaled. The rotary axes (A, B, C) are
+    /// angles in degrees and are copied unchanged.
+    ///
+    /// # Arguments
+    /// * `target_unit` - The linear unit to convert to
+    ///
+    /// # Returns
+    /// A new point expressed in `target_unit`
     pub fn convert_to(&self, target_unit: Units) -> Self {
         let scale = match (self.unit, target_unit) {
             (Units::MM, Units::INCH) => 1.0 / 25.4,
@@ -180,9 +189,9 @@ impl CNCPoint {
             x: self.x * scale,
             y: self.y * scale,
             z: self.z * scale,
-            a: self.a * scale,
-            b: self.b * scale,
-            c: self.c * scale,
+            a: self.a,
+            b: self.b,
+            c: self.c,
             unit: target_unit,
         }
     }
