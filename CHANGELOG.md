@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-10 (Vulkan log noise)
+
+### Fixed
+- **Console noise**: GTK's harmless `Gdk-WARNING ... VK_SUBOPTIMAL_KHR` swapchain message, printed whenever the window surface changes under the Vulkan renderer, is now filtered out by a GLib log writer (`glib_log_filter`); all other GLib/GTK messages are still printed
+
 ## [Unreleased] - 2026-11-10 (agent instructions)
 
 ### Changed

@@ -21,3 +21,5 @@ pub fn global_env_lock() -> std::sync::MutexGuard<'static, ()> {
 mod machine_control_streaming;
 #[path = "test_dialog_window.rs"]
 mod test_dialog_window;
+#[path = "test_glib_log_filter.rs"]
+mod test_glib_log_filter;
