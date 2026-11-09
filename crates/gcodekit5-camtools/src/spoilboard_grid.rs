@@ -54,8 +54,11 @@ impl SpoilboardGridGenerator {
         gcode.push_str("G0 X0.0 Y0.0 ; Move to work origin\n");
         gcode.push_str("G10 L20 P1 X0 Y0 ; Set current position as work zero\n");
 
-        // Enable Laser Mode (GRBL specific, but good practice)
-        gcode.push_str("$32=1 ; Enable Laser Mode\n");
+        // Laser mode ($32) is a persistent controller setting. It is not changed here: writing
+        // it would silently alter the machine configuration for every later (spindle) job.
+        gcode.push_str(
+            "; NOTE: requires GRBL laser mode ($32=1) to be enabled by the user beforehand\n",
+        );
 
         // Vertical Lines (moving along Y)
         gcode.push_str("\n; Vertical Lines\n");

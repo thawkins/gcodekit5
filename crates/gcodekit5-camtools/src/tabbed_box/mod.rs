@@ -42,7 +42,11 @@ pub struct TabbedBoxMaker {
     h: f32,
     t: f32,
     paths: Vec<Vec<Point>>,
+    /// Human-readable label of each entry in `paths` (same indices).
+    path_labels: Vec<String>,
     path_groups: Vec<Vec<usize>>,
+    /// Panel name of the group currently being built.
+    current_group_name: String,
 }
 
 impl TabbedBoxMaker {
@@ -68,7 +72,9 @@ impl TabbedBoxMaker {
             h,
             t,
             paths: Vec::new(),
+            path_labels: Vec::new(),
             path_groups: Vec::new(),
+            current_group_name: String::new(),
         })
     }
 
@@ -888,27 +894,47 @@ impl TabbedBoxMaker {
         }
     }
 
+    /// All generated cut paths (panel outlines and slot holes) in generation order.
     pub fn paths(&self) -> &Vec<Vec<Point>> {
         &self.paths
     }
 
-    fn start_new_group(&mut self) {
+    /// Label of each path returned by [`Self::paths`], e.g. `"Wall 3 (back)"` or
+    /// `"Bottom slot 2"`.
+    ///
+    /// Labels are attached when a path is created, so they stay correct when panels are
+    /// omitted by the box type or slot holes are interleaved with the outlines.
+    pub fn path_labels(&self) -> &[String] {
+        &self.path_labels
+    }
+
+    fn start_new_group(&mut self, name: &str) {
         self.path_groups.push(Vec::new());
+        self.current_group_name = name.to_string();
     }
 
     fn add_path(&mut self, path: Vec<Point>) {
         let idx = self.paths.len();
         self.paths.push(path);
         if let Some(group) = self.path_groups.last_mut() {
+            // The first path of a group is the panel outline; later ones are its slot holes.
+            let label = if group.is_empty() {
+                self.current_group_name.clone()
+            } else {
+                format!("{} slot {}", self.current_group_name, group.len())
+            };
+            self.path_labels.push(label);
             group.push(idx);
         } else {
             // If no group exists, create one (fallback)
+            self.path_labels.push(format!("Path {}", idx + 1));
             self.path_groups.push(vec![idx]);
         }
     }
 
     pub fn generate(&mut self) -> Result<(), String> {
         self.paths.clear();
+        self.path_labels.clear();
         self.path_groups.clear();
 
         let x = self.x;
@@ -953,7 +979,7 @@ impl TabbedBoxMaker {
 
         // Wall 1: Front (x × h)
         if has_front {
-            self.start_new_group();
+            self.start_new_group("Wall 1 (front)");
             let e = edges(has_bottom, has_right, has_top, has_left);
             let (start_x, start_y) = layout.place(x);
             self.add_path(self.draw_rectangular_wall(x, h, &e, start_x, start_y));
@@ -965,7 +991,7 @@ impl TabbedBoxMaker {
 
         // Wall 2: Right (y × h)
         if has_right {
-            self.start_new_group();
+            self.start_new_group("Wall 2 (right)");
             let e = edges_side(has_bottom, has_back, has_top, has_front);
             let (start_x, start_y) = layout.place(y);
             self.add_path(self.draw_rectangular_wall(y, h, &e, start_x, start_y));
@@ -979,7 +1005,7 @@ impl TabbedBoxMaker {
 
         // Wall 4: Left (y × h)
         if has_left {
-            self.start_new_group();
+            self.start_new_group("Wall 4 (left)");
             let e = edges_side(has_bottom, has_front, has_top, has_back);
             let (start_x, start_y) = layout.place(y);
             self.add_path(self.draw_rectangular_wall(y, h, &e, start_x, start_y));
@@ -991,7 +1017,7 @@ impl TabbedBoxMaker {
 
         // Wall 3: Back (x × h)
         if has_back {
-            self.start_new_group();
+            self.start_new_group("Wall 3 (back)");
             let e = edges(has_bottom, has_left, has_top, has_right);
             let (start_x, start_y) = layout.place(x);
             self.add_path(self.draw_rectangular_wall(x, h, &e, start_x, start_y));
@@ -1003,7 +1029,7 @@ impl TabbedBoxMaker {
 
         // Top: x × y
         if has_top {
-            self.start_new_group();
+            self.start_new_group("Top");
             let e = edges_tb(has_front, has_right, has_back, has_left);
             let (start_x, start_y) = layout.place(x);
             self.add_path(self.draw_rectangular_wall(x, y, &e, start_x, start_y));
@@ -1011,7 +1037,7 @@ impl TabbedBoxMaker {
 
         // Bottom: x × y
         if has_bottom {
-            self.start_new_group();
+            self.start_new_group("Bottom");
             let e = edges_tb(has_front, has_right, has_back, has_left);
             let (start_x, start_y) = layout.place(x);
             self.add_path(self.draw_rectangular_wall(x, y, &e, start_x, start_y));
@@ -1048,10 +1074,10 @@ impl TabbedBoxMaker {
         }
 
         if self.params.dividers_x > 0 {
-            for _ in 0..self.params.dividers_x {
+            for n in 1..=self.params.dividers_x {
                 // X-divider (Width=Y). Slots at Y-positions (slots_y).
                 // Slots from Top (Plain edge).
-                self.start_new_group();
+                self.start_new_group(&format!("X divider {}", n));
                 let (start_x, start_y) = layout.place(y);
                 self.add_path(self.draw_divider(
                     y,
@@ -1066,10 +1092,10 @@ impl TabbedBoxMaker {
         }
 
         if self.params.dividers_y > 0 {
-            for _ in 0..self.params.dividers_y {
+            for n in 1..=self.params.dividers_y {
                 // Y-divider (Width=X). Slots at X-positions (slots_x).
                 // Slots from Bottom (Connecting edge).
-                self.start_new_group();
+                self.start_new_group(&format!("Y divider {}", n));
                 let (start_x, start_y) = layout.place(x);
                 self.add_path(self.draw_divider(
                     x,
@@ -1210,20 +1236,8 @@ impl TabbedBoxMaker {
         gcode.push_str("G17 ; XY plane selection\n");
         gcode.push('\n');
 
-        gcode.push_str("; Home and set work coordinate system\n");
-        gcode.push_str("$H ; Home all axes\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset\n");
-        } else {
-            gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 offset\n");
-        }
-        gcode.push_str("G54 ; Select work coordinate system 1\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str(&format!(
-                "G0 Z{:.2} F{:.0} ; Move to safe height\n\n",
-                5.0, self.params.feed_rate
-            ));
-        }
+        crate::job_preamble::push_work_setup(&mut gcode, self.params.home_before_job);
+        gcode.push('\n');
 
         // Ensure emitted coordinates honour user offsets (offset_x/offset_y represent desired minimum XY).
         // This also guards against any upstream layout producing negative min bounds.
@@ -1247,14 +1261,30 @@ impl TabbedBoxMaker {
             }
         };
 
-        let panel_names = ["Wall 1", "Wall 2", "Wall 4", "Wall 3", "Top", "Bottom"];
+        let has_z = self.params.num_axes >= 3;
 
-        for (i, path) in self.paths.iter().enumerate() {
-            gcode.push_str(&format!(
-                "; Panel {}: {}\n",
-                i + 1,
-                panel_names.get(i).unwrap_or(&"Unknown")
-            ));
+        // Cut each panel's slot holes before its outline so the panel is still held by the
+        // surrounding stock while the holes are cut.
+        let mut order: Vec<usize> = Vec::with_capacity(self.paths.len());
+        let mut seen = vec![false; self.paths.len()];
+        for group in &self.path_groups {
+            for &idx in group.iter().skip(1).chain(group.iter().take(1)) {
+                if idx < self.paths.len() && !seen[idx] {
+                    seen[idx] = true;
+                    order.push(idx);
+                }
+            }
+        }
+        order.extend((0..self.paths.len()).filter(|&i| !seen[i]));
+
+        for (n, &i) in order.iter().enumerate() {
+            let path = &self.paths[i];
+            let label = self
+                .path_labels
+                .get(i)
+                .map(String::as_str)
+                .unwrap_or("Unknown");
+            gcode.push_str(&format!("; Path {}: {}\n", n + 1, label));
 
             if let Some(first_point) = path.first() {
                 gcode.push_str(&format!(
@@ -1265,16 +1295,22 @@ impl TabbedBoxMaker {
 
                 for pass_num in 1..=self.params.laser_passes {
                     let z_depth = -(pass_num as f32 - 1.0) * self.params.z_step_down;
+
+                    // Every pass sets its own height (pass 1 is the work Z0 focus height),
+                    // so no panel inherits the previous panel's deepest pass.
+                    if has_z {
+                        gcode.push_str(&format!("G0 Z{:.2} ; Move to pass height\n", z_depth));
+                    }
                     gcode.push_str(&format!(
                         "; Pass {}/{} at Z{:.2}\n",
                         pass_num, self.params.laser_passes, z_depth
                     ));
 
-                    if pass_num > 1 && self.params.num_axes >= 3 {
-                        gcode.push_str(&format!("G0 Z{:.2} ; Move to pass depth\n", z_depth));
-                    }
-
-                    gcode.push_str(&format!("M3 S{} ; Laser on\n", self.params.laser_power));
+                    // M4 (dynamic power) scales power with speed so corners do not over-burn.
+                    gcode.push_str(&format!(
+                        "M4 S{} ; Laser on (dynamic power)\n",
+                        self.params.laser_power
+                    ));
 
                     for (idx, point) in path.iter().skip(1).enumerate() {
                         if idx == 0 {
@@ -1303,20 +1339,15 @@ impl TabbedBoxMaker {
                         ));
                     }
                 }
-
-                // Pass 1 of the next path emits no Z move, so restore the pass-1 height here;
-                // otherwise the next panel would start at this panel's deepest pass.
-                if self.params.laser_passes > 1 && self.params.num_axes >= 3 {
-                    gcode.push_str("G0 Z0.00 ; Reset to first pass height\n");
-                }
             }
 
             gcode.push('\n');
         }
 
         gcode.push_str("M5 ; Ensure laser off\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G0 Z10.0 ; Move to safe height\n");
+        if has_z {
+            // Back to the first-pass (focus) height; never above work Z0.
+            gcode.push_str("G0 Z0.00 ; Return to first-pass height\n");
         }
         gcode.push_str("G0 X0 Y0 ; Return to origin\n");
         gcode.push_str("M2 ; Program end\n");

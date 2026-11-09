@@ -13,7 +13,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tracing::warn;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction, track_measurement_system};
+use super::common::{
+    create_dimension_row, set_paned_initial_fraction, track_measurement_system, write_preset_file,
+};
 use super::CamToolsView;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
@@ -36,6 +38,7 @@ struct GerberWidgets {
     generate_alignment_holes: CheckButton,
     alignment_hole_diameter: Entry,
     alignment_hole_margin: Entry,
+    alignment_hole_depth: Entry,
     cut_depth: Entry,
     safe_z: Entry,
     tool_diameter: Entry,
@@ -314,6 +317,11 @@ impl GerberTool {
             create_dimension_row("Margin", 5.0, &settings);
         align_group.add(&ahm_row);
 
+        let (ahz_row, alignment_hole_depth, alignment_hole_depth_unit) =
+            create_dimension_row("Drill Depth (Z)", -1.8, &settings);
+        ahz_row.set_subtitle("Negative Z for the alignment holes (through the board)");
+        align_group.add(&ahz_row);
+
         sidebar_box.append(&align_group);
 
         // Keep displayed dimensions consistent with the measurement system used to
@@ -334,6 +342,7 @@ impl GerberTool {
                     alignment_hole_diameter_unit,
                 ),
                 (alignment_hole_margin.clone(), alignment_hole_margin_unit),
+                (alignment_hole_depth.clone(), alignment_hole_depth_unit),
             ],
         );
 
@@ -401,6 +410,7 @@ impl GerberTool {
             generate_alignment_holes,
             alignment_hole_diameter,
             alignment_hole_margin,
+            alignment_hole_depth,
             cut_depth,
             safe_z,
             tool_diameter,
@@ -554,6 +564,8 @@ impl GerberTool {
                 .unwrap_or(3.175) as f32,
             alignment_hole_margin: units::parse_length(&w.alignment_hole_margin.text(), system)
                 .unwrap_or(5.0) as f32,
+            alignment_hole_depth: units::parse_length(&w.alignment_hole_depth.text(), system)
+                .unwrap_or(-1.8),
             cut_depth: units::parse_length(&w.cut_depth.text(), system).unwrap_or(-0.1) as f32,
             safe_z: units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0) as f32,
             tool_diameter: units::parse_length(&w.tool_diameter.text(), system).unwrap_or(0.1)
@@ -592,8 +604,11 @@ impl GerberTool {
             if response == ResponseType::Accept {
                 if let Some(file) = d.file() {
                     if let Some(path) = file.path() {
-                        if let Ok(json) = serde_json::to_string_pretty(&params_clone) {
-                            let _ = fs::write(path, json);
+                        match serde_json::to_string_pretty(&params_clone) {
+                            Ok(json) => write_preset_file(&path, &json),
+                            Err(e) => {
+                                CamToolsView::show_error_dialog("Save Error", &format!("{}", e))
+                            }
                         }
                     }
                 }
@@ -622,12 +637,20 @@ impl GerberTool {
             if response == ResponseType::Accept {
                 if let Some(file) = d.file() {
                     if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            match serde_json::from_str::<GerberParameters>(&content) {
-                                Ok(params) => {
-                                    Self::apply_params(&w_clone, &params, &settings_clone)
-                                }
-                                Err(e) => warn!("Failed to load parameters: {}", e),
+                        let loaded = fs::read_to_string(&path)
+                            .map_err(|e| e.to_string())
+                            .and_then(|content| {
+                                serde_json::from_str::<GerberParameters>(&content)
+                                    .map_err(|e| e.to_string())
+                            });
+                        match loaded {
+                            Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                            Err(e) => {
+                                warn!("Failed to load parameters: {}", e);
+                                CamToolsView::show_error_dialog(
+                                    "Load Error",
+                                    &format!("{}: {}", path.display(), e),
+                                );
                             }
                         }
                     }
@@ -670,6 +693,8 @@ impl GerberTool {
             .set_text(&units::format_length(p.alignment_hole_diameter, system));
         w.alignment_hole_margin
             .set_text(&units::format_length(p.alignment_hole_margin, system));
+        w.alignment_hole_depth
+            .set_text(&units::format_length(p.alignment_hole_depth, system));
         w.cut_depth
             .set_text(&units::format_length(p.cut_depth, system));
         w.safe_z.set_text(&units::format_length(p.safe_z, system));

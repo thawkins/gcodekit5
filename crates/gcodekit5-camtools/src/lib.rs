@@ -19,7 +19,9 @@
 //! - **Core Infrastructure**: Application state, configuration, logging, and telemetry
 //! - **Optimizer**: G-Code optimization and minimization
 //! - **Validator**: G-Code validation and safety checks
-//! - **Comment Processor**: G-Code comment handling
+//! - **Comment Processor**: G-Code comment stripping and word tokenizing
+//! - **Job Preamble**: Optional homing preamble shared by the laser generators
+//! - **CAM Presets**: Unit-aware saved parameter files for the bitmap and probe tools
 //! - **Statistics**: G-Code statistics and analysis
 //!
 //! ## UI Components
@@ -28,6 +30,7 @@
 
 pub mod advanced_features;
 pub mod arc_expander;
+pub mod cam_presets;
 pub mod comment_processor;
 pub mod core_infrastructure;
 pub mod drill_press;
@@ -36,6 +39,7 @@ pub mod gerber;
 pub mod hatch_generator;
 mod hatch_test;
 pub mod jigsaw_puzzle;
+pub mod job_preamble;
 pub mod laser_engraver;
 pub mod optimizer;
 pub mod probe_routines;
@@ -68,7 +72,9 @@ pub use laser_engraver::{
     ScanDirection,
 };
 pub use optimizer::GCodeOptimizer;
-pub use probe_routines::{defaults as probe_defaults, ProbeRoutineEngine, ProbeRoutineOutput};
+pub use probe_routines::{
+    defaults as probe_defaults, ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput,
+};
 pub use speeds_feeds::{
     calculate_speeds_feeds, CalculationInput, CalculationResult, DeviceLimits,
     DeviceRecommendations, FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors,

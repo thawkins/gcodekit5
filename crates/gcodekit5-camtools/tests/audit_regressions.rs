@@ -113,10 +113,11 @@ fn engraver_params() -> EngravingParameters {
     }
 }
 
+/// White image with one black (burned) column at `x`.
 fn single_pixel_image(width: u32, height: u32, x: u32) -> DynamicImage {
-    let mut img = GrayImage::from_pixel(width, height, Luma([0]));
+    let mut img = GrayImage::from_pixel(width, height, Luma([255]));
     for y in 0..height {
-        img.put_pixel(x, y, Luma([255]));
+        img.put_pixel(x, y, Luma([0]));
     }
     DynamicImage::ImageLuma8(img)
 }
@@ -147,7 +148,7 @@ fn test_laser_reverse_pass_travels_right_to_left() {
 
 #[test]
 fn test_laser_line_spacing_skips_lines_instead_of_stretching() {
-    let img = DynamicImage::ImageLuma8(GrayImage::from_pixel(4, 4, Luma([255])));
+    let img = DynamicImage::ImageLuma8(GrayImage::from_pixel(4, 4, Luma([0])));
     let params = EngravingParameters {
         line_spacing: 2.0,
         ..engraver_params()
@@ -250,16 +251,22 @@ fn test_probe_backoff_uses_grbl_compatible_relative_moves() {
     assert!(out.gcode.contains("G91"));
     assert!(out.gcode.contains("G0 Z2.000"));
     assert!(out.gcode.contains("G38.2 Z-2.500 F25.0"));
-    // Absolute mode must be restored before the final retract
-    let g90 = out
+    // The whole routine is incremental; absolute mode is restored as the last step.
+    let g91 = out
         .gcode
-        .rfind("G90")
+        .find("G91")
         .expect("regression test setup should succeed");
-    let retract = out
+    let first_probe = out
         .gcode
-        .rfind("Retract to safe height")
+        .find("G38.2")
         .expect("regression test setup should succeed");
-    assert!(g90 < retract);
+    assert!(g91 < first_probe);
+    let last_code_line = out
+        .gcode
+        .lines()
+        .rfind(|l| !l.starts_with(';') && !l.trim().is_empty())
+        .expect("regression test setup should succeed");
+    assert!(last_code_line.starts_with("G90"), "{}", out.gcode);
 }
 
 #[test]
@@ -275,8 +282,8 @@ fn test_probe_corner_find_y_probe_is_not_zero_length() {
     let out = ProbeRoutineEngine::new(routine)
         .generate(Position::new(50.0, 50.0, 5.0))
         .expect("regression test setup should succeed");
-    assert!(!out.gcode.contains("G0 Y40.000"), "{}", out.gcode);
-    assert!(out.gcode.contains("G38.2 Y40.000"));
+    // Relative Y probe of the full probe distance toward Y-min.
+    assert!(out.gcode.contains("G38.2 Y-10.000"), "{}", out.gcode);
 }
 
 #[test]
@@ -317,9 +324,19 @@ fn test_probe_boss_center_probes_toward_boss() {
     let out = ProbeRoutineEngine::new(routine)
         .generate(Position::new(50.0, 50.0, 5.0))
         .expect("regression test setup should succeed");
-    // Start at X38 (outside left) and probe toward the center, never away from it.
-    assert!(out.gcode.contains("G38.2 X50.000"), "{}", out.gcode);
-    assert!(!out.gcode.contains("G38.2 X26.000"));
+    // Move out to the left (X-12 = radius + 2 mm gap), then probe +12 back toward the
+    // centre, never away from it.
+    let lines: Vec<&str> = out.gcode.lines().collect();
+    let left = lines
+        .iter()
+        .position(|l| l.starts_with("G0 X-12.000"))
+        .expect("left approach move");
+    let probe = lines
+        .iter()
+        .position(|l| l.starts_with("G38.2 X"))
+        .expect("first X probe");
+    assert!(left < probe, "{}", out.gcode);
+    assert!(lines[probe].starts_with("G38.2 X12.000"), "{}", out.gcode);
 }
 
 #[test]

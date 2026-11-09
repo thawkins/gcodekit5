@@ -8,7 +8,6 @@
 //! - Boss Center (4-point external)
 //! - Tool Length measurement
 
-use glib;
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, Label, Orientation,
@@ -16,18 +15,26 @@ use gtk4::{
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use super::common::set_paned_initial_fraction;
+use super::common::{
+    poll_connection_status, set_paned_initial_fraction, show_load_warnings, write_preset_file,
+};
 use super::CamToolsView;
 use crate::device_status;
 use crate::t;
 use crate::ui::gtk::machine_control::MachineControlView;
-use gcodekit5_camtools::probe_routines::{defaults as probe_defaults, ProbeRoutineEngine};
-// WCS service module available when needed
+use gcodekit5_camtools::cam_presets::ProbePreset;
+use gcodekit5_camtools::comment_processor::strip_comments;
+use gcodekit5_camtools::probe_routines::{
+    defaults as probe_defaults, ProbeOptions, ProbeRoutineEngine,
+};
+use gcodekit5_camtools::wcs_service::{WcsUpdateConfig, WcsUpdateService};
+use gcodekit5_communication::firmware::grbl::controller::parse_probe_report;
+use gcodekit5_communication::Communicator;
 use gcodekit5_core::{
-    Corner, Position, ProbeAxis as Axis, ProbeDirection as Direction, ProbeRoutine,
+    Corner, Position, ProbeAxis as Axis, ProbeDirection as Direction, ProbeReport, ProbeRoutine,
 };
 use gcodekit5_settings::SettingsController;
 
@@ -50,6 +57,68 @@ struct RoutineInfo {
     description: &'static str,
 }
 
+/// All input widgets of the probe tool.
+struct ProbeWidgets {
+    routine: ComboBoxText,
+    safe_height: Entry,
+    fast_feed: Entry,
+    slow_feed: Entry,
+    backoff: Entry,
+    max_depth: Entry,
+    wcs: ComboBoxText,
+    auto_update: CheckButton,
+    edge_axis: ComboBoxText,
+    edge_dir: ComboBoxText,
+    edge_dist: Entry,
+    corner: ComboBoxText,
+    diameter: Entry,
+    setter_x: Entry,
+    setter_y: Entry,
+    setter_z: Entry,
+    probe_depth: Entry,
+    tip_radius: Entry,
+    plate_thickness: Entry,
+}
+
+/// Interval at which a running probe program is checked for completion.
+const PROBE_MONITOR_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// State of probe runs started from this tool (main-thread only).
+#[derive(Default)]
+struct ProbeSession {
+    /// A probe program is running, or a failed run is waiting to restore G90.
+    busy: Cell<bool>,
+    /// Report and options of the last successful run, for "Apply to WCS".
+    last: RefCell<Option<(ProbeReport, ProbeOptions)>>,
+}
+
+/// Outcome of reading the device-console output of a probe run.
+struct ProbeRunLog {
+    /// Probe reports in the order received (one per `G38.x` cycle).
+    reports: Vec<gcodekit5_core::ProbeResult>,
+    /// First alarm or error line, if any.
+    failure: Option<String>,
+}
+
+impl ProbeRunLog {
+    /// Collect `[PRB:...]` reports and the first `ALARM:`/`error:` from console text.
+    fn parse(text: &str) -> Self {
+        let mut reports = Vec::new();
+        let mut failure = None;
+        for line in text.lines().map(str::trim) {
+            if let Some(report) = parse_probe_report(line) {
+                reports.push(report);
+            } else if failure.is_none() {
+                let lower = line.to_ascii_lowercase();
+                if lower.starts_with("alarm:") || lower.starts_with("error:") {
+                    failure = Some(line.to_string());
+                }
+            }
+        }
+        Self { reports, failure }
+    }
+}
+
 pub struct ProbeRoutinesTool {
     content: Box,
     #[allow(dead_code)]
@@ -60,7 +129,7 @@ impl ProbeRoutinesTool {
     pub fn new<F: Fn(String) + 'static>(
         stack: &Stack,
         _settings: Rc<SettingsController>,
-        _machine_control: Option<MachineControlView>,
+        machine_control: Option<MachineControlView>,
         on_generate: Rc<F>,
     ) -> Self {
         let content_box = Box::new(Orientation::Vertical, 0);
@@ -186,12 +255,9 @@ impl ProbeRoutinesTool {
             .build();
         sidebar.append(&offline_msg);
 
-        // Connection status polling
-        let offline_msg_clone = offline_msg.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-            let connected = device_status::get_status().is_connected;
-            offline_msg_clone.set_visible(!connected);
-            glib::ControlFlow::Continue
+        // Connection status polling: holds only a weak ref, stopped when the page is destroyed.
+        poll_connection_status(&offline_msg, |offline_msg, connected| {
+            offline_msg.set_visible(!connected);
         });
 
         // Content Area (60%)
@@ -244,6 +310,10 @@ impl ProbeRoutinesTool {
             Self::create_mm_row("Slow Feed Rate:", probe_defaults::SLOW_FEED, "mm/min");
         let (backoff_row, backoff) =
             Self::create_mm_row("Backoff Distance:", probe_defaults::BACKOFF, "mm");
+        safe_height_row.set_subtitle(
+            "Retract above the surface after Z-touch / tool length. Edge, corner, bore and \
+             boss probes start where the probe is and return to that height.",
+        );
 
         params_group.add(&safe_height_row);
         params_group.add(&fast_feed_row);
@@ -275,7 +345,10 @@ impl ProbeRoutinesTool {
         // Auto-update WCS checkbox
         let auto_update_row = ActionRow::builder()
             .title("Auto-Update WCS")
-            .subtitle("Automatically apply probe result to selected WCS")
+            .subtitle(
+                "Write the result into the selected WCS (G10 L20) from the generated G-code. \
+                 Z-touch, edge and corner only; bore/boss centres are not set automatically.",
+            )
             .build();
         let auto_update_check = CheckButton::builder().active(false).build();
         auto_update_row.add_suffix(&auto_update_check);
@@ -352,6 +425,23 @@ impl ProbeRoutinesTool {
         setter_z_row.add_suffix(&setter_z_entry);
         specific_params.add(&setter_z_row);
 
+        // Sideways probing depth and compensation
+        let (probe_depth_row, probe_depth_entry) =
+            Self::create_mm_row("Probe Depth:", probe_defaults::PROBE_DEPTH, "mm");
+        probe_depth_row.set_subtitle(
+            "How far below the start height to lower (protected G38.3) before probing sideways",
+        );
+        specific_params.add(&probe_depth_row);
+
+        let (tip_radius_row, tip_radius_entry) =
+            Self::create_mm_row("Probe Tip Radius:", 0.0, "mm");
+        tip_radius_row.set_subtitle("Stylus ball radius; compensates edge and corner results");
+        specific_params.add(&tip_radius_row);
+
+        let (plate_row, plate_entry) = Self::create_mm_row("Plate Thickness:", 0.0, "mm");
+        plate_row.set_subtitle("Touch plate laid on the work; Z0 is set this far below the touch");
+        specific_params.add(&plate_row);
+
         scroll_content.append(&specific_params);
 
         // Results section (initially hidden)
@@ -399,144 +489,138 @@ impl ProbeRoutinesTool {
 
         content_box.append(&paned);
 
-        // Wire up routine selection visibility
-        let _specific_params_clone = specific_params.clone();
-        let edge_axis_row_clone = edge_axis_row.clone();
-        let edge_dir_row_clone = edge_dir_row.clone();
-        let edge_dist_row_clone = edge_dist_row.clone();
-        let corner_row_clone = corner_row.clone();
-        let diameter_row_clone = diameter_row.clone();
-        let setter_x_row_clone = setter_x_row.clone();
-        let setter_y_row_clone = setter_y_row.clone();
-        let setter_z_row_clone = setter_z_row.clone();
+        let widgets = Rc::new(ProbeWidgets {
+            routine: routine_combo.clone(),
+            safe_height,
+            fast_feed,
+            slow_feed,
+            backoff,
+            max_depth: max_depth_entry,
+            wcs: wcs_combo,
+            auto_update: auto_update_check,
+            edge_axis: edge_axis_combo,
+            edge_dir: edge_dir_combo,
+            edge_dist: edge_dist_entry,
+            corner: corner_combo,
+            diameter: diameter_entry,
+            setter_x: setter_x_entry,
+            setter_y: setter_y_entry,
+            setter_z: setter_z_entry,
+            probe_depth: probe_depth_entry,
+            tip_radius: tip_radius_entry,
+            plate_thickness: plate_entry,
+        });
 
+        // Wire up routine selection visibility
+        let (edge_axis_row, edge_dir_row, edge_dist_row) = (
+            edge_axis_row.clone(),
+            edge_dir_row.clone(),
+            edge_dist_row.clone(),
+        );
+        let (corner_row, diameter_row) = (corner_row.clone(), diameter_row.clone());
+        let (setter_x_row, setter_y_row, setter_z_row) = (
+            setter_x_row.clone(),
+            setter_y_row.clone(),
+            setter_z_row.clone(),
+        );
+        let (probe_depth_row, tip_radius_row, plate_row) = (
+            probe_depth_row.clone(),
+            tip_radius_row.clone(),
+            plate_row.clone(),
+        );
+        let rows = [
+            edge_axis_row.clone(),
+            edge_dir_row.clone(),
+            edge_dist_row.clone(),
+            corner_row.clone(),
+            diameter_row.clone(),
+            setter_x_row.clone(),
+            setter_y_row.clone(),
+            setter_z_row.clone(),
+            probe_depth_row.clone(),
+            tip_radius_row.clone(),
+            plate_row.clone(),
+        ];
         routine_combo.connect_changed(move |combo| {
             let id = combo.active_id().map(|s| s.as_str().to_string());
 
-            // Hide all specific rows first
-            edge_axis_row_clone.set_visible(false);
-            edge_dir_row_clone.set_visible(false);
-            edge_dist_row_clone.set_visible(false);
-            corner_row_clone.set_visible(false);
-            diameter_row_clone.set_visible(false);
-            setter_x_row_clone.set_visible(false);
-            setter_y_row_clone.set_visible(false);
-            setter_z_row_clone.set_visible(false);
+            for row in &rows {
+                row.set_visible(false);
+            }
 
-            // Show relevant rows based on selection
             match id.as_deref() {
+                Some("z_touch") => {
+                    plate_row.set_visible(true);
+                }
                 Some("edge_find") => {
-                    edge_axis_row_clone.set_visible(true);
-                    edge_dir_row_clone.set_visible(true);
-                    edge_dist_row_clone.set_visible(true);
+                    edge_axis_row.set_visible(true);
+                    edge_dir_row.set_visible(true);
+                    edge_dist_row.set_visible(true);
+                    probe_depth_row.set_visible(true);
+                    tip_radius_row.set_visible(true);
+                    plate_row.set_visible(true);
                 }
                 Some("corner_find") => {
-                    corner_row_clone.set_visible(true);
+                    corner_row.set_visible(true);
+                    edge_dist_row.set_visible(true);
+                    probe_depth_row.set_visible(true);
+                    tip_radius_row.set_visible(true);
                 }
                 Some("bore_center") | Some("boss_center") => {
-                    diameter_row_clone.set_visible(true);
+                    diameter_row.set_visible(true);
+                    probe_depth_row.set_visible(true);
+                    tip_radius_row.set_visible(true);
                 }
                 Some("tool_length") => {
-                    setter_x_row_clone.set_visible(true);
-                    setter_y_row_clone.set_visible(true);
-                    setter_z_row_clone.set_visible(true);
+                    setter_x_row.set_visible(true);
+                    setter_y_row.set_visible(true);
+                    setter_z_row.set_visible(true);
                 }
                 _ => {}
             }
         });
+        // Apply the initial visibility.
+        routine_combo.set_active(Some(1));
+        routine_combo.set_active(Some(0));
 
         // Generate G-code handler
-        let _generate_btn_clone = generate_btn.clone();
-        let safe_height_clone = safe_height.clone();
-        let fast_feed_clone = fast_feed.clone();
-        let slow_feed_clone = slow_feed.clone();
-        let backoff_clone = backoff.clone();
-        let max_depth_clone = max_depth_entry.clone();
-        let routine_combo_clone = routine_combo.clone();
-        let edge_axis_clone = edge_axis_combo.clone();
-        let edge_dir_clone = edge_dir_combo.clone();
-        let edge_dist_clone = edge_dist_entry.clone();
-        let corner_clone = corner_combo.clone();
-        let diameter_clone = diameter_entry.clone();
-        let setter_x_clone = setter_x_entry.clone();
-        let setter_y_clone = setter_y_entry.clone();
-        let setter_z_clone = setter_z_entry.clone();
+        let w_gen = widgets.clone();
         let on_generate_clone = on_generate.clone();
-
-        generate_btn.clone().connect_clicked(move |_| {
-            let routine = Self::build_routine(
-                &routine_combo_clone,
-                &safe_height_clone,
-                &fast_feed_clone,
-                &slow_feed_clone,
-                &backoff_clone,
-                &max_depth_clone,
-                &edge_axis_clone,
-                &edge_dir_clone,
-                &edge_dist_clone,
-                &corner_clone,
-                &diameter_clone,
-                &setter_x_clone,
-                &setter_y_clone,
-                &setter_z_clone,
-            );
-
-            match routine {
-                Ok(r) => {
-                    let engine = ProbeRoutineEngine::new(r);
-                    let current_pos = Position::new(0.0, 0.0, 5.0); // Default position
-
-                    match engine.generate(current_pos) {
-                        Ok(output) => {
-                            on_generate_clone(output.gcode);
-                        }
-                        Err(e) => {
-                            CamToolsView::show_error_dialog(
-                                &t!("Probe Generation Error"),
-                                &format!("{}", e),
-                            );
-                        }
-                    }
-                }
+        generate_btn.connect_clicked(move |_| {
+            let built = Self::build_routine(&w_gen)
+                .and_then(|r| Self::build_options(&w_gen).map(|o| (r, o)));
+            let (routine, options) = match built {
+                Ok(v) => v,
                 Err(e) => {
                     CamToolsView::show_error_dialog(&t!("Invalid Parameters"), &format!("{}", e));
+                    return;
                 }
+            };
+            // The routines move relative to wherever the probe is when they run; the
+            // position is only recorded in the program header.
+            let current_pos = device_status::get_status()
+                .machine_position
+                .map(|p| Position::new(p.x as f32, p.y as f32, p.z as f32))
+                .unwrap_or_default();
+            match ProbeRoutineEngine::with_options(routine, options).generate(current_pos) {
+                Ok(output) => on_generate_clone(output.gcode),
+                Err(e) => CamToolsView::show_error_dialog(
+                    &t!("Probe Generation Error"),
+                    &format!("{}", e),
+                ),
             }
         });
 
         // Wire up Save button
-        let safe_height_save = safe_height.clone();
-        let fast_feed_save = fast_feed.clone();
-        let slow_feed_save = slow_feed.clone();
-        let backoff_save = backoff.clone();
-        let max_depth_save = max_depth_entry.clone();
-        let routine_combo_save = routine_combo.clone();
-        let edge_axis_save = edge_axis_combo.clone();
-        let edge_dir_save = edge_dir_combo.clone();
-        let edge_dist_save = edge_dist_entry.clone();
-        let corner_save = corner_combo.clone();
-        let diameter_save = diameter_entry.clone();
-        let setter_x_save = setter_x_entry.clone();
-        let setter_y_save = setter_y_entry.clone();
-        let setter_z_save = setter_z_entry.clone();
-
+        let w_save = widgets.clone();
         save_btn.clone().connect_clicked(move |_| {
-            let params = Self::build_params_json(
-                &routine_combo_save,
-                &safe_height_save,
-                &fast_feed_save,
-                &slow_feed_save,
-                &backoff_save,
-                &max_depth_save,
-                &edge_axis_save,
-                &edge_dir_save,
-                &edge_dist_save,
-                &corner_save,
-                &diameter_save,
-                &setter_x_save,
-                &setter_y_save,
-                &setter_z_save,
-            );
+            let json = match Self::collect_preset(&w_save).and_then(|p| p.to_json()) {
+                Ok(json) => json,
+                Err(e) => {
+                    CamToolsView::show_error_dialog(&t!("Save Error"), &format!("{}", e));
+                    return;
+                }
+            };
 
             let window = save_btn
                 .root()
@@ -549,45 +633,26 @@ impl ProbeRoutinesTool {
                 .build();
             dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
             dialog.add_button(&t!("Save"), ResponseType::Accept);
+            dialog.set_current_name("probe_preset.json");
 
             if let Some(ref w) = window {
                 dialog.set_transient_for(Some(w));
             }
 
-            let params_clone = params;
             dialog.connect_response(move |d, response| {
                 if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            if let Err(e) = std::fs::write(&path, &params_clone) {
-                                CamToolsView::show_error_dialog(
-                                    &t!("Save Error"),
-                                    &format!("{}", e),
-                                );
-                            }
-                        }
+                    if let Some(path) = d.file().and_then(|f| f.path()) {
+                        write_preset_file(&path, &json);
                     }
                 }
                 d.close();
             });
 
             dialog.show();
-        }); // Wire up Load button
-        let safe_height_load = safe_height.clone();
-        let fast_feed_load = fast_feed.clone();
-        let slow_feed_load = slow_feed.clone();
-        let backoff_load = backoff.clone();
-        let max_depth_load = max_depth_entry.clone();
-        let routine_combo_load = routine_combo.clone();
-        let edge_axis_load = edge_axis_combo.clone();
-        let edge_dir_load = edge_dir_combo.clone();
-        let edge_dist_load = edge_dist_entry.clone();
-        let corner_load = corner_combo.clone();
-        let diameter_load = diameter_entry.clone();
-        let setter_x_load = setter_x_entry.clone();
-        let setter_y_load = setter_y_entry.clone();
-        let setter_z_load = setter_z_entry.clone();
+        });
 
+        // Wire up Load button
+        let w_load = widgets.clone();
         load_btn.clone().connect_clicked(move |_| {
             let window = load_btn
                 .root()
@@ -611,51 +676,28 @@ impl ProbeRoutinesTool {
             filter.set_name(Some("JSON files"));
             dialog.add_filter(&filter);
 
-            let routine_combo_c = routine_combo_load.clone();
-            let safe_height_c = safe_height_load.clone();
-            let fast_feed_c = fast_feed_load.clone();
-            let slow_feed_c = slow_feed_load.clone();
-            let backoff_c = backoff_load.clone();
-            let max_depth_c = max_depth_load.clone();
-            let edge_axis_c = edge_axis_load.clone();
-            let edge_dir_c = edge_dir_load.clone();
-            let edge_dist_c = edge_dist_load.clone();
-            let corner_c = corner_load.clone();
-            let diameter_c = diameter_load.clone();
-            let setter_x_c = setter_x_load.clone();
-            let setter_y_c = setter_y_load.clone();
-            let setter_z_c = setter_z_load.clone();
-
+            let w = w_load.clone();
             dialog.connect_response(move |d, response| {
                 if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            match std::fs::read_to_string(&path) {
-                                Ok(json) => {
-                                    Self::apply_params_json(
-                                        &json,
-                                        &routine_combo_c,
-                                        &safe_height_c,
-                                        &fast_feed_c,
-                                        &slow_feed_c,
-                                        &backoff_c,
-                                        &max_depth_c,
-                                        &edge_axis_c,
-                                        &edge_dir_c,
-                                        &edge_dist_c,
-                                        &corner_c,
-                                        &diameter_c,
-                                        &setter_x_c,
-                                        &setter_y_c,
-                                        &setter_z_c,
-                                    );
-                                }
-                                Err(e) => {
-                                    CamToolsView::show_error_dialog(
-                                        &t!("Load Error"),
-                                        &format!("{}", e),
-                                    );
-                                }
+                    if let Some(path) = d.file().and_then(|f| f.path()) {
+                        let loaded = std::fs::read_to_string(&path)
+                            .map_err(anyhow::Error::from)
+                            .and_then(|json| ProbePreset::from_json(&json));
+                        match loaded {
+                            Ok(loaded) => {
+                                Self::apply_preset(&w, &loaded.preset);
+                                show_load_warnings(&loaded.warnings);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    path = %path.display(),
+                                    error = %e,
+                                    "Failed to load probe preset"
+                                );
+                                CamToolsView::show_error_dialog(
+                                    &t!("Load Error"),
+                                    &format!("{}: {}", path.display(), e),
+                                );
                             }
                         }
                     }
@@ -665,6 +707,39 @@ impl ProbeRoutinesTool {
 
             dialog.show();
         });
+        // Probe / Apply to WCS
+        let session = Rc::new(ProbeSession::default());
+        apply_btn.set_sensitive(false);
+        {
+            let w = widgets.clone();
+            let session = session.clone();
+            let mc = machine_control.clone();
+            let results_group = results_group.clone();
+            let result_text = result_text.clone();
+            let apply_btn = apply_btn.clone();
+            let status_label = status_label.clone();
+            probe_btn.connect_clicked(move |probe_btn| {
+                Self::start_probe_run(
+                    &w,
+                    &session,
+                    mc.as_ref(),
+                    probe_btn,
+                    &apply_btn,
+                    &results_group,
+                    &result_text,
+                    &status_label,
+                );
+            });
+        }
+        {
+            let w = widgets.clone();
+            let session = session.clone();
+            let mc = machine_control.clone();
+            apply_btn.connect_clicked(move |_| {
+                Self::apply_last_result(&w, &session, mc.as_ref());
+            });
+        }
+
         Self {
             content: content_box,
             current_routine: Cell::new(ROUTINE_Z_TOUCH),
@@ -673,6 +748,288 @@ impl ProbeRoutinesTool {
 
     pub fn widget(&self) -> &Box {
         &self.content
+    }
+
+    /// Why the machine cannot accept a probe or WCS command now, if it cannot.
+    fn machine_busy_reason(mc: &MachineControlView, session: &ProbeSession) -> Option<String> {
+        let status = device_status::get_status();
+        if !status.is_connected || !mc.communicator.lock().is_connected() {
+            return Some(t!("The machine is not connected."));
+        }
+        if session.busy.get() {
+            return Some(t!("A probe run is still in progress."));
+        }
+        let direct_running = mc
+            .direct_sender
+            .lock()
+            .as_ref()
+            .is_some_and(|s| s.is_running());
+        if *mc.is_streaming.lock() || direct_running {
+            return Some(t!("A job is running."));
+        }
+        if mc.quick_probe.get() != Default::default() {
+            return Some(t!("A quick probe from the machine panel is in progress."));
+        }
+        if status.state != "Idle" {
+            return Some(format!(
+                "{} ({})",
+                t!("The machine must be Idle"),
+                status.state
+            ));
+        }
+        None
+    }
+
+    fn set_result_text(result_text: &TextView, text: &str) {
+        result_text.buffer().set_text(text);
+    }
+
+    /// Send the generated probe program and monitor it without blocking the main loop.
+    #[allow(clippy::too_many_arguments)]
+    fn start_probe_run(
+        w: &ProbeWidgets,
+        session: &Rc<ProbeSession>,
+        mc: Option<&MachineControlView>,
+        probe_btn: &Button,
+        apply_btn: &Button,
+        results_group: &PreferencesGroup,
+        result_text: &TextView,
+        status_label: &Label,
+    ) {
+        let Some(mc) = mc else {
+            CamToolsView::show_error_dialog(&t!("Probe"), &t!("Machine control is not available."));
+            return;
+        };
+        let Some(console) = mc.device_console.clone() else {
+            CamToolsView::show_error_dialog(
+                &t!("Probe"),
+                &t!("The device console is needed to read probe reports."),
+            );
+            return;
+        };
+        if let Some(reason) = Self::machine_busy_reason(mc, session) {
+            CamToolsView::show_error_dialog(&t!("Cannot Probe"), &reason);
+            return;
+        }
+        let built = Self::build_routine(w).and_then(|r| Self::build_options(w).map(|o| (r, o)));
+        let (routine, options) = match built {
+            Ok(v) => v,
+            Err(e) => {
+                CamToolsView::show_error_dialog(&t!("Invalid Parameters"), &format!("{}", e));
+                return;
+            }
+        };
+        let current_pos = device_status::get_status()
+            .machine_position
+            .map(|p| Position::new(p.x as f32, p.y as f32, p.z as f32))
+            .unwrap_or_default();
+        let output = match ProbeRoutineEngine::with_options(routine.clone(), options)
+            .generate(current_pos)
+        {
+            Ok(o) => o,
+            Err(e) => {
+                CamToolsView::show_error_dialog(&t!("Probe Generation Error"), &format!("{}", e));
+                return;
+            }
+        };
+        // Send code only: the streamer forwards lines as-is.
+        let program: String = output
+            .gcode
+            .lines()
+            .map(strip_comments)
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let log_start = console.log_position();
+        mc.start_job(&program);
+        if !*mc.is_streaming.lock() {
+            CamToolsView::show_error_dialog(
+                &t!("Cannot Probe"),
+                &t!("The probe program was not started."),
+            );
+            return;
+        }
+        tracing::info!(routine = %output.description, "Probe run started");
+
+        session.busy.set(true);
+        session.last.borrow_mut().take();
+        probe_btn.set_sensitive(false);
+        apply_btn.set_sensitive(false);
+        results_group.set_visible(true);
+        Self::set_result_text(
+            result_text,
+            &format!("{}: {}", t!("Probing"), output.description),
+        );
+        status_label.set_label("Status: ● Probing");
+
+        // Main-loop monitor: weak widget refs, ends when the run is finished.
+        let mc = mc.clone();
+        let session = session.clone();
+        let probe_btn = probe_btn.downgrade();
+        let apply_btn = apply_btn.downgrade();
+        let result_text = result_text.downgrade();
+        let status_label = status_label.downgrade();
+        let mut failed: Option<String> = None;
+        glib::timeout_add_local(PROBE_MONITOR_INTERVAL, move || {
+            let finish = |session: &ProbeSession| {
+                session.busy.set(false);
+                if let Some(b) = probe_btn.upgrade() {
+                    b.set_sensitive(true);
+                }
+                if let Some(l) = status_label.upgrade() {
+                    l.set_label("Status: ● Idle");
+                }
+            };
+            let connected = mc.communicator.lock().is_connected();
+            if !connected {
+                if let Some(t) = result_text.upgrade() {
+                    Self::set_result_text(&t, &t!("Probe aborted: the machine was disconnected."));
+                }
+                finish(&session);
+                return glib::ControlFlow::Break;
+            }
+
+            if let Some(reason) = &failed {
+                // The program stopped in G91; restore G90 once the user has cleared the
+                // alarm and the controller is Idle again.
+                if !*mc.is_streaming.lock() && device_status::get_status().state == "Idle" {
+                    let _ = mc.communicator.lock().send_command("G90");
+                    console.append_log("> G90\n");
+                    tracing::warn!(reason = %reason, "Probe run failed; restored G90");
+                    finish(&session);
+                    return glib::ControlFlow::Break;
+                }
+                return glib::ControlFlow::Continue;
+            }
+
+            if *mc.is_streaming.lock() {
+                return glib::ControlFlow::Continue;
+            }
+
+            let run = ProbeRunLog::parse(&console.log_text_since(log_start));
+            let mut report = ProbeReport::new(routine.clone());
+            for r in &run.reports {
+                report.add_trigger(*r);
+            }
+            let outcome = match &run.failure {
+                Some(line) => Err(format!("{}: {}", t!("Controller reported"), line)),
+                None => ProbeRoutineEngine::compute_result_with(&report, &options)
+                    .map_err(|e| e.to_string()),
+            };
+            match outcome {
+                Ok(pos) => {
+                    let text = Self::describe_result(&report, &options, pos);
+                    if let Some(t) = result_text.upgrade() {
+                        Self::set_result_text(&t, &text);
+                    }
+                    session.last.replace(Some((report, options)));
+                    if let Some(b) = apply_btn.upgrade() {
+                        b.set_sensitive(true);
+                    }
+                    finish(&session);
+                    glib::ControlFlow::Break
+                }
+                Err(e) => {
+                    if let Some(t) = result_text.upgrade() {
+                        Self::set_result_text(
+                            &t,
+                            &format!(
+                                "{}: {}\n{}",
+                                t!("Probe failed"),
+                                e,
+                                t!("Clear any alarm ($X); absolute mode (G90) is \
+                                     restored once the machine is Idle.")
+                            ),
+                        );
+                    }
+                    failed = Some(e);
+                    glib::ControlFlow::Continue
+                }
+            }
+        });
+    }
+
+    /// Human-readable result of a successful probe run.
+    fn describe_result(report: &ProbeReport, options: &ProbeOptions, pos: Position) -> String {
+        let mut text = match report.routine {
+            ProbeRoutine::ZTouch { .. } => format!("Surface at machine Z{:.3}", pos.z),
+            ProbeRoutine::EdgeFind { axis, .. } => {
+                let v = match axis {
+                    Axis::X => pos.x,
+                    Axis::Y => pos.y,
+                    Axis::Z => pos.z,
+                };
+                format!("Edge at machine {:?}{:.3}", axis, v)
+            }
+            ProbeRoutine::CornerFind { .. } => {
+                format!("Corner at machine X{:.3} Y{:.3}", pos.x, pos.y)
+            }
+            ProbeRoutine::BoreCenter { .. } | ProbeRoutine::BossCenter { .. } => {
+                let mut t = format!("Centre at machine X{:.3} Y{:.3}", pos.x, pos.y);
+                if let Ok(d) = ProbeRoutineEngine::compute_diameter(report, options) {
+                    t.push_str(&format!("\nMeasured diameter: {:.3} mm", d));
+                }
+                t
+            }
+            ProbeRoutine::ToolLength { .. } => {
+                format!("Tool length offset: {:.3} mm", pos.z)
+            }
+        };
+        text.push_str(&format!(
+            "\n{} probe report(s) received.",
+            report.triggers.len()
+        ));
+        text
+    }
+
+    /// Send the WCS (or tool-length) command for the last successful probe run.
+    fn apply_last_result(
+        w: &ProbeWidgets,
+        session: &ProbeSession,
+        mc: Option<&MachineControlView>,
+    ) {
+        let Some(mc) = mc else {
+            CamToolsView::show_error_dialog(
+                &t!("Apply to WCS"),
+                &t!("Machine control is not available."),
+            );
+            return;
+        };
+        let Some((report, options)) = session.last.borrow().clone() else {
+            CamToolsView::show_error_dialog(&t!("Apply to WCS"), &t!("Run a probe first."));
+            return;
+        };
+        if let Some(reason) = Self::machine_busy_reason(mc, session) {
+            CamToolsView::show_error_dialog(&t!("Cannot Apply"), &reason);
+            return;
+        }
+        let target_wcs = w
+            .wcs
+            .active_id()
+            .and_then(|id| id.trim_start_matches('G').parse::<u8>().ok())
+            .unwrap_or(54);
+        let mut service = WcsUpdateService::new(WcsUpdateConfig {
+            target_wcs,
+            probe_options: options,
+            ..WcsUpdateConfig::default()
+        });
+        // G10 L2 with the probed machine coordinates: only the axes the routine measured.
+        let result = match service.process_probe_report(&report) {
+            Ok(r) => r,
+            Err(e) => {
+                CamToolsView::show_error_dialog(&t!("Cannot Apply"), &format!("{}", e));
+                return;
+            }
+        };
+        if let Err(e) = mc.communicator.lock().send_command(&result.command) {
+            CamToolsView::show_error_dialog(&t!("Cannot Apply"), &format!("{}", e));
+            return;
+        }
+        if let Some(c) = mc.device_console.as_ref() {
+            c.append_log(&format!("> {}\n", result.command));
+        }
+        tracing::info!(command = %result.command, "Applied probe result");
     }
 
     /// Create an entry row whose value is always expressed in fixed (metric) units.
@@ -692,77 +1049,69 @@ impl ProbeRoutinesTool {
         (row, entry)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn build_routine(
-        routine_combo: &ComboBoxText,
-        safe_height: &Entry,
-        fast_feed: &Entry,
-        slow_feed: &Entry,
-        backoff: &Entry,
-        max_depth: &Entry,
-        edge_axis: &ComboBoxText,
-        edge_dir: &ComboBoxText,
-        edge_dist: &Entry,
-        corner: &ComboBoxText,
-        diameter: &Entry,
-        setter_x: &Entry,
-        setter_y: &Entry,
-        setter_z: &Entry,
-    ) -> anyhow::Result<ProbeRoutine> {
-        let routine_id = routine_combo.active_id().unwrap_or_default();
-        let safe_height_val = safe_height
-            .text()
+    /// Parse a millimetre (or mm/min) entry, naming the field on error.
+    fn parse_mm(entry: &Entry, name: &str) -> anyhow::Result<f64> {
+        let text = entry.text();
+        text.trim()
             .parse::<f64>()
-            .map_err(|_| anyhow::anyhow!("Invalid safe height"))?;
-        let fast_feed_val = fast_feed
-            .text()
-            .parse::<f64>()
-            .map_err(|_| anyhow::anyhow!("Invalid fast feed"))?;
-        let slow_feed_val = slow_feed
-            .text()
-            .parse::<f64>()
-            .map_err(|_| anyhow::anyhow!("Invalid slow feed"))?;
-        let backoff_val = backoff
-            .text()
-            .parse::<f64>()
-            .map_err(|_| anyhow::anyhow!("Invalid backoff"))?;
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| anyhow::anyhow!("Invalid {}: '{}'", name, text))
+    }
+
+    fn build_options(w: &ProbeWidgets) -> anyhow::Result<ProbeOptions> {
+        let set_wcs = if w.auto_update.is_active() {
+            w.wcs
+                .active_id()
+                .and_then(|id| id.trim_start_matches('G').parse::<u8>().ok())
+        } else {
+            None
+        };
+        Ok(ProbeOptions {
+            probe_depth: Self::parse_mm(&w.probe_depth, "probe depth")?,
+            tip_radius: Self::parse_mm(&w.tip_radius, "probe tip radius")?,
+            plate_thickness: Self::parse_mm(&w.plate_thickness, "plate thickness")?,
+            set_wcs,
+        })
+    }
+
+    fn build_routine(w: &ProbeWidgets) -> anyhow::Result<ProbeRoutine> {
+        let routine_id = w.routine.active_id().unwrap_or_default();
+        let safe_height = Self::parse_mm(&w.safe_height, "safe height")?;
+        let fast_feed = Self::parse_mm(&w.fast_feed, "fast feed")?;
+        let slow_feed = Self::parse_mm(&w.slow_feed, "slow feed")?;
+        let backoff = Self::parse_mm(&w.backoff, "backoff")?;
 
         match routine_id.as_str() {
             "z_touch" => Ok(ProbeRoutine::ZTouch {
-                safe_height: safe_height_val,
-                max_depth: max_depth
-                    .text()
-                    .parse::<f64>()
-                    .map_err(|_| anyhow::anyhow!("Invalid max depth"))?,
-                fast_feed: fast_feed_val,
-                slow_feed: slow_feed_val,
-                backoff: backoff_val,
+                safe_height,
+                max_depth: Self::parse_mm(&w.max_depth, "max depth")?,
+                fast_feed,
+                slow_feed,
+                backoff,
             }),
             "edge_find" => {
-                let axis = match edge_axis.active_id().as_deref() {
+                let axis = match w.edge_axis.active_id().as_deref() {
                     Some("Y") => Axis::Y,
                     Some("Z") => Axis::Z,
                     _ => Axis::X,
                 };
-                let direction = match edge_dir.active_id().as_deref() {
+                let direction = match w.edge_dir.active_id().as_deref() {
                     Some("positive") => Direction::Positive,
                     _ => Direction::Negative,
                 };
                 Ok(ProbeRoutine::EdgeFind {
                     axis,
                     direction,
-                    safe_height: safe_height_val,
-                    probe_distance: edge_dist
-                        .text()
-                        .parse::<f64>()
-                        .map_err(|_| anyhow::anyhow!("Invalid probe distance"))?,
-                    fast_feed: fast_feed_val,
-                    slow_feed: slow_feed_val,
-                    backoff: backoff_val,
+                    safe_height,
+                    probe_distance: Self::parse_mm(&w.edge_dist, "probe distance")?,
+                    fast_feed,
+                    slow_feed,
+                    backoff,
                 })
             }
             "corner_find" => {
-                let corner = match corner.active_id().as_deref() {
+                let corner = match w.corner.active_id().as_deref() {
                     Some("xmax_ymin") => Corner::XmaxYmin,
                     Some("xmin_ymax") => Corner::XminYmax,
                     Some("xmax_ymax") => Corner::XmaxYmax,
@@ -770,162 +1119,96 @@ impl ProbeRoutinesTool {
                 };
                 Ok(ProbeRoutine::CornerFind {
                     corner,
-                    safe_height: safe_height_val,
-                    probe_distance: edge_dist
-                        .text()
-                        .parse::<f64>()
-                        .map_err(|_| anyhow::anyhow!("Invalid probe distance"))?,
-                    fast_feed: fast_feed_val,
-                    slow_feed: slow_feed_val,
-                    backoff: backoff_val,
+                    safe_height,
+                    probe_distance: Self::parse_mm(&w.edge_dist, "probe distance")?,
+                    fast_feed,
+                    slow_feed,
+                    backoff,
                 })
             }
             "bore_center" => Ok(ProbeRoutine::BoreCenter {
-                diameter: diameter
-                    .text()
-                    .parse::<f64>()
-                    .map_err(|_| anyhow::anyhow!("Invalid diameter"))?,
-                safe_height: safe_height_val,
-                fast_feed: fast_feed_val,
-                slow_feed: slow_feed_val,
+                diameter: Self::parse_mm(&w.diameter, "diameter")?,
+                safe_height,
+                fast_feed,
+                slow_feed,
             }),
             "boss_center" => Ok(ProbeRoutine::BossCenter {
-                diameter: diameter
-                    .text()
-                    .parse::<f64>()
-                    .map_err(|_| anyhow::anyhow!("Invalid diameter"))?,
-                safe_height: safe_height_val,
-                fast_feed: fast_feed_val,
-                slow_feed: slow_feed_val,
+                diameter: Self::parse_mm(&w.diameter, "diameter")?,
+                safe_height,
+                fast_feed,
+                slow_feed,
             }),
             "tool_length" => Ok(ProbeRoutine::ToolLength {
                 plate_xy: (
-                    setter_x
-                        .text()
-                        .parse::<f64>()
-                        .map_err(|_| anyhow::anyhow!("Invalid setter X"))?,
-                    setter_y
-                        .text()
-                        .parse::<f64>()
-                        .map_err(|_| anyhow::anyhow!("Invalid setter Y"))?,
+                    Self::parse_mm(&w.setter_x, "setter X")?,
+                    Self::parse_mm(&w.setter_y, "setter Y")?,
                 ),
-                plate_z: setter_z
-                    .text()
-                    .parse::<f64>()
-                    .map_err(|_| anyhow::anyhow!("Invalid setter Z"))?,
-                safe_height: safe_height_val,
-                max_depth: max_depth
-                    .text()
-                    .parse::<f64>()
-                    .map_err(|_| anyhow::anyhow!("Invalid max depth"))?,
-                feed_rate: fast_feed_val,
+                plate_z: Self::parse_mm(&w.setter_z, "setter Z")?,
+                safe_height,
+                max_depth: Self::parse_mm(&w.max_depth, "max depth")?,
+                feed_rate: fast_feed,
             }),
             _ => Err(anyhow::anyhow!("Unknown routine")),
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn build_params_json(
-        routine_combo: &ComboBoxText,
-        safe_height: &Entry,
-        fast_feed: &Entry,
-        slow_feed: &Entry,
-        backoff: &Entry,
-        max_depth: &Entry,
-        edge_axis: &ComboBoxText,
-        edge_dir: &ComboBoxText,
-        edge_dist: &Entry,
-        corner: &ComboBoxText,
-        diameter: &Entry,
-        setter_x: &Entry,
-        setter_y: &Entry,
-        setter_z: &Entry,
-    ) -> String {
-        let routine = routine_combo.active_id().map(|s| s.to_string());
-        let edge_axis = edge_axis.active_id().map(|s| s.to_string());
-        let edge_dir = edge_dir.active_id().map(|s| s.to_string());
-        let corner_id = corner.active_id().map(|s| s.to_string());
-
-        serde_json::json!({
-            "routine": routine,
-            "safe_height": safe_height.text().to_string(),
-            "fast_feed": fast_feed.text().to_string(),
-            "slow_feed": slow_feed.text().to_string(),
-            "backoff": backoff.text().to_string(),
-            "max_depth": max_depth.text().to_string(),
-            "edge_axis": edge_axis,
-            "edge_direction": edge_dir,
-            "edge_distance": edge_dist.text().to_string(),
-            "corner": corner_id,
-            "diameter": diameter.text().to_string(),
-            "setter_x": setter_x.text().to_string(),
-            "setter_y": setter_y.text().to_string(),
-            "setter_z": setter_z.text().to_string(),
+    /// Read all fields into a preset (values in mm); fails on the first invalid field.
+    fn collect_preset(w: &ProbeWidgets) -> anyhow::Result<ProbePreset> {
+        let id = |c: &ComboBoxText| c.active_id().map(|s| s.to_string());
+        Ok(ProbePreset {
+            routine: id(&w.routine),
+            safe_height: Self::parse_mm(&w.safe_height, "safe height")?,
+            fast_feed: Self::parse_mm(&w.fast_feed, "fast feed")?,
+            slow_feed: Self::parse_mm(&w.slow_feed, "slow feed")?,
+            backoff: Self::parse_mm(&w.backoff, "backoff")?,
+            max_depth: Self::parse_mm(&w.max_depth, "max depth")?,
+            edge_axis: id(&w.edge_axis),
+            edge_direction: id(&w.edge_dir),
+            edge_distance: Self::parse_mm(&w.edge_dist, "probe distance")?,
+            corner: id(&w.corner),
+            diameter: Self::parse_mm(&w.diameter, "diameter")?,
+            setter_x: Self::parse_mm(&w.setter_x, "setter X")?,
+            setter_y: Self::parse_mm(&w.setter_y, "setter Y")?,
+            setter_z: Self::parse_mm(&w.setter_z, "setter Z")?,
+            probe_depth: Self::parse_mm(&w.probe_depth, "probe depth")?,
+            tip_radius: Self::parse_mm(&w.tip_radius, "probe tip radius")?,
+            plate_thickness: Self::parse_mm(&w.plate_thickness, "plate thickness")?,
+            target_wcs: id(&w.wcs),
+            auto_update_wcs: w.auto_update.is_active(),
+            ..ProbePreset::default()
         })
-        .to_string()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn apply_params_json(
-        json: &str,
-        routine_combo: &ComboBoxText,
-        safe_height: &Entry,
-        fast_feed: &Entry,
-        slow_feed: &Entry,
-        backoff: &Entry,
-        max_depth: &Entry,
-        edge_axis: &ComboBoxText,
-        edge_dir: &ComboBoxText,
-        edge_dist: &Entry,
-        corner: &ComboBoxText,
-        diameter: &Entry,
-        setter_x: &Entry,
-        setter_y: &Entry,
-        setter_z: &Entry,
-    ) {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
-            if let Some(routine) = value.get("routine").and_then(|v| v.as_str()) {
-                routine_combo.set_active_id(Some(routine));
-            }
-            if let Some(v) = value.get("safe_height").and_then(|v| v.as_str()) {
-                safe_height.set_text(v);
-            }
-            if let Some(v) = value.get("fast_feed").and_then(|v| v.as_str()) {
-                fast_feed.set_text(v);
-            }
-            if let Some(v) = value.get("slow_feed").and_then(|v| v.as_str()) {
-                slow_feed.set_text(v);
-            }
-            if let Some(v) = value.get("backoff").and_then(|v| v.as_str()) {
-                backoff.set_text(v);
-            }
-            if let Some(v) = value.get("max_depth").and_then(|v| v.as_str()) {
-                max_depth.set_text(v);
-            }
-            if let Some(v) = value.get("edge_axis").and_then(|v| v.as_str()) {
-                edge_axis.set_active_id(Some(v));
-            }
-            if let Some(v) = value.get("edge_direction").and_then(|v| v.as_str()) {
-                edge_dir.set_active_id(Some(v));
-            }
-            if let Some(v) = value.get("edge_distance").and_then(|v| v.as_str()) {
-                edge_dist.set_text(v);
-            }
-            if let Some(v) = value.get("corner").and_then(|v| v.as_str()) {
-                corner.set_active_id(Some(v));
-            }
-            if let Some(v) = value.get("diameter").and_then(|v| v.as_str()) {
-                diameter.set_text(v);
-            }
-            if let Some(v) = value.get("setter_x").and_then(|v| v.as_str()) {
-                setter_x.set_text(v);
-            }
-            if let Some(v) = value.get("setter_y").and_then(|v| v.as_str()) {
-                setter_y.set_text(v);
-            }
-            if let Some(v) = value.get("setter_z").and_then(|v| v.as_str()) {
-                setter_z.set_text(v);
-            }
+    fn apply_preset(w: &ProbeWidgets, p: &ProbePreset) {
+        let mm = |e: &Entry, v: f64| e.set_text(&format!("{:.3}", v));
+        if let Some(r) = &p.routine {
+            w.routine.set_active_id(Some(r));
         }
+        mm(&w.safe_height, p.safe_height);
+        mm(&w.fast_feed, p.fast_feed);
+        mm(&w.slow_feed, p.slow_feed);
+        mm(&w.backoff, p.backoff);
+        mm(&w.max_depth, p.max_depth);
+        if let Some(v) = &p.edge_axis {
+            w.edge_axis.set_active_id(Some(v));
+        }
+        if let Some(v) = &p.edge_direction {
+            w.edge_dir.set_active_id(Some(v));
+        }
+        mm(&w.edge_dist, p.edge_distance);
+        if let Some(v) = &p.corner {
+            w.corner.set_active_id(Some(v));
+        }
+        mm(&w.diameter, p.diameter);
+        mm(&w.setter_x, p.setter_x);
+        mm(&w.setter_y, p.setter_y);
+        mm(&w.setter_z, p.setter_z);
+        mm(&w.probe_depth, p.probe_depth);
+        mm(&w.tip_radius, p.tip_radius);
+        mm(&w.plate_thickness, p.plate_thickness);
+        if let Some(v) = &p.target_wcs {
+            w.wcs.set_active_id(Some(v));
+        }
+        w.auto_update.set_active(p.auto_update_wcs);
     }
 }
