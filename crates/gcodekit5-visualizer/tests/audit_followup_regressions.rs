@@ -11,7 +11,9 @@ use gcodekit5_visualizer::gcode::processors::{ArcExpander, PatternRemover};
 use gcodekit5_visualizer::utils::phase7::{
     CalibrationStepType, CalibrationWizard, CommunicationDiagnostics, DiagnosticReport,
 };
-use gcodekit5_visualizer::visualizer::{infer_stock_top_z, is_content_replacement, ToolpathCache};
+use gcodekit5_visualizer::visualizer::{
+    detect_stock_zero_reference, is_content_replacement, StockZeroReference, ToolpathCache,
+};
 use gcodekit5_visualizer::{
     BackupManager, CommandProcessor, DecimalProcessor, FileEncoding, FileStreamReader,
     GCodeCommand, GcodeCommand, GcodeFileReader, GcodeState, GcodeStreamReader, Point3D,
@@ -197,12 +199,87 @@ fn test_stock_removal_mesh_is_in_work_coordinates() {
     assert!(max.abs() < 1e-4, "top at Z0, got {max}");
 }
 
+/// Count the voxels removed from a fresh 10 x 10 x 10 mm stock (1 mm voxels).
+fn removed_voxels(reference: StockZeroReference, toolpath: &[ToolpathSegment]) -> usize {
+    let mut sim =
+        StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0).with_stock_zero_reference(reference);
+    sim.simulate_toolpath(toolpath);
+    sim.get_grid().data().iter().filter(|&&v| v == 0).count()
+}
+
 #[test]
-fn test_stock_removal_infers_stock_top() {
-    let cam = [linear((0.0, 0.0, 0.0), (1.0, 0.0, -1.0))];
-    let designer = [linear((0.0, 0.0, 8.0), (1.0, 0.0, 7.0))];
-    assert_eq!(infer_stock_top_z(&cam, 10.0), 0.0);
-    assert_eq!(infer_stock_top_z(&designer, 10.0), 10.0);
+fn test_stock_removal_zero_reference_defaults_to_top() {
+    assert_eq!(StockZeroReference::default(), StockZeroReference::Top);
+    assert_eq!(StockZeroReference::Top.stock_top_z(10.0), 0.0);
+    assert_eq!(StockZeroReference::Bottom.stock_top_z(10.0), 10.0);
+    for r in [StockZeroReference::Top, StockZeroReference::Bottom] {
+        assert_eq!(StockZeroReference::from_index(r.index()), r);
+    }
+    let sim = StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0)
+        .with_stock_zero_reference(StockZeroReference::Bottom);
+    assert_eq!(sim.stock_top_z(), 10.0);
+}
+
+#[test]
+fn test_stock_removal_top_zero_feed_at_z0_removes_nothing() {
+    // A top-zeroed program that only feeds at Z0 never enters the stock.
+    let toolpath = [linear((2.0, 5.0, 0.0), (8.0, 5.0, 0.0))];
+    assert_eq!(removed_voxels(StockZeroReference::Top, &toolpath), 0);
+}
+
+#[test]
+fn test_stock_removal_top_zero_air_cut_removes_nothing() {
+    // Air-cutting at Z2 over 10 mm stock zeroed on top removes nothing.
+    let toolpath = [
+        linear((2.0, 5.0, 2.0), (8.0, 5.0, 2.0)),
+        linear((8.0, 5.0, 2.0), (8.0, 8.0, 2.0)),
+    ];
+    assert_eq!(removed_voxels(StockZeroReference::Top, &toolpath), 0);
+}
+
+#[test]
+fn test_stock_removal_bottom_zero_cuts_between_zero_and_thickness() {
+    // The same Z2 pass in a bottom-zeroed program cuts 8 mm deep.
+    let toolpath = [linear((2.0, 5.0, 2.0), (8.0, 5.0, 2.0))];
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0)
+        .with_stock_zero_reference(StockZeroReference::Bottom);
+    sim.simulate_toolpath(&toolpath);
+    let grid = sim.get_grid();
+    assert_eq!(grid.get_at_position(5, 5, 9), 0);
+    assert_eq!(grid.get_at_position(5, 5, 2), 0);
+    assert_eq!(grid.get_at_position(5, 5, 1), 255);
+}
+
+#[test]
+fn test_stock_removal_detects_recorded_zero_reference() {
+    let designer = "; Generated G-code from Designer tool\n; Tool diameter: 3.18mm\n\nG90\n";
+    assert_eq!(
+        detect_stock_zero_reference(designer),
+        Some(StockZeroReference::Bottom)
+    );
+    let laser = "; Generated Laser G-code from Designer tool\nG90\n";
+    assert_eq!(detect_stock_zero_reference(laser), None);
+    assert_eq!(
+        detect_stock_zero_reference("%\n(Stock Z0: Top)\nG0 Z5\n"),
+        Some(StockZeroReference::Top)
+    );
+    assert_eq!(
+        detect_stock_zero_reference("; stock z0: bottom\nG1 Z2 F100\n"),
+        Some(StockZeroReference::Bottom)
+    );
+}
+
+#[test]
+fn test_stock_removal_detection_ignores_toolpath_z() {
+    // No recorded convention: Z values (air cut / Z0 feed) must not be used to guess.
+    assert_eq!(detect_stock_zero_reference("G0 Z5\nG1 X10 Z2 F100\n"), None);
+    assert_eq!(detect_stock_zero_reference("G1 X10 Z0 F100\n"), None);
+    assert_eq!(detect_stock_zero_reference(""), None);
+    // Markers after the header are not trusted.
+    assert_eq!(
+        detect_stock_zero_reference("G0 Z5\n; Generated G-code from Designer tool\n"),
+        None
+    );
 }
 
 // --------------------------------------------------------------- processors

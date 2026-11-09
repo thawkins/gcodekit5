@@ -7,7 +7,8 @@
 //! ## Coordinate convention
 //! [`StockSimulator3D`] takes toolpaths in G-code work coordinates (mm). The
 //! top face of the stock is at `stock_top_z` (Z0 by default, as most CAM
-//! output assumes), so the material occupies `stock_top_z - thickness ..=
+//! output assumes; see [`StockZeroReference`] for programs zeroed on the stock
+//! bottom), so the material occupies `stock_top_z - thickness ..=
 //! stock_top_z`, and material is removed only where the tool tip is below the
 //! stock top (`tip.z < stock_top_z`). The [`VoxelGrid`] itself is indexed from
 //! the stock bottom (grid Z 0 = bottom face); [`StockSimulator3D::get_mesh`]
@@ -311,31 +312,111 @@ pub fn generate_surface_mesh(grid: &VoxelGrid) -> Vec<f32> {
 }
 // ---
 
-/// Infer the work Z of the stock top from a toolpath.
+/// Which face of the stock block the program's work Z0 is set on.
 ///
-/// Programs zeroed on the top of the stock (most CAM output) cut at negative Z;
-/// programs zeroed on the bottom of the stock (GCodeKit's own designer) cut
-/// between 0 and the stock thickness.
+/// Most CAM output zeroes Z on the top of the stock, so the material occupies
+/// `-thickness ..= 0` and cuts go below Z0. GCodeKit's own designer (CNC mode)
+/// zeroes Z on the bottom of the stock, so the material occupies
+/// `0 ..= thickness`. The convention cannot be told reliably from the toolpath
+/// itself (a top-zeroed program that only feeds at Z0, or air-cuts above the
+/// stock, looks like a bottom-zeroed one), so it is a user setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StockZeroReference {
+    /// Work Z0 is the top face of the stock (default; most CAM output).
+    #[default]
+    Top,
+    /// Work Z0 is the bottom face of the stock (machine bed / spoilboard).
+    Bottom,
+}
+
+impl StockZeroReference {
+    /// Work Z (mm) of the stock top face for this convention.
+    ///
+    /// # Arguments
+    /// * `thickness` - Stock thickness in mm.
+    ///
+    /// # Returns
+    /// `0.0` for [`StockZeroReference::Top`], `thickness` for
+    /// [`StockZeroReference::Bottom`].
+    pub fn stock_top_z(self, thickness: f32) -> f32 {
+        match self {
+            Self::Top => 0.0,
+            Self::Bottom => thickness,
+        }
+    }
+
+    /// Stable index of this variant, for UI selectors (`Top` = 0, `Bottom` = 1).
+    pub fn index(self) -> u32 {
+        match self {
+            Self::Top => 0,
+            Self::Bottom => 1,
+        }
+    }
+
+    /// Variant for a UI selector index; anything other than 1 maps to `Top`.
+    ///
+    /// # Arguments
+    /// * `index` - Selector index as returned by [`StockZeroReference::index`].
+    pub fn from_index(index: u32) -> Self {
+        if index == 1 {
+            Self::Bottom
+        } else {
+            Self::Top
+        }
+    }
+}
+
+/// Header comment emitted by the designer for CNC (non-laser) programs, which
+/// are always zeroed on the stock bottom.
+const DESIGNER_CNC_HEADER: &str = "Generated G-code from Designer tool";
+
+/// Prefix of an explicit stock-origin marker comment, e.g. `; Stock Z0: top`.
+const STOCK_Z0_MARKER: &str = "stock z0:";
+
+/// Read the stock Z0 convention recorded in a program's leading comments.
+///
+/// Only the header (the comment and blank lines before the first command) is
+/// examined, and only explicit records are trusted; the toolpath's Z values are
+/// never used. Recognised records:
+/// * `; Stock Z0: top` / `; Stock Z0: bottom` (also in `( ... )` comments).
+/// * The designer's CNC header `; Generated G-code from Designer tool`, whose
+///   programs are zeroed on the stock bottom.
 ///
 /// # Arguments
-/// * `toolpath` - Toolpath segments in work coordinates (mm).
-/// * `thickness` - Stock thickness in mm.
+/// * `gcode` - Full program text.
 ///
 /// # Returns
-/// `0.0` when any feed move goes below Z0 (or there are no feed moves),
-/// otherwise `thickness`.
-pub fn infer_stock_top_z(toolpath: &[ToolpathSegment], thickness: f32) -> f32 {
-    let min_feed_z = toolpath
-        .iter()
-        .filter(|seg| seg.segment_type != ToolpathSegmentType::RapidMove)
-        .flat_map(|seg| [seg.start.2, seg.end.2])
-        .filter(|z| z.is_finite())
-        .fold(f32::INFINITY, f32::min);
-    if min_feed_z.is_finite() && min_feed_z >= 0.0 {
-        thickness
-    } else {
-        0.0
+/// The recorded convention, or `None` when the program does not record one
+/// (the caller should then keep the user's setting).
+pub fn detect_stock_zero_reference(gcode: &str) -> Option<StockZeroReference> {
+    for line in gcode.lines() {
+        let line = line.trim();
+        if line.is_empty() || line == "%" {
+            continue;
+        }
+        let comment = if let Some(rest) = line.strip_prefix(';') {
+            rest
+        } else {
+            // A non-comment line is the first command: the header is over.
+            let rest = line.strip_prefix('(')?;
+            rest.strip_suffix(')').unwrap_or(rest)
+        };
+        let comment = comment.trim();
+        if comment.contains(DESIGNER_CNC_HEADER) {
+            return Some(StockZeroReference::Bottom);
+        }
+        let lower = comment.to_ascii_lowercase();
+        if let Some(value) = lower.strip_prefix(STOCK_Z0_MARKER) {
+            match value.trim() {
+                "top" => return Some(StockZeroReference::Top),
+                "bottom" => return Some(StockZeroReference::Bottom),
+                other => {
+                    tracing::warn!(value = other, "Unrecognised stock Z0 marker value");
+                }
+            }
+        }
     }
+    None
 }
 
 /// Material-removal simulator for a rectangular stock block.
@@ -379,6 +460,18 @@ impl StockSimulator3D {
             self.stock_top_z = stock_top_z;
         }
         self
+    }
+
+    /// Place the stock for a program zeroed on the given stock face.
+    ///
+    /// # Arguments
+    /// * `reference` - Which stock face is work Z0.
+    ///
+    /// # Returns
+    /// The simulator, for chaining.
+    pub fn with_stock_zero_reference(self, reference: StockZeroReference) -> Self {
+        let top = reference.stock_top_z(self.thickness);
+        self.with_stock_top_z(top)
     }
 
     /// Work Z (mm) of the top face of the stock.

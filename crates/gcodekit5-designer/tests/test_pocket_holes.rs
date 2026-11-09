@@ -322,3 +322,42 @@ fn test_raster_ring_pocket_bounds_retract_count() {
         assert!(cuts.iter().any(|s| s.start.x > 30.0));
     }
 }
+
+#[test]
+fn test_raster_large_ring_pocket_orders_spans_quickly() {
+    // A 400 mm square ring with a 200 mm hole at a 0.01 mm stepover gives about 40,000
+    // scanlines, half of them split by the hole: roughly 60,000 spans. Ordering them by
+    // scanning every remaining span for every emitted span took ~1.8 billion visits (about
+    // 4 s for the whole pocket in the test profile); indexing the spans by scanline only
+    // examines the adjacent scanlines for each connected link.
+    let path = nested_squares_path(&[(0.0, 400.0), (100.0, 300.0)]);
+    let mut gen = generator(PocketStrategy::Raster {
+        angle: 0.0,
+        bidirectional: true,
+    });
+    gen.set_start_depth(0.0);
+
+    let started = std::time::Instant::now();
+    let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.01);
+    let elapsed = started.elapsed();
+
+    assert_eq!(toolpaths.len(), 1, "expected a single depth pass");
+    let cuts = cutting_segments(&toolpaths)
+        .into_iter()
+        .filter(|s| (s.start.y - s.end.y).abs() < 1e-9 && (s.start.x - s.end.x).abs() > 1.0)
+        .count();
+    assert!(
+        cuts >= 10_000,
+        "expected at least 10,000 raster spans, got {cuts}"
+    );
+    let retracts = toolpaths[0]
+        .segments
+        .iter()
+        .filter(|s| s.segment_type == ToolpathSegmentType::RapidMove)
+        .count();
+    assert!(retracts <= 4, "{retracts} retracts in one pass");
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "raster pocket with {cuts} spans took {elapsed:?}"
+    );
+}

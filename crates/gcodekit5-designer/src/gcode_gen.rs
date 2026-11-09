@@ -216,6 +216,9 @@ impl ToolpathToGcode {
             gcode.push_str(&format!("; Laser power (S): {}\n", spindle_speed));
         } else {
             gcode.push_str("; Generated G-code from Designer tool\n");
+            // The designer's CNC workflow zeroes Z on the stock bottom (cuts start at the
+            // stock thickness). Record it so viewers/simulators use the right origin.
+            gcode.push_str("; Stock Z0: bottom\n");
             gcode.push_str(&format!("; Tool diameter: {:.2}mm\n", tool_diameter));
             gcode.push_str(&format!("; Cut depth: {:.2}mm\n", depth));
             gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));

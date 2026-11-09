@@ -246,3 +246,17 @@ fn test_generate_header_includes_estimated_time() {
     assert!(header.contains("; Total path length: 5000.00mm"));
     assert!(header.contains("; Estimated time: 0h 5m"));
 }
+
+#[test]
+fn test_generate_header_records_stock_z0_for_cnc_only() {
+    // The designer's CNC workflow zeroes Z on the stock bottom; the header must say so
+    // explicitly so the visualizer's stock simulation uses the right origin.
+    let cnc = ToolpathToGcode::new(Units::MM, 10.0).generate_header(3000, 1000.0, 3.175, -5.0, 0.0);
+    assert!(cnc.contains("; Stock Z0: bottom"), "{cnc}");
+
+    // Laser output has no Z stock origin.
+    let laser = ToolpathToGcode::new(Units::MM, 5.0)
+        .with_laser_2d()
+        .generate_header(500, 1000.0, 0.1, 0.0, 0.0);
+    assert!(!laser.contains("Stock Z0"), "{laser}");
+}

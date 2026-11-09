@@ -25,7 +25,7 @@ use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::DesignerState;
 use gcodekit5_settings::controller::SettingsController;
 use gcodekit5_settings::manager::SettingsManager;
-use gcodekit5_visualizer::visualizer::StockSimulator3D;
+use gcodekit5_visualizer::visualizer::{StockSimulator3D, StockZeroReference};
 use glam::Vec3;
 
 const STOCK_REMOVAL_RESOLUTION: f32 = 0.19; // Resolución cambiada de 0.25 a 0.19
@@ -166,6 +166,14 @@ pub struct GcodeVisualizer {
     stock_width_entry: Entry,
     stock_height_entry: Entry,
     stock_thickness_entry: Entry,
+    /// "Stock Z0 at: Top / Bottom" selector for the stock simulation.
+    stock_zero_dropdown: gtk4::DropDown,
+    /// Selected stock Z0 convention used when simulating stock removal.
+    stock_zero_reference: Shared<StockZeroReference>,
+    /// The convention last picked by the user, restored for programs that record none.
+    stock_zero_user_choice: Shared<StockZeroReference>,
+    /// Set while the dropdown is changed programmatically (not a user choice).
+    stock_zero_programmatic: Rc<std::cell::Cell<bool>>,
     // Optional status bar reference for future OSD integration.
     #[allow(dead_code)]
     pub(crate) status_bar: Option<StatusBar>,
@@ -610,6 +618,36 @@ impl GcodeVisualizer {
             .placeholder_text(t!("Tool Diameter"))
             .editable(false)
             .build();
+        let stock_zero_reference = shared(StockZeroReference::default());
+        let stock_zero_user_choice = shared(StockZeroReference::default());
+        let stock_zero_programmatic = Rc::new(std::cell::Cell::new(false));
+        let stock_zero_dropdown = {
+            let top = t!("Top");
+            let bottom = t!("Bottom");
+            let model = gtk4::StringList::new(&[top.as_str(), bottom.as_str()]);
+            let dropdown = gtk4::DropDown::new(Some(model), None::<gtk4::Expression>);
+            dropdown.set_selected(StockZeroReference::default().index());
+            dropdown.set_hexpand(true);
+            dropdown.set_tooltip_text(Some(&t!(
+                "Which face of the stock the program's work Z0 is set on. Top: material is \
+                 -thickness to 0 (most CAM output). Bottom: material is 0 to thickness \
+                 (GCodeKit designer output)."
+            )));
+            dropdown
+        };
+        {
+            let stock_zero_reference = stock_zero_reference.clone();
+            let user_choice = stock_zero_user_choice.clone();
+            let programmatic = stock_zero_programmatic.clone();
+            stock_zero_dropdown.connect_selected_notify(move |dropdown| {
+                let reference = StockZeroReference::from_index(dropdown.selected());
+                *stock_zero_reference.borrow_mut() = reference;
+                if !programmatic.get() {
+                    *user_choice.borrow_mut() = reference;
+                }
+                tracing::debug!(?reference, "Stock Z0 reference changed");
+            });
+        }
 
         // Group toggles into sections
         let toolpath_box = Box::new(Orientation::Vertical, 6);
@@ -663,6 +701,14 @@ impl GcodeVisualizer {
         stock_box.append(&stock_height_entry);
         stock_box.append(&stock_thickness_entry);
         stock_box.append(&stock_tool_diameter_entry);
+        {
+            let row = Box::new(Orientation::Horizontal, 6);
+            let label = Label::new(Some(&t!("Stock Z0 at:")));
+            label.set_halign(gtk4::Align::Start);
+            row.append(&label);
+            row.append(&stock_zero_dropdown);
+            stock_box.append(&row);
+        }
 
         let stock_revealer = Revealer::new();
         stock_revealer.set_transition_type(gtk4::RevealerTransitionType::SlideDown);
@@ -2039,6 +2085,7 @@ impl GcodeVisualizer {
         let _simulation_visualization_stock = simulation_visualization.clone();
         let stock_material_stock = stock_material.clone();
         let tool_diameter_stock = tool_diameter.clone();
+        let stock_zero_reference_stock = stock_zero_reference.clone();
         let simulation_running_flag = simulation_running.clone();
         let stock_simulator_3d_stock = stock_simulator_3d.clone();
         let stock_simulation_3d_pending_toggle = stock_simulation_3d_pending.clone();
@@ -2086,6 +2133,7 @@ impl GcodeVisualizer {
                     // Run simulation in background thread
                     let stock_clone = stock.clone();
                     let tool_radius_value = *tool_diameter_stock.borrow() / 2.0;
+                    let stock_zero = *stock_zero_reference_stock.borrow();
                     let result_3d_ref = stock_simulator_3d_stock.clone();
                     let gl_ref = gl_update.clone();
 
@@ -2171,12 +2219,9 @@ impl GcodeVisualizer {
                             resolution,
                         );
 
-                        // Toolpaths zeroed on the stock top cut below Z0; the
-                        // designer's own output is zeroed on the stock bottom.
-                        let stock_top_z = gcodekit5_visualizer::visualizer::infer_stock_top_z(
-                            &toolpath_segments_3d,
-                            stock_clone.thickness,
-                        );
+                        // The stock origin is the user's "Stock Z0 at" setting
+                        // (defaulted from the program header when it records one);
+                        // it is never guessed from the toolpath's Z values.
                         let mut simulator = StockSimulator3D::new(
                             stock_clone.width,
                             stock_clone.height,
@@ -2184,7 +2229,7 @@ impl GcodeVisualizer {
                             resolution,
                             tool_radius_value,
                         )
-                        .with_stock_top_z(stock_top_z);
+                        .with_stock_zero_reference(stock_zero);
 
                         let cancel = cancel_thread.clone();
                         let progress = progress_thread.clone();
@@ -2975,6 +3020,10 @@ impl GcodeVisualizer {
             stock_width_entry,
             stock_height_entry,
             stock_thickness_entry,
+            stock_zero_dropdown,
+            stock_zero_reference,
+            stock_zero_user_choice,
+            stock_zero_programmatic,
             status_bar,
             current_pos,
             preview_pos,
@@ -3077,6 +3126,10 @@ impl GcodeVisualizer {
         // Any G-code reload invalidates prior preview trajectory.
         self.stop_run_preview();
         self.run_preview_points.borrow_mut().clear();
+
+        if reset == ViewReset::Fit {
+            self.apply_recorded_stock_zero(gcode);
+        }
 
         let mut vis = self.visualizer.borrow_mut();
         vis.parse_gcode(gcode);
@@ -3212,6 +3265,46 @@ impl GcodeVisualizer {
         false // Por defecto, asumir 3D
     }
 
+    /// Currently selected stock Z0 convention for the stock simulation.
+    pub fn stock_zero_reference(&self) -> StockZeroReference {
+        *self.stock_zero_reference.borrow()
+    }
+
+    /// Set the "Stock Z0 at" option used by the stock simulation.
+    ///
+    /// # Arguments
+    /// * `reference` - Which stock face the program's work Z0 is on.
+    ///
+    /// This counts as the user's choice: it is restored for later programs whose
+    /// header does not record the convention.
+    pub fn set_stock_zero_reference(&self, reference: StockZeroReference) {
+        // The dropdown's notify handler updates both shared values.
+        self.stock_zero_dropdown.set_selected(reference.index());
+        *self.stock_zero_reference.borrow_mut() = reference;
+        *self.stock_zero_user_choice.borrow_mut() = reference;
+    }
+
+    /// Default the "Stock Z0 at" option for a newly loaded program: the
+    /// convention recorded in its header if any, otherwise the user's last
+    /// choice (so a value read from one program's header does not stick to the
+    /// next program). The toolpath's Z values are never used to guess it.
+    fn apply_recorded_stock_zero(&self, gcode: &str) {
+        let recorded = gcodekit5_visualizer::visualizer::detect_stock_zero_reference(gcode);
+        let reference = recorded.unwrap_or_else(|| *self.stock_zero_user_choice.borrow());
+        if reference != self.stock_zero_reference() {
+            tracing::info!(
+                ?reference,
+                from_header = recorded.is_some(),
+                "Stock Z0 changed for new program"
+            );
+        }
+        self.stock_zero_programmatic.set(true);
+        self.stock_zero_dropdown.set_selected(reference.index());
+        self.stock_zero_programmatic.set(false);
+        *self.stock_zero_reference.borrow_mut() = reference;
+    }
+
+    /// Copy the designer's stock dimensions into the stock-simulation fields.
     pub fn sync_stock_from_designer(&self) {
         if let Some(state) = self.designer_state.as_ref() {
             if let Some(stock) = &state.borrow().stock_material {
