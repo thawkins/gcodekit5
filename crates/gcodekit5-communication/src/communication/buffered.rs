@@ -104,7 +104,8 @@ pub struct BufferedCommunicatorConfig {
 impl Default for BufferedCommunicatorConfig {
     fn default() -> Self {
         Self {
-            buffer_size: 254,
+            // GRBL's serial RX buffer is 128 bytes; overfilling it corrupts commands.
+            buffer_size: 128,
             queue_size: 200,
             max_retries: 3,
             flow_control: true,
@@ -184,8 +185,8 @@ impl BufferedCommunicatorWrapper {
             let command_to_send = {
                 let mut queue = self.command_queue.lock();
                 if let Some(cmd) = queue.front() {
-                    let cmd_size = cmd.command.len() + 1;
-                    if self.has_room_in_buffer(cmd_size) {
+                    // has_room_in_buffer() adds the newline itself
+                    if self.has_room_in_buffer(cmd.command.len()) {
                         queue.pop_front()
                     } else {
                         None

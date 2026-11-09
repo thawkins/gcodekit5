@@ -24,7 +24,9 @@ fn test_dxf_acis_entities_are_tracked_and_discarded() {
     assert_eq!(file.unsupported_entities.get("BODY"), Some(&1));
 
     let importer = DxfImporter::new(1.0, 0.0, 0.0);
-    let design = importer.import_string(content).expect("import should succeed");
+    let design = importer
+        .import_string(content)
+        .expect("import should succeed");
     let mut unsupported = design.unsupported_entities.clone();
     unsupported.sort();
     assert_eq!(
@@ -54,7 +56,9 @@ fn test_dxf_lwpolyline_elevation_and_thickness_are_captured() {
     }
 
     let importer = DxfImporter::new(1.0, 0.0, 0.0);
-    let design = importer.import_string(content).expect("import should succeed");
+    let design = importer
+        .import_string(content)
+        .expect("import should succeed");
     assert_eq!(design.z_metadata.len(), design.shapes.len());
     assert_eq!(design.z_metadata[0], (5.0, 2.5));
 }
@@ -85,7 +89,9 @@ fn test_dxf_entities_without_z_metadata_default_to_zero() {
 0\nENDSEC\n0\nEOF\n";
 
     let importer = DxfImporter::new(1.0, 0.0, 0.0);
-    let design = importer.import_string(content).expect("import should succeed");
+    let design = importer
+        .import_string(content)
+        .expect("import should succeed");
     assert_eq!(design.z_metadata, vec![(0.0, 0.0)]);
     assert!(design.unsupported_entities.is_empty());
 }

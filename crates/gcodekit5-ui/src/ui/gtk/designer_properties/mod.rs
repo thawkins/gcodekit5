@@ -264,13 +264,8 @@ impl PropertiesPanel {
         ) = Self::build_timing_pulley_section();
         content.append(&timing_pulley_frame);
 
-        let (
-            ops_frame,
-            offset_entry,
-            chamfer_entry,
-            offset_unit_label,
-            chamfer_unit_label,
-        ) = Self::build_geometry_ops_section();
+        let (ops_frame, offset_entry, chamfer_entry, offset_unit_label, chamfer_unit_label) =
+            Self::build_geometry_ops_section();
         content.append(&ops_frame);
 
         let (
@@ -497,6 +492,7 @@ impl PropertiesPanel {
             self.aspect_ratio.clone(),
             self.state.clone(),
             self.settings.clone(),
+            self.updating.clone(),
         );
 
         handlers::dimensions::setup_width_focus_out_handler(
@@ -726,6 +722,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
+            self.settings.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );
@@ -735,6 +732,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
+            self.settings.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );

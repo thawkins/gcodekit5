@@ -914,6 +914,7 @@ impl ToolsManagerView {
         };
 
         a.id.0 == b.id.0
+            && a.number == b.number
             && a.name == b.name
             && a.description == b.description
             && a.tool_type == b.tool_type

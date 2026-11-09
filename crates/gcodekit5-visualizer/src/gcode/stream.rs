@@ -142,7 +142,8 @@ impl GcodeStreamReader for FileStreamReader {
         }
 
         self.current_line = current;
-        self.is_eof = current >= line_number && line_number > 0;
+        // EOF only if the file ended before the requested line was reached
+        self.is_eof = current < line_number;
         Ok(())
     }
 

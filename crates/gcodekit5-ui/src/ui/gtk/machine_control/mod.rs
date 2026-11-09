@@ -20,7 +20,7 @@ use gtk4::prelude::*;
 use gtk4::{
     accessible::Property as AccessibleProperty, pango::EllipsizeMode, Align, Box, Button,
     CheckButton, ComboBoxText, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned,
-    PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, ToggleButton,
+    PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
 };
 use std::cell::Cell;
 
@@ -29,6 +29,7 @@ use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
+use crate::ui::gtk::machine_control::continuous_jog::{numpad_jog, ContinuousJogState};
 use crate::ui::gtk::machine_control::direct_sender::DirectSender;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
@@ -37,6 +38,7 @@ use gcodekit5_core::{
 };
 use std::rc::Rc;
 
+mod continuous_jog;
 mod direct_sender;
 mod state;
 mod ui_builders;
@@ -88,6 +90,10 @@ pub struct MachineControlView {
     pub feed_reset: Button,
     pub feed_inc1: Button,
     pub feed_inc10: Button,
+    /// Target feed override (%) applied by `feed_set`.
+    pub feed_target: SpinButton,
+    /// Sets the feed override to exactly `feed_target`, one confirmed step at a time.
+    pub feed_set: Button,
     pub spindle_value: Label,
     pub spindle_dec10: Button,
     pub spindle_dec1: Button,
@@ -95,6 +101,10 @@ pub struct MachineControlView {
     pub spindle_stop: Button,
     pub spindle_inc1: Button,
     pub spindle_inc10: Button,
+    /// Target spindle override (%) applied by `spindle_set`.
+    pub spindle_target: SpinButton,
+    /// Sets the spindle override to exactly `spindle_target`, one confirmed step at a time.
+    pub spindle_set: Button,
 
     pub x_dro: Label,
     pub y_dro: Label,
@@ -155,6 +165,10 @@ pub struct MachineControlView {
     pub probe_y_pos_btn: Option<Button>,
     pub step_combo: ComboBoxText,
     pub step_label: Label,
+    /// When active, holding a jog button or numpad key jogs continuously.
+    pub continuous_jog_check: CheckButton,
+    /// State of the continuous jog in progress, shared with the status poller.
+    pub continuous_jog: ThreadSafe<ContinuousJogState>,
     pub jog_feed_entry: gtk4::Entry,
     pub jog_feed_units: Label,
     pub jog_step_mm: ThreadSafe<f32>,
@@ -528,11 +542,18 @@ impl MachineControlView {
         let feed_inc10 = Button::with_label("+10");
         feed_inc10.set_tooltip_text(Some(&t!("Increase feed rate by 10%")));
 
+        let (feed_target, feed_set) = Self::override_target_widgets(
+            &t!("Target feed override (%)"),
+            &t!("Set the feed override to exactly the target percentage"),
+        );
+
         feed_controls.append(&feed_dec10);
         feed_controls.append(&feed_dec1);
         feed_controls.append(&feed_reset);
         feed_controls.append(&feed_inc1);
         feed_controls.append(&feed_inc10);
+        feed_controls.append(&feed_target);
+        feed_controls.append(&feed_set);
 
         feed_row.append(&feed_label);
         feed_row.append(&feed_value);
@@ -570,6 +591,13 @@ impl MachineControlView {
         spindle_controls.append(&spindle_stop);
         spindle_controls.append(&spindle_inc1);
         spindle_controls.append(&spindle_inc10);
+
+        let (spindle_target, spindle_set) = Self::override_target_widgets(
+            &t!("Target spindle override (%)"),
+            &t!("Set the spindle override to exactly the target percentage"),
+        );
+        spindle_controls.append(&spindle_target);
+        spindle_controls.append(&spindle_set);
 
         spindle_row.append(&spindle_label);
         spindle_row.append(&spindle_value);
@@ -734,6 +762,13 @@ impl MachineControlView {
         let step_combo = ComboBoxText::new();
         step_combo.set_width_request(140);
         step_box.append(&step_combo);
+
+        let continuous_jog_check = CheckButton::with_label(&t!("Continuous"));
+        continuous_jog_check.set_tooltip_text(Some(&t!(
+            "Hold a jog button or numpad key to jog continuously; release to stop. \
+             Moves in short increments, so a soft limit stops the jog safely."
+        )));
+        step_box.append(&continuous_jog_check);
 
         // Feed controls
         let feed_box = Box::new(Orientation::Horizontal, 8);
@@ -1034,43 +1069,6 @@ impl MachineControlView {
 
         inner_paned.set_end_child(Some(&right_vpaned));
 
-        // Header actions (DeviceConsoleView toolbar is intentionally minimal)
-        {
-            let console_view = device_console.clone();
-            console_clear_btn.connect_clicked(move |_| {
-                if let Some(c) = console_view.as_ref() {
-                    c.clear_log();
-                }
-            });
-        }
-
-        {
-            let console_view = device_console.clone();
-            let console_container = console_container.clone();
-            console_copy_err_btn.connect_clicked(move |_| {
-                let Some(c) = console_view.as_ref() else {
-                    return;
-                };
-                let text = c.get_log_text();
-                let mut last = None;
-                for line in text.lines().rev() {
-                    let l = line.trim();
-                    if l.is_empty() || l == "ok" || l.starts_with('<') {
-                        continue;
-                    }
-                    let low = l.to_lowercase();
-                    if low.contains("error") || low.contains("alarm") {
-                        last = Some(l.to_string());
-                        break;
-                    }
-                }
-                if let Some(line) = last {
-                    let clipboard = console_container.display().clipboard();
-                    clipboard.set_text(&line);
-                }
-            });
-        }
-
         let console_show_panel = Box::new(Orientation::Horizontal, 0);
         console_show_panel.add_css_class("osd");
         console_show_panel.set_halign(Align::End);
@@ -1234,6 +1232,8 @@ impl MachineControlView {
             feed_reset,
             feed_inc1,
             feed_inc10,
+            feed_target,
+            feed_set,
             spindle_value,
             spindle_dec10,
             spindle_dec1,
@@ -1241,6 +1241,8 @@ impl MachineControlView {
             spindle_stop,
             spindle_inc1,
             spindle_inc10,
+            spindle_target,
+            spindle_set,
 
             x_dro,
             y_dro,
@@ -1300,6 +1302,8 @@ impl MachineControlView {
             probe_y_pos_btn: Some(probe_y_pos_btn.clone()),
             step_combo,
             step_label,
+            continuous_jog_check,
+            continuous_jog: thread_safe(ContinuousJogState::default()),
             jog_feed_entry,
             jog_feed_units,
             jog_step_mm: jog_step_mm.clone(),
@@ -1393,21 +1397,48 @@ impl MachineControlView {
             false,
         );
         // Setup jog button handlers
+        /// Returns true (and logs why) when a job is streaming, so manual motion /
+        /// offset commands are not interleaved with the job's G-code.
+        fn job_running(
+            is_streaming: &ThreadSafe<bool>,
+            console: &Option<Rc<DeviceConsoleView>>,
+        ) -> bool {
+            if *is_streaming.lock() {
+                if let Some(c) = console {
+                    c.append_log(&format!("{}\n", t!("Command ignored: a job is running.")));
+                }
+                return true;
+            }
+            false
+        }
+
         fn send_jog(
             axis: char,
             delta: f32,
             communicator: &ThreadSafe<SerialCommunicator>,
             feed_mm_per_min: f32,
             console: &Option<Rc<DeviceConsoleView>>,
+            is_streaming: &ThreadSafe<bool>,
         ) {
-            let jog_cmd = format!("$J=G91 {axis}{delta} F{feed_mm_per_min}\n");
+            // Jogging (buttons or numpad shortcuts) must never inject motion into a running
+            // job, and must not log commands that were never sent while disconnected.
+            if *is_streaming.lock() {
+                if let Some(c) = console {
+                    c.append_log(&format!("{}\n", t!("Jog ignored: a job is running.")));
+                }
+                return;
+            }
+            let mut comm = communicator.lock();
+            if !comm.is_connected() {
+                return;
+            }
+            // G21 makes the jog explicitly metric: internal jog values are always mm and
+            // mm/min, regardless of the controller's current G20/G21 modal state.
+            let jog_cmd = format!("$J=G21 G91 {axis}{delta} F{feed_mm_per_min}\n");
             if let Some(c) = console {
                 c.append_log(&format!("> {}\n", jog_cmd.trim()));
             }
-            {
-                let mut comm = communicator.lock();
-                let _ = comm.send(jog_cmd.as_bytes());
-            }
+            let _ = comm.send(jog_cmd.as_bytes());
         }
 
         {
@@ -1415,10 +1446,15 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_x_pos.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
-                send_jog('X', step, &communicator, feed, &console);
+                send_jog('X', step, &communicator, feed, &console, &is_streaming);
             });
         }
         {
@@ -1426,10 +1462,15 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_x_neg.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
-                send_jog('X', -step, &communicator, feed, &console);
+                send_jog('X', -step, &communicator, feed, &console, &is_streaming);
             });
         }
         {
@@ -1437,10 +1478,15 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_y_pos.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
-                send_jog('Y', step, &communicator, feed, &console);
+                send_jog('Y', step, &communicator, feed, &console, &is_streaming);
             });
         }
         {
@@ -1448,10 +1494,15 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_y_neg.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
-                send_jog('Y', -step, &communicator, feed, &console);
+                send_jog('Y', -step, &communicator, feed, &console, &is_streaming);
             });
         }
         {
@@ -1459,10 +1510,15 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_z_pos.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
-                send_jog('Z', step, &communicator, feed, &console);
+                send_jog('Z', step, &communicator, feed, &console, &is_streaming);
             });
         }
         {
@@ -1470,10 +1526,15 @@ impl MachineControlView {
             let jog_step_mm = view.jog_step_mm.clone();
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_z_neg.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
-                send_jog('Z', -step, &communicator, feed, &console);
+                send_jog('Z', -step, &communicator, feed, &console, &is_streaming);
             });
         }
 
@@ -1488,7 +1549,21 @@ impl MachineControlView {
                 .as_ref()
                 .map(|c| c.command_entry.clone());
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
 
+            let view_keys = view.clone();
+            let console_entry_release = console_entry.clone();
+            let view_release = view.clone();
+            controller.connect_key_released(move |_, key, _, _| {
+                if let Some(entry) = console_entry_release.as_ref() {
+                    if entry.has_focus() {
+                        return;
+                    }
+                }
+                if key.to_unicode().and_then(numpad_jog).is_some() {
+                    view_release.stop_continuous_jog();
+                }
+            });
             controller.connect_key_pressed(move |_, key, _, _| {
                 if let Some(entry) = console_entry.as_ref() {
                     if entry.has_focus() {
@@ -1500,16 +1575,24 @@ impl MachineControlView {
                     return glib::Propagation::Proceed;
                 };
 
+                if view_keys.continuous_jog_enabled() {
+                    let Some((axis, direction)) = numpad_jog(ch) else {
+                        return glib::Propagation::Proceed;
+                    };
+                    view_keys.start_continuous_jog(axis, direction);
+                    return glib::Propagation::Stop;
+                }
+
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
 
                 match ch {
-                    '8' => send_jog('Y', step, &communicator, feed, &console),
-                    '2' => send_jog('Y', -step, &communicator, feed, &console),
-                    '4' => send_jog('X', -step, &communicator, feed, &console),
-                    '6' => send_jog('X', step, &communicator, feed, &console),
-                    '9' => send_jog('Z', step, &communicator, feed, &console),
-                    '3' => send_jog('Z', -step, &communicator, feed, &console),
+                    '8' => send_jog('Y', step, &communicator, feed, &console, &is_streaming),
+                    '2' => send_jog('Y', -step, &communicator, feed, &console, &is_streaming),
+                    '4' => send_jog('X', -step, &communicator, feed, &console, &is_streaming),
+                    '6' => send_jog('X', step, &communicator, feed, &console, &is_streaming),
+                    '9' => send_jog('Z', step, &communicator, feed, &console, &is_streaming),
+                    '3' => send_jog('Z', -step, &communicator, feed, &console, &is_streaming),
                     _ => return glib::Propagation::Proceed,
                 }
 
@@ -1517,6 +1600,28 @@ impl MachineControlView {
             });
 
             view.widget.add_controller(controller);
+
+            // A key release can be missed if focus leaves the panel mid-jog: stop then too.
+            let focus = gtk4::EventControllerFocus::new();
+            let view_focus = view.clone();
+            focus.connect_leave(move |_| view_focus.stop_continuous_jog());
+            view.widget.add_controller(focus);
+        }
+
+        // Continuous (hold-to-jog) mode for the jog buttons.
+        view.attach_continuous_jog(&view.jog_x_pos, 'X', 1.0);
+        view.attach_continuous_jog(&view.jog_x_neg, 'X', -1.0);
+        view.attach_continuous_jog(&view.jog_y_pos, 'Y', 1.0);
+        view.attach_continuous_jog(&view.jog_y_neg, 'Y', -1.0);
+        view.attach_continuous_jog(&view.jog_z_pos, 'Z', 1.0);
+        view.attach_continuous_jog(&view.jog_z_neg, 'Z', -1.0);
+        {
+            let view_toggle = view.clone();
+            view.continuous_jog_check.connect_toggled(move |c| {
+                if !c.is_active() {
+                    view_toggle.stop_continuous_jog();
+                }
+            });
         }
 
         let view_clone = view.clone();
@@ -1531,55 +1636,45 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let view_pause = view.clone();
 
-        // Boton de pausa
+            // Boton de pausa
             view.pause_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
                     c.append_log("> ! (Pause)\n");
                 }
 
-                {
-                    let mut comm = communicator.lock();
+                let already_paused = *is_paused.lock();
 
-                    // Detectar modo láser: leer $32, si no disponible → CNC (false)
-                    let is_laser = device_status::get_grbl_setting(32)
-                        .and_then(|v| v.parse::<i32>().ok())
-                        .map(|v| v == 1)
-                        .unwrap_or(false);  // ← Default: CNC
+                // Detectar modo láser: leer $32, si no disponible → CNC (false)
+                let is_laser = device_status::get_grbl_setting(32)
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .map(|v| v == 1)
+                    .unwrap_or(false); // ← Default: CNC
 
-                    if !is_laser {
-                        // CNC: Enviar M5 para detener el spindle
-                        let _ = comm.send_command("M5");
-                        if let Some(c) = console.as_ref() {
-                            c.append_log("> M5 (Spindle off)\n");
-                        }
+                let sender = view_pause.direct_sender.lock().clone();
+                match sender.as_ref().filter(|s| s.is_running()) {
+                    // DirectSender sends the raw feed-hold byte itself.
+                    Some(sender) => sender.pause(),
+                    None => {
+                        let mut comm = communicator.lock();
+                        let _ = comm.send(b"!");
                     }
-                    // Láser: solo enviar ! (GRBL apaga el láser automáticamente)
-                    let _ = comm.send(b"!");
+                }
+
+                // CNC: stop the spindle with the realtime spindle-stop override (0x9E).
+                // A queued `M5` line would only execute after the buffered moves, i.e.
+                // *after* resume, and the job would continue cutting with the spindle off.
+                // GRBL restores the spindle automatically on resume (~). Only send it on the
+                // first pause, because 0x9E toggles and a second press would restore it.
+                // Láser: solo enviar ! (GRBL apaga el láser automáticamente)
+                if !is_laser && !already_paused {
+                    let mut comm = communicator.lock();
+                    let _ = comm.send(&[0x9E]);
+                    if let Some(c) = console.as_ref() {
+                        c.append_log("> 0x9E (Spindle stop)\n");
+                    }
                 }
 
                 *is_paused.lock() = true;
-
-                if let Some(sender) = view_pause.direct_sender.lock().as_ref() {
-                    sender.pause();
-                }
-            });
-
-            // Unlock button handler
-            let communicator_unlock = view.communicator.clone();
-            let console_unlock = view.device_console.clone();
-            let direct_sender_unlock = view.direct_sender.clone();
-
-            view.unlock_btn.connect_clicked(move |_| {
-                if let Some(c) = console_unlock.as_ref() {
-                    c.append_log("> $X (Unlock)\n");
-                }
-
-                if let Some(sender) = direct_sender_unlock.lock().as_ref() {
-                    sender.unlock();
-                } else {
-                    let mut comm = communicator_unlock.lock();
-                    let _ = comm.send_command("$X");
-                }
             });
         }
 
@@ -1596,16 +1691,16 @@ impl MachineControlView {
                 if let Some(c) = console.as_ref() {
                     c.append_log("> ~ (Resume)\n");
                 }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(b"~");
+                // Send the cycle-start byte exactly once (DirectSender sends it itself).
+                let sender = view_resume.direct_sender.lock().clone();
+                match sender.as_ref().filter(|s| s.is_running()) {
+                    Some(sender) => sender.resume(),
+                    None => {
+                        let mut comm = communicator.lock();
+                        let _ = comm.send(b"~");
+                    }
                 }
                 *is_paused.lock() = false;
-
-                // Resume DirectSender if it exists - use view_resume
-                if let Some(sender) = view_resume.direct_sender.lock().as_ref() {
-                    sender.resume();
-                }
 
                 // Kickstart if stalled
                 if *is_streaming.lock() && !*waiting_for_ack.lock() {
@@ -1636,17 +1731,18 @@ impl MachineControlView {
             let view_stop = view.clone();
 
             view.stop_btn.connect_clicked(move |_| {
+                // Stop DirectSender before the reset so it cannot write lines after it
+                // (the worker re-checks this flag while holding the communicator lock).
+                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
+                    sender.stop();
+                }
+
                 if let Some(c) = console.as_ref() {
                     c.append_log("> 0x18 (Stop)\n");
                 }
                 {
                     let mut comm = communicator.lock();
                     let _ = comm.send(&[0x18]);
-                }
-
-                // Stop DirectSender if it exists - use view_stop
-                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
-                    sender.stop();
                 }
 
                 *is_streaming.lock() = false;
@@ -1671,6 +1767,20 @@ impl MachineControlView {
             let communicator_clone = view.communicator.clone();
 
             view.send_btn.connect_clicked(move |_| {
+                // Never start a second stream on top of a running one (DirectSender::new
+                // would otherwise reset the shared streaming flag mid-job).
+                let previous_still_running = view_clone
+                    .direct_sender
+                    .lock()
+                    .as_ref()
+                    .is_some_and(|s| s.is_running());
+                if *view_clone.is_streaming.lock() || previous_still_running {
+                    if let Some(c) = view_clone.device_console.as_ref() {
+                        c.append_log(&format!("{}\n", t!("A job is already running.")));
+                    }
+                    return;
+                }
+
                 let mut content = String::new();
                 if let Some(ed) = editor.as_ref() {
                     content = ed.get_text();
@@ -1720,12 +1830,9 @@ impl MachineControlView {
                 let view_timeout = view_clone.clone();
                 let is_streaming_timeout = view_clone.is_streaming.clone();
 
-                let receiver = std::sync::Mutex::new(receiver);
-
                 // Timeout para leer progreso
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                    let receiver_guard = receiver.lock().unwrap();
-                    while let Ok(message) = receiver_guard.try_recv() {
+                    while let Ok(message) = receiver.try_recv() {
                         // println!("🔍 Mensaje recibido: '{}'", message);
 
                         if message.starts_with('>') {
@@ -1769,6 +1876,9 @@ impl MachineControlView {
                             view_timeout.stop_btn.set_sensitive(true); // Siempre true
                             view_timeout.send_btn.set_sensitive(true);
                             *is_streaming_timeout.lock() = false;
+                            // The worker thread has finished: stop polling, otherwise every
+                            // Send adds another 100 ms timer that runs forever.
+                            return glib::ControlFlow::Break;
                         }
                     }
                     glib::ControlFlow::Continue
@@ -1783,7 +1893,11 @@ impl MachineControlView {
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             view.home_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> $H\n");
                 }
@@ -1835,7 +1949,11 @@ impl MachineControlView {
             let communicator = view.communicator.clone();
             let wcs_btns = view.wcs_btns.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             view.x_zero_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 let p = wcs_btns
                     .iter()
                     .position(|b| b.is_active())
@@ -1855,7 +1973,11 @@ impl MachineControlView {
             let communicator = view.communicator.clone();
             let wcs_btns = view.wcs_btns.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             view.y_zero_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 let p = wcs_btns
                     .iter()
                     .position(|b| b.is_active())
@@ -1875,7 +1997,11 @@ impl MachineControlView {
             let communicator = view.communicator.clone();
             let wcs_btns = view.wcs_btns.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             view.z_zero_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 let p = wcs_btns
                     .iter()
                     .position(|b| b.is_active())
@@ -1896,7 +2022,11 @@ impl MachineControlView {
             let wcs_btns = view.wcs_btns.clone();
             let widget_for_dialog = view.widget.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             view.zero_all_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 let dialog = gtk4::MessageDialog::builder()
                 .message_type(gtk4::MessageType::Question)
                 .buttons(gtk4::ButtonsType::YesNo)
@@ -1940,12 +2070,18 @@ impl MachineControlView {
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             let include_z_check = view.goto_zero_include_z.clone();
             view.goto_zero_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
+                // Explicit G90: in G91 (e.g. left over from a console command) "G0 X0 Y0"
+                // would be a zero-length relative move instead of going to work zero.
                 let cmd = if include_z_check.is_active() {
-                    "G0 X0 Y0 Z0"
+                    "G90 G0 X0 Y0 Z0"
                 } else {
-                    "G0 X0 Y0"
+                    "G90 G0 X0 Y0"
                 };
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
@@ -1969,13 +2105,20 @@ impl MachineControlView {
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             probe_z_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> Quick Z-touch probe\n");
                 }
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command("G38.2 Z-20 F100");
+                    // G38.2 targets are absolute in G90: probe *relative* to the current
+                    // position (in mm), then restore absolute distance mode.
+                    let _ = comm.send_command("G21 G91 G38.2 Z-20 F100");
+                    let _ = comm.send_command("G90");
                 }
             });
         }
@@ -1984,52 +2127,80 @@ impl MachineControlView {
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             probe_x_neg_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> Probe X- edge\n");
                 }
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command("G38.2 X-10 F100");
+                    // G38.2 targets are absolute in G90: probe *relative* to the current
+                    // position (in mm), then restore absolute distance mode.
+                    let _ = comm.send_command("G21 G91 G38.2 X-10 F100");
+                    let _ = comm.send_command("G90");
                 }
             });
         }
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             probe_x_pos_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> Probe X+ edge\n");
                 }
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command("G38.2 X10 F100");
+                    // G38.2 targets are absolute in G90: probe *relative* to the current
+                    // position (in mm), then restore absolute distance mode.
+                    let _ = comm.send_command("G21 G91 G38.2 X10 F100");
+                    let _ = comm.send_command("G90");
                 }
             });
         }
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             probe_y_neg_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> Probe Y- edge\n");
                 }
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command("G38.2 Y-10 F100");
+                    // G38.2 targets are absolute in G90: probe *relative* to the current
+                    // position (in mm), then restore absolute distance mode.
+                    let _ = comm.send_command("G21 G91 G38.2 Y-10 F100");
+                    let _ = comm.send_command("G90");
                 }
             });
         }
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
             probe_y_pos_btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> Probe Y+ edge\n");
                 }
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command("G38.2 Y10 F100");
+                    // G38.2 targets are absolute in G90: probe *relative* to the current
+                    // position (in mm), then restore absolute distance mode.
+                    let _ = comm.send_command("G21 G91 G38.2 Y10 F100");
+                    let _ = comm.send_command("G90");
                 }
             });
         }
@@ -2050,13 +2221,19 @@ impl MachineControlView {
                 console_clone.add_to_history(cmd.clone());
                 console_clone.reset_history_navigation();
 
-                // Log to console
-                console_clone.append_log(&format!("> {}\n", cmd));
-
-                // Send command
+                // Send command (only log it as sent if it actually went out)
                 {
                     let mut comm = communicator.lock();
-                    let _ = comm.send_command(&cmd);
+                    if !comm.is_connected() {
+                        console_clone.append_log(&format!("{}\n", t!("Not connected")));
+                        return;
+                    }
+                    match comm.send_command(&cmd) {
+                        Ok(_) => console_clone.append_log(&format!("> {}\n", cmd)),
+                        Err(e) => {
+                            console_clone.append_log(&format!("{}: {}\n", t!("Error sending"), e))
+                        }
+                    }
                 }
 
                 // Clear entry
@@ -2313,6 +2490,8 @@ impl MachineControlView {
                             let last_overrides_poll = view_clone.last_overrides.clone();
                             let widget_poll = view_clone.widget.clone();
                             let job_start_time_poll = view_clone.job_start_time.clone();
+                            let direct_sender_poll = view_clone.direct_sender.clone();
+                            let continuous_jog_poll = view_clone.continuous_jog.clone();
 
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
@@ -2340,7 +2519,14 @@ impl MachineControlView {
 
                                 // Ceder el puerto por completo mientras DirectSender graba una imagen:
                                 // evita robar los "ok" que su ventana de flujo necesita contar.
-                                if *is_streaming_poll.lock() {
+                                // Only DirectSender reads the port itself; the legacy queue
+                                // streamer (`start_job`) relies on this loop to consume the
+                                // acks and send the next line, so it must keep running then.
+                                let direct_sender_running = direct_sender_poll
+                                    .lock()
+                                    .as_ref()
+                                    .is_some_and(|s| s.is_running());
+                                if direct_sender_running {
                                     return glib::ControlFlow::Continue;
                                 }
 
@@ -2413,6 +2599,11 @@ impl MachineControlView {
                                                 let lower = line.to_ascii_lowercase();
                                                 let lower_trim = lower.trim_start();
                                                 let is_error = lower_trim.starts_with("error:");
+                                                // Replies to continuous-jog increments are counted
+                                                // there; a rejected increment (e.g. soft limit)
+                                                // ends the jog and is logged, not shown as a dialog.
+                                                let jog_reply = (is_ack || is_error)
+                                                    && continuous_jog_poll.lock().on_reply(is_error);
 
                                                 // If this is an `error:n`, decode it and append the decoded text to the console log line.
                                                 let mut line_for_log = line.clone();
@@ -2425,7 +2616,7 @@ impl MachineControlView {
                                                             line_for_log = format!("{} - {}", line, decoded);
 
                                                             // Only show dialog if NOT streaming, otherwise just log
-                                                            if !*is_streaming_poll.lock() {
+                                                            if !*is_streaming_poll.lock() && !jog_reply {
                                                                 let secondary = format!("error:{} - {}", code, decoded);
                                                                 let dialog = gtk4::MessageDialog::builder()
                                                                 .message_type(gtk4::MessageType::Error)

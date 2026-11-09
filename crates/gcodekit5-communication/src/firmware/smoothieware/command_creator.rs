@@ -74,7 +74,9 @@ impl SmoothiewareCommandCreator {
 
     /// Create a dwell command
     pub fn dwell(&self, seconds: f64) -> String {
-        format!("G4 P{:.2}", seconds)
+        // Smoothieware interprets G4 P as milliseconds (unless grbl_mode is on);
+        // the S word is seconds in every mode.
+        format!("G4 S{:.3}", seconds)
     }
 
     /// Create a status request command

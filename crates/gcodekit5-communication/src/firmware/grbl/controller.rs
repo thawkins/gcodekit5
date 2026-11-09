@@ -4,6 +4,10 @@
 //! including connection management, command execution, and status polling.
 
 use crate::communication::{ConnectionParams, NoOpCommunicator};
+use crate::firmware::grbl::override_sequencer::{
+    is_valid_override_target, next_override_step, OverrideStepCodes, FEED_OVERRIDE_CODES,
+    MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+};
 use crate::firmware::grbl::status_parser::StatusParser;
 use crate::firmware::grbl::{GrblCommunicator, GrblCommunicatorConfig};
 use async_trait::async_trait;
@@ -15,7 +19,18 @@ use gcodekit5_core::{ControllerTrait, OverrideState};
 const DEFAULT_PROBE_TIMEOUT_MS: u64 = 30_000;
 /// Retract distance when probe fails to trigger (mm).
 const PROBE_FAILSAFE_RETRACT_MM: f64 = 5.0;
+/// Interval between the short jog increments that make up a continuous jog.
+const CONTINUOUS_JOG_TICK: Duration = Duration::from_millis(50);
+/// Maximum continuous-jog increments sent but not yet acknowledged by the controller.
+const CONTINUOUS_JOG_LOOKAHEAD: usize = 3;
+/// How long `jog_stop` waits for the IO loop to drop queued, unsent jog increments.
+const JOG_PURGE_TIMEOUT: Duration = Duration::from_millis(250);
+/// How long to wait for a status report to confirm one override step.
+const OVERRIDE_STEP_TIMEOUT: Duration = Duration::from_secs(2);
+/// Upper bound on override steps for one request (a reset plus 9 x 10% and 9 x 1% is 19).
+const MAX_OVERRIDE_STEPS: usize = 32;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -85,9 +100,101 @@ pub struct GrblController {
     listeners: ThreadSafeRwMap<String, Arc<dyn gcodekit5_core::ControllerListener>>,
     /// Connection parameters
     connection_params: ConnectionParams,
+    /// Shared bookkeeping for continuous jogging (see `jog_start`).
+    jog: JogTracking,
+    /// The running continuous-jog task and its stop flag, if any.
+    jog_session: ThreadSafeRw<Option<(Arc<AtomicBool>, JoinHandle<()>)>>,
+}
+
+/// Counters shared between the continuous-jog task and the IO loop.
+#[derive(Clone, Default)]
+struct JogTracking {
+    /// `$J=` commands queued or sent but not yet answered with `ok`/`error`.
+    in_flight: Arc<AtomicUsize>,
+    /// Set when the controller answers a jog with `error:` (e.g. soft limit, error 15).
+    rejected: Arc<AtomicBool>,
+    /// Asks the IO loop to drop queued, unsent jog commands; cleared once done.
+    purge: Arc<AtomicBool>,
+}
+
+impl JogTracking {
+    /// Marks `n` jog commands as answered (or dropped), never going below zero.
+    fn release(&self, n: usize) {
+        let _ = self
+            .in_flight
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                Some(v.saturating_sub(n))
+            });
+    }
+}
+
+/// Length in mm of one continuous-jog increment at `feed_rate` (mm/min).
+///
+/// Each increment takes one tick to execute, so sending one per tick keeps the
+/// controller moving without building up a long queue of motion.
+///
+/// # Arguments
+/// * `feed_rate` - Jog feed rate in mm/min.
+/// * `tick` - Interval between increments.
+///
+/// # Returns
+/// The increment length in mm.
+pub fn continuous_jog_increment(feed_rate: f64, tick: Duration) -> f64 {
+    feed_rate / 60.0 * tick.as_secs_f64()
 }
 
 impl GrblController {
+    /// Moves a feed or spindle override to `target` one confirmed step at a time.
+    ///
+    /// GRBL records realtime override bytes as pending flags, so several identical
+    /// bytes sent back-to-back can collapse into a single adjustment. This method
+    /// sends one step, then waits until the controller's `Ov:` status report shows
+    /// the value has changed before choosing the next step from the reported value.
+    ///
+    /// # Arguments
+    /// * `name` - Override name used in error messages ("Feed" or "Spindle").
+    /// * `target` - Desired override percentage (10–200).
+    /// * `codes` - The realtime bytes for this override.
+    /// * `read` - Selects this override's reported value from the override state.
+    ///
+    /// # Errors
+    /// Returns an error if `target` is out of range, a byte cannot be sent, or the
+    /// controller does not report a change within `OVERRIDE_STEP_TIMEOUT`.
+    async fn sequence_override(
+        &mut self,
+        name: &str,
+        target: u16,
+        codes: OverrideStepCodes,
+        read: fn(&OverrideState) -> u16,
+    ) -> anyhow::Result<()> {
+        if !is_valid_override_target(target) {
+            return Err(anyhow::anyhow!(
+                "{name} override must be {MIN_OVERRIDE_PERCENT}-{MAX_OVERRIDE_PERCENT}%"
+            ));
+        }
+
+        for _ in 0..MAX_OVERRIDE_STEPS {
+            let current = read(&self.state.read().override_state);
+            let Some(byte) = next_override_step(current, target, codes) else {
+                return Ok(());
+            };
+            self.communicator.send_realtime_byte(byte)?;
+
+            let deadline = Instant::now() + OVERRIDE_STEP_TIMEOUT;
+            while read(&self.state.read().override_state) == current {
+                if Instant::now() >= deadline {
+                    return Err(anyhow::anyhow!(
+                        "{name} override: controller did not report a change from {current}% \
+                         within {OVERRIDE_STEP_TIMEOUT:?}"
+                    ));
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }
+
+        Err(anyhow::anyhow!("{name} override did not reach {target}%"))
+    }
+
     /// Create a new GRBL controller
     pub fn new(connection_params: ConnectionParams, name: Option<String>) -> anyhow::Result<Self> {
         let communicator = Arc::new(GrblCommunicator::new(
@@ -104,6 +211,8 @@ impl GrblController {
             shutdown_signal: thread_safe_rw(None),
             listeners: thread_safe_rw(std::collections::HashMap::new()),
             connection_params,
+            jog: JogTracking::default(),
+            jog_session: thread_safe_rw(None),
         })
     }
 
@@ -152,6 +261,7 @@ impl GrblController {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => {
                 let _ = self.send_retract(axis).await;
+                self.state.write().probe_in_progress = false;
                 anyhow::bail!("Probe result channel closed unexpectedly")
             }
             Err(_) => {
@@ -191,8 +301,21 @@ impl GrblController {
 
     /// Send a rapid retract move to safe height (Z+).
     async fn send_retract(&self, _axis: char) -> anyhow::Result<()> {
-        let retract_cmd = format!("G91 G0 Z+{:.3} G90", PROBE_FAILSAFE_RETRACT_MM);
-        let _ = self.communicator.send_command(&retract_cmd);
+        // G90 and G91 are in the same modal group, so they cannot share a block
+        // (GRBL error:21). Route through the IO loop so character counting stays in sync.
+        let tx = self
+            .command_tx
+            .read()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Controller not connected"))?;
+        for cmd in [
+            format!("G91 G0 Z{:.3}", PROBE_FAILSAFE_RETRACT_MM),
+            "G90".to_string(),
+        ] {
+            tx.send(cmd)
+                .await
+                .map_err(|_| anyhow::anyhow!("Failed to send command to IO loop"))?;
+        }
         Ok(())
     }
 
@@ -207,10 +330,12 @@ impl GrblController {
         let communicator = self.communicator.clone();
         let state = self.state.clone();
         let listeners = self.listeners.clone();
+        let jog = self.jog.clone();
 
         let handle = tokio::spawn(async move {
             let mut buffer = String::new();
-            let mut sent_queue: VecDeque<usize> = VecDeque::new();
+            // (bytes, is a `$J=` jog) for each command awaiting `ok`/`error`.
+            let mut sent_queue: VecDeque<(usize, bool)> = VecDeque::new();
             let mut local_cmd_queue: VecDeque<String> = VecDeque::new();
             let mut last_poll = Instant::now();
 
@@ -235,7 +360,7 @@ impl GrblController {
                         // Process complete lines
                         while let Some(pos) = buffer.find('\n') {
                             let line = buffer[..pos].trim().to_string();
-                            buffer.drain(..=pos + 1); // +1 to remove \n
+                            buffer.drain(..=pos); // inclusive range removes the '\n'
 
                             if !line.is_empty() {
                                 // Check for status report
@@ -255,6 +380,16 @@ impl GrblController {
                                         state_guard.work_position.x = wpos.x as f32;
                                         state_guard.work_position.y = wpos.y as f32;
                                         state_guard.work_position.z = wpos.z as f32;
+                                    }
+
+                                    // The override state is only ever taken from the
+                                    // controller's own `Ov:` report, never from what was
+                                    // requested, so it reflects what GRBL actually applied.
+                                    if let Some(ov) = full_status.overrides {
+                                        let o = &mut state_guard.override_state;
+                                        o.feed_override = ov.feed;
+                                        o.rapid_override = u8::try_from(ov.rapid).unwrap_or(100);
+                                        o.spindle_override = ov.spindle;
                                     }
 
                                     if let Some(machine_state) = full_status.machine_state {
@@ -309,14 +444,21 @@ impl GrblController {
                                     }
                                 } else if line == "ok" {
                                     // Acknowledge command
-                                    if let Some(len) = sent_queue.pop_front() {
+                                    if let Some((len, is_jog)) = sent_queue.pop_front() {
                                         communicator.acknowledge_chars(len);
+                                        if is_jog {
+                                            jog.release(1);
+                                        }
                                     }
                                 } else if line.starts_with("error:") {
                                     // Handle error (also consumes a command slot)
                                     tracing::error!("GRBL Error: {}", line);
-                                    if let Some(len) = sent_queue.pop_front() {
+                                    if let Some((len, is_jog)) = sent_queue.pop_front() {
                                         communicator.acknowledge_chars(len);
+                                        if is_jog {
+                                            jog.release(1);
+                                            jog.rejected.store(true, Ordering::SeqCst);
+                                        }
                                     }
                                 } else {
                                     // Other messages (welcome, settings, etc)
@@ -333,6 +475,15 @@ impl GrblController {
                     local_cmd_queue.push_back(cmd);
                 }
 
+                // Drop queued jog increments that have not been written yet, so nothing
+                // can follow the jog-cancel that `jog_stop` sends next.
+                if jog.purge.load(Ordering::SeqCst) {
+                    let before = local_cmd_queue.len();
+                    local_cmd_queue.retain(|c| !c.starts_with("$J="));
+                    jog.release(before - local_cmd_queue.len());
+                    jog.purge.store(false, Ordering::SeqCst);
+                }
+
                 // 3. WRITE PHASE: Send commands if buffer allows
                 // We peek at the next command
                 if let Some(cmd) = local_cmd_queue.front() {
@@ -341,7 +492,7 @@ impl GrblController {
                         // Send it
                         if communicator.send_command(cmd).is_ok() {
                             // Move to sent queue
-                            sent_queue.push_back(cmd_len);
+                            sent_queue.push_back((cmd_len, cmd.starts_with("$J=")));
                             local_cmd_queue.pop_front();
                         }
                     }
@@ -408,10 +559,11 @@ impl ControllerTrait for GrblController {
 
         // Initialize (this might need to be async or handled via queue now)
         // For now, we'll just queue the initialization commands
-        self.send_command("$RST=*").await?;
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // NOTE: never send "$RST=*" here: it restores EEPROM defaults and wipes the
+        // user's machine settings and work offsets. "$$" (not "$", which is help)
+        // lists the settings.
         self.send_command("$I").await?;
-        self.send_command("$").await?;
+        self.send_command("$$").await?;
         self.send_command("$G").await?;
 
         {
@@ -489,16 +641,71 @@ impl ControllerTrait for GrblController {
         if direction == 0 {
             return Err(anyhow::anyhow!("Direction must be non-zero"));
         }
+        if !(feed_rate.is_finite() && feed_rate > 0.0) {
+            return Err(anyhow::anyhow!("Jog feed rate must be positive"));
+        }
+        let tx = self
+            .command_tx
+            .read()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Controller not connected"))?;
 
-        // Create a jog command using $J= syntax with G91 (relative) and G0 (rapid)
-        let direction_str = if direction > 0 { "+" } else { "-" };
-        let cmd = format!("$J=G91 G0 {}{} F{:.0}", axis, direction_str, feed_rate);
-        self.send_command(&cmd).await?;
+        // Only one continuous jog at a time.
+        self.jog_stop().await?;
 
+        // GRBL's recommended continuous jog: stream short increments, each taking
+        // about one tick to execute, with only a few unacknowledged at once. Unlike a
+        // single long jog, this never asks for a target beyond the machine's travel:
+        // at a soft limit GRBL rejects the next increment (error 15) and the jog ends.
+        let step = continuous_jog_increment(feed_rate, CONTINUOUS_JOG_TICK);
+        let signed = if direction > 0 { step } else { -step };
+        let cmd = format!("$J=G91 {axis}{signed:.4} F{feed_rate:.0}");
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let jog = self.jog.clone();
+        jog.rejected.store(false, Ordering::SeqCst);
+        let task_stop = stop.clone();
+        let handle = tokio::spawn(async move {
+            while !task_stop.load(Ordering::SeqCst) {
+                if jog.rejected.load(Ordering::SeqCst) {
+                    tracing::info!("Continuous jog ended: controller rejected an increment");
+                    break;
+                }
+                if jog.in_flight.load(Ordering::SeqCst) < CONTINUOUS_JOG_LOOKAHEAD {
+                    jog.in_flight.fetch_add(1, Ordering::SeqCst);
+                    if tx.send(cmd.clone()).await.is_err() {
+                        jog.release(1);
+                        break;
+                    }
+                }
+                tokio::time::sleep(CONTINUOUS_JOG_TICK).await;
+            }
+        });
+        *self.jog_session.write() = Some((stop, handle));
         Ok(())
     }
 
     async fn jog_stop(&mut self) -> anyhow::Result<()> {
+        // Stop the increment task first so it cannot queue anything after the cancel.
+        let session = self.jog_session.write().take();
+        if let Some((stop, handle)) = session {
+            stop.store(true, Ordering::SeqCst);
+            let _ = handle.await;
+        }
+
+        // Have the IO loop drop increments that are queued but not yet written; those
+        // already written are flushed by GRBL's jog-cancel below.
+        if self.io_task.read().is_some() {
+            self.jog.purge.store(true, Ordering::SeqCst);
+            let deadline = Instant::now() + JOG_PURGE_TIMEOUT;
+            while self.jog.purge.load(Ordering::SeqCst) && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+            if self.jog.purge.swap(false, Ordering::SeqCst) {
+                tracing::warn!("IO loop did not confirm the jog purge before jog-cancel");
+            }
+        }
+
         self.communicator.send_realtime_byte(0x85)?;
         Ok(())
     }
@@ -509,9 +716,9 @@ impl ControllerTrait for GrblController {
         distance: f64,
         feed_rate: f64,
     ) -> anyhow::Result<()> {
-        // Format: $J=G91 G0 X{signed_distance} F{feed_rate}
+        // Format: $J=G91 X{signed_distance} F{feed_rate}
         // distance already includes sign from the caller
-        let cmd = format!("$J=G91 G0 {}{:.3} F{:.0}", axis, distance, feed_rate);
+        let cmd = format!("$J=G91 {}{:.3} F{:.0}", axis, distance, feed_rate);
         self.send_command(&cmd).await?;
 
         Ok(())
@@ -560,19 +767,8 @@ impl ControllerTrait for GrblController {
     }
 
     async fn set_feed_override(&mut self, percentage: u16) -> anyhow::Result<()> {
-        if percentage > 200 {
-            return Err(anyhow::anyhow!("Feed override must be 0-200%"));
-        }
-
-        self.state.write().override_state.feed_override = percentage;
-
-        // Send real-time override commands based on percentage
-        // GRBL uses specific codes for different percentages
-        if percentage == 100 {
-            self.communicator.send_realtime_byte(0x90)?;
-        }
-
-        Ok(())
+        self.sequence_override("Feed", percentage, FEED_OVERRIDE_CODES, |o| o.feed_override)
+            .await
     }
 
     async fn set_rapid_override(&mut self, percentage: u8) -> anyhow::Result<()> {
@@ -580,17 +776,21 @@ impl ControllerTrait for GrblController {
             return Err(anyhow::anyhow!("Rapid override must be 25, 50, or 100"));
         }
 
+        let byte = match percentage {
+            25 => 0x97,
+            50 => 0x96,
+            _ => 0x95,
+        };
+        self.communicator.send_realtime_byte(byte)?;
         self.state.write().override_state.rapid_override = percentage;
         Ok(())
     }
 
     async fn set_spindle_override(&mut self, percentage: u16) -> anyhow::Result<()> {
-        if percentage > 200 {
-            return Err(anyhow::anyhow!("Spindle override must be 0-200%"));
-        }
-
-        self.state.write().override_state.spindle_override = percentage;
-        Ok(())
+        self.sequence_override("Spindle", percentage, SPINDLE_OVERRIDE_CODES, |o| {
+            o.spindle_override
+        })
+        .await
     }
 
     async fn set_work_zero(&mut self) -> anyhow::Result<()> {
@@ -640,13 +840,13 @@ impl ControllerTrait for GrblController {
     }
 
     async fn query_settings(&mut self) -> anyhow::Result<()> {
-        self.communicator.send_command("$")?;
-        Ok(())
+        // "$$" lists settings ("$" only prints help). Queue it so the IO loop
+        // tracks its "ok" for character counting.
+        self.send_command("$$").await
     }
 
     async fn query_parser_state(&mut self) -> anyhow::Result<()> {
-        self.communicator.send_command("$G")?;
-        Ok(())
+        self.send_command("$G").await
     }
 
     fn register_listener(
@@ -730,7 +930,8 @@ mod tests {
     #[tokio::test]
     async fn test_register_unregister_listener() {
         let mut controller =
-            GrblController::new(ConnectionParams::default(), Some("test".to_string())).unwrap();
+            GrblController::new(ConnectionParams::default(), Some("test".to_string()))
+                .expect("controller should construct");
         let listener = Arc::new(TestListener::new());
         let handle = controller.register_listener(listener.clone());
         assert_eq!(controller.listener_count(), 1);
@@ -741,7 +942,8 @@ mod tests {
     #[tokio::test]
     async fn test_listener_receives_status_change() {
         let mut controller =
-            GrblController::new(ConnectionParams::default(), Some("test".to_string())).unwrap();
+            GrblController::new(ConnectionParams::default(), Some("test".to_string()))
+                .expect("controller should construct");
         let listener = Arc::new(TestListener::new());
         let calls = listener.calls.clone();
         let _handle = controller.register_listener(listener.clone());

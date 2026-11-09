@@ -40,6 +40,7 @@ impl std::fmt::Display for ConnectionType {
 
 /// Connection settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ConnectionSettings {
     /// Last used connection type
     pub connection_type: ConnectionType,
@@ -135,6 +136,7 @@ impl std::fmt::Display for StartupTab {
 
 /// UI preference settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UiSettings {
     /// Window width
     pub window_width: u32,
@@ -268,6 +270,7 @@ fn default_grid_minor_line_width() -> f64 {
 
 /// File processing settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FileProcessingSettings {
     /// Default preprocessors to enable
     pub enabled_preprocessors: Vec<String>,
@@ -304,6 +307,7 @@ impl Default for FileProcessingSettings {
 
 /// Machine preference settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MachineSettings {
     /// Default jog increment in mm (linear axes)
     pub jog_increment: f64,
@@ -394,6 +398,7 @@ impl Default for MachineSettings {
 ///
 /// Stores probe default parameters and last probe results for each WCS.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProbeSettings {
     /// Default safe height for probe operations (mm).
     pub default_safe_height: f64,
@@ -471,6 +476,9 @@ pub trait FirmwareSettings: Serialize {
 ///
 /// Aggregates all settings sections and provides file I/O operations.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+// Missing fields (e.g. from older config files) fall back to Default
+// instead of failing the whole load and discarding the user's settings.
+#[serde(default)]
 pub struct Config {
     /// Connection settings
     pub connection: ConnectionSettings,

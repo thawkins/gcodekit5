@@ -38,7 +38,10 @@ impl TextChange {
     /// Create inverse change for undo
     pub fn inverse(&self) -> Self {
         Self {
-            char_range: self.char_range.start..(self.char_range.start + self.new_text.len()),
+            // `char_range` is in characters, so measure the inserted text in chars
+            // (not bytes) or multi-byte text (e.g. "°") corrupts the undo range.
+            char_range: self.char_range.start
+                ..(self.char_range.start + self.new_text.chars().count()),
             old_text: self.new_text.clone(),
             new_text: self.old_text.clone(),
             old_cursor: self.new_cursor,

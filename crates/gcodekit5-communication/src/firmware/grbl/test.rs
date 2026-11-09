@@ -66,7 +66,7 @@ mod six_axis_tests {
     fn test_grbl_machine_position_6axis() {
         let pos = MachinePosition::parse("100.000,50.000,25.000,90.000,45.000,0.000");
         assert!(pos.is_some());
-        let pos = pos.unwrap();
+        let pos = pos.expect("coordinates should parse");
         assert_eq!(pos.x, 100.0);
         assert_eq!(pos.y, 50.0);
         assert_eq!(pos.z, 25.0);
@@ -79,7 +79,7 @@ mod six_axis_tests {
     fn test_grbl_machine_position_3axis() {
         let pos = MachinePosition::parse("100.000,50.000,25.000");
         assert!(pos.is_some());
-        let pos = pos.unwrap();
+        let pos = pos.expect("coordinates should parse");
         assert_eq!(pos.x, 100.0);
         assert_eq!(pos.y, 50.0);
         assert_eq!(pos.z, 25.0);
@@ -92,7 +92,7 @@ mod six_axis_tests {
     fn test_grbl_machine_position_4axis() {
         let pos = MachinePosition::parse("100.000,50.000,25.000,45.000");
         assert!(pos.is_some());
-        let pos = pos.unwrap();
+        let pos = pos.expect("coordinates should parse");
         assert_eq!(pos.x, 100.0);
         assert_eq!(pos.y, 50.0);
         assert_eq!(pos.z, 25.0);
@@ -105,7 +105,7 @@ mod six_axis_tests {
     fn test_grbl_work_position_6axis() {
         let pos = WorkPosition::parse("10.000,20.000,30.000,45.000,22.500,15.000");
         assert!(pos.is_some());
-        let pos = pos.unwrap();
+        let pos = pos.expect("coordinates should parse");
         assert_eq!(pos.x, 10.0);
         assert_eq!(pos.y, 20.0);
         assert_eq!(pos.z, 30.0);
@@ -118,7 +118,7 @@ mod six_axis_tests {
     fn test_grbl_work_coordinate_offset_6axis() {
         let offset = WorkCoordinateOffset::parse("90.000,30.000,-5.000,45.000,22.500,0.000");
         assert!(offset.is_some());
-        let offset = offset.unwrap();
+        let offset = offset.expect("coordinates should parse");
         assert_eq!(offset.x, 90.0);
         assert_eq!(offset.y, 30.0);
         assert_eq!(offset.z, -5.0);

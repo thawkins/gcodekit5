@@ -19,7 +19,7 @@ use libadwaita::{ActionRow, PreferencesGroup};
 use std::cell::Cell;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
+use super::common::set_paned_initial_fraction;
 use super::CamToolsView;
 use crate::device_status;
 use crate::t;
@@ -59,7 +59,7 @@ pub struct ProbeRoutinesTool {
 impl ProbeRoutinesTool {
     pub fn new<F: Fn(String) + 'static>(
         stack: &Stack,
-        settings: Rc<SettingsController>,
+        _settings: Rc<SettingsController>,
         _machine_control: Option<MachineControlView>,
         on_generate: Rc<F>,
     ) -> Self {
@@ -233,14 +233,17 @@ impl ProbeRoutinesTool {
         let params_group = PreferencesGroup::builder().title("Parameters").build();
 
         // Common parameters
-        let (safe_height_row, safe_height, _safe_unit) =
-            create_dimension_row("Safe Height:", probe_defaults::SAFE_HEIGHT, &settings);
-        let (fast_feed_row, fast_feed, _fast_unit) =
-            create_dimension_row("Fast Feed Rate:", probe_defaults::FAST_FEED, &settings);
-        let (slow_feed_row, slow_feed, _slow_unit) =
-            create_dimension_row("Slow Feed Rate:", probe_defaults::SLOW_FEED, &settings);
-        let (backoff_row, backoff, _backoff_unit) =
-            create_dimension_row("Backoff Distance:", probe_defaults::BACKOFF, &settings);
+        // All probe parameters are entered and parsed in mm (mm/min for feeds), like
+        // the routine-specific fields below. Using measurement-system-aware rows here
+        // made imperial users' values (e.g. 0.197 in safe height) be parsed as mm.
+        let (safe_height_row, safe_height) =
+            Self::create_mm_row("Safe Height:", probe_defaults::SAFE_HEIGHT, "mm");
+        let (fast_feed_row, fast_feed) =
+            Self::create_mm_row("Fast Feed Rate:", probe_defaults::FAST_FEED, "mm/min");
+        let (slow_feed_row, slow_feed) =
+            Self::create_mm_row("Slow Feed Rate:", probe_defaults::SLOW_FEED, "mm/min");
+        let (backoff_row, backoff) =
+            Self::create_mm_row("Backoff Distance:", probe_defaults::BACKOFF, "mm");
 
         params_group.add(&safe_height_row);
         params_group.add(&fast_feed_row);
@@ -670,6 +673,23 @@ impl ProbeRoutinesTool {
 
     pub fn widget(&self) -> &Box {
         &self.content
+    }
+
+    /// Create an entry row whose value is always expressed in fixed (metric) units.
+    fn create_mm_row(title: &str, value: f64, unit: &str) -> (ActionRow, Entry) {
+        let row = ActionRow::builder().title(title).build();
+        let box_ = Box::new(Orientation::Horizontal, 6);
+        let entry = Entry::builder()
+            .text(format!("{:.2}", value))
+            .valign(Align::Center)
+            .width_chars(8)
+            .build();
+        let label = Label::new(Some(unit));
+        label.add_css_class("dim-label");
+        box_.append(&entry);
+        box_.append(&label);
+        row.add_suffix(&box_);
+        (row, entry)
     }
 
     #[allow(clippy::too_many_arguments)]

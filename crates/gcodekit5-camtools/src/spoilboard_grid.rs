@@ -29,6 +29,10 @@ impl SpoilboardGridGenerator {
         let mut gcode = String::new();
         let p = &self.params;
 
+        if !(p.grid_spacing.is_finite() && p.grid_spacing > 0.0) {
+            anyhow::bail!("Grid spacing must be positive");
+        }
+
         // Header
         gcode.push_str("; Spoilboard Grid Toolpath\n");
         gcode.push_str(&format!(

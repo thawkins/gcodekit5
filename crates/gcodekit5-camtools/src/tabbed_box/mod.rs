@@ -839,7 +839,9 @@ impl TabbedBoxMaker {
         let slot_w = finger - kerf;
         let slot_h = thickness - kerf;
 
-        let mut pos = leftover / 2.0;
+        // Holes are drawn on the cut centreline, so inset by half the kerf; the finger pitch
+        // (finger + space) must match the mating finger edge exactly.
+        let mut pos = leftover / 2.0 + kerf / 2.0;
 
         for _ in 0..fingers {
             let (x, y, w, h) = if vertical {
@@ -858,7 +860,7 @@ impl TabbedBoxMaker {
 
             self.add_path(path);
 
-            pos += slot_w + kerf + space + kerf;
+            pos += finger + space;
         }
     }
 
@@ -1300,6 +1302,12 @@ impl TabbedBoxMaker {
                             first_point.y + shift_y
                         ));
                     }
+                }
+
+                // Pass 1 of the next path emits no Z move, so restore the pass-1 height here;
+                // otherwise the next panel would start at this panel's deepest pass.
+                if self.params.laser_passes > 1 && self.params.num_axes >= 3 {
+                    gcode.push_str("G0 Z0.00 ; Reset to first pass height\n");
                 }
             }
 

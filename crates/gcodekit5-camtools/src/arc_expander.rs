@@ -59,7 +59,10 @@ impl ArcExpander {
 
         // Calculate angle delta
         let mut angle_delta = end_angle - start_angle;
-        if is_clockwise && angle_delta > 0.0 {
+        if angle_delta.abs() < 1e-9 {
+            // Start == end: G2/G3 semantics describe a full circle, not a zero-length arc
+            angle_delta = if is_clockwise { -2.0 * PI } else { 2.0 * PI };
+        } else if is_clockwise && angle_delta > 0.0 {
             angle_delta -= 2.0 * PI;
         } else if !is_clockwise && angle_delta < 0.0 {
             angle_delta += 2.0 * PI;

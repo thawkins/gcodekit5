@@ -114,6 +114,13 @@ impl MachineControlView {
     }
 
     pub fn emergency_stop(&self) {
+        // Signal the DirectSender worker *before* sending the reset. The worker re-checks
+        // this flag while holding the communicator lock, so once we hold the lock below no
+        // further job lines can be written after the soft reset.
+        if let Some(sender) = self.direct_sender.lock().as_ref() {
+            sender.stop();
+        }
+
         {
             let mut comm = self.communicator.lock();
             let _ = comm.send(&[0x18]);
@@ -128,6 +135,11 @@ impl MachineControlView {
         // Reset progress
         if let Some(sb) = self.status_bar.as_ref() {
             sb.set_progress(0.0, "", "");
+        }
+
+        // Allow a new job to be sent once the controller is reset.
+        if self.communicator.lock().is_connected() {
+            self.send_btn.set_sensitive(true);
         }
 
         // Match StatusBar eStop behavior

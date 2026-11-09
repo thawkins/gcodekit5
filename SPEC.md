@@ -1062,7 +1062,7 @@ Available as real-time commands (executed immediately):
 - Sets work position to offset
 
 **Jogging**:
-- Continuous jogging (pressed button held)
+- Continuous jogging (pressed button held): enabled with the "Continuous" checkbox next to the step selector. While a jog button or numpad key (8/2 Y, 4/6 X, 9/3 Z) is held, the jog is streamed as short `$J=` increments (one per 50 ms, each covering 50 ms of motion at the jog feed) with at most 3 unacknowledged; release, focus loss or unchecking sends jog-cancel (0x85), which also discards queued increments. Because no increment targets a point beyond the next ~50 ms of travel, GRBL soft limits stop the jog at the boundary (the rejected increment ends the jog with a console message instead of an error dialog). Refused while disconnected or while a job streams.
 - Incremental jogging (fixed distance per button click)
 - Selectable increments: 0.1mm, 1mm, 10mm, 100mm (configurable)
 - Selectable feed rate: user-defined
@@ -1093,8 +1093,9 @@ Available as real-time commands (executed immediately):
 #### 4.4.4 Overrides
 
 **Feed Rate Override**:
-- Range: 0-200% (configurable limits)
-- 10% increments via buttons
+- Range: 10-200% (GRBL limits)
+- ±10% and ±1% increments via buttons
+- Exact target: a percentage field and "Set %" button move the override one realtime step at a time, waiting for the controller's `Ov:` status report to confirm each step before sending the next (GRBL can merge identical realtime bytes sent back-to-back). Needs live status reports, so it is refused while a job is streaming; the ± buttons still work then.
 - Continuous via slider
 - Applied to non-rapid feed movements
 - Real-time without stopping
@@ -1106,8 +1107,9 @@ Available as real-time commands (executed immediately):
 - 100% is no override
 
 **Spindle Override**:
-- Range: 0-200% (configurable limits)
-- 10% increments via buttons
+- Range: 10-200% (GRBL limits)
+- ±10% and ±1% increments via buttons
+- Exact target: percentage field and "Set %" button, sequenced against `Ov:` reports as for feed
 - Continuous via slider
 - Real-time PWM/relay adjustment
 - May not work with all controller firmware
@@ -1446,7 +1448,7 @@ G54                ; Back to work coordinates
 ```
 - Buttons for each direction
 - Keyboard shortcuts: W/A/S/D or arrow keys
-- Key repeat support for continuous jog
+- Hold-to-jog (continuous mode) for buttons and numpad keys; see the Jogging section above
 
 **Alternative**: Pendant/gamepad support for jogging
 
@@ -1524,6 +1526,7 @@ G54                ; Back to work coordinates
 - Increment buttons: -10%, -5%, +5%, +10%
 - Reset to 100% button
 - Current percentage display
+- Target percentage field with "Set %" button (confirmed step-by-step against `Ov:` reports)
 
 **Rapid Traverse Override**:
 - Preset buttons: 25%, 50%, 100% (125% optional)
@@ -1534,6 +1537,7 @@ G54                ; Back to work coordinates
 - Increment buttons: -10%, -5%, +5%, +10%
 - Reset to 100% button
 - Current percentage display
+- Target percentage field with "Set %" button (confirmed step-by-step against `Ov:` reports)
 
 #### 5.2.9 Coordinate System Panel
 **Work Coordinate System**:
@@ -2027,6 +2031,7 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
   - Refactored `pocket_operations.rs` to support strategy pattern.
   - Integrated `cavalier_contours` for polygon operations.
   - Updated `DesignerShape` and `DrawingObject` to persist strategy settings.
+- **Holes (islands)**: paths (including imported SVG/DXF), gears, sprockets and text are pocketed with the even-odd rule. Each closed contour's nesting depth decides its role: even depth bounds material to remove, odd depth is a hole left uncut, and an island inside a hole is pocketed again. Each region is offset as a whole (`cavalier_contours` `Shape`), so the tool keeps a tool-radius clearance from the outer wall and from every hole; links between loops/spans stay at depth only when they remain inside the region, otherwise the tool retracts and re-enters. All three strategies support holes. Text pockets leave letter counters (the insides of O, A, B, ...) standing.
 
 ## Device Database (DeviceDB)
 - **New Crate**: `gcodekit5-devicedb`

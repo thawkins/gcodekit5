@@ -13,7 +13,7 @@
 use crate::{ConnectionDriver, ConnectionParams};
 use gcodekit5_core::{Error, Result};
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 /// TCP connection information
@@ -90,33 +90,47 @@ impl RealTcpPort {
 
         let address = format!("{}:{}", params.port, params.network_port);
 
-        match TcpStream::connect_timeout(
-            &address
-                .parse()
-                .map_err(|e| Error::other(format!("Invalid address '{}': {}", address, e)))?,
-            Duration::from_millis(params.timeout_ms),
-        ) {
-            Ok(stream) => {
-                // Set read timeout
-                stream
-                    .set_read_timeout(Some(Duration::from_millis(params.timeout_ms)))
-                    .map_err(|e| Error::other(format!("Failed to set read timeout: {}", e)))?;
+        // Resolve via ToSocketAddrs so hostnames (e.g. "fluidnc.local") and IPv6
+        // literals work; `SocketAddr::parse` only accepts numeric "ip:port".
+        let addrs: Vec<_> = (params.port.as_str(), params.network_port)
+            .to_socket_addrs()
+            .map_err(|e| Error::other(format!("Invalid address '{}': {}", address, e)))?
+            .collect();
+        if addrs.is_empty() {
+            return Err(Error::other(format!(
+                "Address '{}' did not resolve",
+                address
+            )));
+        }
 
-                // Set write timeout
-                stream
-                    .set_write_timeout(Some(Duration::from_millis(params.timeout_ms)))
-                    .map_err(|e| Error::other(format!("Failed to set write timeout: {}", e)))?;
-
-                Ok(RealTcpPort { stream })
-            }
-            Err(e) => {
-                tracing::error!("Failed to connect to TCP server {}: {}", address, e);
-                Err(Error::other(format!(
-                    "Failed to connect to {}: {}",
-                    address, e
-                )))
+        // A hostname may resolve to several addresses (e.g. IPv6 and IPv4); try each in turn
+        // and only fail once all of them have been tried.
+        let timeout = Duration::from_millis(params.timeout_ms);
+        let mut last_err = None;
+        for socket_addr in &addrs {
+            match TcpStream::connect_timeout(socket_addr, timeout) {
+                Ok(stream) => {
+                    stream
+                        .set_read_timeout(Some(timeout))
+                        .map_err(|e| Error::other(format!("Failed to set read timeout: {}", e)))?;
+                    stream
+                        .set_write_timeout(Some(timeout))
+                        .map_err(|e| Error::other(format!("Failed to set write timeout: {}", e)))?;
+                    return Ok(RealTcpPort { stream });
+                }
+                Err(e) => {
+                    tracing::debug!("TCP connect to {} failed: {}", socket_addr, e);
+                    last_err = Some(e);
+                }
             }
         }
+
+        let e = last_err.map_or_else(|| "no addresses".to_string(), |e| e.to_string());
+        tracing::error!("Failed to connect to TCP server {}: {}", address, e);
+        Err(Error::other(format!(
+            "Failed to connect to {}: {}",
+            address, e
+        )))
     }
 
     /// Reconnect the TCP connection
@@ -130,7 +144,8 @@ impl RealTcpPort {
 
 impl TcpPort for RealTcpPort {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
-        self.stream.write(data)
+        // write_all: a short write would silently drop the tail of a G-code line
+        self.stream.write_all(data).map(|()| data.len())
     }
 
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {

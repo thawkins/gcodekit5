@@ -526,12 +526,12 @@ impl JigsawPuzzleMaker {
         for (i, path) in self.paths.iter().enumerate() {
             if i == 0 {
                 gcode.push_str("; Outer border\n");
-            } else if i <= self.params.pieces_across as usize {
+            } else if i < self.params.pieces_across as usize {
                 gcode.push_str(&format!("; Vertical cut {}\n", i));
             } else {
                 gcode.push_str(&format!(
                     "; Horizontal cut {}\n",
-                    i - self.params.pieces_across as usize
+                    i + 1 - self.params.pieces_across as usize
                 ));
             }
 
@@ -548,7 +548,8 @@ impl JigsawPuzzleMaker {
                 }
 
                 for pass_num in 1..=self.params.laser_passes {
-                    let z_depth = -(pass_num as f32 - 1.0) * self.params.z_step_down;
+                    // Pass 1 runs at the plunge depth; later passes step down from there.
+                    let z_depth = -cut_depth - (pass_num as f32 - 1.0) * self.params.z_step_down;
                     gcode.push_str(&format!(
                         "; Pass {}/{} at Z{:.2}\n",
                         pass_num, self.params.laser_passes, z_depth

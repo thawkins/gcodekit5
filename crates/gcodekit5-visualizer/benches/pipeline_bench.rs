@@ -44,20 +44,20 @@ fn bench_state_updates(c: &mut Criterion) {
     c.bench_function("state_modal_updates_cycle", |b| {
         b.iter(|| {
             let mut state = GcodeState::new();
-            state.set_motion_mode(0).unwrap();
-            state.set_motion_mode(1).unwrap();
-            state.set_motion_mode(2).unwrap();
-            state.set_motion_mode(3).unwrap();
-            state.set_plane_mode(17).unwrap();
-            state.set_plane_mode(18).unwrap();
-            state.set_distance_mode(90).unwrap();
-            state.set_distance_mode(91).unwrap();
-            state.set_feed_rate_mode(93).unwrap();
-            state.set_feed_rate_mode(94).unwrap();
-            state.set_units_mode(20).unwrap();
-            state.set_units_mode(21).unwrap();
-            state.set_coordinate_system(54).unwrap();
-            state.set_coordinate_system(55).unwrap();
+            state.set_motion_mode(0).expect("valid modal code");
+            state.set_motion_mode(1).expect("valid modal code");
+            state.set_motion_mode(2).expect("valid modal code");
+            state.set_motion_mode(3).expect("valid modal code");
+            state.set_plane_mode(17).expect("valid modal code");
+            state.set_plane_mode(18).expect("valid modal code");
+            state.set_distance_mode(90).expect("valid modal code");
+            state.set_distance_mode(91).expect("valid modal code");
+            state.set_feed_rate_mode(93).expect("valid modal code");
+            state.set_feed_rate_mode(94).expect("valid modal code");
+            state.set_units_mode(20).expect("valid modal code");
+            state.set_units_mode(21).expect("valid modal code");
+            state.set_coordinate_system(54).expect("valid modal code");
+            state.set_coordinate_system(55).expect("valid modal code");
             black_box(&state);
         });
     });

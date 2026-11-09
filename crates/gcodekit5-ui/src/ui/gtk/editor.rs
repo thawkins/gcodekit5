@@ -3,6 +3,7 @@
 //! GTK4 text editor widget for G-code files with syntax highlighting,
 //! line numbers, and integration with the editor backend bridge.
 
+use crate::t;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
 use gcodekit5_settings::controller::SettingsController;
@@ -11,6 +12,7 @@ use gtk4::prelude::*;
 use gtk4::{
     Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ResponseType, ScrolledWindow,
 };
+use libadwaita::StyleManager;
 use sourceview5::prelude::*;
 use sourceview5::{
     Buffer, LanguageManager, SearchContext, SearchSettings, StyleSchemeManager, View,
@@ -21,8 +23,6 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 use tracing::error;
-use crate::t;
-use libadwaita::StyleManager;
 
 pub struct GcodeEditor {
     pub widget: Overlay,
@@ -37,7 +37,10 @@ pub struct GcodeEditor {
 }
 
 impl GcodeEditor {
-    pub fn new(status_bar: Option<StatusBar>, settings_controller: Option<Rc<SettingsController>>) -> Self {
+    pub fn new(
+        status_bar: Option<StatusBar>,
+        settings_controller: Option<Rc<SettingsController>>,
+    ) -> Self {
         let buffer = Buffer::new(None);
         let view = View::with_buffer(&buffer);
 
@@ -209,7 +212,7 @@ impl GcodeEditor {
             .build();
         let replace_all_btn = Button::builder()
             .icon_name("mail-send-receive-symbolic")
-             .tooltip_text(t!("Replace All"))
+            .tooltip_text(t!("Replace All"))
             .build();
 
         replace_row.append(&replace_entry);
@@ -562,7 +565,13 @@ impl GcodeEditor {
         label.set_text(&format!("Line {} / {}", current_line, total_lines));
     }
 
+    /// Replace the editor content with newly generated / cleared G-code.
+    ///
+    /// The content no longer corresponds to the previously opened file, so the file
+    /// association is dropped: otherwise "Save" would silently overwrite that file with
+    /// unrelated generated G-code.
     pub fn set_text(&self, text: &str) {
+        *self.current_file.borrow_mut() = None;
         self.buffer.set_text(text);
         // Move cursor to start (line 1, column 1)
         let mut start_iter = self.buffer.start_iter();
@@ -621,6 +630,10 @@ impl GcodeEditor {
     pub fn open_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
         let dialog = super::file_dialog::open_dialog(&t!("Open G-Code File"), parent.as_ref());
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -655,7 +668,12 @@ impl GcodeEditor {
                                 let parent = super::file_dialog::parent_window(dialog);
                                 super::file_dialog::show_error_dialog(
                                     &t!("Error Reading File"),
-                                    &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
+                                    &format!(
+                                        "{} '{}'.\n\n{}",
+                                        t!("Could not open"),
+                                        path.display(),
+                                        e
+                                    ),
                                     parent.as_ref(),
                                 );
                             }
@@ -694,7 +712,10 @@ impl GcodeEditor {
     pub fn save_as_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
         let dialog = super::file_dialog::save_dialog(&t!("Save G-Code File"), parent.as_ref());
-        super::file_dialog::set_last_working_directory(&dialog, self.settings_controller.as_deref());
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -729,7 +750,12 @@ impl GcodeEditor {
                                 let parent = super::file_dialog::parent_window(dialog);
                                 super::file_dialog::show_error_dialog(
                                     &t!("Error Saving File"),
-                                    &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
+                                    &format!(
+                                        "{} '{}'.\n\n{}",
+                                        t!("Could not save"),
+                                        path.display(),
+                                        e
+                                    ),
                                     parent.as_ref(),
                                 );
                             }

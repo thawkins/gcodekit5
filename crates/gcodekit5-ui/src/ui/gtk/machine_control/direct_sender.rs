@@ -13,6 +13,8 @@ pub struct DirectSender {
     // Shared with MachineControlView: the status poller checks this to yield the port during a job.
     is_streaming: ThreadSafe<bool>,
     should_stop: Arc<AtomicBool>,
+    // True only while this sender's worker thread owns the serial port.
+    running: Arc<AtomicBool>,
     progress_tx: mpsc::Sender<String>,
 }
 
@@ -20,7 +22,7 @@ impl DirectSender {
     pub fn new(
         communicator: ThreadSafe<SerialCommunicator>,
         is_streaming: ThreadSafe<bool>,
-        _is_paused: ThreadSafe<bool>,  // Mantenemos el parámetro por compatibilidad pero no lo usamos
+        _is_paused: ThreadSafe<bool>, // Mantenemos el parámetro por compatibilidad pero no lo usamos
         _waiting_for_ack: ThreadSafe<bool>,
     ) -> (Self, mpsc::Receiver<String>) {
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -32,10 +34,16 @@ impl DirectSender {
                 communicator,
                 is_streaming,
                 should_stop: stop_flag,
+                running: Arc::new(AtomicBool::new(false)),
                 progress_tx: tx,
             },
             rx,
         )
+    }
+
+    /// Returns true while the background streaming thread is active and owns the port.
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
     }
 
     fn send_progress(&self, message: String) {
@@ -67,9 +75,11 @@ impl DirectSender {
 
         *self.is_streaming.lock() = true;
         self.should_stop.store(false, Ordering::SeqCst);
+        self.running.store(true, Ordering::SeqCst);
 
         let comm = self.communicator.clone();
         let streaming_flag = self.is_streaming.clone();
+        let running_flag = self.running.clone();
         let stop_flag = self.should_stop.clone();
         let progress_tx = self.progress_tx.clone();
 
@@ -84,7 +94,12 @@ impl DirectSender {
                 // Enviar hasta llenar la ventana
                 {
                     if let Some(mut c) = comm.try_lock() {
-                        while lines_in_flight < max_window && i < total {
+                        // Re-check the stop flag under the lock: E-stop sets it before taking
+                        // the lock to send the soft reset, so no line can follow the reset.
+                        while lines_in_flight < max_window
+                            && i < total
+                            && !stop_flag.load(Ordering::SeqCst)
+                        {
                             let cmd = format!("{}\n", lines[i]);
                             if c.send(cmd.as_bytes()).is_ok() {
                                 lines_in_flight += 1;
@@ -145,7 +160,9 @@ impl DirectSender {
 
                 thread::yield_now();
 
-                let percent = ((i as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u32;
+                let percent = ((i as f64 / total as f64) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as u32;
                 if percent != last_percent {
                     last_percent = percent;
                     let _ = progress_tx.send(format!("* {}%", percent));
@@ -153,6 +170,7 @@ impl DirectSender {
             }
 
             *streaming_flag.lock() = false;
+            running_flag.store(false, Ordering::SeqCst);
             let _ = progress_tx.send("Job Completed".to_string());
         });
     }
@@ -168,19 +186,12 @@ impl DirectSender {
     /// pauses the machine. The command buffer in GRBL remains intact.
     /// The send thread continues sending commands to fill GRBL's buffer.
     pub fn pause(&self) {
-        let comm = self.communicator.clone();
-        let _ = thread::spawn(move || {
-            if let Some(mut comm) = comm.try_lock() {
-                // Usar send_command para emular exactamente el comportamiento de la consola
-                if let Err(e) = comm.send_command("!") {
-                    tracing::error!("Failed to send pause to GRBL: {}", e);
-                } else {
-                    tracing::debug!("Pause command (!) sent to GRBL");
-                }
-            } else {
-                tracing::warn!("Could not acquire lock for pause");
-            }
-        });
+        // Realtime command: send the raw byte only. `send_command("!")` would append a
+        // newline, which GRBL answers with an extra "ok" and corrupts the in-flight count.
+        // The lock is taken blocking so a pause is never silently dropped under contention.
+        if let Err(e) = self.communicator.lock().send(b"!") {
+            tracing::error!("Failed to send pause to GRBL: {}", e);
+        }
 
         let _ = self.progress_tx.send(t!("Paused").to_string());
         // NOTA: No tocamos ninguna bandera. El hilo de envío sigue funcionando.
@@ -191,19 +202,10 @@ impl DirectSender {
     /// This sends the ASCII character '~' (0x7E) to GRBL which resumes
     /// the paused job exactly where it was interrupted.
     pub fn resume(&self) {
-        let comm = self.communicator.clone();
-        let _ = thread::spawn(move || {
-            if let Some(mut comm) = comm.try_lock() {
-                // Usar send_command para emular exactamente el comportamiento de la consola
-                if let Err(e) = comm.send_command("~") {
-                    tracing::error!("Failed to send resume to GRBL: {}", e);
-                } else {
-                    tracing::debug!("Resume command (~) sent to GRBL");
-                }
-            } else {
-                tracing::warn!("Could not acquire lock for resume");
-            }
-        });
+        // Raw realtime byte (see `pause`).
+        if let Err(e) = self.communicator.lock().send(b"~") {
+            tracing::error!("Failed to send resume to GRBL: {}", e);
+        }
 
         let _ = self.progress_tx.send(t!("Resuming").to_string());
         // NOTA: No tocamos ninguna bandera. El hilo de envío sigue funcionando.
@@ -314,6 +316,7 @@ impl Clone for DirectSender {
             communicator: self.communicator.clone(),
             is_streaming: self.is_streaming.clone(),
             should_stop: self.should_stop.clone(),
+            running: self.running.clone(),
             progress_tx: self.progress_tx.clone(),
         }
     }

@@ -191,7 +191,11 @@ pub fn setup_sprocket_pitch_handler(
                 let standard_roller = DesignSprocket::standard_roller_diameter(pitch);
 
                 // Actualizar el campo visual del roller diameter
+                // Guard so the roller handler does not also fire and push a second,
+                // intermediate (old pitch + new roller) undo step.
+                *updating.borrow_mut() = true;
                 roller_entry.set_text(&format!("{:.2}", standard_roller));
+                *updating.borrow_mut() = false;
 
                 let mut designer_state = state.borrow_mut();
                 let teeth = designer_state
@@ -369,8 +373,12 @@ pub fn setup_timing_pulley_pitch_handler(
                     })
                     .unwrap_or((20, 9.4, 5.0));
 
-                designer_state
-                    .set_selected_timing_pulley_properties(pitch, teeth, belt_width, hole_radius);
+                designer_state.set_selected_timing_pulley_properties(
+                    pitch,
+                    teeth,
+                    belt_width,
+                    hole_radius,
+                );
                 drop(designer_state);
                 if let Some(ref cb) = *redraw_callback.borrow() {
                     cb();
@@ -421,8 +429,12 @@ pub fn setup_timing_pulley_teeth_handler(
                     })
                     .unwrap_or((5.08, 9.4, 5.0));
 
-                designer_state
-                    .set_selected_timing_pulley_properties(pitch, teeth, belt_width, hole_radius);
+                designer_state.set_selected_timing_pulley_properties(
+                    pitch,
+                    teeth,
+                    belt_width,
+                    hole_radius,
+                );
                 drop(designer_state);
                 if let Some(ref cb) = *redraw_callback.borrow() {
                     cb();
@@ -473,8 +485,12 @@ pub fn setup_timing_pulley_belt_width_handler(
                     })
                     .unwrap_or((5.08, 20, 5.0));
 
-                designer_state
-                    .set_selected_timing_pulley_properties(pitch, teeth, belt_width, hole_radius);
+                designer_state.set_selected_timing_pulley_properties(
+                    pitch,
+                    teeth,
+                    belt_width,
+                    hole_radius,
+                );
                 drop(designer_state);
                 if let Some(ref cb) = *redraw_callback.borrow() {
                     cb();
@@ -525,8 +541,12 @@ pub fn setup_timing_pulley_hole_radius_handler(
                     })
                     .unwrap_or((5.08, 20, 9.4));
 
-                designer_state
-                    .set_selected_timing_pulley_properties(pitch, teeth, belt_width, hole_radius);
+                designer_state.set_selected_timing_pulley_properties(
+                    pitch,
+                    teeth,
+                    belt_width,
+                    hole_radius,
+                );
                 drop(designer_state);
                 if let Some(ref cb) = *redraw_callback.borrow() {
                     cb();

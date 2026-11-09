@@ -134,9 +134,13 @@ impl GrblResponseParser {
             }
         }
 
-        // Check for alarm: prefix
-        if let Some(stripped) = line.strip_prefix("alarm:") {
-            if let Ok(code) = stripped.parse::<u8>() {
+        // Check for alarm prefix. GRBL 1.1 emits "ALARM:n"; accept any case.
+        // `str::get` avoids panicking when byte 6 is not a UTF-8 boundary (e.g. "[MSG:é]").
+        if line
+            .get(..6)
+            .is_some_and(|p| p.eq_ignore_ascii_case("alarm:"))
+        {
+            if let Ok(code) = line[6..].trim().parse::<u8>() {
                 return Some(GrblResponse::Alarm(code));
             }
         }
@@ -191,8 +195,16 @@ impl GrblResponseParser {
                 machine_pos = self.parse_position(pos_str, Units::MM)?;
             } else if let Some(pos_str) = part.strip_prefix("WPos:") {
                 work_pos = self.parse_position(pos_str, Units::MM)?;
-            } else if let Some(buf_str) = part.strip_prefix("Buf:") {
+            } else if let Some(buf_str) = part
+                .strip_prefix("Bf:")
+                .or_else(|| part.strip_prefix("Buf:"))
+            {
                 buffer_state = self.parse_buffer_state(buf_str);
+            } else if let Some(fs_str) = part.strip_prefix("FS:") {
+                // GRBL 1.1 combined "FS:feed,spindle" field
+                let mut fs = fs_str.split(',');
+                feed_rate = fs.next().and_then(|f| f.trim().parse::<f64>().ok());
+                spindle_speed = fs.next().and_then(|s| s.trim().parse::<u32>().ok());
             } else if let Some(rate_str) = part.strip_prefix("F:") {
                 feed_rate = rate_str.parse::<f64>().ok();
             } else if let Some(speed_str) = part.strip_prefix("S:") {
@@ -236,7 +248,7 @@ impl GrblResponseParser {
 
     /// Parse buffer state
     fn parse_buffer_state(&self, buf_str: &str) -> Option<BufferState> {
-        let parts: Vec<&str> = buf_str.split(':').collect();
+        let parts: Vec<&str> = buf_str.split([',', ':']).collect();
 
         if parts.len() < 2 {
             return None;
@@ -288,11 +300,19 @@ impl GrblResponseParser {
             3 => "Invalid statement",
             4 => "Negative value",
             5 => "Setting disabled",
+            6 => "Minimum step pulse time too short",
+            7 => "EEPROM read failed",
+            8 => "Command requires Idle state",
+            9 => "G-code locked out during alarm or jog",
+            10 => "Soft limits require homing",
+            11 => "Line overflow",
+            15 => "Jog target exceeds machine travel",
+            16 => "Invalid jog command",
             20 => "Unsupported or invalid g-code command",
             21 => "Modal group violation",
             22 => "Undefined feed rate",
-            23 => "Failed to execute startup block",
-            24 => "EEPROM read failed",
+            23 => "Command requires integer value",
+            24 => "Multiple commands requiring axis words",
             _ => "Unknown error",
         }
     }
@@ -305,10 +325,10 @@ impl GrblResponseParser {
             3 => "Abort during cycle",
             4 => "Probe fail",
             5 => "Probe not triggered",
-            6 => "Homing fail",
-            7 => "Homing fail pulloff",
-            8 => "Spindle control failure",
-            9 => "Cooling mist control failure",
+            6 => "Homing fail: reset during homing",
+            7 => "Homing fail: safety door opened",
+            8 => "Homing fail: pull-off failed to clear limit switch",
+            9 => "Homing fail: limit switch not found",
             _ => "Unknown alarm",
         }
     }

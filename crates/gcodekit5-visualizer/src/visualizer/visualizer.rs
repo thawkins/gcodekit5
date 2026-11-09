@@ -2,7 +2,8 @@
 //! Parses G-Code toolpaths for canvas-based visualization
 
 use super::toolpath_cache::ToolpathCache;
-use super::viewport::{Bounds};
+use super::viewport::Bounds;
+use crate::gcode::{arc, words};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
@@ -57,63 +58,6 @@ enum MotionMode {
     ArcCCW, // G3
 }
 
-/// Structure for extracted parameters
-/// Supports 6-axis coordinates (X, Y, Z linear + A, B, C rotary)
-struct ExtractedParams {
-    x: Option<f32>,
-    y: Option<f32>,
-    z: Option<f32>,
-    // Rotary axis coordinates (4th, 5th, 6th axes)
-    a: Option<f32>,
-    b: Option<f32>,
-    c: Option<f32>,
-    // Arc center offsets
-    i: Option<f32>,
-    j: Option<f32>,
-    k: Option<f32>, // Arc center Z offset for helical arcs
-    // Feed and spindle
-    s: Option<f32>,
-    f: Option<f32>,
-}
-
-impl ExtractedParams {
-    fn new() -> Self {
-        Self {
-            x: None,
-            y: None,
-            z: None,
-            a: None,
-            b: None,
-            c: None,
-            i: None,
-            j: None,
-            k: None,
-            s: None,
-            f: None,
-        }
-    }
-
-    /// Check if this line has any linear or rotary axis movement
-    fn has_movement(&self) -> bool {
-        self.x.is_some()
-            || self.y.is_some()
-            || self.z.is_some()
-            || self.a.is_some()
-            || self.b.is_some()
-            || self.c.is_some()
-    }
-
-    /// Check if this line has arc center parameters
-    fn has_arc_params(&self) -> bool {
-        self.i.is_some() && self.j.is_some()
-    }
-
-    /// Check if this line has any rotary axis movement
-    fn has_rotary_movement(&self) -> bool {
-        self.a.is_some() || self.b.is_some() || self.c.is_some()
-    }
-}
-
 /// 6-Axis position including rotary axes
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RotaryPosition {
@@ -158,6 +102,213 @@ impl Point3D {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
+}
+
+/// Active arc plane (G17/G18/G19)
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ArcPlane {
+    XY, // G17
+    ZX, // G18
+    YZ, // G19
+}
+
+impl ArcPlane {
+    /// Axis indices (first plane axis, second plane axis, linear axis) using
+    /// 0 = X, 1 = Y, 2 = Z. Ordering follows GRBL so CW/CCW sense is correct.
+    fn axes(self) -> (usize, usize, usize) {
+        match self {
+            ArcPlane::XY => (0, 1, 2),
+            ArcPlane::ZX => (2, 0, 1),
+            ArcPlane::YZ => (1, 2, 0),
+        }
+    }
+}
+
+/// Structure for extracted parameters
+/// Supports 6-axis coordinates (X, Y, Z linear + A, B, C rotary)
+#[derive(Default)]
+struct ExtractedParams {
+    x: Option<f32>,
+    y: Option<f32>,
+    z: Option<f32>,
+    // Rotary axis coordinates (4th, 5th, 6th axes)
+    a: Option<f32>,
+    b: Option<f32>,
+    c: Option<f32>,
+    // Arc center offsets (I, J, K) and radius (R)
+    i: Option<f32>,
+    j: Option<f32>,
+    k: Option<f32>,
+    r: Option<f32>,
+    // Spindle / laser power and dwell time
+    s: Option<f32>,
+    p: Option<f32>,
+}
+
+impl ExtractedParams {
+    /// Check if this line has any linear or rotary axis movement
+    fn has_movement(&self) -> bool {
+        self.x.is_some()
+            || self.y.is_some()
+            || self.z.is_some()
+            || self.a.is_some()
+            || self.b.is_some()
+            || self.c.is_some()
+    }
+
+    /// Arc centre offsets indexed by axis (0 = I/X, 1 = J/Y, 2 = K/Z)
+    fn ijk(&self) -> [Option<f32>; 3] {
+        [self.i, self.j, self.k]
+    }
+}
+
+fn point_axis(p: Point3D, axis: usize) -> f64 {
+    match axis {
+        0 => p.x as f64,
+        1 => p.y as f64,
+        _ => p.z as f64,
+    }
+}
+
+fn point_from_axes(values: [f64; 3]) -> Point3D {
+    Point3D::new(values[0] as f32, values[1] as f32, values[2] as f32)
+}
+
+/// Emit visualizer commands for a G2/G3 arc.
+///
+/// XY-plane arcs are emitted as `GCodeCommand::Arc`, split so that no single
+/// command sweeps more than 180 degrees (full circles would otherwise have
+/// identical start and end points, which renderers draw as nothing). Arcs in
+/// the G18/G19 planes are tessellated into feed moves because
+/// `GCodeCommand::Arc` is interpreted in the XY plane by all renderers.
+///
+/// Returns `false` when the arc is undefined (no centre information or a zero
+/// radius); the caller then falls back to a straight move.
+#[allow(clippy::too_many_arguments)]
+fn push_arc_commands(
+    commands: &mut Vec<GCodeCommand>,
+    bounds: &mut Bounds,
+    from: Point3D,
+    to: Point3D,
+    plane: ArcPlane,
+    clockwise: bool,
+    ijk: [Option<f32>; 3],
+    radius_word: Option<f32>,
+    intensity: f32,
+) -> bool {
+    let (a0, a1, lin) = plane.axes();
+    let (sx, sy) = (point_axis(from, a0), point_axis(from, a1));
+    let (ex, ey) = (point_axis(to, a0), point_axis(to, a1));
+
+    let offsets = if ijk[a0].is_some() || ijk[a1].is_some() {
+        Some((ijk[a0].unwrap_or(0.0) as f64, ijk[a1].unwrap_or(0.0) as f64))
+    } else if let Some(r) = radius_word {
+        arc::center_offset_from_radius(ex - sx, ey - sy, r as f64, clockwise)
+    } else {
+        None
+    };
+    let Some((oi, oj)) = offsets else {
+        return false;
+    };
+
+    let radius = (oi * oi + oj * oj).sqrt();
+    if !radius.is_finite() || radius < 1e-6 {
+        return false;
+    }
+    let (cx, cy) = (sx + oi, sy + oj);
+    let start_angle = (-oj).atan2(-oi);
+    let sweep = arc::angular_travel((-oi, -oj), (ex - cx, ey - cy), clockwise);
+
+    let (from_lin, to_lin) = (point_axis(from, lin), point_axis(to, lin));
+    let point_at = |t: f64| -> Point3D {
+        let angle = start_angle + sweep * t;
+        let mut v = [0.0f64; 3];
+        v[a0] = cx + radius * angle.cos();
+        v[a1] = cy + radius * angle.sin();
+        v[lin] = from_lin + (to_lin - from_lin) * t;
+        point_from_axes(v)
+    };
+
+    if plane == ArcPlane::XY {
+        let pieces = if sweep.abs() > std::f64::consts::PI + 1e-9 {
+            2
+        } else {
+            1
+        };
+        let mut prev = from;
+        for piece in 1..=pieces {
+            let next = if piece == pieces {
+                to
+            } else {
+                point_at(piece as f64 / pieces as f64)
+            };
+            commands.push(GCodeCommand::Arc {
+                from: prev,
+                to: next,
+                center: Point3D::new(cx as f32, cy as f32, prev.z),
+                clockwise,
+                intensity: Some(intensity),
+            });
+            prev = next;
+        }
+
+        let (min_x, min_y, max_x, max_y) = arc::arc_bounds((cx, cy), radius, start_angle, sweep);
+        bounds.update(min_x as f32, min_y as f32, from.z);
+        bounds.update(max_x as f32, max_y as f32, to.z);
+    } else {
+        // 10 degree steps, at least 2 segments
+        let steps = ((sweep.abs() / (std::f64::consts::PI / 18.0)).ceil() as usize).max(2);
+        let mut prev = from;
+        bounds.update(from.x, from.y, from.z);
+        for step in 1..=steps {
+            let next = if step == steps {
+                to
+            } else {
+                point_at(step as f64 / steps as f64)
+            };
+            commands.push(GCodeCommand::Move {
+                from: prev,
+                to: next,
+                rapid: false,
+                intensity: Some(intensity),
+            });
+            bounds.update(next.x, next.y, next.z);
+            prev = next;
+        }
+    }
+
+    true
+}
+
+/// Extend `bounds` with the full extent of a stored XY arc command.
+fn update_bounds_with_arc(
+    bounds: &mut Bounds,
+    from: Point3D,
+    to: Point3D,
+    center: Point3D,
+    clockwise: bool,
+) {
+    let (oi, oj) = ((center.x - from.x) as f64, (center.y - from.y) as f64);
+    let radius = (oi * oi + oj * oj).sqrt();
+    bounds.update(from.x, from.y, from.z);
+    bounds.update(to.x, to.y, to.z);
+    if !radius.is_finite() || radius < 1e-6 {
+        return;
+    }
+    let start_angle = (-oj).atan2(-oi);
+    let sweep = arc::angular_travel(
+        (-oi, -oj),
+        ((to.x - center.x) as f64, (to.y - center.y) as f64),
+        clockwise,
+    );
+    let (min_x, min_y, max_x, max_y) = arc::arc_bounds(
+        (center.x as f64, center.y as f64),
+        radius,
+        start_angle,
+        sweep,
+    );
+    bounds.update(min_x as f32, min_y as f32, from.z);
+    bounds.update(max_x as f32, max_y as f32, to.z);
 }
 
 /// Movement command
@@ -352,36 +503,42 @@ impl Visualizer {
     pub fn get_scale_factor(&self) -> f32 {
         self.scale_factor
     }
-/*
-    /// Extract multiple parameters from G-Code line
-    // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
-    #[allow(dead_code)]
-    fn extract_params(line: &str, param_names: &[char]) -> HashMap<char, f32> {
-        let mut params = HashMap::new();
+    /*
+        /// Extract multiple parameters from G-Code line
+        // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
+        #[allow(dead_code)]
+        fn extract_params(line: &str, param_names: &[char]) -> HashMap<char, f32> {
+            let mut params = HashMap::new();
 
-        for part in line.split_whitespace() {
-            if part.len() < 2 {
-                continue;
-            }
-            let Some(first_char) = part.chars().next() else {
-                continue;
-            };
-            if param_names.contains(&first_char) {
-                if let Ok(value) = part[1..].parse::<f32>() {
-                    params.insert(first_char, value);
+            for part in line.split_whitespace() {
+                if part.len() < 2 {
+                    continue;
+                }
+                let Some(first_char) = part.chars().next() else {
+                    continue;
+                };
+                if param_names.contains(&first_char) {
+                    if let Ok(value) = part[1..].parse::<f32>() {
+                        params.insert(first_char, value);
+                    }
                 }
             }
-        }
 
-        params
-    }
-*/
+            params
+        }
+    */
     /// Get number of commands parsed
     pub fn get_command_count(&self) -> usize {
         self.toolpath_cache.len()
     }
 
     /// Parse G-Code and extract movement commands
+    ///
+    /// Honours modal motion (G0-G3, G80), distance mode (G90/G91), units
+    /// (G20/G21, converted to mm), arc planes (G17/G18/G19), I/J/K and R arcs
+    /// (including negative R and full circles), dwell (G4 P), and non-motion
+    /// axis words (G10, G28.1, G30.1, G43.1, G92). Comments in parentheses and
+    /// after `;` are ignored and several G words may share one line.
     pub fn parse_gcode(&mut self, gcode: &str) {
         debug!("Starting G-code parse, input size: {} bytes", gcode.len());
 
@@ -401,15 +558,16 @@ impl Visualizer {
         self.is_raster = false;
 
         let mut current_pos = Point3D::new(0.0, 0.0, 0.0);
+        let mut rotary = RotaryPosition::default();
         self.current_intensity = 0.0;
         let mut bounds = Bounds::new();
 
         // Modal state
         let mut current_motion_mode = MotionMode::None;
-        let mut _g0_count = 0;
-        let mut _g1_count = 0;
-        let mut _g2_count = 0;
-        let mut _g3_count = 0;
+        let mut plane = ArcPlane::XY;
+        let mut absolute = true;
+        let mut inches = false;
+        let mut motion_counts = [0usize; 4];
 
         for (line_num, line) in gcode.lines().enumerate() {
             let original_line = line.trim();
@@ -418,168 +576,202 @@ impl Visualizer {
                 self.is_raster = true;
             }
 
-            // Ignore empty lines and comments
-            if original_line.is_empty()
-                || original_line.starts_with(';')
-                || original_line.starts_with('(')
-            {
+            let words = words::parse_line(original_line);
+            if words.is_empty() {
                 continue;
             }
 
-            // Remove inline comments (after ';')
-            let line_without_comment = match original_line.find(';') {
-                Some(idx) => original_line[..idx].trim(),
-                None => original_line,
-            };
+            let mut params = ExtractedParams::default();
+            let mut dwell = false;
+            let mut set_position = false;
+            let mut home_move = false;
+            let mut axes_not_motion = false;
 
-            if line_without_comment.is_empty() {
-                continue;
+            for word in &words {
+                let value = word.value as f32;
+                match word.letter {
+                    'G' => {
+                        let (major, minor) = words::code_number(word.value);
+                        trace!("Line {}: G{}.{} command", line_num, major, minor);
+                        match (major, minor) {
+                            (0, 0) => current_motion_mode = MotionMode::Rapid,
+                            (1, 0) => current_motion_mode = MotionMode::Linear,
+                            (2, 0) => current_motion_mode = MotionMode::ArcCW,
+                            (3, 0) => current_motion_mode = MotionMode::ArcCCW,
+                            (4, 0) => dwell = true,
+                            (10, _) | (28, 1) | (30, 1) | (43, 1) => axes_not_motion = true,
+                            (17, 0) => plane = ArcPlane::XY,
+                            (18, 0) => plane = ArcPlane::ZX,
+                            (19, 0) => plane = ArcPlane::YZ,
+                            (20, 0) => inches = true,
+                            (21, 0) => inches = false,
+                            (28, 0) | (30, 0) => home_move = true,
+                            (80, 0) => current_motion_mode = MotionMode::None,
+                            (90, 0) => absolute = true,
+                            (91, 0) => absolute = false,
+                            (92, 0) => set_position = true,
+                            _ => {}
+                        }
+                    }
+                    'X' => params.x = Some(value),
+                    'Y' => params.y = Some(value),
+                    'Z' => params.z = Some(value),
+                    'A' => params.a = Some(value),
+                    'B' => params.b = Some(value),
+                    'C' => params.c = Some(value),
+                    'I' => params.i = Some(value),
+                    'J' => params.j = Some(value),
+                    'K' => params.k = Some(value),
+                    'R' => params.r = Some(value),
+                    'S' => params.s = Some(value),
+                    'P' => params.p = Some(value),
+                    _ => {}
+                }
             }
-
-            let upper_line = line_without_comment.to_uppercase();
-
-            // Extract all parameters from the line
-            let params = Self::extract_all_params(&upper_line);
 
             // Update intensity if there is an S command
             if let Some(intensity) = params.s {
                 self.current_intensity = intensity;
             }
 
-            // Check if there is a G command on this line
-            let has_gcode = Self::extract_gcode_num(&upper_line).is_some();
-
-            // If we find a G command, update the movement mode
-            if let Some(gcode_num) = Self::extract_gcode_num(&upper_line) {
-                trace!("Line {}: G{} command", line_num, gcode_num);
-                match gcode_num {
-                    0 => {
-                        _g0_count += 1;
-                        current_motion_mode = MotionMode::Rapid;
-                    }
-                    1 => {
-                        _g1_count += 1;
-                        current_motion_mode = MotionMode::Linear;
-                    }
-                    2 => {
-                        _g2_count += 1;
-                        current_motion_mode = MotionMode::ArcCW;
-                    }
-                    3 => {
-                        _g3_count += 1;
-                        current_motion_mode = MotionMode::ArcCCW;
-                    }
-                    4 => {
-                        // G4 Dwell
-                        let duration = params.x.unwrap_or(params.s.unwrap_or(0.0));
-                        if duration > 0.0 {
-                            commands.push(GCodeCommand::Dwell {
-                                pos: current_pos,
-                                duration,
-                            });
-                        }
-                    }
-                    _ => {}
-                }
+            // Convert linear words to mm (G20 applies to the whole line)
+            let scale = if inches { 25.4f32 } else { 1.0 };
+            for v in [
+                &mut params.x,
+                &mut params.y,
+                &mut params.z,
+                &mut params.i,
+                &mut params.j,
+                &mut params.k,
+                &mut params.r,
+            ] {
+                *v = v.map(|val| val * scale);
             }
 
-            // If the line has coordinates, process the movement.
-            if params.has_movement() {
-                let new_x = params.x.unwrap_or(current_pos.x);
-                let new_y = params.y.unwrap_or(current_pos.y);
-                let new_z = params.z.unwrap_or(current_pos.z);
-                let _new_a = params.a.unwrap_or(self.current_rotary.a);
-                let _new_b = params.b.unwrap_or(self.current_rotary.b);
-                let _new_c = params.c.unwrap_or(self.current_rotary.c);
-                // Update rotary bounds
-                bounds.update_rotary(params.a, params.b, params.c);
+            if dwell {
+                // G4 P<seconds> (GRBL/LinuxCNC); X/S accepted for other dialects.
+                // Axis words on a dwell line are not a move.
+                let duration = params
+                    .p
+                    .or(params.x.map(|x| x / scale))
+                    .or(params.s)
+                    .unwrap_or(0.0);
+                if duration > 0.0 {
+                    commands.push(GCodeCommand::Dwell {
+                        pos: current_pos,
+                        duration,
+                    });
+                }
+                continue;
+            }
 
-                // Track if this move involves rotary axes
-                let _has_rotary = params.has_rotary_movement(); // Determine the mode of movement for this line
-                let motion_mode_for_line = if has_gcode {
-                    // Old style: the G command is on the same line
-                    current_motion_mode
-                } else {
-                    // Modal style: Use the current mode
-                    current_motion_mode
-                };
+            if axes_not_motion || !params.has_movement() {
+                continue;
+            }
 
-                // Process according to the movement mode
-                match motion_mode_for_line {
-                    MotionMode::Rapid => {
+            if set_position {
+                // G92: the given axes take the new values without moving.
+                current_pos = Point3D::new(
+                    params.x.unwrap_or(current_pos.x),
+                    params.y.unwrap_or(current_pos.y),
+                    params.z.unwrap_or(current_pos.z),
+                );
+                rotary = RotaryPosition::new(
+                    params.a.unwrap_or(rotary.a),
+                    params.b.unwrap_or(rotary.b),
+                    params.c.unwrap_or(rotary.c),
+                );
+                continue;
+            }
+
+            let resolve = |current: f32, value: Option<f32>| -> f32 {
+                match value {
+                    Some(v) if absolute => v,
+                    Some(v) => current + v,
+                    None => current,
+                }
+            };
+            let target = Point3D::new(
+                resolve(current_pos.x, params.x),
+                resolve(current_pos.y, params.y),
+                resolve(current_pos.z, params.z),
+            );
+            rotary = RotaryPosition::new(
+                resolve(rotary.a, params.a),
+                resolve(rotary.b, params.b),
+                resolve(rotary.c, params.c),
+            );
+            bounds.update_rotary(
+                params.a.map(|_| rotary.a),
+                params.b.map(|_| rotary.b),
+                params.c.map(|_| rotary.c),
+            );
+
+            // G28/G30: the axis words are an intermediate point reached at rapid
+            // rate; the final (stored) home position is unknown here.
+            let motion_mode_for_line = if home_move {
+                MotionMode::Rapid
+            } else {
+                current_motion_mode
+            };
+
+            match motion_mode_for_line {
+                MotionMode::Rapid | MotionMode::Linear => {
+                    let rapid = motion_mode_for_line == MotionMode::Rapid;
+                    motion_counts[if rapid { 0 } else { 1 }] += 1;
+                    commands.push(GCodeCommand::Move {
+                        from: current_pos,
+                        to: target,
+                        rapid,
+                        intensity: Some(self.current_intensity),
+                    });
+                    bounds.update(current_pos.x, current_pos.y, current_pos.z);
+                    bounds.update(target.x, target.y, target.z);
+                    current_pos = target;
+                }
+                MotionMode::ArcCW | MotionMode::ArcCCW => {
+                    let clockwise = motion_mode_for_line == MotionMode::ArcCW;
+                    motion_counts[if clockwise { 2 } else { 3 }] += 1;
+                    let drawn = push_arc_commands(
+                        &mut commands,
+                        &mut bounds,
+                        current_pos,
+                        target,
+                        plane,
+                        clockwise,
+                        params.ijk(),
+                        params.r,
+                        self.current_intensity,
+                    );
+                    if !drawn {
+                        debug!(
+                            "Arc without usable I/J/K or R at line {}, treating as linear move",
+                            line_num
+                        );
                         commands.push(GCodeCommand::Move {
                             from: current_pos,
-                            to: Point3D::new(new_x, new_y, new_z),
-                            rapid: true,
-                            intensity: Some(self.current_intensity),
-                        });
-                        bounds.update(current_pos.x, current_pos.y, current_pos.z);
-                        bounds.update(new_x, new_y, new_z);
-                        current_pos = Point3D::new(new_x, new_y, new_z);
-                    }
-                    MotionMode::Linear => {
-                        commands.push(GCodeCommand::Move {
-                            from: current_pos,
-                            to: Point3D::new(new_x, new_y, new_z),
+                            to: target,
                             rapid: false,
                             intensity: Some(self.current_intensity),
                         });
                         bounds.update(current_pos.x, current_pos.y, current_pos.z);
-                        bounds.update(new_x, new_y, new_z);
-                        current_pos = Point3D::new(new_x, new_y, new_z);
+                        bounds.update(target.x, target.y, target.z);
                     }
-                    MotionMode::ArcCW | MotionMode::ArcCCW => {
-                        if params.has_arc_params() {
-                            let center_x = current_pos.x + params.i.unwrap_or(0.0);
-                            let center_y = current_pos.y + params.j.unwrap_or(0.0);
-                            let center = Point3D::new(center_x, center_y, current_pos.z);
-
-                            let radius = ((current_pos.x - center_x).powi(2)
-                                + (current_pos.y - center_y).powi(2))
-                            .sqrt();
-                            trace!("Arc: from=({:.2},{:.2}), to=({:.2},{:.2}), center=({:.2},{:.2}), radius={:.4}, cw={}",
-                                   current_pos.x, current_pos.y, new_x, new_y, center_x, center_y, radius,
-                                   motion_mode_for_line == MotionMode::ArcCW);
-
-                            commands.push(GCodeCommand::Arc {
-                                from: current_pos,
-                                to: Point3D::new(new_x, new_y, new_z),
-                                center,
-                                clockwise: motion_mode_for_line == MotionMode::ArcCW,
-                                intensity: Some(self.current_intensity),
-                            });
-
-                            bounds.update(current_pos.x, current_pos.y, current_pos.z);
-                            bounds.update(new_x, new_y, new_z);
-                            current_pos = Point3D::new(new_x, new_y, new_z);
-                        } else {
-                            // Arc without I/J parameters - treat as linear motion
-                            debug!("Arc command without I/J parameters at line {}, treating as linear move", line_num);
-                            commands.push(GCodeCommand::Move {
-                                from: current_pos,
-                                to: Point3D::new(new_x, new_y, new_z),
-                                rapid: false,
-                                intensity: Some(self.current_intensity),
-                            });
-                            bounds.update(current_pos.x, current_pos.y, current_pos.z);
-                            bounds.update(new_x, new_y, new_z);
-                            current_pos = Point3D::new(new_x, new_y, new_z);
-                        }
-                    }
-                    MotionMode::None => {
-                        // There is no defined movement mode, ignore it
-                        debug!("Movement without motion mode at line {}", line_num);
-                    }
+                    current_pos = target;
+                }
+                MotionMode::None => {
+                    // There is no defined movement mode, ignore it
+                    debug!("Movement without motion mode at line {}", line_num);
                 }
             }
         }
 
         debug!(
             "Parse complete: G0={}, G1={}, G2={}, G3={}, total commands={}",
-            _g0_count,
-            _g1_count,
-            _g2_count,
-            _g3_count,
+            motion_counts[0],
+            motion_counts[1],
+            motion_counts[2],
+            motion_counts[3],
             commands.len()
         );
 
@@ -605,41 +797,13 @@ impl Visualizer {
             self.max_intensity = max_s;
             debug!("Intensity range: S=[{:.1}, {:.1}]", min_s, max_s);
         } else {
-            // Default values ​​if no intensity was detected
+            // Default values if no intensity was detected
             self.min_intensity = 0.0;
             self.max_intensity = 1000.0;
         }
 
-        (
-            self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z,
-        ) = bounds.finalize_with_padding(BOUNDS_PADDING_FACTOR);
         self.current_pos = current_pos;
-
-        // Calculate intensity range
-        let mut min_s = f32::MAX;
-        let mut max_s = f32::MIN;
-
-        for cmd in &commands {
-            let intensity = match cmd {
-                GCodeCommand::Move { intensity, .. } => intensity.unwrap_or(0.0),
-                GCodeCommand::Arc { intensity, .. } => intensity.unwrap_or(0.0),
-                GCodeCommand::Dwell { .. } => continue,
-            };
-
-            if intensity > 0.0 {
-                min_s = min_s.min(intensity);
-                max_s = max_s.max(intensity);
-            }
-        }
-
-        if min_s != f32::MAX && max_s != f32::MIN {
-            self.min_intensity = min_s;
-            self.max_intensity = max_s;
-            debug!("Intensity range: S=[{:.1}, {:.1}]", min_s, max_s);
-        } else {
-            self.min_intensity = 0.0;
-            self.max_intensity = 1000.0;
-        }
+        self.current_rotary = rotary;
 
         // Move commands to the cache (last step)
         self.toolpath_cache.update(new_hash, commands);
@@ -671,88 +835,6 @@ impl Visualizer {
             self.min_x, self.max_x, self.min_y, self.max_y, self.min_z, self.max_z
         );
     }
-
-/// Extraer todos los parámetros de una línea de G-code sin usar regex
-fn extract_all_params(line: &str) -> ExtractedParams {
-    let mut params = ExtractedParams::new();
-    let chars: Vec<char> = line.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        let c = chars[i];
-        // Buscar parámetros: X, Y, Z, I, J, S, F
-        if c == 'X' || c == 'Y' || c == 'Z' || c == 'I' || c == 'J' || c == 'S' || c == 'F' {
-            i += 1;
-            let mut num_str = String::new();
-
-            // Leer el número (incluyendo signo negativo y decimal)
-            while i < chars.len() {
-                let ch = chars[i];
-                if ch.is_ascii_digit() || ch == '.' || ch == '-' {
-                    if ch == '.' {
-                    }
-                    num_str.push(ch);
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-
-            if let Ok(value) = num_str.parse::<f32>() {
-                match c {
-                    'X' => params.x = Some(value),
-                    'Y' => params.y = Some(value),
-                    'Z' => params.z = Some(value),
-                    // Rotary axis coordinates (4th, 5th, 6th axes)
-                    'A' => params.a = Some(value),
-                    'B' => params.b = Some(value),
-                    'C' => params.c = Some(value),
-                    // Arc center offsets
-                    'I' => params.i = Some(value),
-                    'J' => params.j = Some(value),
-                    'K' => params.k = Some(value), // Z offset for helical arcs
-                    // Feed and spindle
-                    'S' => params.s = Some(value),
-                    'F' => params.f = Some(value),
-                    _ => {}
-                }
-            }
-        } else {
-            i += 1;
-        }
-    }
-
-    params
-}
-
-/// Extraer el número del comando G sin usar regex
-fn extract_gcode_num(line: &str) -> Option<u32> {
-    let chars: Vec<char> = line.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        if chars[i] == 'G' {
-            i += 1;
-            let mut num_str = String::new();
-
-            // Leer los dígitos después de G
-            while i < chars.len() && chars[i].is_ascii_digit() {
-                num_str.push(chars[i]);
-                i += 1;
-            }
-
-            if !num_str.is_empty() {
-                if let Ok(num) = num_str.parse::<u32>() {
-                    return Some(num);
-                }
-            }
-            return None;
-        }
-        i += 1;
-    }
-
-    None
-}
 
     /// Get bounds information
     pub fn get_bounds(&self) -> (f32, f32, f32, f32) {
@@ -827,15 +909,13 @@ fn extract_gcode_num(line: &str) -> Option<u32> {
                     }
                 }
                 GCodeCommand::Arc {
-                    from, to, center, ..
+                    from,
+                    to,
+                    center,
+                    clockwise,
+                    ..
                 } => {
-                    // For arcs, we should strictly check the arc extents, but adding points + center is a safe approximation for now
-                    bounds.update(from.x, from.y, from.z);
-                    bounds.update(to.x, to.y, to.z);
-                    // Including center ensures we don't clip the curve if it bows out, though it might be loose
-                    let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
-                    bounds.update(center.x - radius, center.y - radius, center.z);
-                    bounds.update(center.x + radius, center.y + radius, center.z);
+                    update_bounds_with_arc(&mut bounds, *from, *to, *center, *clockwise);
                     has_content = true;
                 }
                 GCodeCommand::Dwell { pos, .. } => {
@@ -890,14 +970,23 @@ fn extract_gcode_num(line: &str) -> Option<u32> {
 
         for cmd in self.toolpath_cache.commands() {
             match cmd {
-                GCodeCommand::Move { to, rapid, .. } => {
+                GCodeCommand::Move {
+                    from, to, rapid, ..
+                } => {
                     if !*rapid {
+                        bounds.update(from.x, from.y, from.z);
                         bounds.update(to.x, to.y, to.z);
                         has_cutting_moves = true;
                     }
                 }
-                GCodeCommand::Arc { to, .. } => {
-                    bounds.update(to.x, to.y, to.z);
+                GCodeCommand::Arc {
+                    from,
+                    to,
+                    center,
+                    clockwise,
+                    ..
+                } => {
+                    update_bounds_with_arc(&mut bounds, *from, *to, *center, *clockwise);
                     has_cutting_moves = true;
                 }
                 GCodeCommand::Dwell { pos, .. } => {
@@ -943,7 +1032,7 @@ fn extract_gcode_num(line: &str) -> Option<u32> {
         self.toolpath_sender.clone()
     }
 
-     /// Obtain the color for a given intensity.
+    /// Obtain the color for a given intensity.
     pub fn get_color_for_intensity(&self, intensity: f32) -> (f32, f32, f32) {
         if !self.use_intensity_colors {
             return (1.0, 1.0, 0.0);
@@ -954,7 +1043,7 @@ fn extract_gcode_num(line: &str) -> Option<u32> {
         }
 
         intensity_to_color(intensity, self.max_intensity)
-    }   
+    }
 
     /// Activate/deactivate colors by intensity
     pub fn toggle_intensity_colors(&mut self) {

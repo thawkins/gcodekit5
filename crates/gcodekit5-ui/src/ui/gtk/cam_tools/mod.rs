@@ -88,11 +88,11 @@ impl CamToolsView {
         // Bitmap Engraving Tool
         let bitmap_tool = BitmapEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(bitmap_tool.widget(), Some("laser_image"));
-/*
-        // Vector Engraving Tool
-        let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
-        stack.add_named(vector_tool.widget(), Some("laser_vector"));
-*/
+        /*
+                // Vector Engraving Tool
+                let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
+                stack.add_named(vector_tool.widget(), Some("laser_vector"));
+        */
         // Speeds & Feeds Calculator
         let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
         stack.add_named(feeds_tool.widget(), Some("feeds"));
@@ -146,7 +146,8 @@ impl CamToolsView {
             title: String,
             desc: String,
             icon: &'static str,
-            category: String,
+            // Untranslated category id; must match the filter combo's ids.
+            category: &'static str,
         }
 
         fn get_tools() -> Vec<Tool> {
@@ -156,21 +157,21 @@ impl CamToolsView {
                     title: t!("Tabbed Box Maker"),
                     desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
                     icon: "object-select-symbolic",
-                    category: t!("generators"),
+                    category: "generators",
                 },
                 Tool {
                     page: "jigsaw",
                     title: t!("Jigsaw Puzzle Generator"),
                     desc: t!("Create custom jigsaw puzzle patterns from images"),
                     icon: "image-x-generic-symbolic",
-                    category: t!("generators"),
+                    category: "generators",
                 },
                 Tool {
                     page: "laser_image",
                     title: t!("Laser Image Engraver"),
                     desc: t!("Convert raster images to G-code for laser engraving"),
                     icon: "camera-photo-symbolic",
-                    category: t!("engraving"),
+                    category: "engraving",
                 },
 /*
                 Tool {
@@ -178,7 +179,7 @@ impl CamToolsView {
                     title: t!("Laser Vector Engraver"),
                     desc: t!("Convert SVG and DXF vector files to G-code"),
                     icon: "insert-image-symbolic",
-                    category: t!("engraving"),
+                    category: "engraving",
                 },
 */
                 Tool {
@@ -186,42 +187,42 @@ impl CamToolsView {
                     title: t!("Speeds and Feeds Calculator"),
                     desc: t!("Calculate cutting speeds and feeds for your materials"),
                     icon: "accessories-calculator-symbolic",
-                    category: t!("calculators"),
+                    category: "calculators",
                 },
                 Tool {
                     page: "surfacing",
                     title: t!("Spoilboard Surfacing"),
                     desc: t!("Generate surfacing toolpaths to flatten your spoilboard"),
                     icon: "view-refresh-symbolic",
-                    category: t!("maintenance"),
+                    category: "maintenance",
                 },
                 Tool {
                     page: "grid",
                     title: t!("Create Spoilboard Grid"),
                     desc: t!("Generate grid patterns for spoilboard alignment"),
                     icon: "view-grid-symbolic",
-                    category: t!("maintenance"),
+                    category: "maintenance",
                 },
                 Tool {
                     page: "gerber",
                     title: t!("Gerber to G-Code"),
                     desc: t!("Convert Gerber files to G-Code for PCB milling"),
                     icon: "media-floppy-symbolic",
-                    category: t!("generators"),
+                    category: "generators",
                 },
                                   Tool {
                                       page: "drill_press",
                                       title: t!("Drill Press"),
                                       desc: t!("Emulate a drill press with peck drilling and helical cycles"),
                                       icon: "input-mouse-symbolic",
-                                      category: t!("generators"),
+                                      category: "generators",
                                   },
                                   Tool {
                                       page: "probe_routines",
                                       title: t!("Probe Tools"),
                                       desc: t!("Touch probe routines for WCS setup: Z-touch, edge find, corner find, bore/boss center, tool length"),
                                       icon: "input-touchpad-symbolic",
-                                      category: t!("maintenance"),
+                                      category: "maintenance",
                                   },            ]
         }
 

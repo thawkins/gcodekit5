@@ -182,7 +182,6 @@ impl SpoilboardGridTool {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_unit = width_unit.clone();
             let height_unit = height_unit.clone();
@@ -192,14 +191,13 @@ impl SpoilboardGridTool {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {

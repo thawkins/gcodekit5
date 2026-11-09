@@ -24,7 +24,7 @@ use std::fs;
 use std::io::BufReader;
 use std::panic;
 use std::path::PathBuf;
-use tracing::warn;
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GerberLayerType {
@@ -132,19 +132,10 @@ impl GerberConverter {
         writeln!(gcode, "G17 ; XY plane selection")?;
         writeln!(gcode)?;
 
-        writeln!(gcode, "; Home and set work coordinate system")?;
-        writeln!(gcode, " ; Home all axes (bottom-left corner)")?;
-        if params.num_axes >= 3 {
-            writeln!(gcode, "G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset")?;
-        } else {
-            writeln!(gcode, "G10 L2 P1 X0 Y0 ; Clear G54 offset")?;
-        }
+        // Work zero is set at the current (jogged) tool position. The X/Y offsets are applied
+        // to every emitted coordinate, so they must not also be baked into the work origin.
+        writeln!(gcode, "; Set work coordinate system at current position")?;
         writeln!(gcode, "G54 ; Select work coordinate system 1")?;
-        writeln!(
-            gcode,
-            "G0 X{:.3} Y{:.3} ; Move to work origin",
-            params.offset_x, params.offset_y
-        )?;
         if params.num_axes >= 3 {
             writeln!(
                 gcode,
@@ -188,6 +179,28 @@ impl GerberConverter {
         writeln!(gcode, "G0 X0 Y0")?;
 
         Ok(gcode)
+    }
+
+    /// Signed parallel-offset distance that moves a copper boundary away from the copper.
+    ///
+    /// cavalier_contours offsets positive values to the left of the travel direction, so the
+    /// sign depends on ring orientation. Exterior rings must grow outward and hole rings must
+    /// shrink into the hole; both mean "away from copper".
+    ///
+    /// # Arguments
+    /// * `poly` - Closed boundary ring
+    /// * `is_hole` - Whether the ring is an interior (hole) ring
+    /// * `distance` - Unsigned isolation distance in mm
+    ///
+    /// # Returns
+    /// The signed offset to pass to `parallel_offset`.
+    fn outward_offset(poly: &Polyline<f64>, is_hole: bool, distance: f64) -> f64 {
+        let ccw = poly.area() > 0.0;
+        if is_hole == ccw {
+            distance
+        } else {
+            -distance
+        }
     }
 
     fn create_thick_segment(p1: (f64, f64), p2: (f64, f64), width: f64) -> Sketch<()> {
@@ -340,28 +353,23 @@ impl GerberConverter {
         let mut interpolation = InterpolationMode::Linear;
         let mut _quadrant_mode = QuadrantMode::Single;
 
-        let mut decimals_x = 4;
-        let mut decimals_y = 4;
-
         if let Some(fmt) = &doc.format_specification {
-            decimals_x = fmt.decimal;
-            decimals_y = fmt.decimal;
-            warn!(
+            debug!(
                 "Found Format Specification: {}.{}",
                 fmt.integer, fmt.decimal
             );
         } else {
-            warn!("No Format Specification found, assuming 2.4");
+            warn!("No Format Specification found in Gerber file");
         }
 
         let unit_scale = if let Some(units) = &doc.units {
             match units {
                 Unit::Millimeters => {
-                    warn!("Units: Millimeters");
+                    debug!("Units: Millimeters");
                     1.0
                 }
                 Unit::Inches => {
-                    warn!("Units: Inches");
+                    debug!("Units: Inches");
                     25.4
                 }
             }
@@ -370,37 +378,12 @@ impl GerberConverter {
             1.0
         };
 
-        let divisor_x = 10f64.powi(decimals_x as i32);
-        let divisor_y = 10f64.powi(decimals_y as i32);
-
-        warn!(
-            "Conversion params: Divisor X: {}, Divisor Y: {}, Unit Scale: {}",
-            divisor_x, divisor_y, unit_scale
-        );
-
-        let convert_coord = |c: &CoordinateNumber, is_x: bool| -> f64 {
-            let s = format!("{:?}", c);
-            let val = if let Some(start) = s.find("nano: ") {
-                if let Some(end_offset) = s[start..].find(" }") {
-                    let num_str = &s[start + 6..start + end_offset];
-                    num_str.parse::<f64>().unwrap_or(0.0)
-                } else if let Some(end_offset) = s[start..].find("}") {
-                    let num_str = &s[start + 6..start + end_offset];
-                    num_str.parse::<f64>().unwrap_or(0.0)
-                } else {
-                    0.0
-                }
-            } else {
-                let val_str = s
-                    .trim_start_matches("CoordinateNumber(")
-                    .trim_end_matches(')')
-                    .trim_start_matches("CoordinateNumber {")
-                    .trim_end_matches('}');
-                val_str.parse::<f64>().unwrap_or(0.0)
-            };
-            let div = if is_x { divisor_x } else { divisor_y };
-            val / div * unit_scale
-        };
+        // `CoordinateNumber` is stored by gerber-types with a fixed 6-decimal fixed-point
+        // representation, independent of the file's %FS format (the parser already rescales
+        // raw integers by 10^(6 - decimals)). Converting via `f64::from` therefore yields the
+        // value in file units; only the unit scale (inch -> mm) must still be applied.
+        let convert_coord =
+            |c: &CoordinateNumber, _is_x: bool| -> f64 { f64::from(*c) * unit_scale };
 
         for command in doc.commands() {
             match command {
@@ -688,12 +671,8 @@ impl GerberConverter {
 
         let mut isolation_paths = Vec::new();
         for (poly, is_hole) in polylines {
-            let offset_val = if is_hole {
-                -isolation_offset
-            } else {
-                isolation_offset
-            };
             let poly = clean_polyline(poly);
+            let offset_val = Self::outward_offset(&poly, is_hole, isolation_offset);
             let offset_res =
                 panic::catch_unwind(panic::AssertUnwindSafe(|| poly.parallel_offset(offset_val)));
 
@@ -785,12 +764,8 @@ impl GerberConverter {
         let mut negative_sketch = Sketch::new();
 
         for (poly, is_hole) in polylines {
-            let offset_val = if is_hole {
-                -isolation_offset
-            } else {
-                isolation_offset
-            };
             let poly = clean_polyline(poly);
+            let offset_val = Self::outward_offset(&poly, is_hole, isolation_offset);
             let offset_res =
                 panic::catch_unwind(panic::AssertUnwindSafe(|| poly.parallel_offset(offset_val)));
 
@@ -848,7 +823,7 @@ impl GerberConverter {
                                             merged_outline = merged_outline.union(s);
                                         }
                                         board = merged_outline;
-                                        warn!("Using board outline from file: {:?}", path);
+                                        debug!("Using board outline from file: {:?}", path);
                                         break;
                                     }
                                 }
@@ -862,18 +837,18 @@ impl GerberConverter {
         // Board is already at (0,0) to (w,h), no translation needed if we assume bottom-left origin
 
         // 4. Rubout Area
-        warn!("Board bounds: {:?}", board.bounding_box());
-        warn!(
+        debug!("Board bounds: {:?}", board.bounding_box());
+        debug!(
             "Isolation sketch bounds: {:?}",
             isolation_sketch.bounding_box()
         );
-        warn!(
+        debug!(
             "Buffered traces bounds: {:?}",
             buffered_traces.bounding_box()
         );
         let rubout_area = board.difference(&buffered_traces);
-        warn!("Rubout area bounds: {:?}", rubout_area.bounding_box());
-        warn!(
+        debug!("Rubout area bounds: {:?}", rubout_area.bounding_box());
+        debug!(
             "Rubout area multipolygon polygon count: {}",
             rubout_area.to_multipolygon().0.len()
         );
@@ -881,7 +856,7 @@ impl GerberConverter {
         // 5. Hatch - Convert each polygon with holes to a single lyon path
         // Lyon's even-odd fill rule will properly handle holes if they wind opposite direction
         let mp = rubout_area.to_multipolygon();
-        warn!("Rubout area multipolygon count: {}", mp.0.len());
+        debug!("Rubout area multipolygon count: {}", mp.0.len());
         let mut lyon_paths = Vec::new();
         for poly in mp.0 {
             let mut builder = LyonPath::builder();
@@ -912,19 +887,19 @@ impl GerberConverter {
         }
 
         let spacing = params.tool_diameter * 0.8;
-        warn!("Generating hatch with spacing: {}", spacing);
+        debug!("Generating hatch with spacing: {}", spacing);
         let mut hatch_lines = Vec::new();
         for path in lyon_paths {
             let lines = hatch_generator::generate_hatch(&path, 45.0, spacing, 0.01);
             hatch_lines.extend(lines);
         }
-        warn!("Generated {} hatch lines", hatch_lines.len());
+        debug!("Generated {} hatch lines", hatch_lines.len());
 
         // 6. G-Code
         let has_z = params.num_axes >= 3;
         for (i, path) in hatch_lines.iter().enumerate() {
             if i < 5 {
-                warn!("Hatch line {}: {:?}", i, path.iter().collect::<Vec<_>>());
+                debug!("Hatch line {}: {:?}", i, path.iter().collect::<Vec<_>>());
             }
             for event in path.iter() {
                 match event {

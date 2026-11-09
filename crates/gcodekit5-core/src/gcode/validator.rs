@@ -142,7 +142,24 @@ impl GcodeValidator {
             return ValidationResult::Valid;
         }
 
-        let upper = line.to_uppercase();
+        // Strip inline "( ... )" comments so words inside them are not validated
+        let mut stripped = String::with_capacity(line.len());
+        let mut depth = 0usize;
+        for c in line.chars() {
+            match c {
+                '(' => {
+                    if depth == 0 {
+                        stripped.push(' '); // keep words on either side separate
+                    }
+                    depth += 1;
+                }
+                ')' if depth > 0 => depth -= 1,
+                _ if depth == 0 => stripped.push(c),
+                _ => {}
+            }
+        }
+
+        let upper = stripped.to_uppercase();
 
         // Check for unsupported axes based on axis_count
         if let Some(err) = self.check_axis_support(&upper) {
@@ -183,8 +200,11 @@ impl GcodeValidator {
                 continue;
             }
 
-            let first_char = word.chars().next().unwrap();
-            let value = &word[1..];
+            let Some(first_char) = word.chars().next() else {
+                continue;
+            };
+            // Slice on a char boundary: `&word[1..]` panics on a non-ASCII first char.
+            let value = &word[first_char.len_utf8()..];
 
             // Skip if not a coordinate word
             if !['X', 'Y', 'Z', 'A', 'B', 'C'].contains(&first_char) {
@@ -235,8 +255,11 @@ impl GcodeValidator {
                 continue;
             }
 
-            let first_char = word.chars().next().unwrap();
-            let value = &word[1..];
+            let Some(first_char) = word.chars().next() else {
+                continue;
+            };
+            // Slice on a char boundary: `&word[1..]` panics on a non-ASCII first char.
+            let value = &word[first_char.len_utf8()..];
 
             // Get limits for this axis
             let (min, max) = match first_char {

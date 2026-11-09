@@ -84,16 +84,6 @@ impl DeviceConsoleView {
 
         widget.set_end_child(Some(&main_area));
 
-        // Dynamic resizing for 20% sidebar width
-        widget.add_tick_callback(|paned, _clock| {
-            let width = paned.width();
-            let target = (width as f64 * 0.2) as i32;
-            if (paned.position() - target).abs() > 2 {
-                paned.set_position(target);
-            }
-            gtk4::glib::ControlFlow::Continue
-        });
-
         // Load command history
         let history = shared(CommandHistory::load());
 

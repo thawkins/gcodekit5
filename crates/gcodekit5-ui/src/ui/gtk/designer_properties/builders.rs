@@ -5,7 +5,6 @@ use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
 impl PropertiesPanel {
-
     pub(crate) fn create_section(title: &str) -> Frame {
         let frame = Frame::new(None);
 
@@ -15,13 +14,13 @@ impl PropertiesPanel {
         title_label.set_margin_start(8);
         title_label.set_margin_top(4);
         title_label.set_margin_bottom(4);
-//        title_label.add_css_class("section-title"); // ← Opcional para CSS
+        //        title_label.add_css_class("section-title"); // ← Opcional para CSS
         frame.set_label_widget(Some(&title_label));
         frame
     }
 
-
-    pub(crate) fn build_position_section() -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
+    pub(crate) fn build_position_section(
+    ) -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -465,21 +464,27 @@ impl PropertiesPanel {
         grid.attach(&chamfer_unit_label, 2, 1, 1, 1);
 
         frame.set_child(Some(&grid));
-        (frame, offset_entry, chamfer_entry, offset_unit_label, chamfer_unit_label)
+        (
+            frame,
+            offset_entry,
+            chamfer_entry,
+            offset_unit_label,
+            chamfer_unit_label,
+        )
     }
 
     pub(crate) fn build_cam_section() -> (
         Frame,
         CheckButton,
         DropDown,
-        Entry,  // step_down_entry
-        Entry,  // step_in_entry
-        Entry,  // ramp_angle_entry
+        Entry,    // step_down_entry
+        Entry,    // step_in_entry
+        Entry,    // ramp_angle_entry
         DropDown, // strategy_combo
-        Entry, // raster_fill_entry
-        Label,  // step_down_unit_label
-        Label,  // step_in_unit_label
-        Label,  // step_in_label
+        Entry,    // raster_fill_entry
+        Label,    // step_down_unit_label
+        Label,    // step_in_unit_label
+        Label,    // step_in_label
     ) {
         let frame = Self::create_section(&t!("CAM Properties"));
         let grid = gtk4::Grid::builder()
@@ -692,7 +697,7 @@ impl PropertiesPanel {
         let halftone_label = Label::new(Some(&t!("Halftone:")));
         halftone_label.set_halign(gtk4::Align::Start);
         let halftone_entry = Entry::new();
-        halftone_entry.set_max_width_chars(8);  // <-- Limitar a 8 caracteres
+        halftone_entry.set_max_width_chars(8); // <-- Limitar a 8 caracteres
         halftone_entry.set_placeholder_text(Some("0-255"));
         halftone_entry.set_text("127"); // Valor por defecto
         let halftone_range = Label::new(Some("(0-255)"));

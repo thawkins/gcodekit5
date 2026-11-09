@@ -72,6 +72,18 @@ impl SettingsPersistence {
 
     /// Load settings from dialog into config
     pub fn load_from_dialog(&mut self, dialog: &SettingsDialog) -> Result<()> {
+        // Apply to a copy and commit only if everything validates, so a rejected
+        // save does not leave the in-memory config half-updated with invalid values.
+        let backup = self.config.clone();
+        let result = self.apply_dialog(dialog);
+        if result.is_err() {
+            self.config = backup;
+        }
+        result
+    }
+
+    /// Copy all dialog values into the config and validate the result.
+    fn apply_dialog(&mut self, dialog: &SettingsDialog) -> Result<()> {
         // Update connection settings - Moved to DeviceDB
         // self.update_connection_settings(dialog)?;
 
@@ -124,7 +136,9 @@ impl SettingsPersistence {
                 &t!("Measurement System"),
                 SettingValue::Enum(ui.measurement_system.to_string(), systems),
             )
-            .with_description (&t!("Units for display and input (Metric/mm or Imperial/inch)"))
+            .with_description(&t!(
+                "Units for display and input (Metric/mm or Imperial/inch)"
+            ))
             .with_category(SettingsCategory::General),
         );
 
@@ -173,7 +187,9 @@ impl SettingsPersistence {
                 &t!("Theme"),
                 SettingValue::Enum(ui.theme.to_string(), themes),
             )
-            .with_description(&t!("Application color theme (Light, Dark, or System default)"))
+            .with_description(&t!(
+                "Application color theme (Light, Dark, or System default)"
+            ))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -211,7 +227,7 @@ impl SettingsPersistence {
             "Designer".to_string(),
             "Visualizer".to_string(),
             "Machine".to_string(),
-//            "Editor".to_string(),
+            //            "Editor".to_string(),
             "CamTools".to_string(),
             "Config".to_string(),
             "Devices".to_string(),
@@ -308,7 +324,9 @@ impl SettingsPersistence {
                 &t!("Show About on Startup"),
                 SettingValue::Boolean(ui.show_about_on_startup),
             )
-            .with_description(&t!("Show the About dialog for 15 seconds when the application starts"))
+            .with_description(&t!(
+                "Show the About dialog for 15 seconds when the application starts"
+            ))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -319,7 +337,9 @@ impl SettingsPersistence {
                 &t!("Grid Major Line Width (px)"),
                 SettingValue::String(ui.grid_major_line_width.to_string()),
             )
-            .with_description(&t!("Thickness in pixels for coarse grid lines (default: 2)"))
+            .with_description(&t!(
+                "Thickness in pixels for coarse grid lines (default: 2)"
+            ))
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -703,11 +723,10 @@ impl SettingsPersistence {
         if let Some(setting) = dialog.get_setting("startup_tab") {
             let tab_str = setting.value.as_str();
             self.config.ui.startup_tab = match tab_str.as_str() {
-
                 "Designer" => crate::config::StartupTab::Designer,
                 "Machine" => crate::config::StartupTab::Machine,
                 "Console" => crate::config::StartupTab::Console,
-//                "Editor" => crate::config::StartupTab::Editor,
+                //                "Editor" => crate::config::StartupTab::Editor,
                 "Visualizer" => crate::config::StartupTab::Visualizer,
                 "CamTools" => crate::config::StartupTab::CamTools,
                 "DeviceInfo" => crate::config::StartupTab::DeviceInfo,

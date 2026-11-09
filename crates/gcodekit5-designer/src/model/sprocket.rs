@@ -68,11 +68,12 @@ impl DesignerShape for DesignSprocket {
         );
 
         if self.rotation.abs() > 1e-6 {
-            let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
+            // Rotate about the shape centre: move centre to origin, rotate, move back.
+            let transform = Transform::translation(-self.center.x as f32, -self.center.y as f32)
                 .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
                 .then_translate(lyon::math::vector(
-                    -self.center.x as f32,
-                    -self.center.y as f32,
+                    self.center.x as f32,
+                    self.center.y as f32,
                 ));
             return path.transformed(&transform);
         }

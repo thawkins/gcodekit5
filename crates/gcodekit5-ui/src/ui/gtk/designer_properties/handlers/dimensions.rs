@@ -245,6 +245,7 @@ pub fn setup_height_activate_handler(
 }
 
 /// Setup lock aspect ratio toggle handler
+#[allow(clippy::type_complexity)]
 pub fn setup_lock_aspect_handler(
     lock_aspect_ratio: &CheckButton,
     width_entry: &Entry,
@@ -252,6 +253,7 @@ pub fn setup_lock_aspect_handler(
     aspect_ratio: Shared<f64>,
     state: Shared<DesignerState>,
     settings: Shared<SettingsPersistence>,
+    updating: Shared<bool>,
 ) {
     let width = width_entry.clone();
     let height = height_entry.clone();
@@ -270,6 +272,13 @@ pub fn setup_lock_aspect_handler(
                     *aspect_ratio.borrow_mut() = w as f64 / h as f64;
                 }
             }
+        }
+
+        // Programmatic updates (selection refresh) must not write back into the
+        // shapes: that would mutate the model just by selecting a shape and would
+        // re-borrow the designer state while the panel is being refreshed.
+        if *updating.borrow() {
+            return;
         }
 
         // Save lock_aspect_ratio to the selected shape(s)

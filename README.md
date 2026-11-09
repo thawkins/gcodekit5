@@ -327,7 +327,7 @@ The object positioning issue when opening "gckd" files.
 ## Installation
 
 ### Prerequisites
-- **Rust** 1.88 or later (MSRV - Minimum Supported Rust Version)
+- **Rust** 1.90 or later (MSRV - Minimum Supported Rust Version)
 - **Operating System**: Linux, macOS, or Windows
 - **Memory**: 512MB minimum (2GB recommended)
 - **Display**: 1024x768 minimum resolution

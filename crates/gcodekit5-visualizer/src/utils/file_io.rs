@@ -21,6 +21,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::gcode::words::{code_number, parse_line};
+
 /// Maximum number of recent files to keep in history
 const DEFAULT_MAX_RECENT: usize = 20;
 
@@ -245,9 +247,10 @@ impl GcodeFileReader {
 
             validation.total_lines += 1;
 
+            let words = parse_line(trimmed);
+
             // Check for motion commands
-            let upper = trimmed.to_uppercase();
-            if upper.contains('G') || upper.contains('M') {
+            if words.iter().any(|w| w.letter == 'G' || w.letter == 'M') {
                 has_motion = true;
             }
 
@@ -260,18 +263,15 @@ impl GcodeFileReader {
                 ));
             }
 
-            if trimmed.contains("G00") || trimmed.contains("G0 ") {
-                validation.rapid_moves += 1;
-            }
-            if trimmed.contains("G01") || trimmed.contains("G1 ") {
-                validation.linear_moves += 1;
-            }
-            if trimmed.contains("G02")
-                || trimmed.contains("G2 ")
-                || trimmed.contains("G03")
-                || trimmed.contains("G3 ")
-            {
-                validation.arc_moves += 1;
+            // Count explicit motion words (exact G0/G1/G2/G3, so G10, G21, G91 etc.
+            // are not mistaken for motion commands)
+            for word in words.iter().filter(|w| w.letter == 'G') {
+                match code_number(word.value) {
+                    (0, 0) => validation.rapid_moves += 1,
+                    (1, 0) => validation.linear_moves += 1,
+                    (2, 0) | (3, 0) => validation.arc_moves += 1,
+                    _ => {}
+                }
             }
 
             Ok(())

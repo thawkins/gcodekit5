@@ -13,8 +13,8 @@ use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, Dialog, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
-    ResponseType, ScrolledWindow,
+    Align, Box, Button, CheckButton, Dialog, Entry, Frame, Grid, Image, Label, Orientation,
+    PolicyType, ResponseType, ScrolledWindow,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -323,7 +323,9 @@ impl DesignerToolbox {
                 }
             });
 
-            refresh_callbacks.borrow_mut().push(update_mode_buttons.clone());
+            refresh_callbacks
+                .borrow_mut()
+                .push(update_mode_buttons.clone());
             update_mode_buttons();
         }
 
@@ -471,7 +473,7 @@ impl DesignerToolbox {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
                     settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
+                        if key == "measurement_system" || key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
                             {
@@ -553,14 +555,12 @@ impl DesignerToolbox {
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                {
-                    let mut s = state_setter.borrow_mut();
-                    if let Some(ref mut stock) = s.stock_material {
-                        let clearance = (stock.safe_z - stock.thickness)
-                            .max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
-                        stock.thickness = val;
-                        stock.safe_z = stock.thickness + clearance;
-                    }
+                let mut s = state_setter.borrow_mut();
+                if let Some(ref mut stock) = s.stock_material {
+                    let clearance = (stock.safe_z - stock.thickness)
+                        .max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
+                    stock.thickness = val;
+                    stock.safe_z = stock.thickness + clearance;
                 }
             });
             create_stock_setting(
@@ -578,19 +578,15 @@ impl DesignerToolbox {
                     .borrow()
                     .stock_material
                     .as_ref()
-                    .map(|s| {
-                        (s.safe_z - s.thickness).max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM)
-                    })
+                    .map(|s| (s.safe_z - s.thickness).max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM))
                     .unwrap_or(StockMaterial::DEFAULT_SAFE_Z_ABOVE_STOCK_MM)
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
-                {
-                    let mut s = state_setter.borrow_mut();
-                    if let Some(ref mut stock) = s.stock_material {
-                        let clearance = val.max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
-                        stock.safe_z = stock.thickness + clearance;
-                    }
+                let mut s = state_setter.borrow_mut();
+                if let Some(ref mut stock) = s.stock_material {
+                    let clearance = val.max(StockMaterial::MIN_SAFE_Z_ABOVE_STOCK_MM);
+                    stock.safe_z = stock.thickness + clearance;
                 }
             });
             create_stock_setting(
@@ -605,18 +601,17 @@ impl DesignerToolbox {
             let state_getter = state.clone();
             let getter = Rc::new(move || {
                 let step_down = state_getter.borrow().tool_settings.step_down;
-                if step_down > 0.0 { step_down as f32 } else { 0.1 }
+                if step_down > 0.0 {
+                    step_down as f32
+                } else {
+                    0.1
+                }
             });
             let state_setter = state.clone();
             let setter = Rc::new(move |val: f32| {
                 state_setter.borrow_mut().set_step_down(val.max(0.1) as f64);
             });
-            create_stock_setting(
-                t!("Step Down"),
-                getter,
-                setter,
-                t!("Depth per pass"),
-            );
+            create_stock_setting(t!("Step Down"), getter, setter, t!("Depth per pass"));
         }
 
         let stock_settings_btn = Button::with_label(&t!("Stock Settings…"));
@@ -707,7 +702,7 @@ impl DesignerToolbox {
 
         // Botones de G-code y Frame
         let generate_btn = Button::with_label(&t!("Generate G-Code"));
-//        generate_btn.add_css_class("suggested-action");
+        //        generate_btn.add_css_class("suggested-action");
         generate_btn.set_margin_top(5);
         generate_btn.set_margin_bottom(5);
         generate_btn.set_margin_start(5);
@@ -728,13 +723,13 @@ impl DesignerToolbox {
 
         scrolled.set_child(Some(&content_box));
         main_container.append(&scrolled);
-/*
-        // Add separator
-        let separator = gtk4::Separator::new(Orientation::Horizontal);
-        separator.set_margin_top(10);
-        separator.set_margin_bottom(10);
-        main_container.append(&separator);
-*/
+        /*
+                // Add separator
+                let separator = gtk4::Separator::new(Orientation::Horizontal);
+                separator.set_margin_top(10);
+                separator.set_margin_bottom(10);
+                main_container.append(&separator);
+        */
         Rc::new(Self {
             widget: main_container,
             current_tool,
@@ -868,6 +863,10 @@ impl DesignerToolbox {
                             let val_mm = match (units_kind, machine_mode) {
                                 (UnitsKind::Rpm, MachineMode::Laser2D) => val * 10.0,
                                 (UnitsKind::Rpm, MachineMode::Cnc3D) => val,
+                                // Must mirror update_display: in laser mode lengths (passes,
+                                // laser width) are shown unconverted. Converting here scaled
+                                // the value by 25.4 on every refresh in imperial mode.
+                                (UnitsKind::Length, MachineMode::Laser2D) => val,
                                 (UnitsKind::Length | UnitsKind::FeedRate, _) => match units {
                                     MeasurementSystem::Metric => val,
                                     MeasurementSystem::Imperial => val * 25.4,
@@ -885,7 +884,7 @@ impl DesignerToolbox {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
                     settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
+                        if key == "measurement_system" || key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
                             {
@@ -1085,9 +1084,7 @@ impl DesignerToolbox {
     }
 
     pub fn register_refresh_callback<F: Fn() + 'static>(&self, callback: F) {
-        self.refresh_callbacks
-            .borrow_mut()
-            .push(Rc::new(callback));
+        self.refresh_callbacks.borrow_mut().push(Rc::new(callback));
     }
 
     /// Refresh all tool and stock settings UI widgets from current state.

@@ -1,5 +1,6 @@
 //! G-Code command processor implementations
 
+use super::words::strip_comments;
 use super::{CommandProcessor, GcodeCommand, GcodeState, ProcessorConfig};
 
 // ============================================================================
@@ -93,28 +94,8 @@ impl CommandProcessor for CommentProcessor {
         command: &GcodeCommand,
         _state: &GcodeState,
     ) -> Result<Vec<GcodeCommand>, String> {
-        let mut cmd = command.command.clone();
-
-        // Remove parenthesized comments
-        while let Some(start) = cmd.find('(') {
-            if let Some(end) = cmd.find(')') {
-                if end > start {
-                    cmd.remove(end);
-                    cmd.remove(start);
-                } else {
-                    break;
-                }
-            } else {
-                // Unmatched parenthesis - remove from start to end of line
-                cmd.truncate(start);
-                break;
-            }
-        }
-
-        // Remove semicolon comments (everything after first semicolon)
-        if let Some(pos) = cmd.find(';') {
-            cmd.truncate(pos);
-        }
+        // Remove parenthesized comments (including their text) and `;` comments
+        let cmd = strip_comments(&command.command);
 
         let trimmed = cmd.trim().to_string();
 
@@ -447,31 +428,16 @@ impl CommandProcessor for ArcExpander {
         command: &GcodeCommand,
         _state: &GcodeState,
     ) -> Result<Vec<GcodeCommand>, String> {
-        let cmd_upper = command.command.to_uppercase();
-
-        if !cmd_upper.starts_with("G02") && !cmd_upper.starts_with("G03") {
-            return Ok(vec![command.clone()]);
-        }
-
-        let segments: u32 = self
-            .config
-            .get_option("segments")
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(10);
-
-        let mut expanded_commands = Vec::new();
-
-        for i in 1..=segments {
-            let mut arc_segment = command.clone();
-            arc_segment.command = format!("{} ; Arc segment {}/{}", command.command, i, segments);
-            expanded_commands.push(arc_segment);
-        }
-
-        if expanded_commands.is_empty() {
-            return Ok(vec![command.clone()]);
-        }
-
-        Ok(expanded_commands)
+        // Expanding an arc requires the machine position at the start of the arc,
+        // which is not part of `GcodeState`. Emitting copies of the arc (the
+        // previous behaviour) re-executes it several times, which in G90 turns
+        // every copy after the first into a full circle. Pass the command through
+        // unchanged instead so the controller interpolates it natively.
+        tracing::debug!(
+            "ArcExpander: passing '{}' through unchanged (start position unknown)",
+            command.command
+        );
+        Ok(vec![command.clone()])
     }
 
     fn is_enabled(&self) -> bool {

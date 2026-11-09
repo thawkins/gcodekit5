@@ -183,7 +183,7 @@ impl WcsUpdateService {
                     axis_name
                 )
             }
-            ProbeRoutine::CornerFind { corner: _, .. } => {
+            ProbeRoutine::CornerFind { .. } => {
                 format!(
                     "Probe found corner at ({:.3}, {:.3}).\n\
                      Set {} X={:.3}, Y={:.3}?",
@@ -245,11 +245,8 @@ impl WcsUpdateService {
                 Ok((command, description))
             }
             _ if self.config.use_temporary_offset => {
-                // Temporary offset: G92 X<x> Y<y> Z<z>
-                let command = format!(
-                    "G92 X{:.3} Y{:.3} Z{:.3}",
-                    computed_pos.x, computed_pos.y, computed_pos.z
-                );
+                // Temporary offset: G92 with only the axes this routine measured
+                let command = format!("G92 {}", Self::axis_words(&report.routine, computed_pos));
                 let description = format!(
                     "Set temporary origin (G92) to ({:.3}, {:.3}, {:.3})",
                     computed_pos.x, computed_pos.y, computed_pos.z
@@ -257,10 +254,16 @@ impl WcsUpdateService {
                 Ok((command, description))
             }
             _ => {
-                // Persistent WCS offset: G10 L2 P<n> X<x> Y<y> Z<z>
+                // Persistent WCS offset: G10 L2 P<n> with only the axes this routine measured.
+                // GRBL/LinuxCNC number coordinate systems P1..P6 for G54..G59 (P0 = active).
+                let p_number = match wcs {
+                    54..=59 => wcs - 53,
+                    other => other,
+                };
                 let command = format!(
-                    "G10 L2 P{} X{:.3} Y{:.3} Z{:.3}",
-                    wcs, computed_pos.x, computed_pos.y, computed_pos.z
+                    "G10 L2 P{} {}",
+                    p_number,
+                    Self::axis_words(&report.routine, computed_pos)
                 );
                 let description = format!(
                     "Set {} offset to ({:.3}, {:.3}, {:.3})",
@@ -271,6 +274,26 @@ impl WcsUpdateService {
                 );
                 Ok((command, description))
             }
+        }
+    }
+
+    /// Axis words for the axes a routine actually measures.
+    ///
+    /// Writing unmeasured axes would clobber existing offsets (e.g. a Z-touch must not
+    /// move the X/Y origin, and an X edge find must not touch Y or Z).
+    fn axis_words(routine: &ProbeRoutine, pos: Position) -> String {
+        match routine {
+            ProbeRoutine::ZTouch { .. } | ProbeRoutine::ToolLength { .. } => {
+                format!("Z{:.3}", pos.z)
+            }
+            ProbeRoutine::EdgeFind { axis, .. } => match axis {
+                gcodekit5_core::ProbeAxis::X => format!("X{:.3}", pos.x),
+                gcodekit5_core::ProbeAxis::Y => format!("Y{:.3}", pos.y),
+                gcodekit5_core::ProbeAxis::Z => format!("Z{:.3}", pos.z),
+            },
+            ProbeRoutine::CornerFind { .. }
+            | ProbeRoutine::BoreCenter { .. }
+            | ProbeRoutine::BossCenter { .. } => format!("X{:.3} Y{:.3}", pos.x, pos.y),
         }
     }
 
@@ -294,15 +317,14 @@ impl WcsUpdateService {
                 if !trigger.success {
                     return Err(anyhow!("Probe did not trigger successfully"));
                 }
-                Ok(Position::new(
-                    trigger.position.x,
-                    trigger.position.y,
-                    0.0, // Z is set to surface
-                ))
+                // The surface is at the trigger Z; this becomes the WCS Z origin.
+                Ok(trigger.position)
             }
-            ProbeRoutine::EdgeFind { axis: _, .. } => {
+            ProbeRoutine::EdgeFind { .. } => {
                 // Use last trigger (slow re-probe if available)
-                let trigger = triggers.last().unwrap();
+                let Some(trigger) = triggers.last() else {
+                    return Err(anyhow!("No trigger results in probe report"));
+                };
                 if !trigger.success {
                     return Err(anyhow!("Probe did not trigger successfully"));
                 }
@@ -313,8 +335,9 @@ impl WcsUpdateService {
                     return Err(anyhow!("Need at least 2 triggers for corner"));
                 }
                 // Use last triggers for each axis
-                let x_trigger = if triggers.len() >= 2 {
-                    &triggers[1] // Last X (slow if available)
+                // Without backoff: [X, Y]; with backoff: [X fast, X slow, Y fast, Y slow]
+                let x_trigger = if triggers.len() >= 4 {
+                    &triggers[1] // Last X (slow)
                 } else {
                     &triggers[0]
                 };
@@ -555,9 +578,7 @@ impl PersistentProbeResults {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gcodekit5_core::{
-        Corner, ProbeAxis as Axis, ProbeDirection as Direction, ProbeResult, Units,
-    };
+    use gcodekit5_core::{Corner, ProbeResult, Units};
 
     #[test]
     fn test_wcs_update_config_default() {
@@ -599,11 +620,14 @@ mod tests {
             Units::MM,
         )); // Slow re-probe
 
-        let result = service.process_probe_report(&report).unwrap();
+        let result = service
+            .process_probe_report(&report)
+            .expect("WCS test setup should succeed");
 
         assert!(!result.applied); // Not auto-applied
         assert!(result.command.contains("G10"));
-        assert!(result.command.contains("P54"));
+        // G54 is coordinate system P1; a Z-touch only sets Z (at the slow re-probe trigger)
+        assert_eq!(result.command, "G10 L2 P1 Z-5.020");
         assert!(result.description.contains("G54"));
     }
 
@@ -627,7 +651,9 @@ mod tests {
             Units::MM,
         ));
 
-        let preview = service.generate_preview(&report).unwrap();
+        let preview = service
+            .generate_preview(&report)
+            .expect("WCS test setup should succeed");
         // Z-touch routine sets Z to 0 at the trigger position
         // The actual trigger was at Z=-12.345, but computed position has Z=0
         assert!(preview.contains("Z surface"));
@@ -658,9 +684,9 @@ mod tests {
             Units::MM,
         ));
 
-        let (command, description) = service
+        let (command, _description) = service
             .build_command(&report, Position::new(100.0, 100.0, -15.0))
-            .unwrap();
+            .expect("WCS test setup should succeed");
         assert!(command.contains("G43.1"));
         assert!(command.contains("Z-15"));
     }
@@ -696,7 +722,7 @@ mod tests {
 
         let (command, _) = service
             .build_command(&report, Position::new(10.0, 20.0, -5.0))
-            .unwrap();
+            .expect("WCS test setup should succeed");
         assert!(command.contains("G92"));
         assert!(!command.contains("G10"));
     }
@@ -717,7 +743,9 @@ mod tests {
 
         persistent.store_report(54, &report);
 
-        let stored = persistent.get_report(54).unwrap();
+        let stored = persistent
+            .get_report(54)
+            .expect("WCS test setup should succeed");
         assert_eq!(stored.computed_x, 50.0);
         assert_eq!(stored.computed_y, 50.0);
     }

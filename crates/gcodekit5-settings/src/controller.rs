@@ -112,8 +112,10 @@ impl SettingsController {
         let new_value_opt = if let Some(setting) = dialog.get_setting(id) {
             match &setting.value {
                 SettingValue::String(_) => Some(SettingValue::String(value.to_string())),
-                SettingValue::Integer(_) => Some(SettingValue::Integer(value.parse().unwrap_or(0))),
-                SettingValue::Float(_) => Some(SettingValue::Float(value.parse().unwrap_or(0.0))),
+                // Unparseable numeric input is rejected rather than silently stored as 0
+                // (which would e.g. zero the window size and make save() fail validation).
+                SettingValue::Integer(_) => value.parse().ok().map(SettingValue::Integer),
+                SettingValue::Float(_) => value.parse().ok().map(SettingValue::Float),
                 SettingValue::Boolean(_) => Some(SettingValue::Boolean(value == "true")),
                 SettingValue::Path(_) => Some(SettingValue::Path(value.to_string())),
                 SettingValue::Enum(_, options) => {
@@ -199,8 +201,33 @@ impl SettingsController {
 
     /// Restore default settings
     pub fn restore_defaults(&self) {
-        let mut dialog = self.dialog.borrow_mut();
-        dialog.reset_all_to_defaults();
+        // Setting::default holds the value the dialog was populated with (i.e. the
+        // currently saved config), so reset_all_to_defaults() would only discard edits.
+        // Build the dialog from a default Config to get the real factory defaults.
+        let mut factory = SettingsDialog::new();
+        SettingsPersistence::new().populate_dialog(&mut factory);
+
+        let mut changed: Vec<(String, String)> = Vec::new();
+        {
+            let mut dialog = self.dialog.borrow_mut();
+            for (id, default_setting) in factory.settings {
+                if let Some(setting) = dialog.get_setting_mut(&id) {
+                    let new_str = default_setting.value.as_str();
+                    if setting.value.as_str() != new_str {
+                        changed.push((id.clone(), new_str));
+                    }
+                    setting.value = default_setting.value;
+                }
+            }
+            dialog.has_unsaved_changes = true;
+        }
+
+        let listeners = self.listeners.borrow();
+        for (id, new_val) in &changed {
+            for listener in listeners.iter() {
+                listener(id, new_val);
+            }
+        }
     }
 
     /// Convert string category to enum

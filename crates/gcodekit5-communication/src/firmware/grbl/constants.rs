@@ -150,8 +150,8 @@ pub const ERROR_SETTING_DISABLED: u8 = 5;
 /// Failed to execute startup block
 pub const ERROR_STARTUP_BLOCK_FAILED: u8 = 23;
 
-/// EEPROM read failed
-pub const ERROR_EEPROM_READ_FAILED: u8 = 24;
+/// EEPROM read failed (GRBL 1.1 error:7)
+pub const ERROR_EEPROM_READ_FAILED: u8 = 7;
 
 /// Unsupported or invalid g-code command
 pub const ERROR_INVALID_GCODE_ID: u8 = 20;
@@ -181,8 +181,8 @@ pub const ALARM_PROBE_NOT_TRIGGERED: u8 = 5;
 /// Homing fail
 pub const ALARM_HOMING_FAIL: u8 = 6;
 
-/// Homing fail pulloff
-pub const ALARM_HOMING_FAIL_PULLOFF: u8 = 7;
+/// Homing fail pulloff (GRBL 1.1 ALARM:8)
+pub const ALARM_HOMING_FAIL_PULLOFF: u8 = 8;
 
 /// Spindle control failure
 pub const ALARM_SPINDLE_CONTROL: u8 = 8;

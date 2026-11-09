@@ -100,7 +100,6 @@ pub struct ImageEngraver {
 }
 
 impl ImageEngraver {
-
     /// Check if a horizontal line (row) has any pixel that will produce laser power
     fn is_row_empty(&self, y: u32) -> bool {
         let result = (0..self.image.width()).all(|x| {
@@ -126,7 +125,7 @@ impl ImageEngraver {
 
     fn get_non_empty_columns(&self) -> Vec<u32> {
         (0..self.image.width())
-            .rev()  // <- Añade esto para invertir el orden (derecha a izquierda)
+            .rev() // <- Añade esto para invertir el orden (derecha a izquierda)
             .filter(|&x| !self.is_column_empty(x))
             .collect()
     }
@@ -162,7 +161,6 @@ impl ImageEngraver {
     pub fn from_image(img: DynamicImage, params: EngravingParams) -> Result<Self> {
         // Componer sobre fondo blanco si la imagen tiene canal alfa
         let img = if img.color().has_alpha() {
-
             // Componer la imagen original sobre fondo blanco
             let mut composed = img.to_rgba8();
             for pixel in composed.pixels_mut() {
@@ -422,13 +420,24 @@ impl ImageEngraver {
             let y_absolute = offset_y + y_pos;
 
             if row_idx == 0 {
-                gcode.push_str(&format!("G0 Y{:.3} F{:.0}\n", y_absolute, self.params.travel_rate));
+                gcode.push_str(&format!(
+                    "G0 Y{:.3} F{:.0}\n",
+                    y_absolute, self.params.travel_rate
+                ));
             } else {
                 gcode.push_str(&format!("G0 Y{:.3}\n", y_absolute));
             }
 
             // Llamar a scan_line pasando también el feed rate de grabado (engraving_rate)
-            self.scan_line(gcode, original_y, y_pos, pixel_width, left_to_right, offset_x, offset_y);
+            self.scan_line(
+                gcode,
+                original_y,
+                y_pos,
+                pixel_width,
+                left_to_right,
+                offset_x,
+                offset_y,
+            );
 
             // ELIMINADA LA PAUSA G04 QUE CAUSABA PARONES ADICIONALES
 
@@ -514,16 +523,20 @@ impl ImageEngraver {
 
         for i in 1..points.len() {
             if points[i].1 != current_power {
-                merged.push((seg_start_x, points[i-1].0, current_power));
+                merged.push((seg_start_x, points[i - 1].0, current_power));
                 seg_start_x = points[i].0;
                 current_power = points[i].1;
             }
         }
-        merged.push((seg_start_x, points.last().unwrap().0, current_power));
+        if let Some(&(last_x, _)) = points.last() {
+            merged.push((seg_start_x, last_x, current_power));
+        }
 
         let overscan_dist = OVERSCAN_MM;
-        let first_x = merged[0].0;
-        let last_x = merged.last().unwrap().1;
+        let (Some(&(first_x, _, _)), Some(&(_, last_x, _))) = (merged.first(), merged.last())
+        else {
+            return;
+        };
 
         let (entry_x, exit_x) = if left_to_right {
             (first_x - overscan_dist, last_x + overscan_dist)
@@ -533,7 +546,10 @@ impl ImageEngraver {
 
         // CORRECCIÓN: Aseguramos el feed rate de corte/grabado en cada inicio de línea
         gcode.push_str(&format!("G0 X{:.2}\n", entry_x));
-        gcode.push_str(&format!("G1 X{:.2} S0 F{:.0} M4\n", first_x, self.params.feed_rate));
+        gcode.push_str(&format!(
+            "G1 X{:.2} S0 F{:.0} M4\n",
+            first_x, self.params.feed_rate
+        ));
 
         for segment in &merged {
             gcode.push_str(&format!("X{:.2} S{}\n", segment.1, segment.2));
@@ -566,7 +582,10 @@ impl ImageEngraver {
             let x_absolute = offset_x + x_pos;
 
             if col_idx == 0 {
-                gcode.push_str(&format!("G0 X{:.3} F{:.0}\n", x_absolute, self.params.travel_rate));
+                gcode.push_str(&format!(
+                    "G0 X{:.3} F{:.0}\n",
+                    x_absolute, self.params.travel_rate
+                ));
             } else {
                 gcode.push_str(&format!("G0 X{:.3}\n", x_absolute));
             }
@@ -659,16 +678,20 @@ impl ImageEngraver {
 
         for i in 1..points.len() {
             if points[i].1 != current_power {
-                merged.push((seg_start_y, points[i-1].0, current_power));
+                merged.push((seg_start_y, points[i - 1].0, current_power));
                 seg_start_y = points[i].0;
                 current_power = points[i].1;
             }
         }
-        merged.push((seg_start_y, points.last().unwrap().0, current_power));
+        if let Some(&(last_y, _)) = points.last() {
+            merged.push((seg_start_y, last_y, current_power));
+        }
 
         let overscan_dist = OVERSCAN_MM;
-        let first_y = merged[0].0;
-        let last_y = merged.last().unwrap().1;
+        let (Some(&(first_y, _, _)), Some(&(_, last_y, _))) = (merged.first(), merged.last())
+        else {
+            return;
+        };
 
         let (entry_y, exit_y) = if top_to_bottom {
             (first_y + overscan_dist, last_y - overscan_dist)
@@ -679,7 +702,10 @@ impl ImageEngraver {
         // CORRECCIÓN: Se fuerza la velocidad de trabajo (feed_rate) al iniciar el movimiento G1 de la columna
         gcode.push_str(&format!("G0 X{:.2}\n", x_absolute));
         gcode.push_str(&format!("G0 Y{:.2}\n", entry_y));
-        gcode.push_str(&format!("G1 Y{:.2} S0 F{:.0} M4\n", first_y, self.params.feed_rate));
+        gcode.push_str(&format!(
+            "G1 Y{:.2} S0 F{:.0} M4\n",
+            first_y, self.params.feed_rate
+        ));
 
         for segment in &merged {
             gcode.push_str(&format!("Y{:.2} S{}\n", segment.1, segment.2));
@@ -688,4 +714,3 @@ impl ImageEngraver {
         gcode.push_str(&format!("Y{:.2} S0\n", exit_y));
     }
 } // impl ImageEngraver
-

@@ -3,13 +3,12 @@
 use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::designer_state::MachineMode;
+use crate::gcode_gen::MachineLimits;
 use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
 use crate::ToolpathToGcode;
-use csgrs::traits::CSG;
 use gcodekit5_core::Units;
-use crate::gcode_gen::MachineLimits;
 
 impl DesignerState {
     fn shape_embedded_laser_use_global(shape: &DrawingObject) -> bool {
@@ -181,10 +180,9 @@ impl DesignerState {
         let mut gcode_gen = ToolpathToGcode::new(Units::MM, safe_z)
             .with_continuous_z_between_passes(self.tool_settings.continuous_z_between_passes);
 
-
-    if let Some(limits) = machine_limits {
-        gcode_gen = gcode_gen.with_machine_limits(limits);
-    }
+        if let Some(limits) = machine_limits {
+            gcode_gen = gcode_gen.with_machine_limits(limits);
+        }
 
         // Use state mode:
         match self.machine_mode() {
@@ -253,6 +251,13 @@ impl DesignerState {
                     self.toolpath_generator
                         .set_spindle_speed(self.tool_settings.spindle_speed);
                 }
+            } else {
+                // CNC: shapes using global values read feed/speed from the generator,
+                // so make sure it reflects the current tool settings.
+                self.toolpath_generator
+                    .set_feed_rate(self.tool_settings.feed_rate);
+                self.toolpath_generator
+                    .set_spindle_speed(self.tool_settings.spindle_speed);
             }
 
             // ============================================================
@@ -284,8 +289,7 @@ impl DesignerState {
                 .set_pocket_strategy(effective_shape_obj.pocket_strategy);
             self.toolpath_generator
                 .set_start_depth(toolpath_start_depth);
-            self.toolpath_generator
-                .set_cut_depth(toolpath_cut_depth);
+            self.toolpath_generator.set_cut_depth(toolpath_cut_depth);
             self.toolpath_generator
                 .set_step_in(effective_shape_obj.step_in as f64);
             self.toolpath_generator
@@ -320,8 +324,10 @@ impl DesignerState {
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                                .generate_rectangle_contour(rect, effective_shape_obj.step_down as f64),
+                            self.toolpath_generator.generate_rectangle_contour(
+                                rect,
+                                effective_shape_obj.step_down as f64,
+                            ),
                             false,
                         )
                     }
@@ -343,21 +349,23 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_circle_contour(circle, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_circle_contour(
+                                circle,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
 
                 crate::model::Shape::Line(line) => (
                     self.toolpath_generator
-                    .generate_line_contour(line, effective_shape_obj.step_down as f64),
-                                                    false,
+                        .generate_line_contour(line, effective_shape_obj.step_down as f64),
+                    false,
                 ),
 
                 crate::model::Shape::Ellipse(ellipse) => {
@@ -374,41 +382,24 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_ellipse_contour(ellipse, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_ellipse_contour(
+                                ellipse,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
 
                 crate::model::Shape::Path(path_shape) => {
-                    // 1. Clonar para no alterar el objeto original
-                    let mut rotated_path = path_shape.clone();
-
-                    // 2. Aplicar rotación si existe
-                    if rotated_path.rotation.abs() > f64::EPSILON {
-                        let (x1, y1, x2, y2) = rotated_path.bounds();
-                        let cx = (x1 + x2) / 2.0;
-                        let cy = (y1 + y2) / 2.0;
-                        let rad = rotated_path.rotation.to_radians();
-                        let translation_to_origin = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(-cx, -cy, 0.0),
-                        );
-                        let rotation_matrix =
-                        nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
-                        let translation_back = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(cx, cy, 0.0),
-                        );
-
-                        let full_transform =
-                        translation_back * rotation_matrix * translation_to_origin;
-
-                        rotated_path.sketch = rotated_path.sketch.transform(&full_transform);
-                    }
+                    // Path rotation is a render-time rotation about the path bounds
+                    // centre; the toolpath generator applies it for both contour and
+                    // pocket, so it must not be baked into the geometry here as well.
+                    let rotated_path = path_shape;
 
                     if effective_shape_obj.operation_type == OperationType::Pocket {
                         let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
@@ -418,36 +409,40 @@ impl DesignerState {
                         };
                         (
                             self.toolpath_generator.generate_path_pocket(
-                                &rotated_path,
+                                rotated_path,
                                 pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_path_contour(&rotated_path, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_path_contour(
+                                rotated_path,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
 
                 crate::model::Shape::Text(text) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-
-                        let pocket = self.toolpath_generator
-                        .generate_text_pocket_toolpath(text, effective_shape_obj.step_down as f64);
+                        let pocket = self.toolpath_generator.generate_text_pocket_toolpath(
+                            text,
+                            effective_shape_obj.step_down as f64,
+                        );
 
                         let pocket_len: f64 = pocket.iter().map(|tp| tp.total_length()).sum();
 
                         if pocket_len <= 1e-9 {
-
                             (
-                                self.toolpath_generator
-                                .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
-                             true,
+                                self.toolpath_generator.generate_text_toolpath(
+                                    text,
+                                    effective_shape_obj.step_down as f64,
+                                ),
+                                true,
                             )
                         } else {
                             (pocket, false)
@@ -455,8 +450,8 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator
-                            .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
-                         false,
+                                .generate_text_toolpath(text, effective_shape_obj.step_down as f64),
+                            false,
                         )
                     }
                 }
@@ -475,13 +470,15 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_triangle_contour(triangle, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_triangle_contour(
+                                triangle,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
@@ -500,17 +497,18 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_polygon_contour(polygon, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_polygon_contour(
+                                polygon,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
-
 
                 crate::model::Shape::RasterImage(_) => {
                     // Raster images do not directly generate a toolpath.
@@ -535,17 +533,18 @@ impl DesignerState {
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
-                         false,
+                            false,
                         )
                     } else {
                         (
-                            self.toolpath_generator
-                            .generate_path_contour(&design_path, effective_shape_obj.step_down as f64),
-                         false,
+                            self.toolpath_generator.generate_path_contour(
+                                &design_path,
+                                effective_shape_obj.step_down as f64,
+                            ),
+                            false,
                         )
                     }
                 }
-
             };
 
             // ============================================================

@@ -301,7 +301,8 @@ impl RealSerialPort {
 impl SerialPort for RealSerialPort {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         match self.port.lock() {
-            Ok(mut port) => port.write(data),
+            // write_all: a short write would silently drop the tail of a G-code line
+            Ok(mut port) => port.write_all(data).map(|()| data.len()),
             Err(e) => Err(io::Error::other(e.to_string())),
         }
     }
