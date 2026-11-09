@@ -14,6 +14,13 @@
   - Removed a 30-second "watchdog" recovery mechanism that, on inspection, was placed after the exact loop it was meant to rescue and could never actually trigger during a real stall — no longer needed now that the root cause is fixed.
   - Verified stable on real hardware with engravings of 216,604 and 158,923 G-code lines, completed with no stutter and no stops.
   - Trade-off: while an image engraving job is streaming, the live DRO/position and buffer-state readouts in Machine Control no longer update (the progress bar still does, via the engraving job itself), keeping the serial port free of contention for maximum reliability and speed.
+- **Code audit fixes (2026-11-09)** — regression tests added under each crate's `tests/`:
+  - Machine control: Pause no longer queues `M5` (spindle stayed off after resume); feed-hold/resume sent once; jogs and manual commands blocked while streaming; jogs force `G21`; quick probes relative; E-stop stops the streaming thread; drill-press jobs no longer stall; Machine menu actions wired
+  - GRBL protocol: `connect()` no longer sends `$RST=*` (wiped machine settings); `S:` no longer matched inside `FS:`; `Bf:` parsed; realtime bytes no longer stall the ok-counter; valid `$J=` jog syntax; override byte values corrected; `G10 L20`/`L2 P1-P6`; `ALARM:n` recognised; serial/TCP `write_all`; TCP hostnames
+  - G-code parsing/visualizer: multiple G words per line, G90/G91, G20 inches, inline comments, I/J/R arcs incl. full circles and G18/G19, accurate bounds and time estimates; editor undo applied the inverse twice
+  - Designer: rotation pivot and degree/radian errors in render and hit-test; G01 restated after arcs; duplicate line numbers; F0 in CNC mode; duplicate final pass; new shapes overwrote loaded shapes; save/load moved shapes; SVG attribute matching (`id` matched `d`)
+  - CAM tools: Gerber 2.4/2.5 scaling and isolation offset direction; laser raster segment, reverse-pass and vertical-scan errors; GRBL-compatible probe backoff; tabbed box slot drift; jigsaw pass depths; speeds & feeds rescaling after RPM clamp
+  - UI: several RefCell double-borrow panics; imperial-unit conversion errors in properties, toolbox and CAM tools; undo history cleared on New/Open; editor Ctrl+S could overwrite a previously opened file
 
 ## [1.1.0-beta.1] - 2026-08-03
 
