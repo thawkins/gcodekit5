@@ -1225,7 +1225,7 @@ impl DxfParser {
 
         let t_min = *knots.get(degree)?;
         let t_max = *knots.get(num_ctrl)?;
-        if !(t_max > t_min) {
+        if t_max.partial_cmp(&t_min) != Some(std::cmp::Ordering::Greater) {
             return None;
         }
 

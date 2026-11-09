@@ -429,15 +429,7 @@ impl ImageEngraver {
             }
 
             // Llamar a scan_line pasando también el feed rate de grabado (engraving_rate)
-            self.scan_line(
-                gcode,
-                original_y,
-                y_pos,
-                pixel_width,
-                left_to_right,
-                offset_x,
-                offset_y,
-            );
+            self.scan_line(gcode, original_y, pixel_width, left_to_right, offset_x);
 
             // ELIMINADA LA PAUSA G04 QUE CAUSABA PARONES ADICIONALES
 
@@ -452,11 +444,9 @@ impl ImageEngraver {
         &self,
         gcode: &mut String,
         y: u32,
-        _y_pos: f32,
         pixel_width: f32,
         left_to_right: bool,
         offset_x: f32,
-        _offset_y: f32,
     ) {
         let width = self.image.width();
 

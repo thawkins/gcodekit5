@@ -10,6 +10,21 @@
 - **Stock simulation**: the stock origin is a "Stock Z0 at: Top/Bottom" option (default Top) instead of a guess from the lowest Z; designer CNC output records `; Stock Z0: bottom` in its header and is detected automatically
 - **Raster pocket ordering**: spans indexed by scanline, so large pockets order in linear time (60,000 spans: 3.9 s → 0.09 s)
 
+## [Unreleased] - 2026-11-09 (warnings and GTK 4.10 deprecations)
+
+### Changed
+- **GTK 4.10 migration**: `ComboBoxText` replaced by `DropDown` (new `common::text_dropdown` helper), `FileChooserDialog` by `FileDialog` (`file_dialog::FileDialogHelpers`), `MessageDialog` by `AlertDialog` (`common::dialog`), `Dialog` by a `Window`-based `common::dialog_window::DialogWindow`, and `StyleContext` colour lookups by libadwaita `StyleManager` values
+- File pickers now use the desktop's native picker through the XDG portal where available
+- Removed the `-A deprecated` rustflag from `.cargo/config.toml` so new deprecations are reported
+- Removed unused dependencies (`tokio`, `tracing-subscriber`, `rfd`, `arboard`, `image` from the workspace list; `cairo-rs`, `glow` from `gcodekit5-visualizer`)
+
+### Fixed
+- All clippy, rustc and rustdoc warnings across the workspace (about 1,150 including deprecations)
+- **Machine Control**: the G-code editor column no longer shrinks below the editor's search panel, and the middle controls are no longer clipped
+- **Dialogs**: message dialogs show both the message and the secondary text; reusable dialogs (Fast Shapes, Stock Settings, Add Text) survive being closed with the title-bar button
+- **Export Settings**: the suggested file name `grbl_settings.json` is now shown in the save dialog
+- **Stylesheet**: removed properties GTK does not support (`max-height`, `spacing`) that produced theme parser warnings; `dropdown` shares the `combobox` height rule
+
 ## [Unreleased] - 2026-11-09 (audit follow-up)
 
 ### Fixed

@@ -1,6 +1,7 @@
 //! Input handling and event processing for the designer canvas
 
 use super::*;
+use crate::ui::gtk::common::dialog_window::DialogWindow;
 use gcodekit5_designer::font_manager;
 use gcodekit5_designer::model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
@@ -9,7 +10,7 @@ use gcodekit5_designer::model::{
 };
 use gtk4::prelude::*;
 use gtk4::{
-    Box, CheckButton, Dialog, DropDown, Entry, Grid, Label, Orientation, Popover, PositionType,
+    Box, CheckButton, DropDown, Entry, Grid, Label, Orientation, Popover, PositionType,
     ResponseType, Separator, StringList,
 };
 
@@ -462,11 +463,8 @@ impl DesignerCanvas {
         *self.text_tool_pending_pos.borrow_mut() = Some((canvas_x, canvas_y));
 
         if self.text_tool_dialog.borrow().is_none() {
-            let dialog = Dialog::builder()
-                .title(t!("Add Text"))
-                .modal(true)
-                .resizable(false)
-                .build();
+            let dialog = DialogWindow::new(&t!("Add Text"), true);
+            dialog.window().set_resizable(false);
             dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
             dialog.add_button(&t!("Add"), ResponseType::Ok);
             dialog.set_default_response(ResponseType::Ok);

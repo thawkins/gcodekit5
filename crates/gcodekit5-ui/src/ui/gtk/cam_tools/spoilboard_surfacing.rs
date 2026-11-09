@@ -1,9 +1,9 @@
 //! Spoilboard Surfacing Tool
 
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, Entry, FileChooserAction, FileChooserDialog, Label,
-    Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, Entry, Label, Orientation, Paned, ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -319,17 +319,8 @@ impl SpoilboardSurfacingTool {
     }
 
     fn save_params(w: &SpoilboardSurfacingWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
-        dialog.set_current_name("surfacing_params.json");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Parameters");
+        dialog.set_initial_name(Some("surfacing_params.json"));
 
         let system = settings.persistence.borrow().config().ui.measurement_system;
         let w_clone = Rc::new((
@@ -343,44 +334,28 @@ impl SpoilboardSurfacingTool {
             units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0),
         ));
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        let json = serde_json::json!({
-                            "width": w_clone.0,
-                            "height": w_clone.1,
-                            "tool_diameter": w_clone.2,
-                            "feed_rate": w_clone.3,
-                            "spindle_speed": w_clone.4,
-                            "cut_depth": w_clone.5,
-                            "stepover_percent": w_clone.6,
-                            "safe_z": w_clone.7,
-                        });
-                        let _ = fs::write(
-                            path,
-                            serde_json::to_string_pretty(&json).unwrap_or_default(),
-                        );
-                    }
-                }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let json = serde_json::json!({
+                    "width": w_clone.0,
+                    "height": w_clone.1,
+                    "tool_diameter": w_clone.2,
+                    "feed_rate": w_clone.3,
+                    "spindle_speed": w_clone.4,
+                    "cut_depth": w_clone.5,
+                    "stepover_percent": w_clone.6,
+                    "safe_z": w_clone.7,
+                });
+                let _ = fs::write(
+                    path,
+                    serde_json::to_string_pretty(&json).unwrap_or_default(),
+                );
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &SpoilboardSurfacingWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Parameters");
 
         let w_clone = Rc::new((
             w.width.clone(),
@@ -394,58 +369,44 @@ impl SpoilboardSurfacingTool {
         ));
         let settings_clone = settings.clone();
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content)
-                            {
-                                let system = settings_clone
-                                    .persistence
-                                    .borrow()
-                                    .config()
-                                    .ui
-                                    .measurement_system;
-                                if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
-                                    w_clone.0.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
-                                    w_clone.1.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) =
-                                    params.get("tool_diameter").and_then(|v| v.as_f64())
-                                {
-                                    w_clone.2.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-                                    w_clone.3.set_text(v);
-                                }
-                                if let Some(v) =
-                                    params.get("spindle_speed").and_then(|v| v.as_str())
-                                {
-                                    w_clone.4.set_text(v);
-                                }
-                                if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
-                                    w_clone.5.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) =
-                                    params.get("stepover_percent").and_then(|v| v.as_str())
-                                {
-                                    w_clone.6.set_text(v);
-                                }
-                                if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
-                                    w_clone.7.set_text(&units::format_length(v as f32, system));
-                                }
-                            }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                if let Ok(content) = fs::read_to_string(path) {
+                    if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content) {
+                        let system = settings_clone
+                            .persistence
+                            .borrow()
+                            .config()
+                            .ui
+                            .measurement_system;
+                        if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                            w_clone.0.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                            w_clone.1.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("tool_diameter").and_then(|v| v.as_f64()) {
+                            w_clone.2.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                            w_clone.3.set_text(v);
+                        }
+                        if let Some(v) = params.get("spindle_speed").and_then(|v| v.as_str()) {
+                            w_clone.4.set_text(v);
+                        }
+                        if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
+                            w_clone.5.set_text(&units::format_length(v as f32, system));
+                        }
+                        if let Some(v) = params.get("stepover_percent").and_then(|v| v.as_str()) {
+                            w_clone.6.set_text(v);
+                        }
+                        if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
+                            w_clone.7.set_text(&units::format_length(v as f32, system));
                         }
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 }
 

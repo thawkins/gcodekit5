@@ -30,7 +30,7 @@ pub enum GrblResponse {
     StatusMask(u8),
     /// Startup message or other text
     Message(String),
-    /// Probe result [PRB:x,y,z:flag]
+    /// Probe result `[PRB:x,y,z:flag]`
     ProbeResult {
         /// Trigger position in machine coordinates.
         position: CNCPoint,

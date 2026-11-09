@@ -1570,7 +1570,7 @@ dependencies = [
  "glam",
  "glib",
  "glib-build-tools",
- "glow 0.17.0",
+ "glow",
  "gtk4",
  "image",
  "libadwaita",
@@ -1595,13 +1595,11 @@ version = "1.1.0-beta.1"
 dependencies = [
  "anyhow",
  "bytemuck",
- "cairo-rs",
  "chrono",
  "criterion",
  "gcodekit5-core",
  "gcodekit5-designer",
  "glam",
- "glow 0.14.2",
  "lyon",
  "proptest",
  "regex",
@@ -1913,18 +1911,6 @@ checksum = "8ab79e1ed126803a8fb827e3de0e2ff95191912b8db65cee467edb56fc4cc215"
 dependencies = [
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "glow"
-version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d51fa363f025f5c111e03f13eda21162faeacb6911fe8caa0c0349f9cf0c4483"
-dependencies = [
- "js-sys",
- "slotmap",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

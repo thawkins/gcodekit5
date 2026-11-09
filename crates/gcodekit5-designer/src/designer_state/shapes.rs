@@ -45,7 +45,7 @@ impl DesignerState {
         }
 
         if obj.pocket_strategy != default_props.pocket_strategy {
-            obj.pocket_strategy = default_props.pocket_strategy.clone();
+            obj.pocket_strategy = default_props.pocket_strategy;
         }
 
         if (obj.raster_fill_ratio - FACTORY_RASTER_FILL_RATIO).abs() < f64::EPSILON

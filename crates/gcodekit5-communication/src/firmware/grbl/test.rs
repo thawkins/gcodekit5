@@ -3,7 +3,6 @@
 #[cfg(test)]
 mod response_parser_tests {
     use super::super::response_parser::{GrblResponse, GrblResponseParser};
-    use gcodekit5_core::{CNCPoint, Units};
 
     #[test]
     fn parse_probe_result_with_flag() {

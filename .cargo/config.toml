@@ -1,5 +1,1 @@
 # Cargo configuration for GCodeKit5
-[build]
-rustflags = ["-A", "deprecated"]
-
-

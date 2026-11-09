@@ -1,10 +1,10 @@
 //! Drill Press Tool
 
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, Align, Box, Button, CheckButton, Entry,
-    FileChooserAction, FileChooserDialog, Image, Label, Orientation, Paned, ResponseType,
-    ScrolledWindow, Stack,
+    accessible::Property as AccessibleProperty, Align, Box, Button, CheckButton, Entry, Image,
+    Label, Orientation, Paned, ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -482,17 +482,8 @@ impl DrillPressTool {
     }
 
     fn save_params(w: &DrillPressWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
-        dialog.set_current_name("drill_params.json");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Parameters");
+        dialog.set_initial_name(Some("drill_params.json"));
 
         let system = settings.persistence.borrow().config().ui.measurement_system;
         let params = DrillPressParameters {
@@ -512,33 +503,17 @@ impl DrillPressTool {
             home_before_job: w.home_before.is_active(),
         };
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(json) = serde_json::to_string_pretty(&params) {
-                            let _ = fs::write(path, json);
-                        }
-                    }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                if let Ok(json) = serde_json::to_string_pretty(&params) {
+                    let _ = fs::write(path, json);
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &DrillPressWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Parameters");
 
         let home_before_clone = w.home_before.clone();
         let w_clone = Rc::new((
@@ -556,25 +531,16 @@ impl DrillPressTool {
         ));
         let settings_clone = settings.clone();
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) =
-                                serde_json::from_str::<DrillPressParameters>(&content)
-                            {
-                                Self::apply_params(&w_clone, &params, &settings_clone);
-                                home_before_clone.set_active(params.home_before_job);
-                            }
-                        }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                if let Ok(content) = fs::read_to_string(path) {
+                    if let Ok(params) = serde_json::from_str::<DrillPressParameters>(&content) {
+                        Self::apply_params(&w_clone, &params, &settings_clone);
+                        home_before_clone.set_active(params.home_before_job);
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn apply_params(

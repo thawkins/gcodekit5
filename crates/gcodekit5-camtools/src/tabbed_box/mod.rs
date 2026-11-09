@@ -1,6 +1,6 @@
 //! Tabbed Box Maker
 //!
-//! Based on the superior algorithm from https://github.com/florianfesti/boxes
+//! Based on the superior algorithm from <https://github.com/florianfesti/boxes>
 //! Uses finger/space multiples of thickness for automatic finger calculation
 
 mod types;
@@ -159,35 +159,22 @@ impl TabbedBoxMaker {
 
         let mut x = 0.0;
 
-        let finger_draw;
-        let space_draw;
-        let leftover_draw;
         let base_y = -half_kerf;
-        let tip_y;
 
-        if positive {
+        let (finger_draw, space_draw, leftover_draw, tip_y) = if positive {
             // Fingers out
             // Finger width increases by kerf
-            finger_draw = finger + kerf;
-            // Space width decreases by kerf
-            space_draw = space - kerf;
-            // Leftover decreases by kerf (split between two ends)
-            leftover_draw = leftover - kerf;
-
-            // Tip Y
-            tip_y = -t - extra - half_kerf;
+            (
+                finger + kerf,
+                space - kerf,
+                leftover - kerf,
+                -t - extra - half_kerf,
+            )
         } else {
             // Notches in
             // Notch width decreases by kerf
-            finger_draw = finger - kerf;
-            // Space width increases by kerf
-            space_draw = space + kerf;
-            // Leftover increases by kerf
-            leftover_draw = leftover + kerf;
-
-            // Notch Depth Y
-            tip_y = t - half_kerf;
-        }
+            (finger - kerf, space + kerf, leftover + kerf, t - half_kerf)
+        };
 
         // Helper for dimpled side
         // Draws a side from (x, y1) to (x, y2) with a dimple if configured

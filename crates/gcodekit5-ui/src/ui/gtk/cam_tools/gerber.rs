@@ -1,9 +1,11 @@
 //! Gerber to G-Code Converter Tool
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Paned, ScrolledWindow,
+    Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -28,7 +30,7 @@ pub struct GerberTool {
 }
 
 struct GerberWidgets {
-    layer_type: ComboBoxText,
+    layer_type: DropDown,
     feed_rate: Entry,
     spindle_speed: Entry,
     board_width: Entry,
@@ -178,44 +180,29 @@ impl GerberTool {
         };
 
         file_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some("Open Gerber Directory"),
-                None::<&gtk4::Window>,
-                FileChooserAction::SelectFolder,
-                &[
-                    ("Cancel", ResponseType::Cancel),
-                    ("Select", ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(800, 600);
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Open Gerber Directory");
 
             let lf = layer_files_clone.clone();
             let fl = file_label_clone.clone();
 
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            let map = detect_layers(&path);
-                            *lf.borrow_mut() = map;
-                            fl.set_text(
-                                path.file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("unnamed"),
-                            );
-                        }
-                    }
+            dialog.pick_folder(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    let map = detect_layers(&path);
+                    *lf.borrow_mut() = map;
+                    fl.set_text(
+                        path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unnamed"),
+                    );
                 }
-                d.close();
             });
-            dialog.show();
         });
 
         // Parameters
         let params_group = PreferencesGroup::new();
         params_group.set_title("Parameters");
 
-        let layer_type = ComboBoxText::new();
+        let layer_type = new_text_dropdown();
         layer_type.append(Some("TopCopper"), "Top Copper");
         layer_type.append(Some("BottomCopper"), "Bottom Copper");
         layer_type.append(Some("TopSolderMask"), "Top Solder Mask");
@@ -587,79 +574,45 @@ impl GerberTool {
     }
 
     fn save_params(params: &GerberParameters) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Gerber Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
-        dialog.set_current_name("gerber_params.json");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Gerber Parameters");
+        dialog.set_initial_name(Some("gerber_params.json"));
 
         let params_clone = params.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        match serde_json::to_string_pretty(&params_clone) {
-                            Ok(json) => write_preset_file(&path, &json),
-                            Err(e) => {
-                                CamToolsView::show_error_dialog("Save Error", &format!("{}", e))
-                            }
-                        }
-                    }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                match serde_json::to_string_pretty(&params_clone) {
+                    Ok(json) => write_preset_file(&path, &json),
+                    Err(e) => CamToolsView::show_error_dialog("Save Error", &format!("{}", e)),
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &Rc<GerberWidgets>, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Gerber Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Gerber Parameters");
 
         let w_clone = w.clone();
         let settings_clone = settings.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        let loaded = fs::read_to_string(&path)
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let loaded = fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|content| {
+                        serde_json::from_str::<GerberParameters>(&content)
                             .map_err(|e| e.to_string())
-                            .and_then(|content| {
-                                serde_json::from_str::<GerberParameters>(&content)
-                                    .map_err(|e| e.to_string())
-                            });
-                        match loaded {
-                            Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
-                            Err(e) => {
-                                warn!("Failed to load parameters: {}", e);
-                                CamToolsView::show_error_dialog(
-                                    "Load Error",
-                                    &format!("{}: {}", path.display(), e),
-                                );
-                            }
-                        }
+                    });
+                match loaded {
+                    Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                    Err(e) => {
+                        warn!("Failed to load parameters: {}", e);
+                        CamToolsView::show_error_dialog(
+                            "Load Error",
+                            &format!("{}: {}", path.display(), e),
+                        );
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn apply_params(w: &GerberWidgets, p: &GerberParameters, settings: &Rc<SettingsController>) {

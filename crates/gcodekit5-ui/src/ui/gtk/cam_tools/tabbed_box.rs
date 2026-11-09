@@ -1,9 +1,11 @@
 //! Tabbed Box Maker Tool
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Paned, ScrolledWindow,
+    Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -35,10 +37,10 @@ struct TabbedBoxWidgets {
     play: Entry,
     extra_length: Entry,
     // New controls
-    box_type: ComboBoxText,
+    box_type: DropDown,
     dividers_x: Entry,
     dividers_y: Entry,
-    divider_keying: ComboBoxText,
+    divider_keying: DropDown,
     optimize_layout: CheckButton,
     passes: Entry,
     power: Entry,
@@ -104,7 +106,7 @@ impl TabbedBoxMaker {
             .build();
 
         let desc_lbl = Label::builder()
-    .label(&format!(
+    .label(format!(
         r#"{} <a href="https://github.com/florianfesti/boxes">{}</a> {}"#,
         t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm. For more cases involving boxes and other objects, it is recommended to use the "),
         t!("Boxes"),
@@ -154,7 +156,7 @@ impl TabbedBoxMaker {
             create_dimension_row(&t!("Extra Length:"), 0.0, &settings);
 
         // New Widgets
-        let box_type = ComboBoxText::new();
+        let box_type = new_text_dropdown();
         box_type.append(Some("0"), &t!("Full Box"));
         box_type.append(Some("1"), &t!("No Top"));
         box_type.append(Some("2"), &t!("No Bottom"));
@@ -167,7 +169,7 @@ impl TabbedBoxMaker {
         let dividers_x = Entry::builder().text("0").valign(Align::Center).build();
         let dividers_y = Entry::builder().text("0").valign(Align::Center).build();
 
-        let divider_keying = ComboBoxText::new();
+        let divider_keying = new_text_dropdown();
         divider_keying.append(Some("0"), &t!("Walls and Floor"));
         divider_keying.append(Some("1"), &t!("Walls Only"));
         divider_keying.append(Some("2"), &t!("Floor Only"));
@@ -423,7 +425,7 @@ impl TabbedBoxMaker {
             vbox.append(&button_box);
 
             progress_window.set_child(Some(&vbox));
-            progress_window.show();
+            progress_window.present();
 
             let on_generate_clone = on_generate.clone();
             let progress_window_clone = progress_window.clone();
@@ -540,7 +542,7 @@ impl TabbedBoxMaker {
                 vbox.append(&button_box);
 
                 progress_window.set_child(Some(&vbox));
-                progress_window.show();
+                progress_window.present();
 
                 let designer_view_clone = designer_view.clone();
                 let progress_window_clone = progress_window.clone();
@@ -728,85 +730,49 @@ impl TabbedBoxMaker {
     }
 
     fn save_params(params: &BoxParameters) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Box Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Box Parameters");
 
-        dialog.set_current_name("box_params.json");
+        dialog.set_initial_name(Some("box_params.json"));
 
         let params_clone = params.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        match serde_json::to_string_pretty(&params_clone) {
-                            Ok(json) => write_preset_file(&path, &json),
-                            Err(e) => CamToolsView::show_error_dialog(
-                                &t!("Save Error"),
-                                &format!("{}", e),
-                            ),
-                        }
-                    }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                match serde_json::to_string_pretty(&params_clone) {
+                    Ok(json) => write_preset_file(&path, &json),
+                    Err(e) => CamToolsView::show_error_dialog(&t!("Save Error"), &format!("{}", e)),
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &Rc<TabbedBoxWidgets>, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Box Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Box Parameters");
 
         let w_clone = w.clone();
         let settings_clone = settings.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        let loaded = fs::read_to_string(&path)
-                            .map_err(|e| e.to_string())
-                            .and_then(|content| {
-                                serde_json::from_str::<BoxParameters>(&content)
-                                    .map_err(|e| e.to_string())
-                            });
-                        match loaded {
-                            Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
-                            Err(e) => {
-                                tracing::warn!(
-                                    path = %path.display(),
-                                    error = %e,
-                                    "Failed to load parameters"
-                                );
-                                CamToolsView::show_error_dialog(
-                                    &t!("Load Error"),
-                                    &format!("{}: {}", path.display(), e),
-                                );
-                            }
-                        }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let loaded = fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|content| {
+                        serde_json::from_str::<BoxParameters>(&content).map_err(|e| e.to_string())
+                    });
+                match loaded {
+                    Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to load parameters"
+                        );
+                        CamToolsView::show_error_dialog(
+                            &t!("Load Error"),
+                            &format!("{}: {}", path.display(), e),
+                        );
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn apply_params(w: &TabbedBoxWidgets, p: &BoxParameters, settings: &Rc<SettingsController>) {
