@@ -73,7 +73,61 @@ impl Default for GcodeValidatorConfig {
     }
 }
 
-/// G-Code validator for 6-axis support
+/// A single G-code word: an uppercase address letter and its numeric value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GcodeWord {
+    /// Address letter (always uppercase ASCII)
+    pub letter: char,
+    /// Numeric value, or `None` if the letter was not followed by a plain number
+    /// (e.g. an expression like `X[#1+2]` or stray text)
+    pub value: Option<f64>,
+}
+
+/// Split a comment-free G-code line into words without requiring spaces between
+/// them, so `G1X10Y-2.5F300` and `G1 X10 Y-2.5 F300` tokenise identically.
+///
+/// Whitespace inside a word (`X 10`) is accepted as GRBL does. Characters that are
+/// not ASCII letters or part of a number are ignored.
+///
+/// # Arguments
+/// * `line` - A G-code line with comments already removed.
+///
+/// # Returns
+/// The words in order of appearance.
+pub fn tokenize_words(line: &str) -> Vec<GcodeWord> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut words = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if !c.is_ascii_alphabetic() {
+            i += 1;
+            continue;
+        }
+        let letter = c.to_ascii_uppercase();
+        i += 1;
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        let mut number = String::new();
+        if i < chars.len() && (chars[i] == '+' || chars[i] == '-') {
+            number.push(chars[i]);
+            i += 1;
+        }
+        while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+            number.push(chars[i]);
+            i += 1;
+        }
+        let value = number.parse::<f64>().ok();
+        words.push(GcodeWord { letter, value });
+    }
+    words
+}
+
+/// G-code validator for 6-axis support.
+///
+/// Tracks the modal distance mode (G90/G91) and units (G20/G21) across the lines
+/// of a program so limits are only checked against absolute targets.
 #[derive(Debug, Clone)]
 pub struct GcodeValidator {
     config: GcodeValidatorConfig,
@@ -81,31 +135,42 @@ pub struct GcodeValidator {
     errors: Vec<(usize, String)>,
     /// Warnings found during validation
     warnings: Vec<(usize, String)>,
+    /// Modal distance mode: `true` after G91 (incremental), `false` after G90
+    relative: bool,
+    /// Modal units in effect for the program being validated
+    units: Units,
 }
+
+/// Axis letters in order; index matches axis count requirement - 1 for A/B/C.
+const AXIS_LETTERS: [char; 6] = ['X', 'Y', 'Z', 'A', 'B', 'C'];
 
 impl GcodeValidator {
     /// Create a new validator with default configuration
     pub fn new() -> Self {
-        Self {
-            config: GcodeValidatorConfig::default(),
-            errors: Vec::new(),
-            warnings: Vec::new(),
-        }
+        Self::with_config(GcodeValidatorConfig::default())
     }
 
     /// Create a validator with custom configuration
     pub fn with_config(config: GcodeValidatorConfig) -> Self {
+        let units = config.units;
         Self {
             config,
             errors: Vec::new(),
             warnings: Vec::new(),
+            relative: false,
+            units,
         }
     }
 
-    /// Validate a complete G-code program
+    /// Validate a complete G-code program.
+    ///
+    /// Modal state starts as absolute (G90) in the configured units and is updated
+    /// by G90/G91/G20/G21 words as the program is read.
     pub fn validate(&mut self, gcode: &str) -> ValidationReport {
         self.errors.clear();
         self.warnings.clear();
+        self.relative = false;
+        self.units = self.config.units;
 
         for (line_num, line) in gcode.lines().enumerate() {
             let line_num = line_num + 1; // 1-based line numbers
@@ -125,24 +190,12 @@ impl GcodeValidator {
         }
     }
 
-    /// Validate a single G-code line
-    fn validate_line(&mut self, line: &str) -> ValidationResult {
-        // Skip empty lines and comments
-        if line.is_empty() || line.starts_with(';') || line.starts_with('(') {
-            return ValidationResult::Valid;
-        }
-
-        // Remove inline comments
+    /// Remove `;` and `( ... )` comments from a line.
+    fn strip_comments(line: &str) -> String {
         let line = match line.find(';') {
-            Some(idx) => line[..idx].trim(),
+            Some(idx) => &line[..idx],
             None => line,
         };
-
-        if line.is_empty() {
-            return ValidationResult::Valid;
-        }
-
-        // Strip inline "( ... )" comments so words inside them are not validated
         let mut stripped = String::with_capacity(line.len());
         let mut depth = 0usize;
         for c in line.chars() {
@@ -158,171 +211,178 @@ impl GcodeValidator {
                 _ => {}
             }
         }
+        stripped
+    }
 
-        let upper = stripped.to_uppercase();
-
-        // Check for unsupported axes based on axis_count
-        if let Some(err) = self.check_axis_support(&upper) {
-            return ValidationResult::Error(err);
+    /// Validate a single G-code line, updating modal state.
+    fn validate_line(&mut self, line: &str) -> ValidationResult {
+        let stripped = Self::strip_comments(line);
+        let mut body = stripped.trim();
+        if body.is_empty() || body.starts_with('%') {
+            return ValidationResult::Valid;
         }
 
-        // Check axis limits
-        if let Some(err) = self.check_axis_limits(&upper) {
-            return ValidationResult::Error(err);
+        // GRBL jog: `$J=<block>`. Its G90/G91/G20/G21 apply to the jog only.
+        let mut is_jog = false;
+        if body.starts_with('$') {
+            match body.get(..3) {
+                Some(prefix) if prefix.eq_ignore_ascii_case("$J=") => {
+                    is_jog = true;
+                    body = &body[3..];
+                }
+                // Other system commands ($H, $X, $$, $110=500 ...) are not motion.
+                _ => return ValidationResult::Valid,
+            }
         }
 
-        // Check feed rate limits
-        if let Some(err) = self.check_feed_rate(&upper) {
-            return ValidationResult::Error(err);
+        let words = tokenize_words(body);
+
+        // Modal/non-modal G-codes on this line apply to the whole line.
+        let mut relative = self.relative;
+        let mut units = self.units;
+        let mut non_positional = false;
+        for w in words.iter().filter(|w| w.letter == 'G') {
+            let Some(g) = w.value else { continue };
+            // Compare in tenths so G91.1 (arc IJK mode) is not mistaken for G91.
+            match (g * 10.0).round() as i64 {
+                900 => relative = false,
+                910 => relative = true,
+                200 => units = Units::INCH,
+                210 => units = Units::MM,
+                // G10 (set offsets/tool table) and G92 family carry axis words that
+                // are offsets, not target positions.
+                100 | 920 | 921 | 922 | 923 => non_positional = true,
+                _ => {}
+            }
+        }
+        if !is_jog {
+            self.relative = relative;
+            self.units = units;
         }
 
-        // Check spindle speed limits
-        if let Some(err) = self.check_spindle_speed(&upper) {
+        if let Some(err) = self.check_axis_support(&words) {
+            return ValidationResult::Error(err);
+        }
+        if !non_positional {
+            if let Some(err) = self.check_axis_limits(&words, relative, units) {
+                return ValidationResult::Error(err);
+            }
+        }
+        if let Some(err) = self.check_feed_rate(&words, units) {
+            return ValidationResult::Error(err);
+        }
+        if let Some(err) = self.check_spindle_speed(&words) {
             return ValidationResult::Error(err);
         }
 
         ValidationResult::Valid
     }
 
-    /// Check if the line uses unsupported axes
-    fn check_axis_support(&self, line: &str) -> Option<String> {
-        let max_axis = match self.config.axis_count {
-            3 => "Z",
-            4 => "A",
-            5 => "B",
-            6 => "C",
-            _ => "Z",
-        };
-
-        // Check for unsupported axis letters
-        for word in line.split_whitespace() {
-            if word.len() < 2 {
-                continue;
-            }
-
-            let Some(first_char) = word.chars().next() else {
+    /// Check if the line uses unsupported axes or non-finite coordinates
+    fn check_axis_support(&self, words: &[GcodeWord]) -> Option<String> {
+        let axis_count = self.config.axis_count.clamp(3, 6) as usize;
+        for w in words {
+            let Some(idx) = AXIS_LETTERS.iter().position(|&a| a == w.letter) else {
                 continue;
             };
-            // Slice on a char boundary: `&word[1..]` panics on a non-ASCII first char.
-            let value = &word[first_char.len_utf8()..];
-
-            // Skip if not a coordinate word
-            if !['X', 'Y', 'Z', 'A', 'B', 'C'].contains(&first_char) {
-                continue;
+            let Some(val) = w.value else { continue };
+            if idx >= axis_count {
+                return Some(format!(
+                    "Axis {} not supported on {}-axis machine",
+                    w.letter, self.config.axis_count
+                ));
             }
-
-            // Check if this axis is supported
-            match (max_axis, first_char) {
-                ("Z", 'A' | 'B' | 'C') => {
-                    return Some(format!(
-                        "Axis {} not supported on {}-axis machine",
-                        first_char, self.config.axis_count
-                    ));
-                }
-                ("A", 'B' | 'C') => {
-                    return Some(format!(
-                        "Axis {} not supported on {}-axis machine",
-                        first_char, self.config.axis_count
-                    ));
-                }
-                ("B", 'C') => {
-                    return Some(format!(
-                        "Axis {} not supported on {}-axis machine",
-                        first_char, self.config.axis_count
-                    ));
-                }
-                _ => {}
-            }
-
-            // Validate coordinate value
-            if let Ok(val) = value.parse::<f64>() {
-                if !val.is_finite() {
-                    return Some(format!(
-                        "Invalid {} coordinate value: {}",
-                        first_char, value
-                    ));
-                }
+            if !val.is_finite() {
+                return Some(format!("Invalid {} coordinate value: {}", w.letter, val));
             }
         }
-
         None
     }
 
-    /// Check axis limits
-    fn check_axis_limits(&self, line: &str) -> Option<String> {
-        for word in line.split_whitespace() {
-            if word.len() < 2 {
-                continue;
-            }
+    /// Limits for an axis letter, if it is an axis.
+    fn limits_for(&self, letter: char) -> Option<(f64, f64)> {
+        let l = &self.config.limits;
+        match letter {
+            'X' => Some(l.x),
+            'Y' => Some(l.y),
+            'Z' => Some(l.z),
+            'A' => Some(l.a),
+            'B' => Some(l.b),
+            'C' => Some(l.c),
+            _ => None,
+        }
+    }
 
-            let Some(first_char) = word.chars().next() else {
+    /// Check axis limits.
+    ///
+    /// In absolute mode each target is checked against the axis range. In relative
+    /// mode the start position is unknown, so only increments larger than the
+    /// whole axis travel (which must leave the envelope) are rejected.
+    fn check_axis_limits(
+        &self,
+        words: &[GcodeWord],
+        relative: bool,
+        units: Units,
+    ) -> Option<String> {
+        for w in words {
+            let Some((min, max)) = self.limits_for(w.letter) else {
                 continue;
             };
-            // Slice on a char boundary: `&word[1..]` panics on a non-ASCII first char.
-            let value = &word[first_char.len_utf8()..];
-
-            // Get limits for this axis
-            let (min, max) = match first_char {
-                'X' => self.config.limits.x,
-                'Y' => self.config.limits.y,
-                'Z' => self.config.limits.z,
-                'A' => self.config.limits.a,
-                'B' => self.config.limits.b,
-                'C' => self.config.limits.c,
-                _ => continue,
+            let Some(raw) = w.value else { continue };
+            // Rotary axes are in degrees and never unit-converted.
+            let is_linear = matches!(w.letter, 'X' | 'Y' | 'Z');
+            let val = if is_linear && units == Units::INCH {
+                raw * 25.4
+            } else {
+                raw
             };
 
-            if let Ok(val) = value.parse::<f64>() {
-                // Convert to mm if needed
-                let val = if self.config.units == Units::INCH {
-                    val * 25.4
-                } else {
-                    val
-                };
-
-                if val < min || val > max {
+            if relative {
+                let span = max - min;
+                if val.abs() > span {
                     return Some(format!(
-                        "{} coordinate {} is outside limits [{:.3}, {:.3}]",
-                        first_char, val, min, max
+                        "{} incremental move {:.3} exceeds axis travel {:.3}",
+                        w.letter, val, span
                     ));
                 }
+            } else if val < min || val > max {
+                return Some(format!(
+                    "{} coordinate {} is outside limits [{:.3}, {:.3}]",
+                    w.letter, val, min, max
+                ));
             }
         }
-
         None
     }
 
-    /// Check feed rate limits
-    fn check_feed_rate(&self, line: &str) -> Option<String> {
-        for word in line.split_whitespace() {
-            if word.starts_with('F') || word.starts_with('f') {
-                let value = &word[1..];
-                if let Ok(feed) = value.parse::<f64>() {
-                    if feed > self.config.max_feed_rate {
-                        return Some(format!(
-                            "Feed rate {} exceeds maximum {}",
-                            feed, self.config.max_feed_rate
-                        ));
-                    }
-                }
+    /// Check feed rate limits (feed is converted to mm/min in inch mode)
+    fn check_feed_rate(&self, words: &[GcodeWord], units: Units) -> Option<String> {
+        for w in words.iter().filter(|w| w.letter == 'F') {
+            let Some(feed) = w.value else { continue };
+            let feed_mm = if units == Units::INCH {
+                feed * 25.4
+            } else {
+                feed
+            };
+            if feed_mm > self.config.max_feed_rate {
+                return Some(format!(
+                    "Feed rate {} exceeds maximum {}",
+                    feed, self.config.max_feed_rate
+                ));
             }
         }
         None
     }
 
     /// Check spindle speed limits
-    fn check_spindle_speed(&self, line: &str) -> Option<String> {
-        for word in line.split_whitespace() {
-            if word.starts_with('S') || word.starts_with('s') {
-                let value = &word[1..];
-                if let Ok(speed) = value.parse::<f64>() {
-                    if speed > self.config.max_spindle_speed {
-                        return Some(format!(
-                            "Spindle speed {} exceeds maximum {}",
-                            speed, self.config.max_spindle_speed
-                        ));
-                    }
-                }
+    fn check_spindle_speed(&self, words: &[GcodeWord]) -> Option<String> {
+        for w in words.iter().filter(|w| w.letter == 'S') {
+            let Some(speed) = w.value else { continue };
+            if speed > self.config.max_spindle_speed {
+                return Some(format!(
+                    "Spindle speed {} exceeds maximum {}",
+                    speed, self.config.max_spindle_speed
+                ));
             }
         }
         None

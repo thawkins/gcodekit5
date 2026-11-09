@@ -1,16 +1,16 @@
 //! g2core Controller Implementation
 //!
-//! Provides a complete implementation of the ControllerTrait for g2core firmware,
-//! including connection management, command execution, and status polling.
+//! Placeholder implementation of the ControllerTrait for g2core firmware. The g2core
+//! transport and JSON protocol are not implemented yet, so every machine operation
+//! returns a clear "not supported" error instead of silently succeeding.
 //! g2core is the next generation of TinyG with support for 6 axes and advanced kinematics.
 
 use crate::communication::ConnectionParams;
 use async_trait::async_trait;
-use gcodekit5_core::ControllerTrait;
-use gcodekit5_core::{thread_safe_rw, ThreadSafeRw};
-use gcodekit5_core::{ControllerState, ControllerStatus, Position};
-use tokio::task::JoinHandle;
-use tokio::time::{interval, Duration};
+use gcodekit5_core::{thread_safe_rw, ThreadSafeRw, ThreadSafeRwMap};
+use gcodekit5_core::{
+    ControllerState, ControllerStatus, ControllerTrait, PartialPosition, Position,
+};
 
 /// g2core Controller state management
 #[derive(Debug, Clone)]
@@ -56,6 +56,11 @@ impl Default for G2CoreControllerState {
 
 /// g2core Controller implementation
 ///
+/// **Not yet functional.** There is no serial/TCP transport or JSON protocol
+/// handling for g2core in this crate, so instead of silently pretending to
+/// succeed, `connect`, `send_command`, jogging, probing and every other machine
+/// operation return a [`gcodekit5_core::FirmwareError::UnsupportedFeature`] error.
+///
 /// Implements the ControllerTrait for g2core firmware with full protocol support.
 /// g2core uses JSON-based communication with advanced features including:
 /// - 6-axis support
@@ -67,60 +72,42 @@ pub struct G2CoreController {
     name: String,
     /// Controller state
     state: ThreadSafeRw<G2CoreControllerState>,
-    /// Status polling handle
-    poll_task: ThreadSafeRw<Option<JoinHandle<()>>>,
-    /// Shutdown signal
-    shutdown_signal: ThreadSafeRw<Option<std::sync::Arc<tokio::sync::Notify>>>,
+    /// Registered controller listeners
+    listeners: ThreadSafeRwMap<String, std::sync::Arc<dyn gcodekit5_core::ControllerListener>>,
     /// Connection parameters
     connection_params: ConnectionParams,
 }
 
 impl G2CoreController {
-    /// Create a new g2core controller
+    /// Create a new g2core controller.
+    ///
+    /// The controller is created disconnected. See the type-level docs: the
+    /// g2core protocol is not implemented yet, so every machine operation
+    /// returns a "not supported" error.
     pub fn new(connection_params: ConnectionParams, name: Option<String>) -> anyhow::Result<Self> {
         Ok(Self {
             name: name.unwrap_or_else(|| "g2core".to_string()),
             state: thread_safe_rw(G2CoreControllerState::default()),
-            poll_task: thread_safe_rw(None),
-            shutdown_signal: thread_safe_rw(None),
+            listeners: thread_safe_rw(std::collections::HashMap::new()),
             connection_params,
         })
     }
 
-    /// Initialize the controller and query its capabilities
-    fn initialize(&self) -> anyhow::Result<()> {
-        // Query firmware version and capabilities
-
-        Ok(())
+    /// Connection parameters this controller was created with.
+    pub fn connection_params(&self) -> &ConnectionParams {
+        &self.connection_params
     }
 
-    /// Perform initialization as task
-    async fn initialize_async(&self) -> anyhow::Result<()> {
-        // Query firmware version and capabilities
-
-        Ok(())
-    }
-
-    /// Start status polling
-    fn start_polling(&self) {
-        let poll_rate = self.state.read().poll_rate_ms;
-
-        let poll_task = tokio::spawn(async move {
-            let mut interval = interval(Duration::from_millis(poll_rate));
-            loop {
-                interval.tick().await;
-                // Poll status from g2core
-            }
-        });
-
-        *self.poll_task.write() = Some(poll_task);
-    }
-
-    /// Stop status polling
-    fn stop_polling(&self) {
-        if let Some(task) = self.poll_task.write().take() {
-            task.abort();
-        }
+    /// Build the error returned by every operation that needs the (unimplemented)
+    /// g2core transport.
+    fn unsupported(&self, operation: &str) -> anyhow::Error {
+        tracing::warn!(controller = %self.name, operation, "g2core operation not supported");
+        anyhow::Error::new(gcodekit5_core::FirmwareError::UnsupportedFeature {
+            firmware: "g2core".to_string(),
+            feature: format!(
+                "{operation} (g2core communication is not implemented; use a GRBL-compatible controller)"
+            ),
+        })
     }
 
     /// Query the number of active axes
@@ -150,7 +137,7 @@ impl ControllerTrait for G2CoreController {
         &self.name
     }
 
-    fn get_state(&self) -> gcodekit5_core::ControllerState {
+    fn get_state(&self) -> ControllerState {
         self.state.read().state
     }
 
@@ -163,90 +150,36 @@ impl ControllerTrait for G2CoreController {
     }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
-        // Update state to connecting
-        {
-            let mut state = self.state.write();
-            state.state = ControllerState::Connecting;
-        }
-
-        // Initialize controller
-        self.initialize_async().await?;
-
-        // Update state to idle
-        {
-            let mut state = self.state.write();
-            state.state = ControllerState::Idle;
-        }
-
-        // Start status polling
-        self.start_polling();
-
-        Ok(())
+        // Refuse rather than report a connection that does not exist.
+        self.state.write().state = ControllerState::Disconnected;
+        Err(self.unsupported("connecting"))
     }
 
     async fn disconnect(&mut self) -> anyhow::Result<()> {
-        // Stop polling
-        self.stop_polling();
-
-        // Update state
-        {
-            let mut state = self.state.write();
-            state.state = ControllerState::Disconnected;
-        }
-
+        let mut state = self.state.write();
+        state.state = ControllerState::Disconnected;
+        state.is_streaming = false;
         Ok(())
     }
 
     async fn send_command(&mut self, _command: &str) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        // Send command to g2core
-
-        Ok(())
+        Err(self.unsupported("sending commands"))
     }
 
     async fn home(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        self.send_command("$H").await?;
-
-        Ok(())
+        Err(self.unsupported("homing"))
     }
 
     async fn reset(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        // Send soft reset command (Ctrl+X = 0x18)
-        self.send_command("\x18").await?;
-
-        Ok(())
+        Err(self.unsupported("soft reset"))
     }
 
     async fn clear_alarm(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        // Clear alarm with $X
-        self.send_command("$X").await?;
-
-        Ok(())
+        Err(self.unsupported("clearing alarms"))
     }
 
     async fn unlock(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        self.send_command("$X").await?;
-
-        Ok(())
+        Err(self.unsupported("unlocking"))
     }
 
     async fn jog_start(
@@ -255,22 +188,11 @@ impl ControllerTrait for G2CoreController {
         _direction: i32,
         _feed_rate: f64,
     ) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("continuous jogging"))
     }
 
     async fn jog_stop(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        // Send feed hold to stop jog
-        self.send_command("!").await?;
-
-        Ok(())
+        Err(self.unsupported("stopping a jog"))
     }
 
     async fn jog_incremental(
@@ -279,186 +201,95 @@ impl ControllerTrait for G2CoreController {
         _distance: f64,
         _feed_rate: f64,
     ) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("incremental jogging"))
     }
 
     async fn start_streaming(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        let mut state = self.state.write();
-        state.is_streaming = true;
-
-        Ok(())
+        Err(self.unsupported("streaming"))
     }
 
     async fn pause_streaming(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        // Send feed hold command (!)
-        self.send_command("!").await?;
-
-        Ok(())
+        Err(self.unsupported("pausing (feed hold)"))
     }
 
     async fn resume_streaming(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        // Send cycle start command (~)
-        self.send_command("~").await?;
-
-        Ok(())
+        Err(self.unsupported("resuming (cycle start)"))
     }
 
     async fn cancel_streaming(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        let mut state = self.state.write();
-        state.is_streaming = false;
-
-        Ok(())
+        Err(self.unsupported("cancelling a stream"))
     }
 
-    async fn probe_z(
-        &mut self,
-        _feed_rate: f64,
-    ) -> anyhow::Result<gcodekit5_core::PartialPosition> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(gcodekit5_core::PartialPosition::default())
+    async fn probe_z(&mut self, _feed_rate: f64) -> anyhow::Result<PartialPosition> {
+        Err(self.unsupported("Z probing"))
     }
 
-    async fn probe_x(
-        &mut self,
-        _feed_rate: f64,
-    ) -> anyhow::Result<gcodekit5_core::PartialPosition> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(gcodekit5_core::PartialPosition::default())
+    async fn probe_x(&mut self, _feed_rate: f64) -> anyhow::Result<PartialPosition> {
+        Err(self.unsupported("X probing"))
     }
 
-    async fn probe_y(
-        &mut self,
-        _feed_rate: f64,
-    ) -> anyhow::Result<gcodekit5_core::PartialPosition> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(gcodekit5_core::PartialPosition::default())
+    async fn probe_y(&mut self, _feed_rate: f64) -> anyhow::Result<PartialPosition> {
+        Err(self.unsupported("Y probing"))
     }
 
     async fn set_feed_override(&mut self, _percentage: u16) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("feed override"))
     }
 
     async fn set_rapid_override(&mut self, _percentage: u8) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("rapid override"))
     }
 
     async fn set_spindle_override(&mut self, _percentage: u16) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("spindle override"))
     }
 
     async fn set_work_zero(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("setting work zero"))
     }
 
     async fn set_work_zero_axes(&mut self, _axes: &str) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("setting work zero"))
     }
 
     async fn go_to_work_zero(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("moving to work zero"))
     }
 
     async fn set_work_coordinate_system(&mut self, _wcs: u8) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("selecting a work coordinate system"))
     }
 
-    async fn get_wcs_offset(&self, _wcs: u8) -> anyhow::Result<gcodekit5_core::PartialPosition> {
-        Ok(gcodekit5_core::PartialPosition::default())
+    async fn get_wcs_offset(&self, _wcs: u8) -> anyhow::Result<PartialPosition> {
+        Err(self.unsupported("reading work coordinate offsets"))
     }
 
     async fn query_status(&mut self) -> anyhow::Result<ControllerStatus> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(self.state.read().status)
+        Err(self.unsupported("querying status"))
     }
 
     async fn query_settings(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("querying settings"))
     }
 
     async fn query_parser_state(&mut self) -> anyhow::Result<()> {
-        if !self.is_connected() {
-            anyhow::bail!("g2core controller not connected");
-        }
-
-        Ok(())
+        Err(self.unsupported("querying parser state"))
     }
 
     fn register_listener(
         &mut self,
-        _listener: std::sync::Arc<dyn gcodekit5_core::ControllerListener>,
+        listener: std::sync::Arc<dyn gcodekit5_core::ControllerListener>,
     ) -> gcodekit5_core::ControllerListenerHandle {
-        gcodekit5_core::ControllerListenerHandle("g2core_listener".to_string())
+        let id = uuid::Uuid::new_v4().to_string();
+        self.listeners.write().insert(id.clone(), listener);
+        gcodekit5_core::ControllerListenerHandle(id)
     }
 
-    fn unregister_listener(&mut self, _handle: gcodekit5_core::ControllerListenerHandle) {
-        // no-op for now
+    fn unregister_listener(&mut self, handle: gcodekit5_core::ControllerListenerHandle) {
+        self.listeners.write().remove(&handle.0);
     }
 
     fn listener_count(&self) -> usize {
-        0
+        self.listeners.read().len()
     }
 }

@@ -78,58 +78,58 @@ pub const STATUS_SLEEP: &str = "Sleep";
 
 // GRBL System Settings ($)
 /// Minimum baud rate setting
-pub const SETTING_BAUD_RATE: u8 = 110;
+pub const SETTING_BAUD_RATE: u16 = 110;
 
 /// Idle delay after laser off (ms)
-pub const SETTING_IDLE_DELAY: u8 = 111;
+pub const SETTING_IDLE_DELAY: u16 = 111;
 
 /// Step idle delay (µs)
-pub const SETTING_STEP_IDLE_DELAY: u8 = 112;
+pub const SETTING_STEP_IDLE_DELAY: u16 = 112;
 
 /// Step pulse duration (µs)
-pub const SETTING_STEP_PULSE_DURATION: u8 = 113;
+pub const SETTING_STEP_PULSE_DURATION: u16 = 113;
 
 /// Direction invert mask
-pub const SETTING_DIR_INVERT: u8 = 114;
+pub const SETTING_DIR_INVERT: u16 = 114;
 
 /// Step enable invert flag
-pub const SETTING_STEP_ENABLE_INVERT: u8 = 115;
+pub const SETTING_STEP_ENABLE_INVERT: u16 = 115;
 
 /// Limit pins invert flag
-pub const SETTING_LIMIT_PINS_INVERT: u8 = 116;
+pub const SETTING_LIMIT_PINS_INVERT: u16 = 116;
 
 /// Probe pin invert flag
-pub const SETTING_PROBE_PIN_INVERT: u8 = 117;
+pub const SETTING_PROBE_PIN_INVERT: u16 = 117;
 
 /// Status report mask
-pub const SETTING_STATUS_REPORT_MASK: u8 = 118;
+pub const SETTING_STATUS_REPORT_MASK: u16 = 118;
 
 /// Junction deviation setting
-pub const SETTING_JUNCTION_DEVIATION: u8 = 120;
+pub const SETTING_JUNCTION_DEVIATION: u16 = 120;
 
 /// Arc tolerance setting
-pub const SETTING_ARC_TOLERANCE: u8 = 121;
+pub const SETTING_ARC_TOLERANCE: u16 = 121;
 
 /// Report inches setting
-pub const SETTING_REPORT_INCHES: u8 = 122;
+pub const SETTING_REPORT_INCHES: u16 = 122;
 
 /// Control invert mask
-pub const SETTING_CONTROL_INVERT_MASK: u8 = 123;
+pub const SETTING_CONTROL_INVERT_MASK: u16 = 123;
 
 /// Limit invert mask
-pub const SETTING_LIMIT_INVERT_MASK: u8 = 124;
+pub const SETTING_LIMIT_INVERT_MASK: u16 = 124;
 
 /// Spindle invert mask
-pub const SETTING_SPINDLE_INVERT_MASK: u8 = 125;
+pub const SETTING_SPINDLE_INVERT_MASK: u16 = 125;
 
 /// Control pull-up disable mask
-pub const SETTING_CONTROL_PULL_UP_DISABLE: u8 = 126;
+pub const SETTING_CONTROL_PULL_UP_DISABLE: u16 = 126;
 
 /// Limit pull-up disable mask
-pub const SETTING_LIMIT_PULL_UP_DISABLE: u8 = 127;
+pub const SETTING_LIMIT_PULL_UP_DISABLE: u16 = 127;
 
 /// Probe pull-up disable flag
-pub const SETTING_PROBE_PULL_UP_DISABLE: u8 = 128;
+pub const SETTING_PROBE_PULL_UP_DISABLE: u16 = 128;
 
 // GRBL Error Codes (1-50)
 /// Expected command letter
@@ -183,12 +183,6 @@ pub const ALARM_HOMING_FAIL: u8 = 6;
 
 /// Homing fail pulloff (GRBL 1.1 ALARM:8)
 pub const ALARM_HOMING_FAIL_PULLOFF: u8 = 8;
-
-/// Spindle control failure
-pub const ALARM_SPINDLE_CONTROL: u8 = 8;
-
-/// Cooling mist control failure
-pub const ALARM_COOLING_MIST_CONTROL: u8 = 9;
 
 // Coordinate Systems (G54-G59)
 /// G54 Work Coordinate System

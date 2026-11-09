@@ -7,6 +7,10 @@ use crate::manager::SettingsManager;
 use crate::persistence::SettingsPersistence;
 use crate::view_model::{SettingValue, SettingsCategory, SettingsDialog};
 use gcodekit5_core::{shared, Shared, SharedVec};
+use std::rc::Rc;
+
+/// Callback invoked with `(setting_id, new_value)` after a setting changes.
+type SettingListener = Rc<dyn Fn(&str, &str)>;
 
 /// UI-friendly representation of a setting
 #[derive(Debug, Clone)]
@@ -25,9 +29,7 @@ pub struct SettingUiModel {
 pub struct SettingsController {
     pub dialog: Shared<SettingsDialog>,
     pub persistence: Shared<SettingsPersistence>,
-    // Complex type due to nested callback/observer fields.
-    #[allow(clippy::type_complexity)]
-    listeners: SharedVec<Box<dyn Fn(&str, &str)>>,
+    listeners: SharedVec<SettingListener>,
 }
 
 impl SettingsController {
@@ -41,11 +43,15 @@ impl SettingsController {
     }
 
     /// Register a callback to be notified when a setting changes
+    ///
+    /// Listeners are always invoked with no borrow of the dialog, persistence or
+    /// listener list held, so they may freely read settings or register further
+    /// listeners.
     pub fn on_setting_changed<F>(&self, callback: F)
     where
         F: Fn(&str, &str) + 'static,
     {
-        self.listeners.borrow_mut().push(Box::new(callback));
+        self.listeners.borrow_mut().push(Rc::new(callback));
     }
 
     /// Get settings formatted for UI display, optionally filtered by category
@@ -106,36 +112,57 @@ impl SettingsController {
 
     /// Update a setting value from string input
     pub fn update_setting(&self, id: &str, value: &str) {
-        let mut dialog = self.dialog.borrow_mut();
+        let applied = {
+            let mut dialog = self.dialog.borrow_mut();
 
-        // Determine the new value based on the existing setting's type
-        let new_value_opt = if let Some(setting) = dialog.get_setting(id) {
-            match &setting.value {
-                SettingValue::String(_) => Some(SettingValue::String(value.to_string())),
-                // Unparseable numeric input is rejected rather than silently stored as 0
-                // (which would e.g. zero the window size and make save() fail validation).
-                SettingValue::Integer(_) => value.parse().ok().map(SettingValue::Integer),
-                SettingValue::Float(_) => value.parse().ok().map(SettingValue::Float),
-                SettingValue::Boolean(_) => Some(SettingValue::Boolean(value == "true")),
-                SettingValue::Path(_) => Some(SettingValue::Path(value.to_string())),
-                SettingValue::Enum(_, options) => {
-                    if options.contains(&value.to_string()) {
-                        Some(SettingValue::Enum(value.to_string(), options.clone()))
-                    } else {
-                        None
+            // Determine the new value based on the existing setting's type
+            let new_value_opt = if let Some(setting) = dialog.get_setting(id) {
+                match &setting.value {
+                    SettingValue::String(_) => Some(SettingValue::String(value.to_string())),
+                    // Unparseable numeric input is rejected rather than silently stored as 0
+                    // (which would e.g. zero the window size and make save() fail validation).
+                    SettingValue::Integer(_) => value.parse().ok().map(SettingValue::Integer),
+                    SettingValue::Float(_) => value.parse().ok().map(SettingValue::Float),
+                    SettingValue::Boolean(_) => Some(SettingValue::Boolean(value == "true")),
+                    SettingValue::Path(_) => Some(SettingValue::Path(value.to_string())),
+                    SettingValue::Enum(_, options) => {
+                        if options.contains(&value.to_string()) {
+                            Some(SettingValue::Enum(value.to_string(), options.clone()))
+                        } else {
+                            None
+                        }
                     }
                 }
+            } else {
+                None
+            };
+
+            match new_value_opt {
+                Some(val) => {
+                    dialog.update_setting(id, val);
+                    true
+                }
+                None => false,
             }
-        } else {
-            None
+            // dialog borrow released here, before any listener runs
         };
 
-        if let Some(val) = new_value_opt {
-            dialog.update_setting(id, val);
+        if applied {
+            self.notify_listeners(&[(id.to_string(), value.to_string())]);
+        }
+    }
 
-            // Notify listeners
-            let listeners = self.listeners.borrow();
-            for listener in listeners.iter() {
+    /// Invoke every registered listener for each `(id, value)` change.
+    ///
+    /// Takes a snapshot of the listener list first so no `RefCell` borrow is held
+    /// while user callbacks run (a listener may read the dialog or add listeners).
+    fn notify_listeners(&self, changes: &[(String, String)]) {
+        if changes.is_empty() {
+            return;
+        }
+        let listeners: Vec<SettingListener> = self.listeners.borrow().iter().cloned().collect();
+        for (id, value) in changes {
+            for listener in &listeners {
                 listener(id, value);
             }
         }
@@ -168,14 +195,11 @@ impl SettingsController {
                 .collect()
         };
 
-        let listeners = self.listeners.borrow();
-        for (id, new_val) in after.iter() {
-            if before.get(id) != Some(new_val) {
-                for listener in listeners.iter() {
-                    listener(id, new_val);
-                }
-            }
-        }
+        let changed: Vec<(String, String)> = after
+            .into_iter()
+            .filter(|(id, new_val)| before.get(id) != Some(new_val))
+            .collect();
+        self.notify_listeners(&changed);
     }
 
     /// Save settings to disk
@@ -222,12 +246,7 @@ impl SettingsController {
             dialog.has_unsaved_changes = true;
         }
 
-        let listeners = self.listeners.borrow();
-        for (id, new_val) in &changed {
-            for listener in listeners.iter() {
-                listener(id, new_val);
-            }
-        }
+        self.notify_listeners(&changed);
     }
 
     /// Convert string category to enum

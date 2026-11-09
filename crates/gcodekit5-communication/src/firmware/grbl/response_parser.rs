@@ -19,7 +19,7 @@ pub enum GrblResponse {
     /// Status report
     Status(StatusReport),
     /// Setting response ($n=value)
-    Setting { number: u8, value: String },
+    Setting { number: u16, value: String },
     /// Parser state (e.g., modal state)
     ParserState(String),
     /// Version information
@@ -92,8 +92,8 @@ pub struct BufferState {
 /// GRBL settings response
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingsResponse {
-    /// Setting number
-    pub number: u8,
+    /// Setting number (u16: grblHAL extended settings go beyond 255)
+    pub number: u16,
     /// Setting value as string
     pub value: String,
     /// Parsed numeric value (if applicable)
@@ -269,7 +269,7 @@ impl GrblResponseParser {
             return None;
         }
 
-        let number = parts[0].trim().parse::<u8>().ok()?;
+        let number = parts[0].trim().parse::<u16>().ok()?;
         let value = parts[1].trim().to_string();
         let _numeric_value = value.parse::<f64>().ok();
 

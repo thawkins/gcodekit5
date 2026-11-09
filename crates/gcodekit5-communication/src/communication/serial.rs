@@ -100,10 +100,9 @@ impl SerialPortInfo {
 /// List available serial ports on the system
 ///
 /// Returns a list of available COM ports with information about each port.
-/// Filters ports to include only CNC controller patterns:
-/// - Windows: COM* (e.g., COM1, COM3)
-/// - Linux: /dev/ttyUSB*, /dev/ttyACM*, /dev/ttyGRBL
-/// - macOS: /dev/cu.usbserial-*, /dev/cu.usbmodem*
+/// Filters ports to controller-capable serial devices (see [`is_valid_cnc_port_name`]),
+/// including on-board UARTs (`/dev/ttyS*`, `/dev/ttyAMA*`) and Bluetooth serial
+/// (`/dev/rfcomm*`), while hiding unpopulated `/dev/ttyS*` placeholders.
 pub fn list_ports() -> Result<Vec<SerialPortInfo>> {
     match serialport::available_ports() {
         Ok(ports) => {
@@ -142,32 +141,88 @@ pub fn list_ports() -> Result<Vec<SerialPortInfo>> {
     }
 }
 
-/// Check if a port name matches CNC controller patterns
+/// Check whether a port name looks like a serial device a CNC controller could be on.
 ///
-/// Valid patterns:
-/// - Windows: COM* (COM1, COM2, etc.)
-/// - Linux: /dev/ttyUSB*, /dev/ttyACM*, /dev/ttyGRBL
-/// - macOS: /dev/cu.usbserial-*, /dev/cu.usbmodem*
-fn is_valid_cnc_port(port_name: &str) -> bool {
+/// Accepted patterns:
+/// - Windows: `COM<n>`
+/// - Linux: `/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/ttyGRBL` (simulator),
+///   `/dev/ttyS*` (on-board UARTs), `/dev/ttyAMA*` (Raspberry Pi PL011 UART),
+///   `/dev/ttyTHS*` (Jetson), `/dev/ttymxc*` (i.MX), `/dev/ttyO*` (BeagleBone),
+///   `/dev/rfcomm*` (Bluetooth serial)
+/// - macOS: `/dev/cu.*` except the built-in Bluetooth-Incoming-Port and debug consoles
+///
+/// Obvious non-devices are rejected: virtual consoles (`/dev/tty<n>`), pseudo
+/// terminals, `/dev/console`, macOS `tty.*` dial-in duplicates of `cu.*`, and
+/// macOS debug/incoming-only ports. Note that on Linux `/dev/ttyS*` placeholders
+/// with no UART behind them are filtered separately by [`list_ports`] via sysfs.
+///
+/// # Arguments
+/// * `port_name` - The OS device name, e.g. `/dev/ttyAMA0` or `COM3`.
+///
+/// # Returns
+/// `true` if the name matches a controller-capable serial device pattern.
+pub fn is_valid_cnc_port_name(port_name: &str) -> bool {
     // Windows COM ports
-    if port_name.starts_with("COM") && port_name[3..].chars().all(|c| c.is_ascii_digit()) {
-        return true;
+    if let Some(num) = port_name.strip_prefix("COM") {
+        return !num.is_empty() && num.chars().all(|c| c.is_ascii_digit());
     }
 
-    // Linux USB and ACM devices
-    if port_name.starts_with("/dev/ttyUSB")
-        || port_name.starts_with("/dev/ttyACM")
-        || port_name.starts_with("/dev/ttyGRBL")
-    {
+    // Linux: USB CDC/serial adapters, on-board and SoC UARTs, Bluetooth RFCOMM.
+    const LINUX_PREFIXES: [&str; 8] = [
+        "/dev/ttyUSB",
+        "/dev/ttyACM",
+        "/dev/ttyS",
+        "/dev/ttyAMA",
+        "/dev/ttyTHS",
+        "/dev/ttymxc",
+        "/dev/ttyO",
+        "/dev/rfcomm",
+    ];
+    if port_name == "/dev/ttyGRBL" {
         return true;
     }
+    for prefix in LINUX_PREFIXES {
+        if let Some(rest) = port_name.strip_prefix(prefix) {
+            return !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit());
+        }
+    }
 
-    // macOS serial and modem devices
-    if port_name.starts_with("/dev/cu.usbserial-") || port_name.starts_with("/dev/cu.usbmodem") {
-        return true;
+    // macOS: callout devices. Skip the always-present Bluetooth incoming port and
+    // debug consoles, which are never a controller.
+    if let Some(rest) = port_name.strip_prefix("/dev/cu.") {
+        let lower = rest.to_ascii_lowercase();
+        let is_non_device = lower.is_empty()
+            || lower.starts_with("bluetooth-incoming-port")
+            || lower.contains("debug-console")
+            || lower.starts_with("wlan-debug");
+        return !is_non_device;
     }
 
     false
+}
+
+/// On Linux, `/dev/ttyS0`..`ttyS31` exist even when no UART is fitted. The kernel
+/// reports `type` 0 (`PORT_UNKNOWN`) in sysfs for those placeholders, so hide them.
+/// Returns `true` (keep the port) whenever the information is unavailable.
+fn uart_placeholder_present(port_name: &str) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(dev) = port_name.strip_prefix("/dev/") {
+            if dev.starts_with("ttyS") {
+                let type_path = format!("/sys/class/tty/{dev}/type");
+                if let Ok(t) = std::fs::read_to_string(type_path) {
+                    return t.trim() != "0";
+                }
+            }
+        }
+    }
+    let _ = port_name;
+    true
+}
+
+/// Full filter used by [`list_ports`]: name pattern plus hardware presence.
+fn is_valid_cnc_port(port_name: &str) -> bool {
+    is_valid_cnc_port_name(port_name) && uart_placeholder_present(port_name)
 }
 
 /// Get a user-friendly description for a port
