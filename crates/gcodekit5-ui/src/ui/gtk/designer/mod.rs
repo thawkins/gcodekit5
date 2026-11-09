@@ -22,7 +22,7 @@ use gtk4::gdk::{Key, ModifierType};
 use gtk4::prelude::*;
 use gtk4::{
     Adjustment, Box, EventControllerKey, GestureClick, Grid, Label, Orientation, Overlay, Paned,
-    Popover, ResponseType, Scrollbar,
+    Popover, Scrollbar,
 };
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -668,17 +668,15 @@ impl DesignerView {
                     crate::ui::gtk::common::dialog::show_warning(
                         &t!("Invalid Z positioning"),
                         &format!(
-                            "{}\n\n{}\n{}\n{}",
+                            "{}\n\n{}\n{}: {:.3} mm\n{}: {} ({}: {:.3} mm)",
                             t!("One or more objects are positioned at or above the Safe Z height."),
                             t!("Lower object Z positions before generating G-code."),
-                            format!("{}: {:.3} mm", t!("Safe Z"), safe_z),
-                            format!(
-                                "{}: {} ({}: {:.3} mm)",
-                                t!("Objects in conflict"),
-                                violating_count,
-                                t!("highest start Z"),
-                                max_start_z
-                            )
+                            t!("Safe Z"),
+                            safe_z,
+                            t!("Objects in conflict"),
+                            violating_count,
+                            t!("highest start Z"),
+                            max_start_z
                         ),
                         parent.as_ref(),
                     );

@@ -455,29 +455,22 @@ impl DeviceManagerWindow {
             return;
         };
 
-        let dialog = MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(MessageType::Question)
-            .buttons(gtk4::ButtonsType::YesNo)
-            .text("Delete device?")
-            .secondary_text(format!(
+        let view = self.clone();
+        crate::ui::gtk::common::dialog::show_question(
+            "Delete device?",
+            &format!(
                 "Delete \u{201c}{}\u{201d}? This cannot be undone.",
                 model.name
-            ))
-            .build();
-
-        let view = self.clone();
-        dialog.connect_response(move |d, resp| {
-            if resp == ResponseType::Yes {
-                let _ = view.controller.delete_profile(&model.id);
-                view.load_devices();
-                view.cancel_edit();
-            }
-            d.close();
-        });
-
-        dialog.show();
+            ),
+            Some(&window),
+            move |resp| {
+                if resp == ResponseType::Yes {
+                    let _ = view.controller.delete_profile(&model.id);
+                    view.load_devices();
+                    view.cancel_edit();
+                }
+            },
+        );
     }
 
     pub(crate) fn set_as_active(&self) {
@@ -585,16 +578,6 @@ impl DeviceManagerWindow {
             return;
         };
 
-        let dialog = MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(MessageType::Info)
-            .buttons(gtk4::ButtonsType::Ok)
-            .text("Device Information Updated")
-            .secondary_text("Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.")
-            .build();
-
-        dialog.connect_response(|d, _| d.close());
-        dialog.show();
+        crate::ui::gtk::common::dialog::show_info("Device Information Updated", "Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.", Some(&window));
     }
 }

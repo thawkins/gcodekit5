@@ -330,7 +330,9 @@ impl SvgImporter {
             tag.attr("points")
                 .map(svg_parse::parse_numbers)
                 .unwrap_or_default()
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| Point::new(c[0], c[1]))
                 .collect()
         };
@@ -418,6 +420,9 @@ impl SvgImporter {
     }
 }
 
+/// Shapes converted from DXF entities, paired with their Z metadata.
+type ConvertedEntities = (Vec<Shape>, Vec<(f64, f64)>);
+
 /// DXF importer for converting DXF files to Designer shapes
 pub struct DxfImporter {
     pub scale: f64,
@@ -493,10 +498,7 @@ impl DxfImporter {
     ///
     /// Note: DXF coordinates are negated on X-axis to correct for coordinate system difference.
     /// DXF uses right-handed coordinate system, Designer uses left-handed with Y-up.
-    fn convert_entities_to_shapes(
-        &self,
-        dxf_file: &DxfFile,
-    ) -> Result<(Vec<Shape>, Vec<(f64, f64)>)> {
+    fn convert_entities_to_shapes(&self, dxf_file: &DxfFile) -> Result<ConvertedEntities> {
         let mut shapes: Vec<Shape> = Vec::new();
         let mut z_metadata: Vec<(f64, f64)> = Vec::new();
 

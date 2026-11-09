@@ -1170,8 +1170,7 @@ fn load_resources() {
 
 fn load_css() {
     let provider = CssProvider::new();
-    // GTK 0.9 uses load_from_data instead of load_from_string
-    provider.load_from_data(include_str!("ui/gtk/style.css"));
+    provider.load_from_string(include_str!("ui/gtk/style.css"));
 
     let Some(display) = gtk4::gdk::Display::default() else {
         tracing::error!("Could not connect to a display");

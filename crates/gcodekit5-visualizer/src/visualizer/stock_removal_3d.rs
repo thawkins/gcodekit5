@@ -564,6 +564,7 @@ impl StockSimulator3D {
     }
 
     /// Remove material along a linear path with distance-based progress tracking
+    #[allow(clippy::too_many_arguments)]
     fn remove_linear_with_progress<F>(
         &mut self,
         start: Vec3,
@@ -610,6 +611,7 @@ impl StockSimulator3D {
     }
 
     /// Remove material along an arc path with distance-based progress tracking
+    #[allow(clippy::too_many_arguments)]
     fn remove_arc_with_progress<F>(
         &mut self,
         start: Vec3,
@@ -799,7 +801,7 @@ impl StockSimulator3D {
         let mut mesh = generate_surface_mesh(&self.grid);
         let z_offset = self.stock_top_z - self.thickness;
         if z_offset != 0.0 {
-            for vertex in mesh.chunks_exact_mut(10) {
+            for vertex in mesh.as_chunks_mut::<10>().0 {
                 vertex[2] += z_offset;
             }
         }

@@ -7,13 +7,14 @@
 mod grbl_settings;
 mod operations;
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
 use gcodekit5_communication::SerialCommunicator;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, ComboBoxText, Label, ListBox, Orientation, PolicyType, ScrolledWindow,
-    SearchEntry, Separator,
+    Box, Button, DropDown, Label, ListBox, Orientation, PolicyType, ScrolledWindow, SearchEntry,
+    Separator,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -110,7 +111,7 @@ pub struct ConfigSettingsView {
 
     pub(crate) settings_list: ListBox,
     pub(crate) search_entry: SearchEntry,
-    pub(crate) category_filter: ComboBoxText,
+    pub(crate) category_filter: DropDown,
     pub(crate) status_label: Label,
     pub(crate) reload_btn: Button,
     pub(crate) save_btn: Button,
@@ -200,7 +201,7 @@ impl ConfigSettingsView {
         let category_label = Label::new(Some(&t!("Category:")));
         filter_bar.append(&category_label);
 
-        let category_filter = ComboBoxText::new();
+        let category_filter = new_text_dropdown();
         // Ids stay in English (they match `ConfigSettingRow::category`); labels are translated.
         for category in SETTING_CATEGORIES {
             category_filter.append(Some(category), &t!(*category));
@@ -386,11 +387,7 @@ impl ConfigSettingsView {
                         }
 
                         // Apply category filter
-                        if category != "All" && setting.category != category {
-                            return false;
-                        }
-
-                        true
+                        !(category != "All" && setting.category != category)
                     })
                     .collect();
 

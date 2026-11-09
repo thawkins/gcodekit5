@@ -1,6 +1,7 @@
 //! UI builder methods for DesignerView
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_core::Shared;
 use gtk4::Image;
 
@@ -39,7 +40,7 @@ impl DesignerView {
             .measurement_system;
         let unit_label = gcodekit5_core::units::get_unit_label(system);
 
-        let grid_spacing_combo = gtk4::ComboBoxText::new();
+        let grid_spacing_combo = new_text_dropdown();
         grid_spacing_combo.set_hexpand(true);
         grid_spacing_combo.set_tooltip_text(Some(&t!("Grid spacing")));
 

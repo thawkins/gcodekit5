@@ -1,6 +1,7 @@
 //! File operations for DesignerView
 
 use super::*;
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::serialization::DesignMode;
 
@@ -170,20 +171,8 @@ impl DesignerView {
 impl DocumentHandles {
     /// Shows the "Open Design File" dialog and loads the chosen file.
     fn show_open_dialog(&self) {
-        let open_label = t!("Open");
-        let cancel_label = t!("Cancel");
-
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(&t!("Open Design File")),
-            parent.as_ref(),
-            gtk4::FileChooserAction::Open,
-            &[
-                (&*open_label, gtk4::ResponseType::Accept),
-                (&*cancel_label, gtk4::ResponseType::Cancel),
-            ],
-        );
-        dialog.set_modal(true);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Open Design File"));
 
         if let Some(ref settings) = self.settings_persistence {
             if let Ok(settings_ref) = settings.try_borrow() {
@@ -195,7 +184,7 @@ impl DocumentHandles {
                         last_path.clone()
                     };
                     let file = gtk4::gio::File::for_path(folder_path);
-                    let _ = dialog.set_current_folder(Some(&file));
+                    dialog.set_initial_folder(Some(&file));
                 }
             }
         }
@@ -217,120 +206,108 @@ impl DocumentHandles {
         let status_label = self.status_label.clone();
         let toolbox = self.toolbox.clone();
 
-        dialog.connect_response(move |dialog, response| {
-            if response == gtk4::ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        match DesignFile::load_from_file(&path) {
-                            Ok(design) => {
-                                let mut state = canvas.state.borrow_mut();
-                                state.canvas.clear();
+        // Open dialogs take no file name (`set_initial_name` only applies to Save).
 
-                                // Restore persisted document mode (defaults to 2D on old files).
-                                state.set_machine_mode(match design.design_mode {
-                                    DesignMode::TwoD => MachineMode::Laser2D,
-                                    DesignMode::ThreeD => MachineMode::Cnc3D,
-                                });
+        dialog.pick_open(parent.as_ref(), move |file| {
+            if let Some(path) = file.path() {
+                match DesignFile::load_from_file(&path) {
+                    Ok(design) => {
+                        let mut state = canvas.state.borrow_mut();
+                        state.canvas.clear();
 
-                                let mut max_id = 0;
-                                let mut restored_shapes = 0;
-                                for shape_data in design.shapes {
-                                    let id = shape_data.id as u64;
-                                    if id > max_id {
-                                        max_id = id;
-                                    }
-                                    // In open_file(), after to_drawing_object:
-                                    if let Ok(mut obj) =
-                                        DesignFile::to_drawing_object(&shape_data, id as i32)
-                                    {
-                                        // Ensure valid values
-                                        if obj.step_down <= 0.0 {
-                                            obj.step_down = 0.1; // default value
-                                        }
-                                        state.canvas.restore_shape(obj);
-                                        restored_shapes += 1;
-                                    }
-                                }
+                        // Restore persisted document mode (defaults to 2D on old files).
+                        state.set_machine_mode(match design.design_mode {
+                            DesignMode::TwoD => MachineMode::Laser2D,
+                            DesignMode::ThreeD => MachineMode::Cnc3D,
+                        });
 
-                                state.canvas.set_next_id(max_id + 1);
-                                // Drop undo history of the previously open document.
-                                state.clear_history();
-                                state.is_modified = false;
-                                state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
-                                state.tool_settings.spindle_speed =
-                                    design.toolpath_params.spindle_speed as u32;
-                                state.tool_settings.tool_diameter =
-                                    design.toolpath_params.tool_diameter;
-                                state.tool_settings.cut_depth = design.toolpath_params.cut_depth;
-                                state.tool_settings.step_down = design.toolpath_params.step_down;
-                                state.tool_settings.continuous_z_between_passes =
-                                    design.toolpath_params.continuous_z_between_passes;
-
-                                state.stock_material = Some(StockMaterial {
-                                    width: design.toolpath_params.stock_width,
-                                    height: design.toolpath_params.stock_height,
-                                    thickness: design.toolpath_params.stock_thickness,
-                                    origin: (0.0, 0.0, 0.0),
-                                    safe_z: design.toolpath_params.safe_z_height,
-                                });
-
-                                let viewport_ok = design.viewport.zoom.is_finite()
-                                    && design.viewport.zoom > 0.0001;
-                                if viewport_ok {
-                                    state.canvas.set_zoom(design.viewport.zoom);
-                                    state
-                                        .canvas
-                                        .set_pan(design.viewport.pan_x, design.viewport.pan_y);
-                                }
-
-                                *current_file.borrow_mut() = Some(path.clone());
-
-                                // --- SAVE PATH ---
-                                if let Some(ref settings) = settings_persistence_clone {
-                                    if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
-                                        settings_ref_mut
-                                            .config_mut()
-                                            .file_processing
-                                            .output_directory = path.clone();
-
-                                        // (Windows/Linux/macOS)
-                                        let config_path =
-                                            gcodekit5_settings::SettingsManager::config_file_path()
-                                                .unwrap_or_else(|_| {
-                                                    std::path::PathBuf::from("config.json")
-                                                });
-
-                                        let _ = settings_ref_mut.save_to_file(&config_path);
-                                    }
-                                } // ---------------------------
-
-                                drop(state);
-
-                                if restored_shapes > 0 && !viewport_ok {
-                                    canvas.zoom_fit();
-                                }
-
-                                toolbox.refresh_settings();
-                                canvas.notify_model_changed();
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Loaded:"),
-                                    path.display()
-                                ));
+                        let mut max_id = 0;
+                        let mut restored_shapes = 0;
+                        for shape_data in design.shapes {
+                            let id = shape_data.id as u64;
+                            if id > max_id {
+                                max_id = id;
                             }
-                            Err(e) => {
-                                status_label.set_text(&format!("Error: {}", e));
+                            // In open_file(), after to_drawing_object:
+                            if let Ok(mut obj) =
+                                DesignFile::to_drawing_object(&shape_data, id as i32)
+                            {
+                                // Ensure valid values
+                                if obj.step_down <= 0.0 {
+                                    obj.step_down = 0.1; // default value
+                                }
+                                state.canvas.restore_shape(obj);
+                                restored_shapes += 1;
                             }
                         }
+
+                        state.canvas.set_next_id(max_id + 1);
+                        // Drop undo history of the previously open document.
+                        state.clear_history();
+                        state.is_modified = false;
+                        state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
+                        state.tool_settings.spindle_speed =
+                            design.toolpath_params.spindle_speed as u32;
+                        state.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
+                        state.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+                        state.tool_settings.step_down = design.toolpath_params.step_down;
+                        state.tool_settings.continuous_z_between_passes =
+                            design.toolpath_params.continuous_z_between_passes;
+
+                        state.stock_material = Some(StockMaterial {
+                            width: design.toolpath_params.stock_width,
+                            height: design.toolpath_params.stock_height,
+                            thickness: design.toolpath_params.stock_thickness,
+                            origin: (0.0, 0.0, 0.0),
+                            safe_z: design.toolpath_params.safe_z_height,
+                        });
+
+                        let viewport_ok =
+                            design.viewport.zoom.is_finite() && design.viewport.zoom > 0.0001;
+                        if viewport_ok {
+                            state.canvas.set_zoom(design.viewport.zoom);
+                            state
+                                .canvas
+                                .set_pan(design.viewport.pan_x, design.viewport.pan_y);
+                        }
+
+                        *current_file.borrow_mut() = Some(path.clone());
+
+                        // --- SAVE PATH ---
+                        if let Some(ref settings) = settings_persistence_clone {
+                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
+                                settings_ref_mut
+                                    .config_mut()
+                                    .file_processing
+                                    .output_directory = path.clone();
+
+                                // (Windows/Linux/macOS)
+                                let config_path =
+                                    gcodekit5_settings::SettingsManager::config_file_path()
+                                        .unwrap_or_else(|_| {
+                                            std::path::PathBuf::from("config.json")
+                                        });
+
+                                let _ = settings_ref_mut.save_to_file(&config_path);
+                            }
+                        } // ---------------------------
+
+                        drop(state);
+
+                        if restored_shapes > 0 && !viewport_ok {
+                            canvas.zoom_fit();
+                        }
+
+                        toolbox.refresh_settings();
+                        canvas.notify_model_changed();
+                        status_label.set_text(&format!("{} {}", t!("Loaded:"), path.display()));
+                    }
+                    Err(e) => {
+                        status_label.set_text(&format!("Error: {}", e));
                     }
                 }
             }
-            dialog.destroy();
         });
-
-        // Open dialogs take no file name (`set_current_name` is Save-only in GTK).
-
-        dialog.show();
     }
 }
 
@@ -342,24 +319,10 @@ impl DesignerView {
             Some("stl") => t!("Import STL File (3D Shadow)"),
             _ => t!("Import Design File"),
         };
-        let open_label = t!("Open");
-        let cancel_label = t!("Cancel");
 
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(title),
-            None::<&gtk4::Window>,
-            gtk4::FileChooserAction::Open,
-            &[
-                (&*open_label, gtk4::ResponseType::Accept),
-                (&*cancel_label, gtk4::ResponseType::Cancel),
-            ],
-        );
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&title);
 
-        if let Some(root) = self.widget.root() {
-            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
-                dialog.set_transient_for(Some(window));
-            }
-        }
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
 
         // Set initial directory from settings
         if let Some(ref settings) = self.settings_persistence {
@@ -372,7 +335,7 @@ impl DesignerView {
                         last_path.clone()
                     };
                     let file = gtk4::gio::File::for_path(folder_path);
-                    let _ = dialog.set_current_folder(Some(&file));
+                    dialog.set_initial_folder(Some(&file));
                 }
             }
         }
@@ -450,10 +413,9 @@ impl DesignerView {
         let status_label = self.status_label.clone();
         let settings_persistence_clone = self.settings_persistence.clone();
         let toolbox = self.toolbox.clone();
+        // Open dialogs take no file name (`set_initial_name` only applies to Save).
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
+        dialog.pick_open(parent.as_ref(), move |file| {
                     if let Some(path) = file.path() {
 
 
@@ -624,12 +586,7 @@ impl DesignerView {
                             }
                         }
                     }
-                }
-            }
-            dialog.destroy();
-        });
-        // Open dialogs take no file name (`set_current_name` is Save-only in GTK).
-        dialog.show();
+                });
     }
 
     pub fn import_file(&self) {
@@ -659,20 +616,9 @@ impl DesignerView {
     }
 
     pub fn save_as_file(&self) {
-        let save_label = t!("Save");
-        let cancel_label = t!("Cancel");
-
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(t!("Save Design File")),
-            parent.as_ref(),
-            gtk4::FileChooserAction::Save,
-            &[
-                (&*save_label, gtk4::ResponseType::Accept),
-                (&*cancel_label, gtk4::ResponseType::Cancel),
-            ],
-        );
-        dialog.set_current_name("design.gckd");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Save Design File"));
+        dialog.set_initial_name(Some("design.gckd"));
 
         // Set initial directory from settings
         if let Some(ref settings) = self.settings_persistence {
@@ -685,7 +631,7 @@ impl DesignerView {
                         last_path.clone()
                     };
                     let file = gtk4::gio::File::for_path(folder_path);
-                    let _ = dialog.set_current_folder(Some(&file));
+                    dialog.set_initial_folder(Some(&file));
                 }
             }
         }
@@ -699,54 +645,6 @@ impl DesignerView {
         let current_file = self.current_file.clone();
         let status_label = self.status_label.clone();
         let settings_persistence_clone = self.settings_persistence.clone();
-
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(mut path) = file.path() {
-                        if path.extension().is_none() {
-                            path.set_extension("gckd");
-                        }
-
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
-                                settings_ref_mut
-                                    .config_mut()
-                                    .file_processing
-                                    .output_directory = path.clone();
-
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-                                let _ = settings_ref_mut.save_to_file(&config_path);
-                            }
-                        }
-
-                        match save_design(&canvas.state, &path) {
-                            Ok(()) => {
-                                *current_file.borrow_mut() = Some(path.clone());
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Saved:"),
-                                    path.display()
-                                ));
-                            }
-                            Err(e) => {
-                                error!("Error saving file: {}", e);
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Error saving file:"),
-                                    e
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-            dialog.destroy();
-        });
         // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
         let current_file_borrow = self.current_file.borrow();
         let default_name = if let Some(path) = current_file_borrow.as_ref() {
@@ -757,9 +655,40 @@ impl DesignerView {
         } else {
             "untitled_design.gckd".to_string()
         };
-        dialog.set_current_name(&default_name);
+        dialog.set_initial_name(Some(&default_name));
         // ------------------------------------------------------------
-        dialog.show();
+
+        dialog.pick_save(parent.as_ref(), move |file| {
+            if let Some(mut path) = file.path() {
+                if path.extension().is_none() {
+                    path.set_extension("gckd");
+                }
+
+                if let Some(ref settings) = settings_persistence_clone {
+                    if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
+                        settings_ref_mut
+                            .config_mut()
+                            .file_processing
+                            .output_directory = path.clone();
+
+                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
+                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+                        let _ = settings_ref_mut.save_to_file(&config_path);
+                    }
+                }
+
+                match save_design(&canvas.state, &path) {
+                    Ok(()) => {
+                        *current_file.borrow_mut() = Some(path.clone());
+                        status_label.set_text(&format!("{} {}", t!("Saved:"), path.display()));
+                    }
+                    Err(e) => {
+                        error!("Error saving file: {}", e);
+                        status_label.set_text(&format!("{} {}", t!("Error saving file:"), e));
+                    }
+                }
+            }
+        });
     }
 
     /// Saves the design to `path` and clears the modified flag on success.
@@ -776,19 +705,8 @@ impl DesignerView {
     }
 
     pub fn export_gcode(&self) {
-        let export_label = t!("Export");
-        let cancel_label = t!("Cancel");
-
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(t!("Export G-Code")),
-            parent.as_ref(),
-            gtk4::FileChooserAction::Save,
-            &[
-                (&*export_label, gtk4::ResponseType::Accept),
-                (&*cancel_label, gtk4::ResponseType::Cancel),
-            ],
-        );
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Export G-Code"));
 
         if let Some(ref settings) = self.settings_persistence {
             if let Ok(settings_ref) = settings.try_borrow() {
@@ -800,12 +718,12 @@ impl DesignerView {
                         last_path.clone()
                     };
                     let file = gtk4::gio::File::for_path(folder_path);
-                    let _ = dialog.set_current_folder(Some(&file));
+                    dialog.set_initial_folder(Some(&file));
                 }
             }
         }
 
-        dialog.set_current_name("design.gcode");
+        dialog.set_initial_name(Some("design.gcode"));
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
         filter.add_pattern("*.nc");
@@ -817,10 +735,23 @@ impl DesignerView {
 
         let canvas = self.canvas.clone();
         let status_label = self.status_label.clone();
+        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
+        let current_file_borrow = self.current_file.borrow();
+        let default_name = if let Some(path) = current_file_borrow.as_ref() {
+            // We extract the name without the extension and add .nc to it.
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| format!("{}.gckd", s))
+                .unwrap_or_else(|| "output.gckd".to_string())
+        } else {
+            // If the design has never been saved before
+            "untitled_design.gckd".to_string()
+        };
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
+        dialog.set_initial_name(Some(&default_name));
+        // ------------------------------------------------------------
+
+        dialog.pick_save(parent.as_ref(), move |file| {
                     if let Some(mut path) = file.path() {
                         let folder_to_save = if path.is_file() {
                             path.parent().unwrap_or(&path).to_path_buf()
@@ -863,17 +794,15 @@ impl DesignerView {
                             crate::ui::gtk::common::dialog::show_warning(
                                 &t!("Invalid Z positioning"),
                                 &format!(
-                                    "{}\n\n{}\n{}\n{}",
+                                    "{}\n\n{}\n{}: {:.3} mm\n{}: {} ({}: {:.3} mm)",
                                     t!("One or more objects are positioned at or above the Safe Z height."),
                                     t!("Lower object Z positions before exporting G-code."),
-                                    format!("{}: {:.3} mm", t!("Safe Z"), safe_z),
-                                    format!(
-                                        "{}: {} ({}: {:.3} mm)",
-                                        t!("Objects in conflict"),
-                                        violating_count,
-                                        t!("highest start Z"),
-                                        max_start_z
-                                    )
+                                    t!("Safe Z"),
+                                    safe_z,
+                                    t!("Objects in conflict"),
+                                    violating_count,
+                                    t!("highest start Z"),
+                                    max_start_z
                                 ),
                                 parent.as_ref(),
                             );
@@ -922,42 +851,12 @@ impl DesignerView {
                             }
                         }
                     }
-                }
-            }
-            dialog.destroy();
-        });
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            // We extract the name without the extension and add .nc to it.
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "output.gckd".to_string())
-        } else {
-            // If the design has never been saved before
-            "untitled_design.gckd".to_string()
-        };
-
-        dialog.set_current_name(&default_name);
-        // ------------------------------------------------------------
-        dialog.show();
+                });
     }
 
     pub fn export_svg(&self) {
-        let export_label = t!("Export");
-        let cancel_label = t!("Cancel");
-
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        let dialog = gtk4::FileChooserDialog::new(
-            Some(t!("Export SVG")),
-            parent.as_ref(),
-            gtk4::FileChooserAction::Save,
-            &[
-                (&*export_label, gtk4::ResponseType::Accept),
-                (&*cancel_label, gtk4::ResponseType::Cancel),
-            ],
-        );
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Export SVG"));
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("SVG Files"));
@@ -974,17 +873,27 @@ impl DesignerView {
                         last_path.clone()
                     };
                     let file = gtk4::gio::File::for_path(folder_path);
-                    let _ = dialog.set_current_folder(Some(&file));
+                    dialog.set_initial_folder(Some(&file));
                 }
             }
         }
 
         let canvas = self.canvas.clone();
         let status_label = self.status_label.clone();
+        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
+        let current_file_borrow = self.current_file.borrow();
+        let default_name = if let Some(path) = current_file_borrow.as_ref() {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| format!("{}.svg", s))
+                .unwrap_or_else(|| "output.svg".to_string())
+        } else {
+            "untitled_design.svg".to_string()
+        };
 
-        dialog.connect_response(move |dialog, response| {
-        if response == ResponseType::Accept {
-            if let Some(file) = dialog.file() {
+        dialog.set_initial_name(Some(&default_name));
+
+        dialog.pick_save(parent.as_ref(), move |file| {
                 if let Some(mut path) = file.path() {
                     if path.extension().is_none() {
                         path.set_extension("svg");
@@ -1001,7 +910,6 @@ impl DesignerView {
                     let shapes: Vec<_> = state.canvas.shapes().collect();
                     if shapes.is_empty() {
                         status_label.set_text(&t!("Nothing to export"));
-                        dialog.destroy();
                         return;
                     }
 
@@ -1169,23 +1077,7 @@ impl DesignerView {
                         }
                     }
                 }
-            }
-        }
-        dialog.destroy();
-    });
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.svg", s))
-                .unwrap_or_else(|| "output.svg".to_string())
-        } else {
-            "untitled_design.svg".to_string()
-        };
-
-        dialog.set_current_name(&default_name);
-        dialog.show();
+            });
     }
 
     // TODO(#17): File operations - Implement once shape structures are aligned
@@ -1214,11 +1106,9 @@ fn transform_svg_path_to_svg_coords(d: &str, min_y: f64, max_y: f64) -> String {
             tokens.push(ch.to_string());
         } else if ch.is_ascii_digit() || ch == '.' || ch == '-' {
             current_token.push(ch);
-        } else if ch == ' ' || ch == ',' {
-            if !current_token.is_empty() {
-                tokens.push(current_token.clone());
-                current_token.clear();
-            }
+        } else if (ch == ' ' || ch == ',') && !current_token.is_empty() {
+            tokens.push(current_token.clone());
+            current_token.clear();
         }
     }
     if !current_token.is_empty() {

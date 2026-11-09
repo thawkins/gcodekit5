@@ -3,7 +3,7 @@
 //! Internal state management and helper functions for the Machine Control panel.
 
 use gtk4::prelude::*;
-use gtk4::{Button, ComboBoxText, ToggleButton};
+use gtk4::{Button, DropDown, ToggleButton};
 
 /// Disable/enable connection-dependent controls
 /// Includes support for 6-axis machines (X, Y, Z, A, B, C)
@@ -21,7 +21,7 @@ pub fn set_controls_enabled(
     z_zero_btn: &Button,
     zero_all_btn: &Button,
     goto_zero_btn: &Button,
-    step_combo: &ComboBoxText,
+    step_combo: &DropDown,
     jog_feed_entry: &gtk4::Entry,
     jog_x_pos: &Button,
     jog_x_neg: &Button,
@@ -112,7 +112,7 @@ pub fn set_controls_enabled_basic(
     z_zero_btn: &Button,
     zero_all_btn: &Button,
     goto_zero_btn: &Button,
-    step_combo: &ComboBoxText,
+    step_combo: &DropDown,
     jog_feed_entry: &gtk4::Entry,
     jog_x_pos: &Button,
     jog_x_neg: &Button,

@@ -8,10 +8,12 @@
 //! - Boss Center (4-point external)
 //! - Tool Length measurement
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, Label, Orientation,
-    Paned, ResponseType, ScrolledWindow, Stack, TextView, WrapMode,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Paned, ScrolledWindow,
+    Stack, TextView, WrapMode,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -59,18 +61,18 @@ struct RoutineInfo {
 
 /// All input widgets of the probe tool.
 struct ProbeWidgets {
-    routine: ComboBoxText,
+    routine: DropDown,
     safe_height: Entry,
     fast_feed: Entry,
     slow_feed: Entry,
     backoff: Entry,
     max_depth: Entry,
-    wcs: ComboBoxText,
+    wcs: DropDown,
     auto_update: CheckButton,
-    edge_axis: ComboBoxText,
-    edge_dir: ComboBoxText,
+    edge_axis: DropDown,
+    edge_dir: DropDown,
     edge_dist: Entry,
-    corner: ComboBoxText,
+    corner: DropDown,
     diameter: Entry,
     setter_x: Entry,
     setter_y: Entry,
@@ -279,7 +281,7 @@ impl ProbeRoutinesTool {
             .title("Routine")
             .subtitle("Select probe routine type")
             .build();
-        let routine_combo = ComboBoxText::new();
+        let routine_combo = new_text_dropdown();
         routine_combo.append(Some("z_touch"), "Z-Touch");
         routine_combo.append(Some("edge_find"), "Edge Find");
         routine_combo.append(Some("corner_find"), "Corner Find");
@@ -334,7 +336,7 @@ impl ProbeRoutinesTool {
             .title("Target WCS")
             .subtitle("Work coordinate system to update")
             .build();
-        let wcs_combo = ComboBoxText::new();
+        let wcs_combo = new_text_dropdown();
         for i in 54..=59 {
             wcs_combo.append(Some(&format!("G{}", i)), &format!("G{}", i));
         }
@@ -363,7 +365,7 @@ impl ProbeRoutinesTool {
 
         // Edge find: axis and direction
         let edge_axis_row = ActionRow::builder().title("Probe Axis").build();
-        let edge_axis_combo = ComboBoxText::new();
+        let edge_axis_combo = new_text_dropdown();
         edge_axis_combo.append(Some("X"), "X Axis");
         edge_axis_combo.append(Some("Y"), "Y Axis");
         edge_axis_combo.append(Some("Z"), "Z Axis");
@@ -371,7 +373,7 @@ impl ProbeRoutinesTool {
         specific_params.add(&edge_axis_row);
 
         let edge_dir_row = ActionRow::builder().title("Probe Direction").build();
-        let edge_dir_combo = ComboBoxText::new();
+        let edge_dir_combo = new_text_dropdown();
         edge_dir_combo.append(Some("negative"), "Negative");
         edge_dir_combo.append(Some("positive"), "Positive");
         edge_dir_row.add_suffix(&edge_dir_combo);
@@ -387,7 +389,7 @@ impl ProbeRoutinesTool {
 
         // Corner find: corner selection
         let corner_row = ActionRow::builder().title("Corner").build();
-        let corner_combo = ComboBoxText::new();
+        let corner_combo = new_text_dropdown();
         corner_combo.append(Some("xmin_ymin"), "X-min / Y-min");
         corner_combo.append(Some("xmax_ymin"), "X-max / Y-min");
         corner_combo.append(Some("xmin_ymax"), "X-min / Y-max");
@@ -626,29 +628,14 @@ impl ProbeRoutinesTool {
                 .root()
                 .and_then(|r| r.downcast::<gtk4::Window>().ok());
 
-            let dialog = gtk4::FileChooserDialog::builder()
-                .title(t!("Save Probe Preset"))
-                .action(FileChooserAction::Save)
-                .modal(true)
-                .build();
-            dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
-            dialog.add_button(&t!("Save"), ResponseType::Accept);
-            dialog.set_current_name("probe_preset.json");
+            let dialog = crate::ui::gtk::file_dialog::save_dialog(&t!("Save Probe Preset"));
+            dialog.set_initial_name(Some("probe_preset.json"));
 
-            if let Some(ref w) = window {
-                dialog.set_transient_for(Some(w));
-            }
-
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = d.file().and_then(|f| f.path()) {
-                        write_preset_file(&path, &json);
-                    }
+            dialog.pick_save(window.as_ref(), move |file| {
+                if let Some(path) = file.path() {
+                    write_preset_file(&path, &json);
                 }
-                d.close();
             });
-
-            dialog.show();
         });
 
         // Wire up Load button
@@ -658,17 +645,7 @@ impl ProbeRoutinesTool {
                 .root()
                 .and_then(|r| r.downcast::<gtk4::Window>().ok());
 
-            let dialog = gtk4::FileChooserDialog::builder()
-                .title(t!("Load Probe Preset"))
-                .action(FileChooserAction::Open)
-                .modal(true)
-                .build();
-            dialog.add_button(&t!("Cancel"), ResponseType::Cancel);
-            dialog.add_button(&t!("Open"), ResponseType::Accept);
-
-            if let Some(ref w) = window {
-                dialog.set_transient_for(Some(w));
-            }
+            let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Load Probe Preset"));
 
             // Filter for JSON files
             let filter = gtk4::FileFilter::new();
@@ -677,35 +654,30 @@ impl ProbeRoutinesTool {
             dialog.add_filter(&filter);
 
             let w = w_load.clone();
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = d.file().and_then(|f| f.path()) {
-                        let loaded = std::fs::read_to_string(&path)
-                            .map_err(anyhow::Error::from)
-                            .and_then(|json| ProbePreset::from_json(&json));
-                        match loaded {
-                            Ok(loaded) => {
-                                Self::apply_preset(&w, &loaded.preset);
-                                show_load_warnings(&loaded.warnings);
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    path = %path.display(),
-                                    error = %e,
-                                    "Failed to load probe preset"
-                                );
-                                CamToolsView::show_error_dialog(
-                                    &t!("Load Error"),
-                                    &format!("{}: {}", path.display(), e),
-                                );
-                            }
+            dialog.pick_open(window.as_ref(), move |file| {
+                if let Some(path) = file.path() {
+                    let loaded = std::fs::read_to_string(&path)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|json| ProbePreset::from_json(&json));
+                    match loaded {
+                        Ok(loaded) => {
+                            Self::apply_preset(&w, &loaded.preset);
+                            show_load_warnings(&loaded.warnings);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "Failed to load probe preset"
+                            );
+                            CamToolsView::show_error_dialog(
+                                &t!("Load Error"),
+                                &format!("{}: {}", path.display(), e),
+                            );
                         }
                     }
                 }
-                d.close();
             });
-
-            dialog.show();
         });
         // Probe / Apply to WCS
         let session = Rc::new(ProbeSession::default());
@@ -1154,7 +1126,7 @@ impl ProbeRoutinesTool {
 
     /// Read all fields into a preset (values in mm); fails on the first invalid field.
     fn collect_preset(w: &ProbeWidgets) -> anyhow::Result<ProbePreset> {
-        let id = |c: &ComboBoxText| c.active_id().map(|s| s.to_string());
+        let id = |c: &DropDown| c.active_id().map(|s| s.to_string());
         Ok(ProbePreset {
             routine: id(&w.routine),
             safe_height: Self::parse_mm(&w.safe_height, "safe height")?,

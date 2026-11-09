@@ -1,5 +1,4 @@
 //! Machine control operations
-#![allow(deprecated)]
 
 use super::*;
 

@@ -4,6 +4,7 @@
 //! homing, work coordinate setting, spindle/laser control,
 //! and job execution (start/pause/stop).
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_communication::firmware::grbl::status_parser::{
     FeedSpindleState, OverrideState, StatusParser, WorkCoordinateOffset,
 };
@@ -18,7 +19,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     accessible::Property as AccessibleProperty, pango::EllipsizeMode, Align, Box, Button,
-    CheckButton, ComboBoxText, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned,
+    CheckButton, DropDown, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned,
     PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
 };
 use std::cell::Cell;
@@ -70,10 +71,13 @@ fn make_icon_label_toggle(icon: &str, label: &str) -> ToggleButton {
     ui_builders::make_icon_label_toggle(icon, label)
 }
 
+/// Minimum width in px of the G-code editor/console column on Machine Control.
+const EDITOR_COLUMN_MIN_WIDTH: i32 = 360;
+
 #[derive(Clone)]
 pub struct MachineControlView {
     pub widget: Paned,
-    pub port_combo: ComboBoxText,
+    pub port_combo: DropDown,
     pub connect_btn: Button,
     pub refresh_btn: Button,
     pub send_btn: Button,
@@ -180,7 +184,7 @@ pub struct MachineControlView {
     pub probe_x_pos_btn: Option<Button>,
     pub probe_y_neg_btn: Option<Button>,
     pub probe_y_pos_btn: Option<Button>,
-    pub step_combo: ComboBoxText,
+    pub step_combo: DropDown,
     pub step_label: Label,
     /// When active, holding a jog button or numpad key jogs continuously.
     pub continuous_jog_check: CheckButton,
@@ -288,7 +292,7 @@ impl MachineControlView {
         // Connection Section
         let conn_box = Box::new(Orientation::Vertical, 4);
 
-        let port_combo = ComboBoxText::new();
+        let port_combo = new_text_dropdown();
         port_combo.append(Some("none"), &t!("No ports available"));
         port_combo.set_active_id(Some("none"));
         conn_box.append(&port_combo);
@@ -786,7 +790,7 @@ impl MachineControlView {
         step_label.add_css_class("dim-label");
         step_box.append(&step_label);
 
-        let step_combo = ComboBoxText::new();
+        let step_combo = new_text_dropdown();
         step_combo.set_width_request(140);
         step_box.append(&step_combo);
 
@@ -1052,24 +1056,18 @@ impl MachineControlView {
                     editor_clone.set_text("");
                     return;
                 }
-                let dialog = gtk4::MessageDialog::builder()
-                    .message_type(gtk4::MessageType::Question)
-                    .buttons(gtk4::ButtonsType::YesNo)
-                    .text(t!("Clear the editor?"))
-                    .secondary_text(t!("All G-code in the editor will be removed."))
-                    .build();
-                if let Some(win) = btn.root().and_downcast::<gtk4::Window>() {
-                    dialog.set_transient_for(Some(&win));
-                    dialog.set_modal(true);
-                }
                 let editor = editor_clone.clone();
-                dialog.connect_response(move |d, resp| {
-                    if resp == gtk4::ResponseType::Yes {
-                        editor.set_text("");
-                    }
-                    d.close();
-                });
-                dialog.show();
+                let parent = btn.root().and_downcast::<gtk4::Window>();
+                crate::ui::gtk::common::dialog::show_question(
+                    &t!("Clear the editor?"),
+                    &t!("All G-code in the editor will be removed."),
+                    parent.as_ref(),
+                    move |resp| {
+                        if resp == gtk4::ResponseType::Yes {
+                            editor.set_text("");
+                        }
+                    },
+                );
             });
 
             let editor_clone_save = editor.clone();
@@ -1116,6 +1114,17 @@ impl MachineControlView {
         }
 
         inner_paned.set_end_child(Some(&right_vpaned));
+
+        // The editor column hosts the editor's search/replace overlay, which needs
+        // about 300px; never let the column shrink below that.
+        right_vpaned.set_width_request(EDITOR_COLUMN_MIN_WIDTH);
+        inner_paned.set_shrink_end_child(false);
+
+        // Controls keep their natural width (so nothing is clipped); extra space
+        // goes to the editor column. The user can still drag the divider.
+        main_scroller.set_propagate_natural_width(true);
+        inner_paned.set_resize_start_child(false);
+        inner_paned.set_resize_end_child(true);
 
         let console_show_panel = Box::new(Orientation::Horizontal, 0);
         console_show_panel.add_css_class("osd");
@@ -1853,23 +1862,13 @@ impl MachineControlView {
                 }
 
                 if content.trim().is_empty() {
-                    let dialog = gtk4::MessageDialog::builder()
-                        .message_type(gtk4::MessageType::Error)
-                        .buttons(gtk4::ButtonsType::Ok)
-                        .text(t!("No G-Code to Send"))
-                        .secondary_text(t!("Please load or type G-Code into the editor first."))
-                        .build();
+                    let parent = widget_for_dialog.root().and_downcast::<gtk4::Window>();
+                    crate::ui::gtk::common::dialog::show_error(
+                        &t!("No G-Code to Send"),
+                        &t!("Please load or type G-Code into the editor first."),
+                        parent.as_ref(),
+                    );
 
-                    // Set transient parent if possible
-                    if let Some(root) = widget_for_dialog.root() {
-                        if let Ok(win) = root.downcast::<gtk4::Window>() {
-                            dialog.set_transient_for(Some(&win));
-                            dialog.set_modal(true);
-                        }
-                    }
-
-                    dialog.connect_response(|d, _| d.close());
-                    dialog.show();
                     return;
                 }
                 let content = view_clone.prepare_job_content(content);
@@ -2103,43 +2102,32 @@ impl MachineControlView {
                 if job_running(&is_streaming, &console) {
                     return;
                 }
-                let dialog = gtk4::MessageDialog::builder()
-                .message_type(gtk4::MessageType::Question)
-                .buttons(gtk4::ButtonsType::YesNo)
-                .text(t!("Zero all work axes?"))
-                .secondary_text(
-                    t!("This sets the active work coordinate system so the current X/Y/Z becomes 0."),
-                )
-                .build();
-
-                // Set transient parent if possible
-                if let Some(root) = widget_for_dialog.root() {
-                    if let Ok(win) = root.downcast::<gtk4::Window>() {
-                        dialog.set_transient_for(Some(&win));
-                        dialog.set_modal(true);
-                    }
-                }
-
                 let communicator = communicator.clone();
                 let wcs_btns = wcs_btns.clone();
                 let console = console.clone();
-                dialog.connect_response(move |d, resp| {
-                    if resp == gtk4::ResponseType::Yes {
-                        let p = wcs_btns
-                        .iter()
-                        .position(|b| b.is_active())
-                        .map(|i| i + 1)
-                        .unwrap_or(1);
-                        let cmd = format!("G10 L20 P{p} X0 Y0 Z0");
-                        if let Some(c) = console.as_ref() { c.append_log(&format!("> {}\n", cmd)); }
-                        { let mut comm = communicator.lock();
+                let parent = widget_for_dialog.root().and_downcast::<gtk4::Window>();
+                crate::ui::gtk::common::dialog::show_question(
+                    &t!("Zero all work axes?"),
+                    &t!(
+                        "This sets the active work coordinate system so the current X/Y/Z becomes 0."
+                    ),
+                    parent.as_ref(),
+                    move |resp| {
+                        if resp == gtk4::ResponseType::Yes {
+                            let p = wcs_btns
+                                .iter()
+                                .position(|b| b.is_active())
+                                .map(|i| i + 1)
+                                .unwrap_or(1);
+                            let cmd = format!("G10 L20 P{p} X0 Y0 Z0");
+                            if let Some(c) = console.as_ref() {
+                                c.append_log(&format!("> {}\n", cmd));
+                            }
+                            let mut comm = communicator.lock();
                             let _ = comm.send_command(&cmd);
                         }
-                    }
-                    d.close();
-                });
-
-                dialog.show();
+                    },
+                );
             });
         }
 
@@ -2388,7 +2376,7 @@ impl MachineControlView {
     ///
     /// # Returns
     /// The selected step in mm.
-    fn populate_step_presets(combo: &ComboBoxText, units: MeasurementSystem, step_mm: f32) -> f32 {
+    fn populate_step_presets(combo: &DropDown, units: MeasurementSystem, step_mm: f32) -> f32 {
         let presets = jog_step_presets(units);
         combo.remove_all();
         for preset in &presets {

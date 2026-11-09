@@ -1,10 +1,10 @@
 //! Tab creation methods for the device manager window.
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 
 impl DeviceManagerWindow {
-    pub(crate) fn create_general_tab() -> (ScrolledWindow, Entry, Entry, ComboBoxText, ComboBoxText)
-    {
+    pub(crate) fn create_general_tab() -> (ScrolledWindow, Entry, Entry, DropDown, DropDown) {
         let scroll = ScrolledWindow::new();
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
 
@@ -39,7 +39,7 @@ impl DeviceManagerWindow {
         // Device Type
         let type_label = Label::new(Some("Device Type:"));
         type_label.set_halign(Align::Start);
-        let edit_device_type = ComboBoxText::new();
+        let edit_device_type = new_text_dropdown();
         edit_device_type.append(Some("CNC Mill"), "CNC Mill");
         edit_device_type.append(Some("CNC Lathe"), "CNC Lathe");
         edit_device_type.append(Some("Laser Cutter"), "Laser Cutter");
@@ -53,7 +53,7 @@ impl DeviceManagerWindow {
         // Controller Type
         let ctrl_label = Label::new(Some("Controller:"));
         ctrl_label.set_halign(Align::Start);
-        let edit_controller_type = ComboBoxText::new();
+        let edit_controller_type = new_text_dropdown();
         edit_controller_type.append(Some("GRBL"), "GRBL");
         edit_controller_type.append(Some("TinyG"), "TinyG");
         edit_controller_type.append(Some("g2core"), "g2core");
@@ -76,9 +76,9 @@ impl DeviceManagerWindow {
 
     pub(crate) fn create_connection_tab() -> (
         ScrolledWindow,
-        ComboBoxText,
+        DropDown,
         Entry,
-        ComboBoxText,
+        DropDown,
         Entry,
         Entry,
         Entry,
@@ -100,7 +100,7 @@ impl DeviceManagerWindow {
         // Connection Type
         let conn_label = Label::new(Some("Connection Type:"));
         conn_label.set_halign(Align::Start);
-        let edit_connection_type = ComboBoxText::new();
+        let edit_connection_type = new_text_dropdown();
         edit_connection_type.append(Some("Serial"), "Serial");
         edit_connection_type.append(Some("TCP/IP"), "TCP/IP");
         edit_connection_type.append(Some("WebSocket"), "WebSocket");
@@ -121,7 +121,7 @@ impl DeviceManagerWindow {
         // Baud Rate
         let baud_label = Label::new(Some("Baud Rate:"));
         baud_label.set_halign(Align::Start);
-        let edit_baud_rate = ComboBoxText::new();
+        let edit_baud_rate = new_text_dropdown();
         edit_baud_rate.append(Some("9600"), "9600");
         edit_baud_rate.append(Some("19200"), "19200");
         edit_baud_rate.append(Some("38400"), "38400");

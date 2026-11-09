@@ -330,7 +330,7 @@ impl GcodeValidator {
             };
             let Some(raw) = w.value else { continue };
             // Rotary axes are in degrees and never unit-converted.
-            let is_linear = matches!(w.letter, 'X' | 'Y' | 'Z');
+            let is_linear = matches!(w.letter, 'X'..='Z');
             let val = if is_linear && units == Units::INCH {
                 raw * 25.4
             } else {
@@ -481,8 +481,10 @@ mod tests {
 
     #[test]
     fn test_validate_6axis_move() {
-        let mut config = GcodeValidatorConfig::default();
-        config.axis_count = 6;
+        let config = GcodeValidatorConfig {
+            axis_count: 6,
+            ..Default::default()
+        };
         let mut validator = GcodeValidator::with_config(config);
 
         let report = validator.validate("G1 X10 Y20 Z5 A45 B30 C90 F1000");
@@ -491,8 +493,10 @@ mod tests {
 
     #[test]
     fn test_validate_unsupported_axis() {
-        let mut config = GcodeValidatorConfig::default();
-        config.axis_count = 3; // Only XYZ
+        let config = GcodeValidatorConfig {
+            axis_count: 3, // Only XYZ
+            ..Default::default()
+        };
         let mut validator = GcodeValidator::with_config(config);
 
         let report = validator.validate("G1 X10 Y20 Z5 A45");
@@ -512,8 +516,10 @@ mod tests {
 
     #[test]
     fn test_validate_rotary_limits() {
-        let mut config = GcodeValidatorConfig::default();
-        config.axis_count = 4;
+        let mut config = GcodeValidatorConfig {
+            axis_count: 4,
+            ..Default::default()
+        };
         config.limits.a = (0.0, 360.0);
         let mut validator = GcodeValidator::with_config(config);
 
@@ -528,8 +534,10 @@ mod tests {
 
     #[test]
     fn test_validate_feed_rate() {
-        let mut config = GcodeValidatorConfig::default();
-        config.max_feed_rate = 5000.0;
+        let config = GcodeValidatorConfig {
+            max_feed_rate: 5000.0,
+            ..Default::default()
+        };
         let mut validator = GcodeValidator::with_config(config);
 
         let report = validator.validate("G1 X10 F6000");

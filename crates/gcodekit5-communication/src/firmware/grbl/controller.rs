@@ -333,11 +333,18 @@ struct JogTracking {
 impl JogTracking {
     /// Marks `n` jog commands as answered (or dropped), never going below zero.
     fn release(&self, n: usize) {
-        let _ = self
-            .in_flight
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
-                Some(v.saturating_sub(n))
-            });
+        let mut current = self.in_flight.load(Ordering::SeqCst);
+        loop {
+            match self.in_flight.compare_exchange_weak(
+                current,
+                current.saturating_sub(n),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
     }
 }
 
@@ -446,7 +453,7 @@ impl GrblController {
     ///
     /// # Fail-safe behaviour
     /// If the probe does not trigger, an alarm is raised or the wait times out,
-    /// the method issues a `G91 G0 Z+` retract of [`PROBE_FAILSAFE_RETRACT_MM`]
+    /// the method issues a `G91 G0 Z+` retract of `PROBE_FAILSAFE_RETRACT_MM` (5 mm)
     /// before returning an error.
     pub async fn send_probe_command(
         &mut self,
@@ -1093,8 +1100,8 @@ impl ControllerTrait for GrblController {
 impl GrblController {
     /// Notify listeners of a status change (test helper)
     pub(crate) fn notify_status_change(&self, status: gcodekit5_core::ControllerStatus) {
-        let listeners = self.listeners.clone();
-        for listener in listeners.read().values().cloned() {
+        let listeners: Vec<_> = self.listeners.read().values().cloned().collect();
+        for listener in listeners {
             let s_copy = status;
             tokio::spawn(async move {
                 let _ = listener.on_status_changed(&s_copy).await;
@@ -1104,8 +1111,8 @@ impl GrblController {
 
     /// Notify listeners of a state change (test helper)
     pub(crate) fn notify_state_change(&self, state: gcodekit5_core::ControllerState) {
-        let listeners = self.listeners.clone();
-        for listener in listeners.read().values().cloned() {
+        let listeners: Vec<_> = self.listeners.read().values().cloned().collect();
+        for listener in listeners {
             let st_copy = state;
             tokio::spawn(async move {
                 let _ = listener.on_state_changed(st_copy).await;

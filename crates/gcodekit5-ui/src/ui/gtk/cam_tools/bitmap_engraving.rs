@@ -1,9 +1,11 @@
 //! Bitmap Image Engraving Tool
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Overlay, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Overlay, Paned,
+    ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -36,13 +38,13 @@ struct BitmapEngravingWidgets {
     power_scale: Entry,
     offset_x: Entry,
     offset_y: Entry,
-    scan_direction: ComboBoxText,
+    scan_direction: DropDown,
     bidirectional: CheckButton,
     invert: CheckButton,
     mirror_x: CheckButton,
     mirror_y: CheckButton,
-    rotation: ComboBoxText,
-    halftone: ComboBoxText,
+    rotation: DropDown,
+    halftone: DropDown,
     halftone_dot_size: Entry,
     halftone_threshold: Entry,
     image_path: Entry,
@@ -164,7 +166,7 @@ impl BitmapEngravingTool {
         let (offset_y_row, offset_y, offset_y_unit) =
             create_dimension_row("Offset Y:", 10.0, &settings);
 
-        let scan_direction = ComboBoxText::new();
+        let scan_direction = new_text_dropdown();
         scan_direction.append(Some("0"), "Horizontal");
         scan_direction.append(Some("1"), "Vertical");
         scan_direction.set_active_id(Some("0"));
@@ -187,7 +189,7 @@ impl BitmapEngravingTool {
             .valign(Align::Center)
             .build();
 
-        let rotation = ComboBoxText::new();
+        let rotation = new_text_dropdown();
         rotation.append(Some("0"), "0°");
         rotation.append(Some("90"), "90°");
         rotation.append(Some("180"), "180°");
@@ -195,7 +197,7 @@ impl BitmapEngravingTool {
         rotation.set_active_id(Some("0"));
         rotation.set_valign(Align::Center);
 
-        let halftone = ComboBoxText::new();
+        let halftone = new_text_dropdown();
         halftone.append(Some("none"), "None");
         halftone.append(Some("threshold"), "Threshold");
         halftone.append(Some("bayer"), "Bayer 4x4");
@@ -385,16 +387,7 @@ impl BitmapEngravingTool {
         // Load Image Button
         let w_load_image = widgets.clone();
         load_image_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some(&t!("Select Image")),
-                None::<&gtk4::Window>,
-                FileChooserAction::Open,
-                &[
-                    (&t!("Cancel"), ResponseType::Cancel),
-                    (&t!("Open"), ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(900, 700);
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Select Image"));
 
             let filter = gtk4::FileFilter::new();
             filter.set_name(Some("Image Files"));
@@ -406,51 +399,41 @@ impl BitmapEngravingTool {
             dialog.add_filter(&filter);
 
             let w_clone = w_load_image.clone();
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            w_clone.image_path.set_text(&path.display().to_string());
+            dialog.pick_open(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    w_clone.image_path.set_text(&path.display().to_string());
 
-                            // Show spinner and load preview in background
-                            w_clone.preview_spinner.set_visible(true);
-                            w_clone.preview_spinner.start();
+                    // Show spinner and load preview in background
+                    w_clone.preview_spinner.set_visible(true);
+                    w_clone.preview_spinner.start();
 
-                            let preview_img = w_clone.preview_image.clone();
-                            let spinner = w_clone.preview_spinner.clone();
-                            let path_clone = path.clone();
+                    let preview_img = w_clone.preview_image.clone();
+                    let spinner = w_clone.preview_spinner.clone();
+                    let path_clone = path.clone();
 
-                            let (tx, rx) = std::sync::mpsc::channel();
+                    let (tx, rx) = std::sync::mpsc::channel();
 
-                            std::thread::spawn(move || {
-                                let file = gtk4::gio::File::for_path(&path_clone);
-                                let texture_result = gtk4::gdk::Texture::from_file(&file);
-                                let _ = tx.send(texture_result);
-                            });
+                    std::thread::spawn(move || {
+                        let file = gtk4::gio::File::for_path(&path_clone);
+                        let texture_result = gtk4::gdk::Texture::from_file(&file);
+                        let _ = tx.send(texture_result);
+                    });
 
-                            glib::timeout_add_local(
-                                std::time::Duration::from_millis(50),
-                                move || {
-                                    if let Ok(texture_result) = rx.try_recv() {
-                                        spinner.stop();
-                                        spinner.set_visible(false);
+                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                        if let Ok(texture_result) = rx.try_recv() {
+                            spinner.stop();
+                            spinner.set_visible(false);
 
-                                        if let Ok(texture) = texture_result {
-                                            preview_img.set_paintable(Some(&texture));
-                                        }
-                                        glib::ControlFlow::Break
-                                    } else {
-                                        glib::ControlFlow::Continue
-                                    }
-                                },
-                            );
+                            if let Ok(texture) = texture_result {
+                                preview_img.set_paintable(Some(&texture));
+                            }
+                            glib::ControlFlow::Break
+                        } else {
+                            glib::ControlFlow::Continue
                         }
-                    }
+                    });
                 }
-                d.close();
             });
-
-            dialog.show();
         });
 
         // Connect Generate
@@ -504,7 +487,7 @@ impl BitmapEngravingTool {
             vbox.append(&button_box);
 
             progress_window.set_child(Some(&vbox));
-            progress_window.show();
+            progress_window.present();
 
             // Clone what we need
             let image_path_thread = image_path.clone();
@@ -619,84 +602,56 @@ impl BitmapEngravingTool {
                     return;
                 }
             };
-            let dialog = FileChooserDialog::new(
-                Some(&t!("Save Parameters")),
-                None::<&gtk4::Window>,
-                FileChooserAction::Save,
-                &[
-                    (&t!("Cancel"), ResponseType::Cancel),
-                    (&t!("Save"), ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(900, 700);
-            dialog.set_current_name("bitmap_params.json");
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Save Parameters"));
+            dialog.set_initial_name(Some("bitmap_params.json"));
 
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = d.file().and_then(|f| f.path()) {
-                        write_preset_file(&path, &json);
-                    }
+            dialog.pick_save(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    write_preset_file(&path, &json);
                 }
-                d.close();
             });
-
-            dialog.show();
         });
 
         // Load params
         let w_load = widgets.clone();
         let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some(&t!("Load Parameters")),
-                None::<&gtk4::Window>,
-                FileChooserAction::Open,
-                &[
-                    (&t!("Cancel"), ResponseType::Cancel),
-                    (&t!("Open"), ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(900, 700);
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Load Parameters"));
 
             let w_clone = w_load.clone();
             let settings_clone = settings_load.clone();
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = d.file().and_then(|f| f.path()) {
-                        // Old files stored display text without a unit; they are read in the
-                        // current measurement system (as before) and flagged in a warning.
-                        let system = settings_clone
-                            .persistence
-                            .borrow()
-                            .config()
-                            .ui
-                            .measurement_system;
-                        let loaded = fs::read_to_string(&path)
-                            .map_err(anyhow::Error::from)
-                            .and_then(|json| BitmapEngravingPreset::from_json(&json, system));
-                        match loaded {
-                            Ok(loaded) => {
-                                Self::apply_preset(&w_clone, &loaded.preset, system);
-                                show_load_warnings(&loaded.warnings);
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    path = %path.display(),
-                                    error = %e,
-                                    "Failed to load bitmap preset"
-                                );
-                                CamToolsView::show_error_dialog(
-                                    &t!("Load Error"),
-                                    &format!("{}: {}", path.display(), e),
-                                );
-                            }
+            dialog.pick_open(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    // Old files stored display text without a unit; they are read in the
+                    // current measurement system (as before) and flagged in a warning.
+                    let system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let loaded = fs::read_to_string(&path)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|json| BitmapEngravingPreset::from_json(&json, system));
+                    match loaded {
+                        Ok(loaded) => {
+                            Self::apply_preset(&w_clone, &loaded.preset, system);
+                            show_load_warnings(&loaded.warnings);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "Failed to load bitmap preset"
+                            );
+                            CamToolsView::show_error_dialog(
+                                &t!("Load Error"),
+                                &format!("{}: {}", path.display(), e),
+                            );
                         }
                     }
                 }
-                d.close();
             });
-
-            dialog.show();
         });
 
         // Cancel

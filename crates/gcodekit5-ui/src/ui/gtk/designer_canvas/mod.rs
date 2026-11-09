@@ -13,6 +13,7 @@ mod rendering;
 mod toolpath_preview;
 
 use crate::t;
+use crate::ui::gtk::common::dialog_window::DialogWindow;
 use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
@@ -26,8 +27,7 @@ use gcodekit5_settings::controller::SettingsController;
 use gtk4::gdk::ModifierType;
 use gtk4::prelude::*;
 use gtk4::{
-    CheckButton, Dialog, DrawingArea, DropDown, Entry, EventControllerMotion, GestureClick,
-    GestureDrag,
+    CheckButton, DrawingArea, DropDown, Entry, EventControllerMotion, GestureClick, GestureDrag,
 };
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -127,8 +127,14 @@ pub struct DesignerCanvas {
     pub preview_generating: Rc<std::cell::Cell<bool>>,
     pub(crate) preview_pending: Rc<std::cell::Cell<bool>>,
     pub preview_cancel: Arc<AtomicBool>,
-    pub(crate) text_tool_dialog:
-        SharedOption<(Dialog, Entry, DropDown, CheckButton, CheckButton, Entry)>,
+    pub(crate) text_tool_dialog: SharedOption<(
+        DialogWindow,
+        Entry,
+        DropDown,
+        CheckButton,
+        CheckButton,
+        Entry,
+    )>,
     pub(crate) text_tool_last_font_family: Shared<String>,
     pub(crate) text_tool_last_bold: Shared<bool>,
     pub(crate) text_tool_last_italic: Shared<bool>,
@@ -202,7 +208,7 @@ impl DesignerCanvas {
                 (2.0, 1.0)
             };
 
-            let style_context = drawing_area.style_context();
+            let fg_color = drawing_area.color();
 
             Self::draw(
                 cr,
@@ -217,7 +223,7 @@ impl DesignerCanvas {
                 &toolpaths,
                 pending_fast_shape,
                 bounds,
-                &style_context,
+                fg_color,
                 grid_major_width,
                 grid_minor_width,
             );
@@ -686,24 +692,10 @@ impl DesignerCanvas {
             return;
         }
 
-        use gtk4::FileChooserAction;
-        use gtk4::FileChooserDialog;
-        use gtk4::ResponseType;
+        use crate::ui::gtk::file_dialog::FileDialogHelpers;
 
-        let dialog = FileChooserDialog::builder()
-            .title("Import Image")
-            .action(FileChooserAction::Open)
-            .transient_for(
-                &self
-                    .widget
-                    .root()
-                    .and_then(|r| r.downcast::<gtk4::Window>().ok())
-                    .unwrap_or_else(|| {
-                        tracing::warn!("Failed to get parent window for dialog");
-                        gtk4::Window::new()
-                    }),
-            )
-            .build();
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        let dialog = crate::ui::gtk::file_dialog::open_dialog("Import Image");
 
         let filter = gtk4::FileFilter::new();
         filter.add_mime_type("image/jpeg");
@@ -714,24 +706,12 @@ impl DesignerCanvas {
         filter.set_name(Some("Image files"));
         dialog.add_filter(&filter);
 
-        dialog.add_buttons(&[
-            ("Cancel", ResponseType::Cancel),
-            ("Import", ResponseType::Accept),
-        ]);
-
         let canvas = self.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        canvas.process_imported_image(path);
-                    }
-                }
+        dialog.pick_open(parent.as_ref(), move |file| {
+            if let Some(path) = file.path() {
+                canvas.process_imported_image(path);
             }
-            dialog.close();
         });
-
-        dialog.show();
     }
 
     /// Process the imported image and convert it to a toolpath

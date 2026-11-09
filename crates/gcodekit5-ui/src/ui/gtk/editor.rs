@@ -4,13 +4,12 @@
 //! line numbers, and integration with the editor backend bridge.
 
 use crate::t;
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
-use gtk4::{
-    Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ResponseType, ScrolledWindow,
-};
+use gtk4::{Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ScrolledWindow};
 use libadwaita::StyleManager;
 use sourceview5::prelude::*;
 use sourceview5::{
@@ -181,7 +180,7 @@ impl GcodeEditor {
         // Search Row
         let search_row = Box::new(Orientation::Horizontal, 4);
         let search_entry = Entry::builder()
-            .placeholder_text(&t!("Search..."))
+            .placeholder_text(t!("Search..."))
             .width_request(200)
             .build();
         let prev_btn = Button::builder()
@@ -200,7 +199,7 @@ impl GcodeEditor {
         // Replace Row
         let replace_row = Box::new(Orientation::Horizontal, 4);
         let replace_entry = Entry::builder()
-            .placeholder_text(&t!("Replace with ..."))
+            .placeholder_text(t!("Replace with ..."))
             .width_request(200)
             .build();
         let replace_btn = Button::builder()
@@ -588,7 +587,7 @@ impl GcodeEditor {
 
     pub fn open_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = super::file_dialog::open_dialog(&t!("Open G-Code File"), parent.as_ref());
+        let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Open G-Code File"));
         super::file_dialog::set_last_working_directory(
             &dialog,
             self.settings_controller.as_deref(),
@@ -610,40 +609,29 @@ impl GcodeEditor {
         let buffer = self.buffer.clone();
         let current_file = self.current_file.clone();
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        match fs::read_to_string(&path) {
-                            Ok(content) => {
-                                buffer.set_text(&content);
-                                *current_file.borrow_mut() = Some(path);
-                                // Move cursor to start
-                                let start_iter = buffer.start_iter();
-                                buffer.place_cursor(&start_iter);
-                            }
-                            Err(e) => {
-                                error!("Error reading file {}: {}", path.display(), e);
-                                let parent = super::file_dialog::parent_window(dialog);
-                                super::file_dialog::show_error_dialog(
-                                    &t!("Error Reading File"),
-                                    &format!(
-                                        "{} '{}'.\n\n{}",
-                                        t!("Could not open"),
-                                        path.display(),
-                                        e
-                                    ),
-                                    parent.as_ref(),
-                                );
-                            }
-                        }
+        let err_parent = parent.clone();
+        dialog.pick_open(parent.as_ref(), move |file| {
+            if let Some(path) = file.path() {
+                match fs::read_to_string(&path) {
+                    Ok(content) => {
+                        buffer.set_text(&content);
+                        *current_file.borrow_mut() = Some(path);
+                        // Move cursor to start
+                        let start_iter = buffer.start_iter();
+                        buffer.place_cursor(&start_iter);
+                    }
+                    Err(e) => {
+                        error!("Error reading file {}: {}", path.display(), e);
+                        let parent = err_parent.clone();
+                        super::file_dialog::show_error_dialog(
+                            &t!("Error Reading File"),
+                            &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
+                            parent.as_ref(),
+                        );
                     }
                 }
             }
-            dialog.destroy();
         });
-
-        dialog.show();
     }
 
     pub fn save_file(&self) {
@@ -670,7 +658,7 @@ impl GcodeEditor {
 
     pub fn save_as_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = super::file_dialog::save_dialog(&t!("Save G-Code File"), parent.as_ref());
+        let dialog = crate::ui::gtk::file_dialog::save_dialog(&t!("Save G-Code File"));
         super::file_dialog::set_last_working_directory(
             &dialog,
             self.settings_controller.as_deref(),
@@ -687,45 +675,34 @@ impl GcodeEditor {
         let buffer = self.buffer.clone();
         let current_file = self.current_file.clone();
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(mut path) = file.path() {
-                        // Ensure extension
-                        if path.extension().is_none() {
-                            path.set_extension("gcode");
-                        }
+        let err_parent = parent.clone();
+        dialog.pick_save(parent.as_ref(), move |file| {
+            if let Some(mut path) = file.path() {
+                // Ensure extension
+                if path.extension().is_none() {
+                    path.set_extension("gcode");
+                }
 
-                        let start = buffer.start_iter();
-                        let end = buffer.end_iter();
-                        let content = buffer.text(&start, &end, true);
+                let start = buffer.start_iter();
+                let end = buffer.end_iter();
+                let content = buffer.text(&start, &end, true);
 
-                        match fs::write(&path, content.as_str()) {
-                            Ok(_) => {
-                                *current_file.borrow_mut() = Some(path);
-                            }
-                            Err(e) => {
-                                error!("Error saving file {}: {}", path.display(), e);
-                                let parent = super::file_dialog::parent_window(dialog);
-                                super::file_dialog::show_error_dialog(
-                                    &t!("Error Saving File"),
-                                    &format!(
-                                        "{} '{}'.\n\n{}",
-                                        t!("Could not save"),
-                                        path.display(),
-                                        e
-                                    ),
-                                    parent.as_ref(),
-                                );
-                            }
-                        }
+                match fs::write(&path, content.as_str()) {
+                    Ok(_) => {
+                        *current_file.borrow_mut() = Some(path);
+                    }
+                    Err(e) => {
+                        error!("Error saving file {}: {}", path.display(), e);
+                        let parent = err_parent.clone();
+                        super::file_dialog::show_error_dialog(
+                            &t!("Error Saving File"),
+                            &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
+                            parent.as_ref(),
+                        );
                     }
                 }
             }
-            dialog.destroy();
         });
-
-        dialog.show();
     }
 
     // Método público para actualizar el tema

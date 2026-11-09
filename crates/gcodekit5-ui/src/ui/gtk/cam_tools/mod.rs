@@ -27,12 +27,11 @@ pub use spoilboard_surfacing::SpoilboardSurfacingTool;
 pub use tabbed_box::TabbedBoxMaker;
 // pub use vector_engraving::VectorEngravingTool;
 
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use common::set_paned_initial_fraction;
 
 use gtk4::prelude::*;
-use gtk4::{
-    Align, Box, Button, ComboBoxText, Image, Label, Orientation, Paned, ScrolledWindow, Stack,
-};
+use gtk4::{Align, Box, Button, Image, Label, Orientation, Paned, ScrolledWindow, Stack};
 use std::rc::Rc;
 
 use crate::ui::gtk::machine_control::MachineControlView;
@@ -281,7 +280,7 @@ impl CamToolsView {
             .hexpand(true)
             .build();
 
-        let category = ComboBoxText::new();
+        let category = new_text_dropdown();
         category.append(Some("all"), "All");
         category.append(Some("generators"), "Generators");
         category.append(Some("engraving"), "Engraving");
