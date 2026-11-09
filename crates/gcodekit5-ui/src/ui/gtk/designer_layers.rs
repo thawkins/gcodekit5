@@ -6,7 +6,7 @@
 use gtk4::gdk::ModifierType;
 use gtk4::prelude::*;
 use gtk4::{Box, Button, DrawingArea, Entry, Image, Label, ListBox, Orientation, ScrolledWindow};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::t;
@@ -14,9 +14,23 @@ use gcodekit5_core::Shared;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::shapes::OperationType;
 
+/// Callback invoked when the panel changed the selection or the model.
+type ChangeCallback = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+
+/// Invokes the change callback (if set) without holding its borrow during the call.
+fn notify(callback: &ChangeCallback) {
+    let cb = callback.borrow().clone();
+    if let Some(cb) = cb {
+        cb();
+    }
+}
+
 pub struct LayersPanel {
     pub widget: Box,
     list_box: ListBox,
+    /// Notified after the user changes the selection or the shapes from this panel,
+    /// so other views (e.g. the properties panel) can refresh without polling.
+    on_change: ChangeCallback,
     // Z-order control buttons for sensitivity updates
     bring_front_btn: Button,
     bring_forward_btn: Button,
@@ -72,7 +86,18 @@ impl LayersPanel {
         }
     }
 
+    /// Sets the callback run after the user changes the selection or the shapes from
+    /// this panel (row clicks, grouping, z-order, renaming).
+    ///
+    /// The callback must not call [`LayersPanel::refresh`]: it runs from inside the
+    /// list's selection handler.
+    pub fn set_on_change<F: Fn() + 'static>(&self, callback: F) {
+        *self.on_change.borrow_mut() = Some(Rc::new(callback));
+    }
+
     pub fn new(state: Shared<DesignerState>, canvas: DrawingArea) -> Self {
+        let on_change: ChangeCallback = Rc::new(RefCell::new(None));
+
         // Main container
         let widget = Box::new(Orientation::Vertical, 6);
         widget.set_margin_start(6);
@@ -235,10 +260,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             group_btn.connect_clicked(move |_| {
                 Self::group_selected_shapes(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -247,10 +274,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             ungroup_btn.connect_clicked(move |_| {
                 Self::ungroup_selected_shapes(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -259,10 +288,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             bring_front_btn.connect_clicked(move |_| {
                 Self::send_to_back(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -271,10 +302,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             bring_forward_btn.connect_clicked(move |_| {
                 Self::send_backward(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -283,10 +316,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             send_backward_btn.connect_clicked(move |_| {
                 Self::bring_forward(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -295,10 +330,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             send_back_btn.connect_clicked(move |_| {
                 Self::bring_to_front(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -310,6 +347,7 @@ impl LayersPanel {
             let bring_forward_btn_clone = bring_forward_btn.clone();
             let send_backward_btn_clone = send_backward_btn.clone();
             let send_back_btn_clone = send_back_btn.clone();
+            let on_change_sel = on_change.clone();
             list_box.connect_selected_rows_changed(move |list| {
                 let rows = list.selected_rows();
                 let mut state_mut = state_clone.borrow_mut();
@@ -367,12 +405,14 @@ impl LayersPanel {
 
                 drop(state_mut);
                 canvas_refresh.queue_draw();
+                notify(&on_change_sel);
             });
         }
 
         Self {
             widget,
             list_box,
+            on_change,
             bring_front_btn,
             bring_forward_btn,
             send_backward_btn,
@@ -612,8 +652,15 @@ impl LayersPanel {
             name_entry.connect_changed(move |entry| {
                 let text = entry.text();
                 let mut state_mut = state_clone.borrow_mut();
-                if let Some(obj) = state_mut.canvas.get_shape_mut(shape_id) {
-                    obj.name = text.to_string();
+                let renamed = match state_mut.canvas.get_shape_mut(shape_id) {
+                    Some(obj) if obj.name != text.as_str() => {
+                        obj.name = text.to_string();
+                        true
+                    }
+                    _ => false,
+                };
+                if renamed {
+                    state_mut.is_modified = true;
                 }
             });
 

@@ -19,7 +19,7 @@ use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
 use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
-use gcodekit5_designer::model::{DesignPath as PathShape, Point, Shape};
+use gcodekit5_designer::model::{Point, Shape};
 use gcodekit5_designer::toolpath::Toolpath;
 use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_settings::controller::SettingsController;
@@ -516,13 +516,9 @@ impl DesignerCanvas {
 
         // Keyboard controller for Delete, Escape, etc.
         let key_controller = gtk4::EventControllerKey::new();
-        let state_key = state.clone();
-        let widget_key = widget.clone();
         let shift_pressed_key = canvas.shift_pressed.clone();
         let ctrl_pressed_key = canvas.ctrl_pressed.clone();
-        let polyline_points_key = canvas.polyline_points.clone();
-        let pending_fast_shape_key = canvas.pending_fast_shape.clone();
-        let layers_key = canvas.layers.clone();
+        let canvas_key = Rc::downgrade(&canvas);
 
         key_controller.connect_key_pressed(move |_controller, keyval, _keycode, _modifier| {
             if keyval == gtk4::gdk::Key::Shift_L || keyval == gtk4::gdk::Key::Shift_R {
@@ -533,84 +529,42 @@ impl DesignerCanvas {
                 *ctrl_pressed_key.borrow_mut() = true;
                 return glib::Propagation::Proceed;
             }
-
-            let mut designer_state = state_key.borrow_mut();
+            let Some(canvas) = canvas_key.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
 
             match keyval {
-                gtk4::gdk::Key::Delete | gtk4::gdk::Key::BackSpace
-                    // Delete selected shapes
-                    if designer_state
-                        .canvas
-                        .selection_manager
-                        .selected_id()
-                        .is_some()
-                    => {
-                        designer_state.delete_selected();
-                        drop(designer_state);
-
-                        // Refresh layers
-                        if let Some(layers) = layers_key.borrow().as_ref() {
-                            layers.refresh(&state_key);
-                        }
-
-                        widget_key.queue_draw();
+                gtk4::gdk::Key::Delete | gtk4::gdk::Key::BackSpace => {
+                    let has_selection = canvas.state.borrow().selected_count() > 0;
+                    if has_selection {
+                        canvas.delete_selected();
                         return glib::Propagation::Stop;
                     }
+                }
                 gtk4::gdk::Key::Escape => {
-                    if pending_fast_shape_key.borrow().is_some() {
-                        *pending_fast_shape_key.borrow_mut() = None;
-                        drop(designer_state);
-                        widget_key.queue_draw();
+                    if canvas.pending_fast_shape.borrow_mut().take().is_some() {
+                        canvas.widget.set_cursor(None);
+                        canvas.widget.queue_draw();
                         return glib::Propagation::Stop;
                     }
 
                     // Cancel polyline creation
-                    let mut points = polyline_points_key.borrow_mut();
-                    if !points.is_empty() {
-                        points.clear();
-                        drop(points);
-                        drop(designer_state);
-                        widget_key.queue_draw();
+                    if canvas.cancel_polyline() {
                         return glib::Propagation::Stop;
                     }
-                    drop(points);
 
                     // Deselect all
-                    designer_state.canvas.deselect_all();
-                    drop(designer_state);
-
-                    // Refresh layers
-                    if let Some(layers) = layers_key.borrow().as_ref() {
-                        layers.refresh(&state_key);
-                    }
-
-                    widget_key.queue_draw();
+                    canvas.state.borrow_mut().canvas.deselect_all();
+                    canvas.refresh_panels();
+                    canvas.widget.queue_draw();
                     return glib::Propagation::Stop;
                 }
-                gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                    // Finish polyline creation
-                    let mut points = polyline_points_key.borrow_mut();
-                    if !points.is_empty() {
-                        if points.len() >= 2 {
-                            // Create polyline
-                            let path_shape = PathShape::from_points(&points, false);
-                            let shape = Shape::Path(path_shape);
-
-                            designer_state.add_shape_with_undo(shape);
-                        }
-                        points.clear();
-                        drop(points);
-                        // Release the mutable borrow before refreshing the layers panel,
-                        // which borrows the state again (previously panicked on Enter).
-                        drop(designer_state);
-
-                        // Refresh layers
-                        if let Some(layers) = layers_key.borrow().as_ref() {
-                            layers.refresh(&state_key);
-                        }
-                        widget_key.queue_draw();
-                        return glib::Propagation::Stop;
-                    }
+                // Enter finishes the polyline as an OPEN path (double-click or
+                // right-click finish it closed).
+                gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter
+                    if canvas.finish_polyline(false) =>
+                {
+                    return glib::Propagation::Stop;
                 }
                 _ => {}
             }
@@ -646,10 +600,65 @@ impl DesignerCanvas {
             core_constants::VIEW_PADDING,
         );
     }
+    /// Refreshes the panels that mirror the model and selection (properties and
+    /// layers).
+    ///
+    /// Call this after any change to the selection or the shapes; the panels are not
+    /// polled. Must be called without holding a borrow of the designer state.
+    pub fn refresh_panels(&self) {
+        let props = self.properties.borrow().clone();
+        if let Some(props) = props {
+            props.update_from_selection();
+        }
+        let layers = self.layers.borrow().clone();
+        if let Some(layers) = layers {
+            layers.refresh(&self.state);
+        }
+    }
+
+    /// Refreshes everything that depends on the model after an edit: the side panels,
+    /// the toolpath preview (when shown) and the canvas itself.
+    ///
+    /// Must be called without holding a borrow of the designer state.
+    pub fn notify_model_changed(&self) {
+        self.refresh_panels();
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        self.widget.queue_draw();
+    }
+
+    /// Hit-tolerance in screen pixels used when clicking shapes.
+    pub(crate) const HIT_TOLERANCE_PX: f64 = 6.0;
+
+    /// Converts [`Self::HIT_TOLERANCE_PX`] to world millimetres at `zoom` (px per mm).
+    pub(crate) fn hit_tolerance_mm(zoom: f64) -> f64 {
+        Self::HIT_TOLERANCE_PX / zoom.max(1e-6)
+    }
+
+    /// Returns the topmost shape (in draw order) containing `point` within `tolerance`.
+    ///
+    /// This is the same order `Canvas::select_at` uses, so clicks and selection agree.
+    pub(crate) fn topmost_shape_at(
+        state: &DesignerState,
+        point: &Point,
+        tolerance: f64,
+    ) -> Option<u64> {
+        let store = &state.canvas.shape_store;
+        store.draw_order_iter().rev().find(|id| {
+            store
+                .get(*id)
+                .is_some_and(|obj| obj.contains_point(point, tolerance))
+        })
+    }
+
+    /// Sets the panel used to edit the selected shapes' properties.
     pub fn set_properties_panel(&self, panel: Rc<PropertiesPanel>) {
         *self.properties.borrow_mut() = Some(panel);
     }
 
+    /// Sets the layers (objects) panel kept in sync with the canvas.
     pub fn set_layers_panel(&self, panel: Rc<LayersPanel>) {
         *self.layers.borrow_mut() = Some(panel);
     }
@@ -742,7 +751,7 @@ impl DesignerCanvas {
             match result {
                 Ok(shape) => {
                     state.borrow_mut().add_shape_with_undo(shape);
-                    canvas.widget.queue_draw();
+                    canvas.notify_model_changed();
 
                     if let Some(status_bar) = &status_bar {
                         status_bar.set_state("Image imported successfully");

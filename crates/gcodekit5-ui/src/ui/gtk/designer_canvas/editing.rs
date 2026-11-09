@@ -2,7 +2,7 @@
 
 use super::*;
 use gcodekit5_designer::canvas::DrawingObject;
-use gcodekit5_designer::commands::{DesignerCommand, PasteShapes, RemoveShape};
+use gcodekit5_designer::commands::{DesignerCommand, PasteShapes};
 use gcodekit5_designer::model::DesignerShape;
 
 /// Give copied objects fresh group ids so that copies form their own groups instead
@@ -20,29 +20,17 @@ fn assign_fresh_group_ids(
     }
 }
 
+/// Offset (mm, in X and Y) applied to each successive paste.
+const PASTE_OFFSET_MM: f64 = 10.0;
+
 impl DesignerCanvas {
+    /// Deletes all selected shapes as a single undo step.
     pub fn delete_selected(&self) {
-        let mut state = self.state.borrow_mut();
-        let selected_ids: Vec<u64> = state
-            .canvas
-            .shapes()
-            .filter(|s| s.selected)
-            .map(|s| s.id)
-            .collect();
+        // `DesignerState::delete_selected` records one composite command, so a single
+        // undo restores every deleted shape (at its original z-order position).
+        self.state.borrow_mut().delete_selected();
 
-        for id in selected_ids {
-            let cmd = DesignerCommand::RemoveShape(RemoveShape { id, object: None });
-            state.push_command(cmd);
-        }
-
-        drop(state);
-
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn duplicate_selected(&self) {
@@ -82,18 +70,7 @@ impl DesignerCanvas {
 
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn create_linear_array(&self, count: usize, dx: f64, dy: f64) {
@@ -147,17 +124,7 @@ impl DesignerCanvas {
 
         drop(state);
 
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn create_grid_array(&self, rows: usize, cols: usize, dx: f64, dy: f64) {
@@ -215,19 +182,11 @@ impl DesignerCanvas {
 
         drop(state);
 
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
+    /// Creates `count - 1` rotated copies of the selection about (`center_x`, `center_y`)
+    /// spread over `total_angle` degrees (see [`gcodekit5_designer::arrays::circular_array_step`] for the spacing).
     pub fn create_circular_array(
         &self,
         count: usize,
@@ -252,7 +211,7 @@ impl DesignerCanvas {
         }
 
         let mut new_objects = Vec::new();
-        let angle_step = total_angle / count as f64;
+        let angle_step = gcodekit5_designer::arrays::circular_array_step(total_angle, count);
 
         for i in 1..count {
             let angle = angle_step * i as f64;
@@ -286,17 +245,7 @@ impl DesignerCanvas {
 
         drop(state);
 
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn group_selected(&self) {
@@ -304,18 +253,7 @@ impl DesignerCanvas {
         state.group_selected();
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn ungroup_selected(&self) {
@@ -323,18 +261,7 @@ impl DesignerCanvas {
         state.ungroup_selected();
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn convert_to_path(&self) {
@@ -342,18 +269,7 @@ impl DesignerCanvas {
         state.convert_selected_to_path();
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn convert_to_rectangle(&self) {
@@ -361,60 +277,49 @@ impl DesignerCanvas {
         state.convert_selected_to_rectangle();
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn align_left(&self) {
         let mut state = self.state.borrow_mut();
         state.align_selected_horizontal_left();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn align_right(&self) {
         let mut state = self.state.borrow_mut();
         state.align_selected_horizontal_right();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn align_top(&self) {
         let mut state = self.state.borrow_mut();
         state.align_selected_vertical_top();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn align_bottom(&self) {
         let mut state = self.state.borrow_mut();
         state.align_selected_vertical_bottom();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn align_center_horizontal(&self) {
         let mut state = self.state.borrow_mut();
         state.align_selected_horizontal_center();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn align_center_vertical(&self) {
         let mut state = self.state.borrow_mut();
         state.align_selected_vertical_center();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn boolean_union(&self) {
@@ -422,14 +327,7 @@ impl DesignerCanvas {
         state.perform_boolean_union();
         drop(state);
 
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-        if let Some(ref props) = *self.properties.borrow() {
-            props.update_from_selection();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn boolean_difference(&self) {
@@ -437,14 +335,7 @@ impl DesignerCanvas {
         state.perform_boolean_difference();
         drop(state);
 
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-        if let Some(ref props) = *self.properties.borrow() {
-            props.update_from_selection();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn boolean_intersection(&self) {
@@ -452,35 +343,28 @@ impl DesignerCanvas {
         state.perform_boolean_intersection();
         drop(state);
 
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-        if let Some(ref props) = *self.properties.borrow() {
-            props.update_from_selection();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn mirror_x(&self) {
         let mut state = self.state.borrow_mut();
         state.mirror_selected_x();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn mirror_y(&self) {
         let mut state = self.state.borrow_mut();
         state.mirror_selected_y();
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn set_selected_rotation(&self, rotation: f64) {
         let mut state = self.state.borrow_mut();
         state.set_selected_rotation(rotation);
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     /// Rotate the selection by `delta_degrees` relative to its current rotation.
@@ -504,9 +388,10 @@ impl DesignerCanvas {
             state.set_selected_rotation(target);
         }
         drop(state);
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
+    /// Copies the selected shapes to the designer clipboard.
     pub fn copy_selected(&self) {
         let mut state = self.state.borrow_mut();
         state.clipboard = state
@@ -536,17 +421,22 @@ impl DesignerCanvas {
             obj.selected = false;
         }
 
-        // Create copies with offset
-        let offset = 10.0;
+        // Create copies offset from the clipboard contents.
         let mut new_objects = Vec::new();
         for obj in &clipboard {
             let mut new_obj = obj.clone();
             new_obj.id = state.canvas.generate_id();
-            new_obj.shape.translate(offset, offset);
+            new_obj.shape.translate(PASTE_OFFSET_MM, PASTE_OFFSET_MM);
             new_obj.selected = true;
             new_objects.push(new_obj);
         }
         assign_fresh_group_ids(&mut state, &mut new_objects);
+
+        // Advance the clipboard by the same offset so the next paste lands one step
+        // further instead of stacking exactly on top of this one.
+        for obj in state.clipboard.iter_mut() {
+            obj.shape.translate(PASTE_OFFSET_MM, PASTE_OFFSET_MM);
+        }
 
         let cmd = DesignerCommand::PasteShapes(PasteShapes {
             ids: new_objects.iter().map(|o| o.id).collect(),
@@ -556,18 +446,7 @@ impl DesignerCanvas {
 
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn undo(&self) {
@@ -575,18 +454,7 @@ impl DesignerCanvas {
         state.undo();
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 
     pub fn redo(&self) {
@@ -594,17 +462,6 @@ impl DesignerCanvas {
         state.redo();
         drop(state);
 
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
-
-        // Update toolpaths if enabled
-        let show_toolpaths = self.state.borrow().show_toolpaths;
-        if show_toolpaths {
-            self.generate_preview_toolpaths();
-        }
-
-        self.widget.queue_draw();
+        self.notify_model_changed();
     }
 }

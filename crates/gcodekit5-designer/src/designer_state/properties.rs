@@ -244,7 +244,12 @@ impl DesignerState {
         }
     }
 
-    /// Sets the rotation of selected shapes.
+    /// Sets the rotation of selected shapes, in degrees.
+    ///
+    /// With a single shape selected `rotation` is the absolute target angle. With
+    /// several shapes selected it is a *relative* angle: the whole selection is rotated
+    /// by `rotation` degrees about its common centre. Either way exactly one undo step
+    /// is recorded per call, so callers must invoke this once per committed edit.
     pub fn set_selected_rotation(&mut self, rotation: f64) {
         let selected_count = self.selected_count();
 
@@ -338,50 +343,34 @@ impl DesignerState {
                 self.push_command(cmd);
             }
         } else {
-            let mut commands = Vec::new();
-            for obj in self.canvas.shapes_mut() {
-                if obj.selected {
-                    let mut new_obj = obj.clone();
-                    match &mut new_obj.shape {
-                        crate::model::Shape::Rectangle(s) => s.rotation = rotation,
-                        crate::model::Shape::Circle(s) => s.rotation = rotation,
-                        crate::model::Shape::Line(s) => {
-                            let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
-                            let cx = (sx1 + sx2) / 2.0;
-                            let cy = (sy1 + sy2) / 2.0;
-                            let current = s.current_angle_degrees();
-                            let delta = rotation - current;
-                            s.rotate_about(delta, cx, cy);
-                            s.rotation = rotation;
-                        }
-                        crate::model::Shape::Ellipse(s) => s.rotation = rotation,
-                        crate::model::Shape::Path(s) => s.rotation = rotation,
-                        crate::model::Shape::Text(s) => s.rotation = rotation,
-                        crate::model::Shape::Triangle(s) => s.rotation = rotation,
-                        crate::model::Shape::Polygon(s) => s.rotation = rotation,
-                        crate::model::Shape::Gear(s) => s.rotation = rotation,
-                        crate::model::Shape::Sprocket(s) => s.rotation = rotation,
-                        crate::model::Shape::RasterImage(s) => s.rotation = rotation,
-                    }
-
-                    if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj.clone(),
-                        }));
-                        *obj = new_obj;
-                    }
+            // Build the new state from a copy; the command applies it (and keeps the
+            // spatial index in sync), so the live object must not be mutated here.
+            self.change_selected_with_undo("Change Rotation", |obj| {
+                if (obj.shape.rotation() - rotation).abs() <= f64::EPSILON {
+                    return false;
                 }
-            }
-
-            if !commands.is_empty() {
-                let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                    commands,
-                    name: "Change Rotation".to_string(),
-                });
-                self.push_command(cmd);
-            }
+                let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
+                match &mut obj.shape {
+                    crate::model::Shape::Rectangle(s) => s.rotation = rotation,
+                    crate::model::Shape::Circle(s) => s.rotation = rotation,
+                    crate::model::Shape::Line(s) => {
+                        let cx = (sx1 + sx2) / 2.0;
+                        let cy = (sy1 + sy2) / 2.0;
+                        let delta = rotation - s.current_angle_degrees();
+                        s.rotate_about(delta, cx, cy);
+                        s.rotation = rotation;
+                    }
+                    crate::model::Shape::Ellipse(s) => s.rotation = rotation,
+                    crate::model::Shape::Path(s) => s.rotation = rotation,
+                    crate::model::Shape::Text(s) => s.rotation = rotation,
+                    crate::model::Shape::Triangle(s) => s.rotation = rotation,
+                    crate::model::Shape::Polygon(s) => s.rotation = rotation,
+                    crate::model::Shape::Gear(s) => s.rotation = rotation,
+                    crate::model::Shape::Sprocket(s) => s.rotation = rotation,
+                    crate::model::Shape::RasterImage(s) => s.rotation = rotation,
+                }
+                true
+            });
         }
     }
 
@@ -898,92 +887,133 @@ impl DesignerState {
         }
     }
 
+    /// Applies `modify` to a copy of every selected shape and records all resulting
+    /// changes as a single undoable composite command named `name`.
+    ///
+    /// `modify` returns `true` when it changed the object; unchanged objects are not
+    /// recorded, and no command is pushed when nothing changed.
+    fn change_selected_with_undo<F>(&mut self, name: &str, mut modify: F)
+    where
+        F: FnMut(&mut DrawingObject) -> bool,
+    {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes().filter(|s| s.selected) {
+            let mut new_obj = obj.clone();
+            if modify(&mut new_obj) {
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        if !commands.is_empty() {
+            self.push_command(DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: name.to_string(),
+            }));
+        }
+    }
+
+    /// Moves every selected shape so that its left bounding edge is at `new_x` (mm).
+    ///
+    /// Recorded as a single undo step.
     pub fn set_selected_x(&mut self, new_x: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+        self.change_selected_with_undo("Change X", |obj| {
             let (current_x, _, _, _) = obj.shape.bounds();
             let dx = new_x - current_x;
-
-            if dx.abs() > f64::EPSILON {
-                match &mut obj.shape {
-                    crate::model::Shape::Path(s) => {
-                        // Move both the sketch and the original (curved) path so the
-                        // rendered/toolpath geometry follows the new position.
-                        s.translate(dx, 0.0);
-                    }
-                    _ => {
-                        // For native objects: We use translate with the exact jump (0.0 on Y so that it doesn't jump)
-                        obj.shape.translate(dx, 0.0);
-                    }
-                }
+            if dx.abs() <= f64::EPSILON {
+                return false;
             }
-        }
+            // Paths translate both the sketch and the original curved geometry.
+            obj.shape.translate(dx, 0.0);
+            true
+        });
     }
 
+    /// Moves every selected shape so that its bottom bounding edge is at `new_y` (mm).
+    ///
+    /// Recorded as a single undo step.
     pub fn set_selected_y(&mut self, new_y: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+        self.change_selected_with_undo("Change Y", |obj| {
             let (_, current_y, _, _) = obj.shape.bounds();
             let dy = new_y - current_y;
-
-            if dy.abs() > f64::EPSILON {
-                match &mut obj.shape {
-                    crate::model::Shape::Path(s) => {
-                        s.translate(0.0, dy);
-                    }
-                    _ => {
-                        obj.shape.translate(0.0, dy);
-                    }
-                }
+            if dy.abs() <= f64::EPSILON {
+                return false;
             }
-        }
+            obj.shape.translate(0.0, dy);
+            true
+        });
     }
 
+    /// Sets the width (mm) of every selected shape.
+    ///
+    /// Rectangles, ellipses and triangles change their native width; other shapes are
+    /// scaled horizontally about their centre. Recorded as a single undo step.
     pub fn set_selected_width(&mut self, width: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
-            match &mut obj.shape {
-                crate::model::Shape::Rectangle(r) => {
-                    r.width = width;
-                }
-                crate::model::Shape::Ellipse(e) => {
-                    e.rx = width / 2.0;
-                }
-                crate::model::Shape::Triangle(t) => {
-                    t.width = width;
-                }
-                _ => {
-                    let (x1, y1, x2, y2) = obj.shape.bounds();
-                    let current_width = x2 - x1;
-                    if current_width > 0.0 {
-                        let scale_factor = width / current_width;
-                        let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
-                        obj.shape.scale(scale_factor, 1.0, center);
-                    }
-                }
+        self.change_selected_with_undo("Change Width", |obj| match &mut obj.shape {
+            Shape::Rectangle(r) => {
+                let changed = (r.width - width).abs() > f64::EPSILON;
+                r.width = width;
+                changed
             }
-        }
+            Shape::Ellipse(e) => {
+                let changed = (e.rx - width / 2.0).abs() > f64::EPSILON;
+                e.rx = width / 2.0;
+                changed
+            }
+            Shape::Triangle(t) => {
+                let changed = (t.width - width).abs() > f64::EPSILON;
+                t.width = width;
+                changed
+            }
+            _ => {
+                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let current_width = x2 - x1;
+                if current_width <= 0.0 || (current_width - width).abs() <= f64::EPSILON {
+                    return false;
+                }
+                let scale_factor = width / current_width;
+                let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                obj.shape.scale(scale_factor, 1.0, center);
+                true
+            }
+        });
     }
 
+    /// Sets the height (mm) of every selected shape.
+    ///
+    /// Rectangles, ellipses and triangles change their native height; other shapes are
+    /// scaled vertically about their centre. Recorded as a single undo step.
     pub fn set_selected_height(&mut self, height: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
-            match &mut obj.shape {
-                crate::model::Shape::Rectangle(r) => {
-                    r.height = height;
-                }
-                crate::model::Shape::Ellipse(e) => {
-                    e.ry = height / 2.0;
-                }
-                crate::model::Shape::Triangle(t) => {
-                    t.height = height;
-                }
-                _ => {
-                    let (x1, y1, x2, y2) = obj.shape.bounds();
-                    let current_height = y2 - y1;
-                    if current_height > 0.0 {
-                        let scale_factor = height / current_height;
-                        let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
-                        obj.shape.scale(1.0, scale_factor, center);
-                    }
-                }
+        self.change_selected_with_undo("Change Height", |obj| match &mut obj.shape {
+            Shape::Rectangle(r) => {
+                let changed = (r.height - height).abs() > f64::EPSILON;
+                r.height = height;
+                changed
             }
-        }
+            Shape::Ellipse(e) => {
+                let changed = (e.ry - height / 2.0).abs() > f64::EPSILON;
+                e.ry = height / 2.0;
+                changed
+            }
+            Shape::Triangle(t) => {
+                let changed = (t.height - height).abs() > f64::EPSILON;
+                t.height = height;
+                changed
+            }
+            _ => {
+                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let current_height = y2 - y1;
+                if current_height <= 0.0 || (current_height - height).abs() <= f64::EPSILON {
+                    return false;
+                }
+                let scale_factor = height / current_height;
+                let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                obj.shape.scale(1.0, scale_factor, center);
+                true
+            }
+        });
     }
 }

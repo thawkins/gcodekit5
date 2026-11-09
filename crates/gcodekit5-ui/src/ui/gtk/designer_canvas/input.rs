@@ -9,8 +9,8 @@ use gcodekit5_designer::model::{
 };
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, CheckButton, Dialog, DropDown, Entry, Grid, Label, Orientation, Popover,
-    PositionType, ResponseType, Separator, StringList,
+    Box, CheckButton, Dialog, DropDown, Entry, Grid, Label, Orientation, Popover, PositionType,
+    ResponseType, Separator, StringList,
 };
 
 impl DesignerCanvas {
@@ -159,38 +159,51 @@ impl DesignerCanvas {
         }
     }
 
-    /// Public method to fit to device working area from DesignerView
-    pub(super) fn handle_right_click(&self, _x: f64, _y: f64) {
-        // Check if we are actively building a polyline (tool is polyline AND we have points)
+    /// Finishes the polyline being drawn, if any.
+    ///
+    /// `closed` selects the path type: Enter finishes an open polyline, while
+    /// double-click and right-click finish a closed shape. Returns `true` if a polyline
+    /// was in progress (even if it had too few points to create a shape).
+    pub(crate) fn finish_polyline(&self, closed: bool) -> bool {
+        let points: Vec<Point> = std::mem::take(&mut *self.polyline_points.borrow_mut());
+        if points.is_empty() {
+            return false;
+        }
+        if points.len() >= 2 {
+            let shape = Shape::Path(PathShape::from_points(&points, closed));
+            self.state.borrow_mut().add_shape_with_undo(shape);
+            self.notify_model_changed();
+        } else {
+            self.widget.queue_draw();
+        }
+        true
+    }
+
+    /// Discards the polyline being drawn. Returns `true` if one was in progress.
+    pub(crate) fn cancel_polyline(&self) -> bool {
+        let had_points = {
+            let mut points = self.polyline_points.borrow_mut();
+            let had_points = !points.is_empty();
+            points.clear();
+            had_points
+        };
+        if had_points {
+            self.widget.queue_draw();
+        }
+        had_points
+    }
+
+    /// Handles a right click: finishes a closed polyline in polyline mode, otherwise
+    /// shows the context menu for the current selection.
+    pub(super) fn handle_right_click(&self, x: f64, y: f64) {
         let current_tool = self
             .toolbox
             .as_ref()
             .map(|t| t.current_tool())
             .unwrap_or(DesignerTool::Select);
-        let is_polyline_mode = matches!(current_tool, DesignerTool::Polyline);
 
-        {
-            let mut points = self.polyline_points.borrow_mut();
-            if is_polyline_mode && !points.is_empty() {
-                tracing::info!("Polyline mode with points - finishing polyline");
-                if points.len() >= 2 {
-                    // Create polyline
-                    let path_shape = PathShape::from_points(&points, true); // Close polyline
-                    let shape = Shape::Path(path_shape);
-
-                    let mut state = self.state.borrow_mut();
-                    state.add_shape_with_undo(shape);
-                    drop(state);
-
-                    // Refresh layers panel
-                    if let Some(layers_panel) = self.layers.borrow().as_ref() {
-                        layers_panel.refresh(&self.state);
-                    }
-                }
-                points.clear();
-                self.widget.queue_draw();
-                return;
-            }
+        if current_tool == DesignerTool::Polyline && self.finish_polyline(true) {
+            return;
         }
 
         let state_borrow = self.state.borrow();
@@ -220,74 +233,9 @@ impl DesignerCanvas {
         menu.set_autohide(true);
 
         // Set preferred position but allow GTK to adjust if needed
-        let rect = gtk4::gdk::Rectangle::new(_x as i32 - 5, _y as i32 - 5, 10, 10);
+        let rect = gtk4::gdk::Rectangle::new(x as i32 - 5, y as i32 - 5, 10, 10);
         menu.set_pointing_to(Some(&rect));
         menu.set_position(PositionType::Bottom); // Prefer bottom-right, but allow adjustment
-
-        // Create menu content
-        let menu_box = Box::new(Orientation::Vertical, 0);
-        menu_box.add_css_class("context-menu");
-
-        // Always available actions
-        let cut_button = Button::with_label("Cut");
-        let copy_button = Button::with_label("Copy");
-        let delete_button = Button::with_label("Delete");
-
-        menu_box.append(&cut_button);
-        menu_box.append(&copy_button);
-        if can_paste {
-            let paste_button = Button::with_label("Paste");
-            menu_box.append(&paste_button);
-        }
-        menu_box.append(&delete_button);
-
-        // Conditional actions - only show if applicable
-        if can_group {
-            let separator = Separator::new(Orientation::Horizontal);
-            separator.add_css_class("menu-separator");
-            menu_box.append(&separator);
-
-            let group_button = Button::with_label("Group");
-            menu_box.append(&group_button);
-        }
-
-        if can_ungroup {
-            if !can_group {
-                // Add separator if not already added
-                let separator = Separator::new(Orientation::Horizontal);
-                separator.add_css_class("menu-separator");
-                menu_box.append(&separator);
-            }
-            let ungroup_button = Button::with_label("Ungroup");
-            menu_box.append(&ungroup_button);
-        }
-
-        if can_align {
-            let separator = Separator::new(Orientation::Horizontal);
-            separator.add_css_class("menu-separator");
-            menu_box.append(&separator);
-
-            let align_button = Button::with_label("Align");
-            menu_box.append(&align_button);
-        }
-
-        if can_boolean {
-            let separator = Separator::new(Orientation::Horizontal);
-            separator.add_css_class("menu-separator");
-            menu_box.append(&separator);
-
-            let union_button = Button::with_label("Union");
-            let difference_button = Button::with_label("Difference");
-            let intersection_button = Button::with_label("Intersection");
-            menu_box.append(&union_button);
-            menu_box.append(&difference_button);
-            menu_box.append(&intersection_button);
-        }
-
-        menu.set_child(Some(&menu_box));
-        menu.present();
-
-        // Don't constrain position at all - let GTK place it wherever it fits
 
         let vbox = Box::new(Orientation::Vertical, 0);
         vbox.add_css_class("context-menu");
@@ -622,14 +570,7 @@ impl DesignerCanvas {
                             state.canvas.select_shape(id, false);
                             drop(state);
 
-                            canvas.widget.queue_draw();
-
-                            if let Some(ref props) = *canvas.properties.borrow() {
-                                props.update_from_selection();
-                            }
-                            if let Some(ref layers) = *canvas.layers.borrow() {
-                                layers.refresh(&canvas.state);
-                            }
+                            canvas.notify_model_changed();
                         }
                     }
                 }
@@ -730,22 +671,9 @@ impl DesignerCanvas {
             let center_y = (y1 + y2) * 0.5;
             pending_shape.translate(canvas_x - center_x, canvas_y - center_y);
 
-            let mut state = self.state.borrow_mut();
-            state.add_shape_with_undo(pending_shape);
-            drop(state);
-
+            self.state.borrow_mut().add_shape_with_undo(pending_shape);
             self.widget.set_cursor(None);
-
-            self.widget.queue_draw();
-
-            if let Some(ref props) = *self.properties.borrow() {
-                props.update_from_selection();
-            }
-
-            if let Some(ref layers) = *self.layers.borrow() {
-                layers.refresh(&self.state);
-            }
-
+            self.notify_model_changed();
             return;
         }
 
@@ -801,14 +729,10 @@ impl DesignerCanvas {
                     }
                 }
 
-                // Check if we clicked on an existing shape
-                let mut clicked_shape_id = None;
-                let tolerance = 3.0;
-                for obj in state.canvas.shapes() {
-                    if obj.contains_point(&point, tolerance) {
-                        clicked_shape_id = Some(obj.id);
-                    }
-                }
+                // Check if we clicked on an existing shape: topmost first (draw order),
+                // with a tolerance of a fixed number of screen pixels.
+                let tolerance = Self::hit_tolerance_mm(zoom);
+                let clicked_shape_id = Self::topmost_shape_at(&state, &point, tolerance);
 
                 if let Some(id) = clicked_shape_id {
                     // Check if it's already selected
@@ -835,33 +759,13 @@ impl DesignerCanvas {
 
                 drop(state);
                 self.widget.queue_draw();
-
-                // Update properties panel
-                if let Some(ref props) = *self.properties.borrow() {
-                    props.update_from_selection();
-                }
-
-                // Update layers panel
-                if let Some(ref layers) = *self.layers.borrow() {
-                    layers.refresh(&self.state);
-                }
+                self.refresh_panels();
             }
 
             DesignerTool::Polyline => {
                 if n_press == 2 {
-                    // Double click - finish
-                    let mut points = self.polyline_points.borrow_mut();
-                    if points.len() >= 2 {
-                        // Create polyline
-                        let path_shape = PathShape::from_points(&points, true);
-                        let shape = Shape::Path(path_shape);
-
-                        let mut state = self.state.borrow_mut();
-                        state.add_shape_with_undo(shape);
-                        drop(state);
-                    }
-                    points.clear();
-                    self.widget.queue_draw();
+                    // Double click finishes a CLOSED shape (Enter finishes it open).
+                    self.finish_polyline(true);
                 } else {
                     let mut points = self.polyline_points.borrow_mut();
                     points.push(Point::new(canvas_x, canvas_y));
@@ -941,14 +845,9 @@ impl DesignerCanvas {
             let mut state = self.state.borrow_mut();
             let point = Point::new(canvas_x, canvas_y);
 
-            // Check if we clicked on an existing shape
-            let mut clicked_shape_id = None;
-            let tolerance = 3.0;
-            for obj in state.canvas.shapes() {
-                if obj.contains_point(&point, tolerance) {
-                    clicked_shape_id = Some(obj.id);
-                }
-            }
+            // Same hit-test as the press handler: topmost shape, pixel tolerance.
+            let tolerance = Self::hit_tolerance_mm(zoom);
+            let clicked_shape_id = Self::topmost_shape_at(&state, &point, tolerance);
 
             if let Some(id) = clicked_shape_id {
                 let is_selected = state.canvas.shapes().any(|s| s.id == id && s.selected);
@@ -959,16 +858,7 @@ impl DesignerCanvas {
 
                     drop(state);
                     self.widget.queue_draw();
-
-                    // Update properties panel
-                    if let Some(ref props) = *self.properties.borrow() {
-                        props.update_from_selection();
-                    }
-
-                    // Update layers panel
-                    if let Some(ref layers) = *self.layers.borrow() {
-                        layers.refresh(&self.state);
-                    }
+                    self.refresh_panels();
                 }
             }
         }
@@ -1462,19 +1352,9 @@ impl DesignerCanvas {
             *self.creation_start.borrow_mut() = None;
             *self.creation_current.borrow_mut() = None;
 
-            // Update properties panel after resize/move
-            if let Some(ref props) = *self.properties.borrow() {
-                props.update_from_selection();
-            }
-
-            // Update toolpaths if enabled
-            let show_toolpaths = self.state.borrow().show_toolpaths;
-            if show_toolpaths {
-                self.generate_preview_toolpaths();
-            }
-
-            // Queue draw after clearing state
-            self.widget.queue_draw();
+            // Refresh panels, toolpath preview and canvas after resize/move/creation
+            // or marquee selection (all borrows are released at this point).
+            self.notify_model_changed();
         }
     }
 
@@ -1614,11 +1494,6 @@ impl DesignerCanvas {
             if let Some(shape) = shape {
                 state.add_shape_with_undo(shape);
             }
-        } // Drop the mutable borrow here
-
-        // Refresh layers panel
-        if let Some(layers_panel) = self.layers.borrow().as_ref() {
-            layers_panel.refresh(&self.state);
-        }
+        } // Drop the mutable borrow here; the caller refreshes the panels.
     }
 }

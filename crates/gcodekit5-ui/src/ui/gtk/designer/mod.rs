@@ -38,7 +38,8 @@ pub struct DesignerView {
     pub canvas: Rc<DesignerCanvas>,
     pub toolbox: Rc<DesignerToolbox>,
     pub(crate) _properties: Rc<PropertiesPanel>,
-    pub(crate) layers: Rc<LayersPanel>,
+    /// Kept alive with the view; the canvas refreshes it on model changes.
+    pub(crate) _layers: Rc<LayersPanel>,
     pub(crate) status_label: Label,
     pub(crate) _coord_label: Label,
     pub(crate) current_file: SharedOption<PathBuf>,
@@ -332,22 +333,34 @@ impl DesignerView {
         properties.widget.set_vexpand(true);
         properties.widget.set_valign(gtk4::Align::Fill);
 
-        // Set up redraw callback for properties
-        let canvas_redraw = canvas.clone();
-        let properties_ui = properties.clone();
+        // Set up redraw callback for properties. The callback is stored inside the
+        // properties panel (and the canvas holds the panel), so it must only hold weak
+        // references to both, otherwise the Rc cycle is never freed.
+        let canvas_redraw = Rc::downgrade(&canvas);
+        let properties_ui = Rc::downgrade(&properties);
 
         properties.set_redraw_callback(move || {
-            let state = canvas_redraw.state.borrow();
-            let _has_selection = state.canvas.selection_manager.selected_id().is_some();
-
-            let show_toolpaths = state.show_toolpaths;
-            drop(state);
-            if show_toolpaths {
-                canvas_redraw.generate_preview_toolpaths();
+            if let Some(canvas) = canvas_redraw.upgrade() {
+                let show_toolpaths = canvas.state.borrow().show_toolpaths;
+                if show_toolpaths {
+                    canvas.generate_preview_toolpaths();
+                }
+                canvas.widget.queue_draw();
             }
-            canvas_redraw.widget.queue_draw();
-            properties_ui.update_from_selection();
+            if let Some(properties) = properties_ui.upgrade() {
+                properties.update_from_selection();
+            }
         });
+
+        // Laser fields that show global tool values must follow edits to those globals.
+        {
+            let properties_tools = Rc::downgrade(&properties);
+            toolbox.set_on_tool_settings_changed(move || {
+                if let Some(properties) = properties_tools.upgrade() {
+                    properties.update_from_selection();
+                }
+            });
+        }
 
         // Inspector header + hide button (matches DeviceConsole / Visualizer sidebar UX)
         let props_hidden = Rc::new(Cell::new(false));
@@ -459,6 +472,39 @@ impl DesignerView {
         // Give canvas references to panels
         canvas.set_properties_panel(properties.clone());
         canvas.set_layers_panel(layers.clone());
+
+        // Selection/model changes made in the layers panel refresh the properties panel
+        // (the panels are refreshed explicitly; nothing polls the selection).
+        {
+            let properties_weak = Rc::downgrade(&properties);
+            layers.set_on_change(move || {
+                if let Some(properties) = properties_weak.upgrade() {
+                    properties.update_from_selection();
+                }
+            });
+        }
+
+        // Machine-mode switches change which property sections are shown.
+        {
+            let properties_weak = Rc::downgrade(&properties);
+            toolbox.register_refresh_callback(move || {
+                if let Some(properties) = properties_weak.upgrade() {
+                    properties.update_from_selection();
+                }
+            });
+        }
+
+        // Measurement-system changes change the units shown in the properties panel.
+        {
+            let properties_weak = Rc::downgrade(&properties);
+            settings_controller.on_setting_changed(move |key, _value| {
+                if key == "measurement_system" || key == "units.measurement_system" {
+                    if let Some(properties) = properties_weak.upgrade() {
+                        properties.update_from_selection();
+                    }
+                }
+            });
+        }
 
         // Paned layout: right sidebar is resizable from the center paned
         let center_paned = Paned::new(Orientation::Horizontal);
@@ -690,12 +736,11 @@ impl DesignerView {
 
         // Connect fast shape gallery to insert shapes
         let canvas_shape = canvas.clone();
-        let layers_shape = layers.clone();
         toolbox
             .fast_shape_gallery()
             .connect_shape_selected(move |shape| {
+                // The shape is only added (and the panels refreshed) when it is placed.
                 canvas_shape.set_pending_fast_shape(shape);
-                layers_shape.refresh(&canvas_shape.state);
             });
 
         let view = Rc::new(Self {
@@ -703,7 +748,7 @@ impl DesignerView {
             canvas: canvas.clone(),
             toolbox: toolbox.clone(),
             _properties: properties.clone(),
-            layers: layers.clone(),
+            _layers: layers.clone(),
             status_label,
             _coord_label: coord_label,
             current_file,
@@ -747,14 +792,9 @@ impl DesignerView {
             });
         }
 
-        // Update properties panel and toolbox when selection changes
-        let props_update = properties.clone();
-        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            // Check if we need to update properties (when canvas is redrawn or selection changes)
-            props_update.update_from_selection();
-
-            gtk4::glib::ControlFlow::Continue
-        });
+        // The properties panel is refreshed explicitly on selection and model changes
+        // (see `DesignerCanvas::refresh_panels`); start it in sync with the state.
+        properties.update_from_selection();
 
         // Setup keyboard shortcuts
         Self::setup_keyboard_shortcuts(&canvas);
@@ -799,8 +839,7 @@ impl DesignerView {
     }
 
     pub fn cut(&self) {
-        self.canvas.copy_selected();
-        self.canvas.delete_selected();
+        self.canvas.cut();
     }
 
     pub fn copy(&self) {

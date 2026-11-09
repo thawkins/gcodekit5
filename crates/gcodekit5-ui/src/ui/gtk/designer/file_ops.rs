@@ -4,58 +4,186 @@ use super::*;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::serialization::DesignMode;
 
+/// Clonable handles to the parts of a [`DesignerView`] that document operations
+/// (new / open) need, so they can run from dialog callbacks.
+#[derive(Clone)]
+struct DocumentHandles {
+    widget: Box,
+    canvas: Rc<DesignerCanvas>,
+    toolbox: Rc<crate::ui::gtk::designer_toolbox::DesignerToolbox>,
+    current_file: SharedOption<PathBuf>,
+    status_label: Label,
+    settings_persistence: Option<Shared<gcodekit5_settings::SettingsPersistence>>,
+}
+
+/// Serialises the current design (shapes, tool/stock settings, viewport and mode).
+fn build_design_file(state: &DesignerState, path: &std::path::Path) -> DesignFile {
+    let mut design = DesignFile::new(path.file_stem().unwrap_or_default().to_string_lossy());
+
+    design.design_mode = match state.machine_mode() {
+        MachineMode::Laser2D => DesignMode::TwoD,
+        MachineMode::Cnc3D => DesignMode::ThreeD,
+    };
+
+    // Viewport
+    design.viewport.zoom = state.canvas.zoom();
+    design.viewport.pan_x = state.canvas.pan_x();
+    design.viewport.pan_y = state.canvas.pan_y();
+
+    // Tool settings
+    design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
+    design.toolpath_params.spindle_speed = state.tool_settings.spindle_speed as f64;
+    design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
+    design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
+    design.toolpath_params.step_down = state.tool_settings.step_down;
+    design.toolpath_params.continuous_z_between_passes =
+        state.tool_settings.continuous_z_between_passes;
+
+    // Stock and toolpath parameters
+    if let Some(ref stock) = state.stock_material {
+        design.toolpath_params.stock_width = stock.width;
+        design.toolpath_params.stock_height = stock.height;
+        design.toolpath_params.stock_thickness = stock.thickness;
+        design.toolpath_params.safe_z_height = stock.safe_z;
+    }
+
+    // Shapes
+    for obj in state.canvas.shapes() {
+        design.shapes.push(DesignFile::from_drawing_object(obj));
+    }
+
+    design
+}
+
+/// Writes the design held in `state` to `path` and clears the modified flag on success.
+///
+/// # Returns
+/// `Ok(())` when the file was written, otherwise the error message.
+fn save_design(state: &Shared<DesignerState>, path: &std::path::Path) -> Result<(), String> {
+    let design = build_design_file(&state.borrow(), path);
+    design.save_to_file(path).map_err(|e| e.to_string())?;
+    state.borrow_mut().is_modified = false;
+    Ok(())
+}
+
+impl DocumentHandles {
+    /// Clears the design and starts a new document in `mode`.
+    fn reset_document(&self, mode: MachineMode, status: &str) {
+        {
+            let mut state = self.canvas.state.borrow_mut();
+            state.canvas.clear();
+            // Undo history refers to shapes of the previous document; replaying it
+            // against the new one would corrupt it.
+            state.clear_history();
+            state.set_machine_mode(mode);
+            state.is_modified = false;
+        }
+        *self.current_file.borrow_mut() = None;
+
+        self.toolbox.refresh_settings();
+        self.canvas.notify_model_changed();
+        self.status_label.set_text(status);
+    }
+
+    /// Runs `proceed` right away when the design has no unsaved changes; otherwise
+    /// asks the user to confirm discarding them first.
+    fn confirm_discard_changes(&self, proceed: impl FnOnce() + 'static) {
+        let modified = self.canvas.state.borrow().is_modified;
+        if !modified {
+            proceed();
+            return;
+        }
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        crate::ui::gtk::common::dialog::show_confirmation(
+            &t!("Unsaved changes"),
+            &t!("The current design has unsaved changes. Discard them and continue?"),
+            parent.as_ref(),
+            move |confirmed| {
+                if confirmed {
+                    proceed();
+                }
+            },
+        );
+    }
+}
+
 impl DesignerView {
+    fn document_handles(&self) -> DocumentHandles {
+        DocumentHandles {
+            widget: self.widget.clone(),
+            canvas: self.canvas.clone(),
+            toolbox: self.toolbox.clone(),
+            current_file: self.current_file.clone(),
+            status_label: self.status_label.clone(),
+            settings_persistence: self.settings_persistence.clone(),
+        }
+    }
+
+    /// Returns `true` when the design has changes that have not been saved.
+    ///
+    /// The application window's close handler should call this (or
+    /// [`DesignerView::confirm_discard_changes`]) before quitting.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.canvas.state.borrow().is_modified
+    }
+
+    /// Runs `proceed` right away when there are no unsaved changes; otherwise asks the
+    /// user to confirm discarding them and runs `proceed` only if they agree.
+    ///
+    /// # Arguments
+    /// * `proceed` - action to perform once it is safe to discard the current design
+    pub fn confirm_discard_changes(&self, proceed: impl FnOnce() + 'static) {
+        self.document_handles().confirm_discard_changes(proceed);
+    }
+
+    /// Starts a new (2D) design, asking first if there are unsaved changes.
     pub fn new_file(&self) {
         self.new_file_2d();
     }
 
+    /// Starts a new 2D (laser) design, asking first if there are unsaved changes.
     pub fn new_file_2d(&self) {
-        let mut state = self.canvas.state.borrow_mut();
-        state.canvas.clear();
-        // Undo history refers to shapes of the previous document; replaying it
-        // against the new one would corrupt it.
-        state.clear_history();
-        state.is_modified = false;
-        state.set_machine_mode(MachineMode::Laser2D);
-        *self.current_file.borrow_mut() = None;
-        drop(state);
-
-        self.toolbox.refresh_settings();
-        self.layers.refresh(&self.canvas.state);
-        self.canvas.widget.queue_draw();
-        self.set_status(&t!("New 2D design created"));
+        let handles = self.document_handles();
+        let h = handles.clone();
+        handles.confirm_discard_changes(move || {
+            h.reset_document(MachineMode::Laser2D, &t!("New 2D design created"));
+        });
     }
 
+    /// Starts a new 3D (CNC) design, asking first if there are unsaved changes.
     pub fn new_file_3d(&self) {
-        let mut state = self.canvas.state.borrow_mut();
-        state.canvas.clear();
-        // Undo history refers to shapes of the previous document; replaying it
-        // against the new one would corrupt it.
-        state.clear_history();
-        state.is_modified = false;
-        state.set_machine_mode(MachineMode::Cnc3D);
-        *self.current_file.borrow_mut() = None;
-        drop(state);
-
-        self.toolbox.refresh_settings();
-        self.layers.refresh(&self.canvas.state);
-        self.canvas.widget.queue_draw();
-        self.set_status(&t!("New 3D design created"));
+        let handles = self.document_handles();
+        let h = handles.clone();
+        handles.confirm_discard_changes(move || {
+            h.reset_document(MachineMode::Cnc3D, &t!("New 3D design created"));
+        });
     }
 
+    /// Opens a design file, asking first if there are unsaved changes.
     pub fn open_file(&self) {
+        let handles = self.document_handles();
+        let h = handles.clone();
+        handles.confirm_discard_changes(move || h.show_open_dialog());
+    }
+}
+
+impl DocumentHandles {
+    /// Shows the "Open Design File" dialog and loads the chosen file.
+    fn show_open_dialog(&self) {
         let open_label = t!("Open");
         let cancel_label = t!("Cancel");
 
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = gtk4::FileChooserDialog::new(
             Some(&t!("Open Design File")),
-            None::<&gtk4::Window>,
+            parent.as_ref(),
             gtk4::FileChooserAction::Open,
             &[
                 (&*open_label, gtk4::ResponseType::Accept),
                 (&*cancel_label, gtk4::ResponseType::Cancel),
             ],
         );
+        dialog.set_modal(true);
 
         if let Some(ref settings) = self.settings_persistence {
             if let Ok(settings_ref) = settings.try_borrow() {
@@ -86,7 +214,6 @@ impl DesignerView {
         let settings_persistence_clone = self.settings_persistence.clone();
         let canvas = self.canvas.clone();
         let current_file = self.current_file.clone();
-        let layers = self.layers.clone();
         let status_label = self.status_label.clone();
         let toolbox = self.toolbox.clone();
 
@@ -183,9 +310,8 @@ impl DesignerView {
                                     canvas.zoom_fit();
                                 }
 
-                                layers.refresh(&canvas.state);
                                 toolbox.refresh_settings();
-                                canvas.widget.queue_draw();
+                                canvas.notify_model_changed();
                                 status_label.set_text(&format!(
                                     "{} {}",
                                     t!("Loaded:"),
@@ -202,24 +328,13 @@ impl DesignerView {
             dialog.destroy();
         });
 
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "output.gckd".to_string())
-        } else {
-            // If the design has never been saved before
-            "untitled_design.gckd".to_string()
-        };
-
-        dialog.set_current_name(&default_name);
-        // ------------------------------------------------------------
+        // Open dialogs take no file name (`set_current_name` is Save-only in GTK).
 
         dialog.show();
     }
+}
 
+impl DesignerView {
     pub(crate) fn import_file_internal(&self, kind: Option<&'static str>) {
         let title = match kind {
             Some("svg") => t!("Import SVG File"),
@@ -332,7 +447,6 @@ impl DesignerView {
         dialog.add_filter(&all_filter);
 
         let canvas = self.canvas.clone();
-        let layers = self.layers.clone();
         let status_label = self.status_label.clone();
         let settings_persistence_clone = self.settings_persistence.clone();
         let toolbox = self.toolbox.clone();
@@ -464,8 +578,7 @@ impl DesignerView {
                                 // Make imported geometry visible immediately
                                 canvas.zoom_fit();
 
-                                layers.refresh(&canvas.state);
-                                canvas.widget.queue_draw();
+                                canvas.notify_model_changed();
                                 status_label.set_text(&format!(
                                     "{} {}",
                                     t!("Imported:"),
@@ -515,20 +628,7 @@ impl DesignerView {
             }
             dialog.destroy();
         });
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "output.gckd".to_string())
-        } else {
-            // If the design has never been saved before
-            "untitled_design.gckd".to_string()
-        };
-
-        dialog.set_current_name(&default_name);
-        // ------------------------------------------------------------
+        // Open dialogs take no file name (`set_current_name` is Save-only in GTK).
         dialog.show();
     }
 
@@ -562,9 +662,10 @@ impl DesignerView {
         let save_label = t!("Save");
         let cancel_label = t!("Cancel");
 
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = gtk4::FileChooserDialog::new(
             Some(t!("Save Design File")),
-            None::<&gtk4::Window>,
+            parent.as_ref(),
             gtk4::FileChooserAction::Save,
             &[
                 (&*save_label, gtk4::ResponseType::Accept),
@@ -623,47 +724,8 @@ impl DesignerView {
                             }
                         }
 
-                        // Save logic
-                        let state = canvas.state.borrow();
-                        let mut design =
-                            DesignFile::new(path.file_stem().unwrap_or_default().to_string_lossy());
-
-                        design.design_mode = match state.machine_mode() {
-                            MachineMode::Laser2D => DesignMode::TwoD,
-                            MachineMode::Cnc3D => DesignMode::ThreeD,
-                        };
-
-                        // Viewport
-                        design.viewport.zoom = state.canvas.zoom();
-                        design.viewport.pan_x = state.canvas.pan_x();
-                        design.viewport.pan_y = state.canvas.pan_y();
-
-                        // Tool settings
-                        design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
-                        design.toolpath_params.spindle_speed =
-                            state.tool_settings.spindle_speed as f64;
-                        design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
-                        design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
-                        design.toolpath_params.step_down = state.tool_settings.step_down;
-                        design.toolpath_params.continuous_z_between_passes =
-                            state.tool_settings.continuous_z_between_passes;
-
-                        // Stock and toolpath parameters
-                        if let Some(ref stock) = state.stock_material {
-                            design.toolpath_params.stock_width = stock.width;
-                            design.toolpath_params.stock_height = stock.height;
-                            design.toolpath_params.stock_thickness = stock.thickness;
-                            design.toolpath_params.safe_z_height = stock.safe_z;
-                        }
-
-                        // Shapes
-                        for obj in state.canvas.shapes() {
-                            let shape_data = DesignFile::from_drawing_object(obj);
-                            design.shapes.push(shape_data);
-                        }
-
-                        match design.save_to_file(&path) {
-                            Ok(_) => {
+                        match save_design(&canvas.state, &path) {
+                            Ok(()) => {
                                 *current_file.borrow_mut() = Some(path.clone());
                                 status_label.set_text(&format!(
                                     "{} {}",
@@ -700,45 +762,10 @@ impl DesignerView {
         dialog.show();
     }
 
+    /// Saves the design to `path` and clears the modified flag on success.
     pub(crate) fn save_to_path(&self, path: PathBuf) {
-        let state = self.canvas.state.borrow();
-        let mut design = DesignFile::new(path.file_stem().unwrap_or_default().to_string_lossy());
-
-        design.design_mode = match state.machine_mode() {
-            MachineMode::Laser2D => DesignMode::TwoD,
-            MachineMode::Cnc3D => DesignMode::ThreeD,
-        };
-
-        // Viewport
-        design.viewport.zoom = state.canvas.zoom();
-        design.viewport.pan_x = state.canvas.pan_x();
-        design.viewport.pan_y = state.canvas.pan_y();
-
-        // Tool settings
-        design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
-        design.toolpath_params.spindle_speed = state.tool_settings.spindle_speed as f64;
-        design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
-        design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
-        design.toolpath_params.step_down = state.tool_settings.step_down;
-        design.toolpath_params.continuous_z_between_passes =
-            state.tool_settings.continuous_z_between_passes;
-
-        // Stock and toolpath parameters
-        if let Some(ref stock) = state.stock_material {
-            design.toolpath_params.stock_width = stock.width;
-            design.toolpath_params.stock_height = stock.height;
-            design.toolpath_params.stock_thickness = stock.thickness;
-            design.toolpath_params.safe_z_height = stock.safe_z;
-        }
-
-        // Shapes
-        for obj in state.canvas.shapes() {
-            let shape_data = DesignFile::from_drawing_object(obj);
-            design.shapes.push(shape_data);
-        }
-
-        match design.save_to_file(&path) {
-            Ok(_) => {
+        match save_design(&self.canvas.state, &path) {
+            Ok(()) => {
                 self.set_status(&format!("{} {}", t!("Saved:"), path.display()));
             }
             Err(e) => {
@@ -752,9 +779,10 @@ impl DesignerView {
         let export_label = t!("Export");
         let cancel_label = t!("Cancel");
 
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = gtk4::FileChooserDialog::new(
             Some(t!("Export G-Code")),
-            None::<&gtk4::Window>,
+            parent.as_ref(),
             gtk4::FileChooserAction::Save,
             &[
                 (&*export_label, gtk4::ResponseType::Accept),
@@ -920,9 +948,10 @@ impl DesignerView {
         let export_label = t!("Export");
         let cancel_label = t!("Cancel");
 
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = gtk4::FileChooserDialog::new(
             Some(t!("Export SVG")),
-            None::<&gtk4::Window>,
+            parent.as_ref(),
             gtk4::FileChooserAction::Save,
             &[
                 (&*export_label, gtk4::ResponseType::Accept),
@@ -1162,12 +1191,10 @@ impl DesignerView {
     // TODO(#17): File operations - Implement once shape structures are aligned
     // Phase 8 infrastructure is in place but needs shape struct updates
 
+    /// Adds `shape` to the design as an undoable edit.
     pub fn add_shape(&self, shape: gcodekit5_designer::model::Shape) {
-        let mut state = self.canvas.state.borrow_mut();
-        state.add_shape_with_undo(shape);
-        drop(state);
-        self.layers.refresh(&self.canvas.state);
-        self.canvas.widget.queue_draw();
+        self.canvas.state.borrow_mut().add_shape_with_undo(shape);
+        self.canvas.notify_model_changed();
     }
 }
 
