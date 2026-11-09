@@ -300,13 +300,38 @@ impl BackupManager {
         // Create backup directory
         fs::create_dir_all(&self.backup_dir)?;
 
-        // Generate backup ID
+        // Generate a unique backup ID: `<secs>` for the first backup in a
+        // second, then `<secs>-1`, `<secs>-2`, ... The name is reserved with
+        // `create_new` so concurrent backups can never overwrite each other.
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        let id = format!("{}", timestamp);
+        let mut seq: u32 = 0;
+        let (id, backup_path) = loop {
+            let id = if seq == 0 {
+                timestamp.to_string()
+            } else {
+                format!("{}-{}", timestamp, seq)
+            };
+            let path = self.backup_dir.join(&id);
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => break (id, path),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    seq = seq
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow::anyhow!("too many backups in one second"))?;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        };
 
         // Create backup
-        let backup_path = self.backup_dir.join(&id);
-        fs::copy(source, &backup_path)?;
+        if let Err(e) = fs::copy(source, &backup_path) {
+            fs::remove_file(&backup_path).ok();
+            return Err(e.into());
+        }
 
         let size = fs::metadata(&backup_path)?.len();
 
@@ -337,7 +362,7 @@ impl BackupManager {
                 let path = entry.path();
 
                 if let Some(id) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Ok(timestamp) = id.parse::<u64>() {
+                    if let Some((timestamp, _)) = Self::parse_backup_id(id) {
                         if let Ok(metadata) = fs::metadata(&path) {
                             backups.push(BackupEntry {
                                 id: id.to_string(),
@@ -353,8 +378,18 @@ impl BackupManager {
             }
         }
 
-        backups.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
+        backups.sort_by_key(|b| {
+            std::cmp::Reverse(Self::parse_backup_id(&b.id).unwrap_or((b.timestamp, 0)))
+        });
         Ok(backups)
+    }
+
+    /// Parse a backup ID (`<secs>` or `<secs>-<seq>`) into `(secs, seq)`.
+    fn parse_backup_id(id: &str) -> Option<(u64, u32)> {
+        match id.split_once('-') {
+            Some((secs, seq)) => Some((secs.parse().ok()?, seq.parse().ok()?)),
+            None => Some((id.parse().ok()?, 0)),
+        }
     }
 
     /// Clean old backups

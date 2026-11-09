@@ -3,6 +3,15 @@
 //! Simulates material removal from the stock block as the toolpath
 //! is executed. Uses a heightmap or voxel approach to visualize
 //! the workpiece after cutting operations.
+//!
+//! ## Coordinate convention
+//! [`StockSimulator3D`] takes toolpaths in G-code work coordinates (mm). The
+//! top face of the stock is at `stock_top_z` (Z0 by default, as most CAM
+//! output assumes), so the material occupies `stock_top_z - thickness ..=
+//! stock_top_z`, and material is removed only where the tool tip is below the
+//! stock top (`tip.z < stock_top_z`). The [`VoxelGrid`] itself is indexed from
+//! the stock bottom (grid Z 0 = bottom face); [`StockSimulator3D::get_mesh`]
+//! translates the mesh back into work coordinates.
 
 use glam::Vec3;
 
@@ -302,17 +311,79 @@ pub fn generate_surface_mesh(grid: &VoxelGrid) -> Vec<f32> {
 }
 // ---
 
+/// Infer the work Z of the stock top from a toolpath.
+///
+/// Programs zeroed on the top of the stock (most CAM output) cut at negative Z;
+/// programs zeroed on the bottom of the stock (GCodeKit's own designer) cut
+/// between 0 and the stock thickness.
+///
+/// # Arguments
+/// * `toolpath` - Toolpath segments in work coordinates (mm).
+/// * `thickness` - Stock thickness in mm.
+///
+/// # Returns
+/// `0.0` when any feed move goes below Z0 (or there are no feed moves),
+/// otherwise `thickness`.
+pub fn infer_stock_top_z(toolpath: &[ToolpathSegment], thickness: f32) -> f32 {
+    let min_feed_z = toolpath
+        .iter()
+        .filter(|seg| seg.segment_type != ToolpathSegmentType::RapidMove)
+        .flat_map(|seg| [seg.start.2, seg.end.2])
+        .filter(|z| z.is_finite())
+        .fold(f32::INFINITY, f32::min);
+    if min_feed_z.is_finite() && min_feed_z >= 0.0 {
+        thickness
+    } else {
+        0.0
+    }
+}
+
+/// Material-removal simulator for a rectangular stock block.
+///
+/// See the module docs for the coordinate convention.
 pub struct StockSimulator3D {
     grid: VoxelGrid,
     tool_radius: f32,
+    /// Work Z (mm) of the top face of the stock.
+    stock_top_z: f32,
+    /// Stock thickness (mm).
+    thickness: f32,
 }
 
 impl StockSimulator3D {
+    /// Create a simulator whose stock top face is at work Z0.
+    ///
+    /// # Arguments
+    /// * `width`, `height`, `depth` - Stock size in mm (X, Y, thickness).
+    /// * `resolution` - Voxel edge length in mm.
+    /// * `tool_radius` - Flat end mill radius in mm.
     pub fn new(width: f32, height: f32, depth: f32, resolution: f32, tool_radius: f32) -> Self {
         Self {
             grid: VoxelGrid::new(width, height, depth, resolution),
             tool_radius,
+            stock_top_z: 0.0,
+            thickness: depth,
         }
+    }
+
+    /// Set the work Z (mm) of the top face of the stock (default 0).
+    ///
+    /// # Arguments
+    /// * `stock_top_z` - Work Z of the stock top; use `thickness` for programs
+    ///   that zero on the machine bed / bottom of the stock.
+    ///
+    /// # Returns
+    /// The simulator, for chaining.
+    pub fn with_stock_top_z(mut self, stock_top_z: f32) -> Self {
+        if stock_top_z.is_finite() {
+            self.stock_top_z = stock_top_z;
+        }
+        self
+    }
+
+    /// Work Z (mm) of the top face of the stock.
+    pub fn stock_top_z(&self) -> f32 {
+        self.stock_top_z
     }
 
     pub fn get_grid(&self) -> &VoxelGrid {
@@ -323,13 +394,18 @@ impl StockSimulator3D {
         let _ = self.simulate_toolpath_with_progress(toolpath, |_| true);
     }
 
-    /// Remove stock using a flat-end cylindrical cutter where `tip.z` is the
-    /// circular base plane of the cutter.
+    /// Remove stock using a flat-end cylindrical cutter whose tip (the
+    /// circular base plane of the cutter) is at `tip` in work coordinates.
+    ///
+    /// Nothing is removed while the tip is at or above the stock top.
     fn remove_at_tool_tip(&mut self, tip: Vec3) {
-        if tip.z <= 0.0 {
+        if tip.z.is_nan() || tip.z >= self.stock_top_z {
             return;
         }
-        self.grid.remove_cylinder_from_base(tip, self.tool_radius);
+        let stock_bottom_z = self.stock_top_z - self.thickness;
+        let grid_tip = Vec3::new(tip.x, tip.y, tip.z - stock_bottom_z);
+        self.grid
+            .remove_cylinder_from_base(grid_tip, self.tool_radius);
     }
 
     /// Calculate the total distance of all segments in the toolpath
@@ -503,7 +579,7 @@ impl StockSimulator3D {
     {
         let steps = steps.max(1);
         let block_size = 8; // Bloques más pequeños para progreso más suave
-        let num_blocks = ((steps + block_size - 1) / block_size).max(1);
+        let num_blocks = steps.div_ceil(block_size).max(1);
 
         for block in 0..num_blocks {
             let block_start = block * block_size;
@@ -574,7 +650,7 @@ impl StockSimulator3D {
 
         let steps = steps.max(1);
         let block_size = 8; // Bloques más pequeños para progreso más suave
-        let num_blocks = ((steps + block_size - 1) / block_size).max(1);
+        let num_blocks = steps.div_ceil(block_size).max(1);
 
         for block in 0..num_blocks {
             let block_start = block * block_size;
@@ -715,7 +791,18 @@ impl StockSimulator3D {
             true
         }
     */
+    /// Surface mesh of the remaining stock in work coordinates.
+    ///
+    /// Same layout as [`generate_surface_mesh`] (position, normal, colour; 10
+    /// floats per vertex) with Z shifted so the stock top is at `stock_top_z`.
     pub fn get_mesh(&self) -> Vec<f32> {
-        generate_surface_mesh(&self.grid)
+        let mut mesh = generate_surface_mesh(&self.grid);
+        let z_offset = self.stock_top_z - self.thickness;
+        if z_offset != 0.0 {
+            for vertex in mesh.chunks_exact_mut(10) {
+                vertex[2] += z_offset;
+            }
+        }
+        mesh
     }
 }

@@ -255,6 +255,74 @@ impl DecimalProcessor {
         let multiplier = 10_f64.powi(precision as i32);
         (value * multiplier).round() / multiplier
     }
+
+    /// Upper-case a comment-free code segment and round every number in it,
+    /// appending the result to `out`.
+    fn round_code_segment(&self, code: &str, precision: u32, out: &mut String) {
+        let mut current_number = String::new();
+        let flush = |number: &mut String, out: &mut String| {
+            if number.is_empty() {
+                return;
+            }
+            match number.parse::<f64>() {
+                Ok(value) => out.push_str(&format!("{}", self.round_coordinate(value, precision))),
+                Err(_) => out.push_str(number),
+            }
+            number.clear();
+        };
+
+        for ch in code.chars() {
+            if ch.is_ascii_digit() || ch == '.' || ch == '-' {
+                current_number.push(ch);
+            } else {
+                flush(&mut current_number, out);
+                out.extend(ch.to_uppercase());
+            }
+        }
+        flush(&mut current_number, out);
+    }
+}
+
+/// Split a G-code line into code and comment segments.
+///
+/// Returns `(is_comment, text)` pairs that concatenate back to `line`.
+/// Parenthesised comments run to the closing `)` (or the end of the line when
+/// unclosed); a `;` outside parentheses starts a comment that runs to the end.
+fn split_code_and_comments(line: &str) -> Vec<(bool, &str)> {
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut in_paren = false;
+    for (idx, ch) in line.char_indices() {
+        if in_paren {
+            if ch == ')' {
+                segments.push((true, &line[start..idx + 1]));
+                start = idx + 1;
+                in_paren = false;
+            }
+            continue;
+        }
+        match ch {
+            '(' => {
+                if idx > start {
+                    segments.push((false, &line[start..idx]));
+                }
+                start = idx;
+                in_paren = true;
+            }
+            ';' => {
+                if idx > start {
+                    segments.push((false, &line[start..idx]));
+                }
+                segments.push((true, &line[idx..]));
+                return segments;
+            }
+            _ => {}
+        }
+    }
+    if start < line.len() {
+        segments.push((in_paren, &line[start..]));
+    }
+    segments
 }
 
 impl Default for DecimalProcessor {
@@ -283,40 +351,14 @@ impl CommandProcessor for DecimalProcessor {
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(5);
 
-        let cmd_upper = command.command.to_uppercase();
         let mut processed = command.clone();
-
-        // Find and replace all numeric values with rounded versions
-        let mut result = String::new();
-        let mut current_number = String::new();
-        let mut last_was_digit = false;
-
-        for ch in cmd_upper.chars() {
-            if ch.is_ascii_digit() || ch == '.' || ch == '-' {
-                current_number.push(ch);
-                last_was_digit = true;
+        let mut result = String::with_capacity(command.command.len());
+        for (is_comment, segment) in split_code_and_comments(&command.command) {
+            if is_comment {
+                // Comments are copied verbatim (no case change, no rounding).
+                result.push_str(segment);
             } else {
-                if last_was_digit && !current_number.is_empty() {
-                    if let Ok(value) = current_number.parse::<f64>() {
-                        let rounded = self.round_coordinate(value, precision);
-                        result.push_str(&format!("{}", rounded));
-                    } else {
-                        result.push_str(&current_number);
-                    }
-                    current_number.clear();
-                }
-                result.push(ch);
-                last_was_digit = false;
-            }
-        }
-
-        // Handle last number if command ends with a digit
-        if !current_number.is_empty() {
-            if let Ok(value) = current_number.parse::<f64>() {
-                let rounded = self.round_coordinate(value, precision);
-                result.push_str(&format!("{}", rounded));
-            } else {
-                result.push_str(&current_number);
+                self.round_code_segment(segment, precision, &mut result);
             }
         }
 
@@ -341,15 +383,39 @@ impl CommandProcessor for DecimalProcessor {
 pub struct PatternRemover {
     config: ProcessorConfig,
     pattern: String,
+    /// Compiled once at construction; `None` when the pattern is invalid, in
+    /// which case every command passes through unchanged.
+    regex: Option<regex::Regex>,
 }
 
 impl PatternRemover {
     /// Create a new pattern remover with the specified regex pattern
+    ///
+    /// # Arguments
+    /// * `pattern` - Regular expression; matching commands are removed.
     pub fn new(pattern: &str) -> Self {
+        let regex = match regex::Regex::new(pattern) {
+            Ok(re) => Some(re),
+            Err(e) => {
+                tracing::warn!(pattern, error = %e, "PatternRemover: invalid regex, disabled");
+                None
+            }
+        };
         Self {
             config: ProcessorConfig::new(),
             pattern: pattern.to_string(),
+            regex,
         }
+    }
+
+    /// The pattern this remover was created with.
+    pub fn pattern(&self) -> &str {
+        &self.pattern
+    }
+
+    /// Whether the pattern compiled successfully.
+    pub fn is_valid(&self) -> bool {
+        self.regex.is_some()
     }
 }
 
@@ -373,7 +439,7 @@ impl CommandProcessor for PatternRemover {
         command: &GcodeCommand,
         _state: &GcodeState,
     ) -> Result<Vec<GcodeCommand>, String> {
-        if let Ok(re) = regex::Regex::new(&self.pattern) {
+        if let Some(re) = &self.regex {
             if re.is_match(&command.command) {
                 return Ok(vec![]);
             }
@@ -392,8 +458,10 @@ impl CommandProcessor for PatternRemover {
 
 /// Arc Expander Processor
 ///
-/// Expands arc commands (G02, G03) into multiple linear segments.
-/// This is useful for controllers that don't support arc commands natively.
+/// Placeholder for expanding arc commands (G02, G03) into linear segments.
+/// Expansion needs the machine position at the start of each arc, which the
+/// processor pipeline does not provide, so arcs are currently passed through
+/// unchanged for the controller to interpolate natively.
 #[derive(Debug, Clone)]
 pub struct ArcExpander {
     config: ProcessorConfig,
@@ -420,7 +488,7 @@ impl CommandProcessor for ArcExpander {
     }
 
     fn description(&self) -> &str {
-        "Expands arc commands (G02/G03) into linear segments"
+        "Passes arc commands (G02/G03) through unchanged; arc expansion is not supported"
     }
 
     fn process(

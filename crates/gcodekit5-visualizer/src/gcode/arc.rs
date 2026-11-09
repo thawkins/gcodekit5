@@ -118,3 +118,93 @@ pub fn arc_bounds(
 
     (min_x, min_y, max_x, max_y)
 }
+
+/// Radius, start angle and signed sweep of an arc given by its centre and end points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ArcSweep {
+    /// Arc radius, measured from the centre to the start point.
+    pub radius: f64,
+    /// Angle of the start point around the centre (radians).
+    pub start_angle: f64,
+    /// Signed angular travel (radians, negative for clockwise).
+    pub sweep: f64,
+}
+
+impl ArcSweep {
+    /// Point on the arc at parameter `t` (0 = start, 1 = end) in plane coordinates.
+    ///
+    /// # Arguments
+    /// * `center` - Arc centre.
+    /// * `t` - Fraction of the sweep, normally in `[0, 1]`.
+    ///
+    /// # Returns
+    /// The `(x, y)` point on the circle at that fraction of the sweep.
+    pub fn point_at(&self, center: (f64, f64), t: f64) -> (f64, f64) {
+        let angle = self.start_angle + self.sweep * t;
+        (
+            center.0 + self.radius * angle.cos(),
+            center.1 + self.radius * angle.sin(),
+        )
+    }
+
+    /// Number of straight segments needed to draw this arc so that no segment
+    /// spans more than `max_segment_angle` radians.
+    ///
+    /// # Arguments
+    /// * `max_segment_angle` - Largest angle (radians) a single segment may cover.
+    /// * `min_segments` / `max_segments` - Clamp for the result.
+    ///
+    /// # Returns
+    /// The segment count, clamped to `[min_segments, max_segments]`.
+    pub fn segment_count(
+        &self,
+        max_segment_angle: f64,
+        min_segments: usize,
+        max_segments: usize,
+    ) -> usize {
+        let step = if max_segment_angle.is_finite() && max_segment_angle > 0.0 {
+            max_segment_angle
+        } else {
+            std::f64::consts::PI / 18.0
+        };
+        let wanted = (self.sweep.abs() / step).ceil();
+        let wanted = if wanted.is_finite() {
+            wanted as usize
+        } else {
+            0
+        };
+        wanted.clamp(min_segments.max(1), max_segments.max(min_segments.max(1)))
+    }
+}
+
+/// Compute the sweep of an arc from its centre, start and end points.
+///
+/// Uses [`angular_travel`], so coincident start and end points describe a full
+/// circle, matching GRBL.
+///
+/// # Arguments
+/// * `center` - Arc centre in plane coordinates.
+/// * `start` - Start point in plane coordinates.
+/// * `end` - End point in plane coordinates.
+/// * `clockwise` - `true` for G2, `false` for G3.
+///
+/// # Returns
+/// `Some(ArcSweep)`, or `None` when the radius is zero or not finite.
+pub fn arc_sweep(
+    center: (f64, f64),
+    start: (f64, f64),
+    end: (f64, f64),
+    clockwise: bool,
+) -> Option<ArcSweep> {
+    let start_rel = (start.0 - center.0, start.1 - center.1);
+    let end_rel = (end.0 - center.0, end.1 - center.1);
+    let radius = (start_rel.0 * start_rel.0 + start_rel.1 * start_rel.1).sqrt();
+    if !radius.is_finite() || radius < 1e-6 {
+        return None;
+    }
+    Some(ArcSweep {
+        radius,
+        start_angle: start_rel.1.atan2(start_rel.0),
+        sweep: angular_travel(start_rel, end_rel, clockwise),
+    })
+}

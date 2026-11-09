@@ -4,6 +4,7 @@
 //! Handles shader compilation, buffer management, and draw calls
 //! for toolpath, grid, axis, and stock visualization.
 
+use gcodekit5_visualizer::gcode::arc;
 use gcodekit5_visualizer::{GCodeCommand, Point3D, Visualizer};
 use glow::{
     Context, HasContext, NativeBuffer, NativeVertexArray, ARRAY_BUFFER, FLOAT, STATIC_DRAW,
@@ -198,11 +199,22 @@ impl Drop for RenderBuffers {
         }
     }
 }
-// ---
-// En renderer_3d.rs, reemplazar la función existente con esta:
+/// Colour of rapid moves and of feed moves made with the spindle/laser off.
+const TRAVEL_COLOR: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+
+/// Build line vertex data (x, y, z, r, g, b, a per vertex) for the toolpath.
+///
+/// Returns `(travel, cut)`: rapids and moves made with the spindle/laser off
+/// (`intensity == None`, i.e. after M5) go to the travel buffer in grey; powered
+/// feed moves and arcs go to the cut buffer, coloured by intensity.
 pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
     let mut rapid_vertex = Vec::new();
     let mut cut_vertex = Vec::new();
+
+    let cut_color = |intensity: f32| -> [f32; 4] {
+        let (r, g, b) = vis.get_color_for_intensity(intensity);
+        [r, g, b, 1.0]
+    };
 
     for cmd in vis.commands() {
         match cmd {
@@ -211,99 +223,27 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                 to,
                 rapid,
                 intensity,
-            } => {
-                let vertex = if *rapid {
-                    &mut rapid_vertex
-                } else {
-                    &mut cut_vertex
-                };
-
-                let color = if *rapid {
-                    (0.5, 0.5, 0.5, 1.0) // Gris para movimientos rápidos
-                } else {
-                    let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
-                    (r, g, b, 1.0)
-                };
-
-                // Añadir vértices con color (formato: x, y, z, r, g, b, a)
-                vertex.push(from.x);
-                vertex.push(from.y);
-                vertex.push(from.z);
-                vertex.push(color.0);
-                vertex.push(color.1);
-                vertex.push(color.2);
-                vertex.push(color.3);
-
-                vertex.push(to.x);
-                vertex.push(to.y);
-                vertex.push(to.z);
-                vertex.push(color.0);
-                vertex.push(color.1);
-                vertex.push(color.2);
-                vertex.push(color.3);
-            }
+            } => match (*rapid, intensity) {
+                (false, Some(s)) => push_line(&mut cut_vertex, from, to, cut_color(*s)),
+                _ => push_line(&mut rapid_vertex, from, to, TRAVEL_COLOR),
+            },
             GCodeCommand::Arc {
                 from,
                 to,
                 center,
                 clockwise,
                 intensity,
-            } => {
-                let (r, g, b) = vis.get_color_for_intensity(intensity.unwrap_or(0.0));
-                let color = (r, g, b, 1.0);
-
-                // Generar segmentos del arco con color
-                let segments = 32; // Número de segmentos para aproximar el arco
-                let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
-
-                let start_angle = (from.y - center.y).atan2(from.x - center.x);
-                let end_angle = (to.y - center.y).atan2(to.x - center.x);
-
-                let angle_range = if *clockwise {
-                    if end_angle > start_angle {
-                        end_angle - start_angle - 2.0 * std::f32::consts::PI
-                    } else {
-                        end_angle - start_angle
-                    }
-                } else if end_angle < start_angle {
-                    end_angle - start_angle + 2.0 * std::f32::consts::PI
-                } else {
-                    end_angle - start_angle
-                };
-
-                let step = angle_range / segments as f32;
-
-                let mut prev_x = from.x;
-                let mut prev_y = from.y;
-                let mut prev_z = from.z;
-
-                for i in 1..=segments {
-                    let angle = start_angle + step * i as f32;
-                    let x = center.x + radius * angle.cos();
-                    let y = center.y + radius * angle.sin();
-                    let z = from.z + (to.z - from.z) * (i as f32 / segments as f32);
-
-                    cut_vertex.push(prev_x);
-                    cut_vertex.push(prev_y);
-                    cut_vertex.push(prev_z);
-                    cut_vertex.push(color.0);
-                    cut_vertex.push(color.1);
-                    cut_vertex.push(color.2);
-                    cut_vertex.push(color.3);
-
-                    cut_vertex.push(x);
-                    cut_vertex.push(y);
-                    cut_vertex.push(z);
-                    cut_vertex.push(color.0);
-                    cut_vertex.push(color.1);
-                    cut_vertex.push(color.2);
-                    cut_vertex.push(color.3);
-
-                    prev_x = x;
-                    prev_y = y;
-                    prev_z = z;
-                }
-            }
+            } => match intensity {
+                Some(s) => push_arc(&mut cut_vertex, from, to, center, *clockwise, cut_color(*s)),
+                None => push_arc(
+                    &mut rapid_vertex,
+                    from,
+                    to,
+                    center,
+                    *clockwise,
+                    TRAVEL_COLOR,
+                ),
+            },
             GCodeCommand::Dwell { .. } => {}
         }
     }
@@ -429,9 +369,17 @@ pub fn generate_bounds_data(
     vertex
 }
 
+/// Live machine tool marker: a translucent red cone with its tip at the origin.
 pub fn generate_tool_marker_data() -> Vec<f32> {
+    generate_tool_marker_data_with_color([1.0, 0.0, 0.0, 0.40]) // Red with 60% transparency
+}
+
+/// Tool marker cone (tip at the origin, base at Z = 10 mm) in the given RGBA colour.
+///
+/// # Arguments
+/// * `color` - RGBA colour for every vertex.
+pub fn generate_tool_marker_data_with_color(color: [f32; 4]) -> Vec<f32> {
     let mut vertex = Vec::new();
-    let color = [1.0, 0.0, 0.0, 0.40]; // Red with 60% transparency
 
     // Simple pyramid/cone pointing down to (0,0,0)
     // Tip at (0,0,0)
@@ -496,6 +444,11 @@ fn push_line(vertex: &mut Vec<f32>, from: &Point3D, to: &Point3D, color: [f32; 4
     vertex.extend_from_slice(&color);
 }
 
+/// Push an XY arc as line segments.
+///
+/// The sweep comes from the shared arc maths in
+/// `gcodekit5_visualizer::gcode::arc`, so the 3D view draws exactly the arc
+/// the parser computed bounds for (including full circles).
 fn push_arc(
     vertex: &mut Vec<f32>,
     from: &Point3D,
@@ -504,52 +457,32 @@ fn push_arc(
     clockwise: bool,
     color: [f32; 4],
 ) {
-    let radius = ((from.x - center.x).powi(2) + (from.y - center.y).powi(2)).sqrt();
-    let start_angle = (from.y - center.y).atan2(from.x - center.x);
-    let end_angle = (to.y - center.y).atan2(to.x - center.x);
+    let center_xy = (center.x as f64, center.y as f64);
+    let Some(sweep) = arc::arc_sweep(
+        center_xy,
+        (from.x as f64, from.y as f64),
+        (to.x as f64, to.y as f64),
+        clockwise,
+    ) else {
+        // Degenerate arc (zero radius): draw it as a straight move.
+        push_line(vertex, from, to, color);
+        return;
+    };
 
-    let mut angle_diff = end_angle - start_angle;
-    use std::f32::consts::PI;
-
-    if clockwise {
-        if angle_diff > 0.0 {
-            angle_diff -= 2.0 * PI;
-        }
-    } else if angle_diff < 0.0 {
-        angle_diff += 2.0 * PI;
-    }
-
-    let segments = (angle_diff.abs() * radius * 2.0).ceil() as i32; // Adaptive segments
-    let segments = segments.clamp(4, 100);
-
+    // At most 5 degrees per segment, 4..=128 segments.
+    let segments = sweep.segment_count(std::f64::consts::PI / 36.0, 4, 128);
     let z_diff = to.z - from.z;
-
-    let mut prev_x = from.x;
-    let mut prev_y = from.y;
-    let mut prev_z = from.z;
-
+    let mut prev = *from;
     for i in 1..=segments {
-        let t = i as f32 / segments as f32;
-        let angle = start_angle + angle_diff * t;
-
-        let x = center.x + radius * angle.cos();
-        let y = center.y + radius * angle.sin();
-        let z = from.z + z_diff * t;
-
-        // Line segment
-        vertex.push(prev_x);
-        vertex.push(prev_y);
-        vertex.push(prev_z);
-        vertex.extend_from_slice(&color);
-
-        vertex.push(x);
-        vertex.push(y);
-        vertex.push(z);
-        vertex.extend_from_slice(&color);
-
-        prev_x = x;
-        prev_y = y;
-        prev_z = z;
+        let next = if i == segments {
+            *to
+        } else {
+            let t = i as f64 / segments as f64;
+            let (x, y) = sweep.point_at(center_xy, t);
+            Point3D::new(x as f32, y as f32, from.z + z_diff * t as f32)
+        };
+        push_line(vertex, &prev, &next, color);
+        prev = next;
     }
 }
 
