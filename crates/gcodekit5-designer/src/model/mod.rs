@@ -296,9 +296,10 @@ pub trait DesignerShape {
     }
 
     fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
-        let t = Transform::translation(cx as f32, cy as f32)
+        // Move the pivot to the origin, rotate, then move it back.
+        let t = Transform::translation(-cx as f32, -cy as f32)
             .then_rotate(lyon::math::Angle::radians(angle as f32))
-            .then_translate(lyon::math::vector(-cx as f32, -cy as f32));
+            .then_translate(lyon::math::vector(cx as f32, cy as f32));
         self.transform(&t);
     }
 

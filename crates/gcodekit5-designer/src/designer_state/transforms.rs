@@ -279,30 +279,32 @@ impl DesignerState {
         };
 
         let mut commands = Vec::new();
-        for mut obj in selected {
+        for obj in selected {
+            let old_state = obj.clone();
+            let mut obj = obj;
             // Verificar si es un triángulo
             if let Shape::Triangle(triangle) = &mut obj.shape {
                 // Aplicar mirror específico para triángulo
                 match axis {
                     MirrorAxis::X => {
-                        // Reflejo en X (invierte Y)
+                        // Horizontal flip (sx = -1, invierte X): swap left/right corners
                         triangle.right_angle_corner = match triangle.right_angle_corner {
-                            0 => 2, // Inferior-Izquierda → Superior-Izquierda
-                            1 => 3, // Inferior-Derecha → Superior-Derecha
-                            2 => 0, // Superior-Izquierda → Inferior-Izquierda
-                            3 => 1, // Superior-Derecha → Inferior-Derecha
+                            0 => 1, // Inferior-Izquierda → Inferior-Derecha
+                            1 => 0, // Inferior-Derecha → Inferior-Izquierda
+                            2 => 3, // Superior-Izquierda → Superior-Derecha
+                            3 => 2, // Superior-Derecha → Superior-Izquierda
                             _ => triangle.right_angle_corner,
                         };
                         // Invertir rotación
                         triangle.rotation = -triangle.rotation;
                     }
                     MirrorAxis::Y => {
-                        // Reflejo en Y (invierte X)
+                        // Vertical flip (sy = -1, invierte Y): swap bottom/top corners
                         triangle.right_angle_corner = match triangle.right_angle_corner {
-                            0 => 1, // Inferior-Izquierda → Inferior-Derecha
-                            1 => 0, // Inferior-Derecha → Inferior-Izquierda
-                            2 => 3, // Superior-Izquierda → Superior-Derecha
-                            3 => 2, // Superior-Derecha → Superior-Izquierda
+                            0 => 2, // Inferior-Izquierda → Superior-Izquierda
+                            1 => 3, // Inferior-Derecha → Superior-Derecha
+                            2 => 0, // Superior-Izquierda → Inferior-Izquierda
+                            3 => 1, // Superior-Derecha → Inferior-Derecha
                             _ => triangle.right_angle_corner,
                         };
                         // Invertir rotación
@@ -316,17 +318,17 @@ impl DesignerState {
 
                 commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                     id: obj.id,
-                    old_state: obj.clone(),
-                    new_state: obj.clone(),
+                    old_state,
+                    new_state: obj,
                 }));
             } else {
                 // Para otros tipos de formas, usar el scale genérico
-                let mut new_obj = obj.clone();
+                let mut new_obj = obj;
                 new_obj.shape.scale(sx, sy, Point::new(center_x, center_y));
 
                 commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id: obj.id,
-                    old_state: obj,
+                    id: new_obj.id,
+                    old_state,
                     new_state: new_obj,
                 }));
             }

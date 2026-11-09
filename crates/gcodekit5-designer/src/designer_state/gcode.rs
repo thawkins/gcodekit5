@@ -7,7 +7,6 @@ use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
 use crate::ToolpathToGcode;
-use csgrs::traits::CSG;
 use gcodekit5_core::Units;
 use crate::gcode_gen::MachineLimits;
 
@@ -253,6 +252,13 @@ impl DesignerState {
                     self.toolpath_generator
                         .set_spindle_speed(self.tool_settings.spindle_speed);
                 }
+            } else {
+                // CNC: shapes using global values read feed/speed from the generator,
+                // so make sure it reflects the current tool settings.
+                self.toolpath_generator
+                    .set_feed_rate(self.tool_settings.feed_rate);
+                self.toolpath_generator
+                    .set_spindle_speed(self.tool_settings.spindle_speed);
             }
 
             // ============================================================
@@ -386,29 +392,10 @@ impl DesignerState {
                 }
 
                 crate::model::Shape::Path(path_shape) => {
-                    // 1. Clonar para no alterar el objeto original
-                    let mut rotated_path = path_shape.clone();
-
-                    // 2. Aplicar rotación si existe
-                    if rotated_path.rotation.abs() > f64::EPSILON {
-                        let (x1, y1, x2, y2) = rotated_path.bounds();
-                        let cx = (x1 + x2) / 2.0;
-                        let cy = (y1 + y2) / 2.0;
-                        let rad = rotated_path.rotation.to_radians();
-                        let translation_to_origin = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(-cx, -cy, 0.0),
-                        );
-                        let rotation_matrix =
-                        nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
-                        let translation_back = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(cx, cy, 0.0),
-                        );
-
-                        let full_transform =
-                        translation_back * rotation_matrix * translation_to_origin;
-
-                        rotated_path.sketch = rotated_path.sketch.transform(&full_transform);
-                    }
+                    // Path rotation is a render-time rotation about the path bounds
+                    // centre; the toolpath generator applies it for both contour and
+                    // pocket, so it must not be baked into the geometry here as well.
+                    let rotated_path = path_shape;
 
                     if effective_shape_obj.operation_type == OperationType::Pocket {
                         let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
@@ -418,7 +405,7 @@ impl DesignerState {
                         };
                         (
                             self.toolpath_generator.generate_path_pocket(
-                                &rotated_path,
+                                rotated_path,
                                 pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
@@ -428,7 +415,7 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator
-                            .generate_path_contour(&rotated_path, effective_shape_obj.step_down as f64),
+                            .generate_path_contour(rotated_path, effective_shape_obj.step_down as f64),
                          false,
                         )
                     }

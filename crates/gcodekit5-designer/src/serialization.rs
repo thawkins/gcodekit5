@@ -133,6 +133,8 @@ pub struct ShapeData {
     #[serde(default)]
     pub roller_diameter: f64,
     #[serde(default)]
+    pub hole_radius: f64,
+    #[serde(default)]
     pub thickness: f64,
     #[serde(default)]
     pub depth: f64,
@@ -403,10 +405,23 @@ impl DesignFile {
     }
 
     pub fn from_drawing_object(obj: &DrawingObject) -> ShapeData {
-        // 1. We only use the bounds to calculate the center (cx, cy)
+        // 1. Use the shape's own centre where it has one: `to_drawing_object`
+        // restores (x, y) as that centre, and for rotated or asymmetric shapes
+        // (triangles, odd-sided polygons, gears) the bounds centre differs, which
+        // would shift the shape on every save/load round-trip.
         let (x1, y1, x2, y2) = obj.shape.bounds();
-        let cx = (x1 + x2) / 2.0;
-        let cy = (y1 + y2) / 2.0;
+        let (cx, cy) = match &obj.shape {
+            Shape::Rectangle(r) => (r.center.x, r.center.y),
+            Shape::Circle(c) => (c.center.x, c.center.y),
+            Shape::Ellipse(e) => (e.center.x, e.center.y),
+            Shape::Triangle(t) => (t.center.x, t.center.y),
+            Shape::Polygon(p) => (p.center.x, p.center.y),
+            Shape::Gear(g) => (g.center.x, g.center.y),
+            Shape::Sprocket(s) => (s.center.x, s.center.y),
+            Shape::RasterImage(r) => (r.center.x, r.center.y),
+            Shape::Text(t) => (t.x, t.y),
+            _ => ((x1 + x2) / 2.0, (y1 + y2) / 2.0),
+        };
 
         // 2. We obtain the actual width and height of the object using shape-specific parameters
         let (real_width, real_height) = match &obj.shape {
@@ -476,17 +491,20 @@ impl DesignFile {
         let mut pressure_angle = 0.0;
         let mut pitch = 0.0;
         let mut roller_diameter = 0.0;
+        let mut hole_radius = 0.0;
 
         match &obj.shape {
             Shape::Gear(g) => {
                 teeth = g.teeth;
                 module = g.module;
                 pressure_angle = g.pressure_angle_deg;
+                hole_radius = g.hole_radius;
             }
             Shape::Sprocket(s) => {
                 teeth = s.teeth;
                 pitch = s.pitch;
                 roller_diameter = s.roller_diameter;
+                hole_radius = s.hole_radius;
             }
             _ => {}
         }
@@ -577,6 +595,7 @@ impl DesignFile {
             pressure_angle,
             pitch,
             roller_diameter,
+            hole_radius,
             thickness: 0.0,
             depth: obj.pocket_depth,
             tab_size: 0.0,
@@ -705,6 +724,7 @@ impl DesignFile {
                 let center = Point::new(data.x, data.y);
                 let mut gear = DesignGear::new(center, data.module, data.teeth);
                 gear.pressure_angle_deg = data.pressure_angle;
+                gear.hole_radius = data.hole_radius;
                 gear.laser_params = laser_params;
                 Shape::Gear(gear)
             }
@@ -712,6 +732,7 @@ impl DesignFile {
                 let center = Point::new(data.x, data.y);
                 let mut sprocket = DesignSprocket::new(center, data.pitch, data.teeth);
                 sprocket.roller_diameter = data.roller_diameter;
+                sprocket.hole_radius = data.hole_radius;
                 sprocket.laser_params = laser_params;
                 Shape::Sprocket(sprocket)
             }

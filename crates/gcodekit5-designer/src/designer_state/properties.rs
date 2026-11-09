@@ -7,7 +7,6 @@ use crate::model::{DesignerShape, ParametricPathSource, Shape};
 use crate::shapes::OperationType;
 use crate::{Point, Rectangle};
 
-use csgrs::traits::CSG; // Para poder usar .transform()
 
 impl DesignerState {
     /// Sets the use_custom_values flag for selected shapes.
@@ -307,40 +306,9 @@ impl DesignerState {
 
                     match &mut new_obj.shape {
                         crate::model::Shape::Path(s) => {
-                            // Obtain real limits from DXF
-                            let (x1, _, x2, _) = s.bounds();
-
-                            // Calculate the actual CURRENT CENTER of the object
-                            let current_center_x = (x1 + x2) / 2.0;
-
-                            // The displacement (dx) is the difference between
-                            // what the Inspector (center_x) asks for and where the center
-                            let dx = center_x - current_center_x;
-
-                            if dx.abs() > f64::EPSILON {
-                                // Physically move all points that distance dx
-                                let translation = nalgebra::Matrix4::new_translation(
-                                    &nalgebra::Vector3::new(dx, 0.0, 0.0),
-                                );
-                                s.sketch = s.sketch.transform(&translation);
-                            }
-                            // Obtain the vertical limits
-                            let (_, y1, _, y2) = s.bounds();
-
-                            // Calculate the current VERTICAL CENTER
-                            let current_center_y = (y1 + y2) / 2.0;
-
-                            // Displacement (dy) is: Destination (center_y) - Origin (current center)
-                            let dy = center_y - current_center_y;
-
-                            if dy.abs() > f64::EPSILON {
-                                // Move on the Y axis (second parameter of Vector3)
-                                let translation = nalgebra::Matrix4::new_translation(
-                                    &nalgebra::Vector3::new(0.0, dy, 0.0),
-                                );
-                                s.sketch = s.sketch.transform(&translation);
-                            }
-                            s.rotation = rotation;
+                            // The path was already moved to its orbit position by the
+                            // translate above; only the render-time rotation changes.
+                            s.rotation += angle_delta;
                         }
 
                         crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
@@ -914,7 +882,12 @@ impl DesignerState {
         match shape {
             crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
             crate::model::Shape::Circle(s) => s.rotation += angle_delta,
-            crate::model::Shape::Line(s) => s.rotation += angle_delta,
+            crate::model::Shape::Line(s) => {
+                // Line geometry is absolute: rotate the endpoints about the midpoint.
+                let cx = (s.start.x + s.end.x) / 2.0;
+                let cy = (s.start.y + s.end.y) / 2.0;
+                s.rotate_about(angle_delta, cx, cy);
+            }
             crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
             crate::model::Shape::Path(s) => s.rotation += angle_delta,
             crate::model::Shape::Text(s) => s.rotation += angle_delta,
@@ -934,11 +907,9 @@ impl DesignerState {
             if dx.abs() > f64::EPSILON {
                 match &mut obj.shape {
                     crate::model::Shape::Path(s) => {
-                        // For imported objects: We move the physical points
-                        let translation = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(dx, 0.0, 0.0),
-                        );
-                        s.sketch = s.sketch.transform(&translation);
+                        // Move both the sketch and the original (curved) path so the
+                        // rendered/toolpath geometry follows the new position.
+                        s.translate(dx, 0.0);
                     }
                     _ => {
                         // For native objects: We use translate with the exact jump (0.0 on Y so that it doesn't jump)
@@ -957,10 +928,7 @@ impl DesignerState {
             if dy.abs() > f64::EPSILON {
                 match &mut obj.shape {
                     crate::model::Shape::Path(s) => {
-                        let translation = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(0.0, dy, 0.0),
-                        );
-                        s.sketch = s.sketch.transform(&translation);
+                        s.translate(0.0, dy);
                     }
                     _ => {
                         obj.shape.translate(0.0, dy);

@@ -197,7 +197,7 @@ impl SvgImporter {
 
         // Extract all <rect .../> elements
         let mut search_pos = 0;
-        while let Some(tag_start) = svg_content[search_pos..].find("<rect") {
+        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "rect") {
             let abs_tag_start = search_pos + tag_start;
             if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
                 let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
@@ -224,7 +224,7 @@ impl SvgImporter {
 
         // Extract all <circle .../> elements
         let mut search_pos = 0;
-        while let Some(tag_start) = svg_content[search_pos..].find("<circle") {
+        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "circle") {
             let abs_tag_start = search_pos + tag_start;
             if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
                 let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
@@ -246,7 +246,7 @@ impl SvgImporter {
 
         // Extract all <line .../> elements
         let mut search_pos = 0;
-        while let Some(tag_start) = svg_content[search_pos..].find("<line") {
+        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "line") {
             let abs_tag_start = search_pos + tag_start;
             if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
                 let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
@@ -270,7 +270,7 @@ impl SvgImporter {
 
         // Extract all <ellipse .../> elements
         let mut search_pos = 0;
-        while let Some(tag_start) = svg_content[search_pos..].find("<ellipse") {
+        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "ellipse") {
             let abs_tag_start = search_pos + tag_start;
             if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
                 let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
@@ -296,7 +296,7 @@ impl SvgImporter {
 
         // Extract all <polyline .../> elements
         let mut search_pos = 0;
-        while let Some(tag_start) = svg_content[search_pos..].find("<polyline") {
+        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "polyline") {
             let abs_tag_start = search_pos + tag_start;
             if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
                 let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
@@ -331,7 +331,7 @@ impl SvgImporter {
 
         // Extract all <polygon .../> elements
         let mut search_pos = 0;
-        while let Some(tag_start) = svg_content[search_pos..].find("<polygon") {
+        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "polygon") {
             let abs_tag_start = search_pos + tag_start;
             if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
                 let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
@@ -371,26 +371,23 @@ impl SvgImporter {
             if let Some(path_end) = svg_content[abs_path_start..].find('>') {
                 let path_tag_end = abs_path_start + path_end;
 
-                // Find d attribute
-                if let Some(d_start) = svg_content[abs_path_start..path_tag_end].find("d=\"") {
-                    let abs_d_start = abs_path_start + d_start + 3;
-                    if let Some(d_end) = svg_content[abs_d_start..path_tag_end].find('"') {
-                        let d_value = &svg_content[abs_d_start..abs_d_start + d_end];
-
-                        // Parse SVG path data
-                        if let Some(path) = PathShape::from_svg_path(d_value) {
-                            let mut new_path = path.clone();
-                            if let Some((a, b, c, d_coeff, e, f)) = group_transform {
-                                let transform = lyon::math::Transform::new(a, b, c, d_coeff, e, f);
-                                new_path.transform(&transform);
-                            }
-
-                            let scale_transform =
-                                lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
-                            new_path.transform(&scale_transform);
-
-                            imported_shapes.push(ImportedShape::Path(new_path));
+                // Find d attribute (word-boundary aware so `id="..."` is not matched)
+                if let Some(d_value) =
+                    Self::extract_attr_str(&svg_content[abs_path_start..path_tag_end], "d")
+                {
+                    // Parse SVG path data
+                    if let Some(path) = PathShape::from_svg_path(d_value) {
+                        let mut new_path = path.clone();
+                        if let Some((a, b, c, d_coeff, e, f)) = group_transform {
+                            let transform = lyon::math::Transform::new(a, b, c, d_coeff, e, f);
+                            new_path.transform(&transform);
                         }
+
+                        let scale_transform =
+                            lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
+                        new_path.transform(&scale_transform);
+
+                        imported_shapes.push(ImportedShape::Path(new_path));
                     }
                 }
 
@@ -439,13 +436,41 @@ impl SvgImporter {
         })
     }
 
+    /// Finds the byte offset of the next `<name` element start whose name is not
+    /// merely a prefix of a longer tag (e.g. `<line` must not match `<linearGradient`).
+    fn find_element(content: &str, name: &str) -> Option<usize> {
+        let needle = format!("<{}", name);
+        let mut from = 0;
+        while let Some(pos) = content[from..].find(&needle) {
+            let abs = from + pos;
+            let after = abs + needle.len();
+            match content[after..].chars().next() {
+                Some(c) if c.is_whitespace() || c == '/' || c == '>' => return Some(abs),
+                None => return None,
+                _ => from = after,
+            }
+        }
+        None
+    }
+
     fn extract_attr_str<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
         let pattern = format!("{}=\"", attr);
-        if let Some(start) = tag.find(&pattern) {
+        let mut from = 0;
+        while let Some(pos) = tag[from..].find(&pattern) {
+            let start = from + pos;
+            // The attribute name must start at a word boundary, otherwise `x` would
+            // match `rx`, `width` would match `stroke-width` and `d` would match `id`.
+            let at_boundary = tag[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| c.is_whitespace());
             let val_start = start + pattern.len();
-            if let Some(end) = tag[val_start..].find('"') {
-                return Some(&tag[val_start..val_start + end]);
+            if at_boundary {
+                return tag[val_start..]
+                    .find('"')
+                    .map(|end| &tag[val_start..val_start + end]);
             }
+            from = val_start;
         }
         None
     }
@@ -697,28 +722,17 @@ impl DxfImporter {
                         let start = polyline.vertices[0];
                         builder.begin(point(start.x as f32, start.y as f32));
 
-                        // Process each segment with its potential bulge
-                        for i in 0..polyline.vertices.len() - 1 {
-                            let v1 = polyline.vertices[i];
-                            let v2 = polyline.vertices[i + 1];
-
+                        // Emits one polyline segment (straight or bulged arc) ending at v2.
+                        let mut add_segment = |v1: Point, v2: Point, bulge: f64| {
                             let p1 = point(v1.x as f32, v1.y as f32);
                             let p2 = point(v2.x as f32, v2.y as f32);
 
-                            // Obtain the bulge for this segment (if it exists)
-                            let bulge = if i < polyline.bulges.len() {
-                                polyline.bulges[i]
-                            } else {
-                                0.0 // Without bulge = straight line
-                            };
+                            let dist = ((v2.x - v1.x).powi(2) + (v2.y - v1.y).powi(2)).sqrt() as f32;
 
-                            if bulge.abs() < 0.0001 {
+                            if bulge.abs() < 0.0001 || dist < 1e-9 {
                                 // Straight line
                                 builder.line_to(p2);
                             } else {
-                                let dist =
-                                    ((v2.x - v1.x).powi(2) + (v2.y - v1.y).powi(2)).sqrt() as f32;
-
                                 let included_angle = 4.0 * bulge.abs().atan() as f32;
 
                                 let h = bulge.abs() as f32 * (dist / 2.0);
@@ -762,6 +776,22 @@ impl DxfImporter {
                                     builder.cubic_bezier_to(ctrl.ctrl1, ctrl.ctrl2, ctrl.to);
                                 });
                             }
+                        };
+
+                        // Bulge for the segment starting at vertex i (0 = straight line)
+                        let bulge_at = |i: usize| polyline.bulges.get(i).copied().unwrap_or(0.0);
+
+                        // Process each segment with its potential bulge
+                        let n = polyline.vertices.len();
+                        for i in 0..n - 1 {
+                            add_segment(polyline.vertices[i], polyline.vertices[i + 1], bulge_at(i));
+                        }
+
+                        // A closed polyline's last vertex carries the bulge of the closing
+                        // segment back to the first vertex; without this it would be drawn
+                        // as a straight line (e.g. rounded ends of slots).
+                        if polyline.closed && n > 1 && bulge_at(n - 1).abs() >= 0.0001 {
+                            add_segment(polyline.vertices[n - 1], polyline.vertices[0], bulge_at(n - 1));
                         }
 
                         if polyline.closed {

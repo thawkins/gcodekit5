@@ -367,12 +367,6 @@ impl ToolpathToGcode {
                         toolpath.depth
                     });
 
-                    let line_prefix = if self.line_numbers_enabled {
-                        format!("N{} ", line_number)
-                    } else {
-                        String::new()
-                    };
-
                     // Laser filtering: skip points that are too close
                     if self.is_laser_2d {
                         if let Some((last_x, last_y)) = last_point {
@@ -432,9 +426,8 @@ impl ToolpathToGcode {
                     };
 
                     gcode.push_str(&format!(
-                        "{}{}{}{}{}\n",
+                        "{}{}{}{}\n",
                         self.get_line_prefix(line_number),
-                        line_prefix,
                         cmd,
                         coords,
                         feed_rate_cmd
@@ -538,6 +531,9 @@ impl ToolpathToGcode {
                             } else {
                                 "G03"
                             };
+                            // G02/G03 are modal: the next linear move must restate G01,
+                            // otherwise it would be interpreted as another arc.
+                            line_g01 = true;
 
                             if has_z && (target_z - current_z).abs() > 0.001 {
                                 gcode.push_str(&format!(

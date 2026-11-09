@@ -85,10 +85,11 @@ impl DesignPath {
     }
 
     pub fn scale(&mut self, sx: f64, sy: f64, center: Point) {
+        // Move the pivot to the origin, scale, then move it back.
         let transform = Transform::identity()
-            .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32))
+            .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32))
             .then_scale(sx as f32, sy as f32)
-            .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32));
+            .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32));
         self.transform(&transform);
     }
 
@@ -1155,9 +1156,15 @@ impl DesignerShape for DesignPath {
             }
         }
 
-        // Update rotation
-        let angle_deg = (t.m12.atan2(t.m11) as f64).to_degrees();
-        self.rotation += angle_deg;
+        // `rotation` is a render-time rotation applied on top of the stored
+        // geometry (see renderers, ops and G-code generation). The transform
+        // below is baked into the geometry itself, so it must not also be added
+        // to `rotation` (that would rotate the path twice). A reflection does
+        // mirror the sense of any pending render-time rotation, though.
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        if det < 0.0 {
+            self.rotation = -self.rotation;
+        }
 
         // Transform the sketch
         let m = Matrix4::new(

@@ -2,7 +2,7 @@
 
 use super::*;
 
-// use lyon::path::iterator::PathIterator;
+use lyon::path::iterator::PathIterator;
 use crate::Ellipse;
 use rusttype::{GlyphId, OutlineBuilder, Scale};
 use smallvec::SmallVec;
@@ -579,10 +579,24 @@ impl ToolpathGenerator {
         let mut first_point: Option<Point> = None;
         let mut current_pos = Point::new(0.0, 0.0);
 
+        // `rotation` is applied at render time about the centre of the path
+        // bounds (same convention as the canvas renderer), so apply it here too.
+        let (bx1, by1, bx2, by2) = path_shape.bounds();
+        let rot_center = Point::new((bx1 + bx2) / 2.0, (by1 + by2) / 2.0);
+        let rotation = path_shape.rotation;
+        let to_point = |x: f32, y: f32| -> Point {
+            let p = Point::new(x as f64, y as f64);
+            if rotation.abs() > 1e-6 {
+                rotate_point(p, rot_center, rotation)
+            } else {
+                p
+            }
+        };
+
         for event in path_shape.render().iter() {
             match event {
                 lyon::path::Event::Begin { at } => {
-                    let p = Point::new(at.x as f64, at.y as f64);
+                    let p = to_point(at.x, at.y);
                     segments.push(ToolpathSegment::new(
                         ToolpathSegmentType::RapidMove,
                         current_pos,
@@ -594,7 +608,7 @@ impl ToolpathGenerator {
                     first_point = Some(p);
                 }
                 lyon::path::Event::Line { to, .. } => {
-                    let p = Point::new(to.x as f64, to.y as f64);
+                    let p = to_point(to.x, to.y);
                     segments.push(ToolpathSegment::new(
                         ToolpathSegmentType::LinearMove,
                         current_pos,
@@ -607,9 +621,9 @@ impl ToolpathGenerator {
                 lyon::path::Event::Cubic {
                     ctrl1, ctrl2, to, ..
                 } => {
-                    let p_to = Point::new(to.x as f64, to.y as f64);
-                    let p_c1 = Point::new(ctrl1.x as f64, ctrl1.y as f64);
-                    let p_c2 = Point::new(ctrl2.x as f64, ctrl2.y as f64);
+                    let p_to = to_point(to.x, to.y);
+                    let p_c1 = to_point(ctrl1.x, ctrl1.y);
+                    let p_c2 = to_point(ctrl2.x, ctrl2.y);
 
                     if let Some((center, is_ccw)) =
                         self.try_convert_to_arc(current_pos, p_to, p_c1, p_c2)
@@ -654,8 +668,8 @@ impl ToolpathGenerator {
                     current_pos = p_to;
                 }
                 lyon::path::Event::Quadratic { ctrl, to, .. } => {
-                    let p_to = Point::new(to.x as f64, to.y as f64);
-                    let p_ctrl = Point::new(ctrl.x as f64, ctrl.y as f64);
+                    let p_to = to_point(to.x, to.y);
+                    let p_ctrl = to_point(ctrl.x, ctrl.y);
 
                     if let Some((center, is_ccw)) =
                         self.try_convert_quadratic_to_arc(current_pos, p_to, p_ctrl)
@@ -878,7 +892,9 @@ impl ToolpathGenerator {
         } else {
             step_down
         };
-        let num_passes = (total_dist / step).ceil() as usize;
+        // Subtract a small epsilon so e.g. 3.0 / 0.1 = 30.000000000000004 does not
+        // produce an extra, duplicated final pass at full depth.
+        let num_passes = ((total_dist / step) - 1e-9).ceil().max(0.0) as usize;
         let num_passes = if num_passes == 0 { 1 } else { num_passes };
 
         for i in 1..=num_passes {
@@ -1152,12 +1168,9 @@ pub fn generate_polyline_pocket(
         step_down: f64,
         step_in: f64,
     ) -> Vec<Toolpath> {
-        let half_w = triangle.width / 2.0;
-        let half_h = triangle.height / 2.0;
-
-        let p1_local = Point::new(-half_w, -half_h);
-        let p2_local = Point::new(half_w, -half_h);
-        let p3_local = Point::new(-half_w, half_h);
+        // Use the same local vertices as rendering/contour so the right-angle
+        // corner setting is respected.
+        let [p1_local, p2_local, p3_local] = triangle.get_local_vertices_f64();
 
         let rotation = triangle.rotation;
         let center = triangle.center;
@@ -1218,14 +1231,16 @@ pub fn generate_polyline_pocket(
         step_in: f64,
     ) -> Vec<Toolpath> {
         let mut vertices = Vec::new();
-        let rect = lyon::algorithms::aabb::bounding_box(&path_shape.render());
-        let center = Point::new(
-            (rect.min.x + rect.max.x) as f64 / 2.0,
-            (rect.min.y + rect.max.y) as f64 / 2.0,
-        );
+        // Rotate about the centre of the path bounds, matching the canvas
+        // renderer and `generate_path_contour`.
+        let (bx1, by1, bx2, by2) = path_shape.bounds();
+        let center = Point::new((bx1 + bx2) / 2.0, (by1 + by2) / 2.0);
         let rotation = path_shape.rotation;
 
-        for event in path_shape.render().iter() {
+        // Flatten curves so Bezier segments (e.g. from SVG/DXF import) contribute
+        // their geometry instead of being silently dropped.
+        let rendered = path_shape.render();
+        for event in rendered.iter().flattened(0.01) {
             match event {
                 lyon::path::Event::Begin { at } => {
                     let mut p = Point::new(at.x as f64, at.y as f64);
@@ -1493,24 +1508,14 @@ pub fn generate_polyline_pocket(
         end: Point,
         ctrl: Point,
     ) -> Option<(Point, bool)> {
-        let mid_start_ctrl = Point::new((start.x + ctrl.x) / 2.0, (start.y + ctrl.y) / 2.0);
-        let mid_ctrl_end = Point::new((ctrl.x + end.x) / 2.0, (ctrl.y + end.y) / 2.0);
-        let center_candidate = Point::new(
-            (mid_start_ctrl.x + mid_ctrl_end.x) / 2.0,
-            (mid_start_ctrl.y + mid_ctrl_end.y) / 2.0,
-        );
-        let r_start = start.distance_to(&center_candidate);
-        let r_end = end.distance_to(&center_candidate);
-        let chord_len = start.distance_to(&end);
-        let tolerance = (chord_len * 0.05).max(0.01);
-        if (r_start - r_end).abs() < tolerance {
-            let v1 = (start.x - center_candidate.x, start.y - center_candidate.y);
-            let v2 = (end.x - center_candidate.x, end.y - center_candidate.y);
-            let cross = v1.0 * v2.1 - v1.1 * v2.0;
-            Some((center_candidate, cross > 0.0))
-        } else {
-            None
-        }
+        let eval = |t: f64| -> Point {
+            let mt = 1.0 - t;
+            Point::new(
+                mt * mt * start.x + 2.0 * mt * t * ctrl.x + t * t * end.x,
+                mt * mt * start.y + 2.0 * mt * t * ctrl.y + t * t * end.y,
+            )
+        };
+        Self::fit_arc_through_curve(start, end, eval)
     }
 
     fn try_convert_to_arc(
@@ -1520,26 +1525,62 @@ pub fn generate_polyline_pocket(
         ctrl1: Point,
         ctrl2: Point,
     ) -> Option<(Point, bool)> {
-        let center_candidate = Point::new((ctrl1.x + ctrl2.x) / 2.0, (ctrl1.y + ctrl2.y) / 2.0);
-        let r_start = start.distance_to(&center_candidate);
-        let r_end = end.distance_to(&center_candidate);
-        let r_ctrl1 = ctrl1.distance_to(&center_candidate);
-        let r_ctrl2 = ctrl2.distance_to(&center_candidate);
-        let r_avg = (r_start + r_end + r_ctrl1 + r_ctrl2) / 4.0;
-        let chord_len = start.distance_to(&end);
-        let tolerance = (chord_len * 0.05).max(0.01);
-        if (r_start - r_avg).abs() < tolerance
-            && (r_end - r_avg).abs() < tolerance
-            && (r_ctrl1 - r_avg).abs() < tolerance
-            && (r_ctrl2 - r_avg).abs() < tolerance
-        {
-            let v_start = (start.x - center_candidate.x, start.y - center_candidate.y);
-            let v_end = (end.x - center_candidate.x, end.y - center_candidate.y);
-            let cross = v_start.0 * v_end.1 - v_start.1 * v_end.0;
-            Some((center_candidate, cross > 0.0))
-        } else {
-            None
+        let eval = |t: f64| -> Point {
+            let mt = 1.0 - t;
+            Point::new(
+                mt * mt * mt * start.x
+                    + 3.0 * mt * mt * t * ctrl1.x
+                    + 3.0 * mt * t * t * ctrl2.x
+                    + t * t * t * end.x,
+                mt * mt * mt * start.y
+                    + 3.0 * mt * mt * t * ctrl1.y
+                    + 3.0 * mt * t * t * ctrl2.y
+                    + t * t * t * end.y,
+            )
+        };
+        Self::fit_arc_through_curve(start, end, eval)
+    }
+
+    /// Fits a circular arc through a curve's start, midpoint and end, and accepts it
+    /// only if the curve's quarter points also lie on that circle (within tolerance).
+    ///
+    /// Returns the arc centre and whether the arc runs counter-clockwise, or `None`
+    /// when the curve is not (close to) a circular arc, e.g. straight or S-shaped.
+    fn fit_arc_through_curve(
+        start: Point,
+        end: Point,
+        eval: impl Fn(f64) -> Point,
+    ) -> Option<(Point, bool)> {
+        const TOLERANCE_MM: f64 = 0.01;
+        let mid = eval(0.5);
+
+        // Circumcentre of (start, mid, end).
+        let d = 2.0
+            * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
+        if d.abs() < 1e-9 {
+            return None; // Collinear points: not an arc.
         }
+        let s2 = start.x * start.x + start.y * start.y;
+        let m2 = mid.x * mid.x + mid.y * mid.y;
+        let e2 = end.x * end.x + end.y * end.y;
+        let center = Point::new(
+            (s2 * (mid.y - end.y) + m2 * (end.y - start.y) + e2 * (start.y - mid.y)) / d,
+            (s2 * (end.x - mid.x) + m2 * (start.x - end.x) + e2 * (mid.x - start.x)) / d,
+        );
+        let radius = start.distance_to(&center);
+        if !radius.is_finite() || radius < 1e-6 {
+            return None;
+        }
+
+        for t in [0.125, 0.25, 0.375, 0.625, 0.75, 0.875] {
+            if (eval(t).distance_to(&center) - radius).abs() > TOLERANCE_MM {
+                return None;
+            }
+        }
+
+        // Orientation of start -> mid -> end gives the travel direction.
+        let cross = (mid.x - start.x) * (end.y - mid.y) - (mid.y - start.y) * (end.x - mid.x);
+        Some((center, cross > 0.0))
     }
 }
 
