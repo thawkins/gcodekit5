@@ -1223,6 +1223,20 @@ impl ToolpathGenerator {
         self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
     }
 
+    /// Generates pocket toolpaths for an arbitrary path shape.
+    ///
+    /// Curves are flattened and each closed subpath is pocketed independently, so
+    /// separate contours are never joined. Nested contours (holes) are not yet kept
+    /// as islands; a warning is logged when they are detected.
+    ///
+    /// # Arguments
+    /// * `path_shape` - The path to pocket (rotation is applied about its bounds centre).
+    /// * `pocket_depth` - Final pocket depth in mm.
+    /// * `step_down` - Depth per pass in mm.
+    /// * `step_in` - Stepover in mm (0 uses the generator default).
+    ///
+    /// # Returns
+    /// The pocket toolpaths for all closed contours of the path.
     pub fn generate_path_pocket(
         &self,
         path_shape: &PathShape,
