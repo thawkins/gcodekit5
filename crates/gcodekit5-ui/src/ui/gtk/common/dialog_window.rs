@@ -7,10 +7,17 @@
 //! (`add_button`, `content_area`, `connect_response`, `response`,
 //! `set_default_response`). As with `Dialog`, closing the window (title-bar button
 //! or Escape) reports [`ResponseType::DeleteEvent`] and then lets the window close.
+//! [`DialogWindow::close`], called once a response has been handled, destroys the
+//! window without reporting a second response.
+//!
+//! Lifetime: like a GTK toplevel, a dialog stays usable while its window is
+//! realized, even after every `DialogWindow` handle has been dropped. Its state is
+//! released when the window is destroyed; a window that is only hidden keeps it, so
+//! it can be presented again.
 //!
 //! Dependencies: `gtk4`, `glib`.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -29,6 +36,15 @@ struct Inner {
     actions: Box,
     buttons: RefCell<Vec<(Button, ResponseType)>>,
     handlers: RefCell<Vec<ResponseHandler>>,
+    /// Set while the close-request handler is reporting `DeleteEvent`.
+    in_close_request: Cell<bool>,
+}
+
+thread_local! {
+    /// Dialogs whose window is realized. Holding them here keeps their buttons and
+    /// response handlers working after the caller drops its last handle; each
+    /// entry is removed when its window is unrealized (destroyed).
+    static OPEN_DIALOGS: RefCell<Vec<Rc<Inner>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// A modal-capable window with a content area and response buttons.
@@ -78,8 +94,34 @@ impl DialogWindow {
                 actions,
                 buttons: RefCell::new(Vec::new()),
                 handlers: RefCell::new(Vec::new()),
+                in_close_request: Cell::new(false),
             }),
         };
+
+        let weak = Rc::downgrade(&dialog.inner);
+        dialog.inner.window.connect_realize(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                OPEN_DIALOGS.with(|open| {
+                    let mut open = open.borrow_mut();
+                    if !open.iter().any(|o| Rc::ptr_eq(o, &inner)) {
+                        open.push(inner);
+                    }
+                });
+            }
+        });
+        let weak = Rc::downgrade(&dialog.inner);
+        dialog.inner.window.connect_unrealize(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                // Take the entry out first so it is dropped after the borrow ends.
+                let removed = OPEN_DIALOGS.with(|open| {
+                    let mut open = open.borrow_mut();
+                    open.iter()
+                        .position(|o| Rc::ptr_eq(o, &inner))
+                        .map(|i| open.swap_remove(i))
+                });
+                drop(removed);
+            }
+        });
 
         // Escape closes the window, as it did for `Dialog`.
         let escape = ShortcutController::new();
@@ -100,7 +142,12 @@ impl DialogWindow {
         let weak = Rc::downgrade(&dialog.inner);
         dialog.inner.window.connect_close_request(move |window| {
             if let Some(inner) = weak.upgrade() {
-                DialogWindow { inner }.response(ResponseType::DeleteEvent);
+                inner.in_close_request.set(true);
+                DialogWindow {
+                    inner: inner.clone(),
+                }
+                .response(ResponseType::DeleteEvent);
+                inner.in_close_request.set(false);
             }
             if window.is_visible() {
                 glib::Propagation::Proceed
@@ -193,8 +240,14 @@ impl DialogWindow {
         self.inner.window.set_visible(false);
     }
 
-    /// Closes the window (reports `DeleteEvent` first, like the title-bar button).
+    /// Destroys the window, typically from a response handler once the response
+    /// has been handled. No further response is reported. Called while the window
+    /// is already closing (title-bar button or Escape), it leaves that close to
+    /// finish.
     pub fn close(&self) {
-        self.inner.window.close();
+        if self.inner.in_close_request.get() {
+            return;
+        }
+        self.inner.window.destroy();
     }
 }

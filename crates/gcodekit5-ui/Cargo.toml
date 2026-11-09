@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Slint-based user interface for GCodeKit4"
+autotests = false
 
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
@@ -54,3 +55,7 @@ tempfile = "3.8"
 
 [features]
 slint_legacy_tests = []
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
