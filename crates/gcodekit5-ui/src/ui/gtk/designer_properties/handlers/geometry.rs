@@ -3,12 +3,12 @@
 //! Text entries apply on commit (Enter / focus-out); see [`super::connect_entry_commit`].
 
 use super::{change_selected_with_undo, connect_entry_commit};
+use crate::ui::gtk::designer_properties::SharedMeasurementSystem;
 use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption};
 use gcodekit5_designer::commands::{ChangeProperty, DesignerCommand};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::Shape;
-use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
 use gtk4::{CheckButton, Entry};
 use std::rc::Rc;
@@ -53,7 +53,7 @@ pub fn setup_rotation_handler(
 pub fn setup_corner_radius_handler(
     corner_radius_entry: &Entry,
     state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
@@ -65,7 +65,7 @@ pub fn setup_corner_radius_handler(
         updating,
         has_focus,
         move |entry| {
-            let system = settings.borrow().config().ui.measurement_system;
+            let system = measurement_system.get();
             if let Ok(val) = units::parse_length(&entry.text(), system) {
                 entry.remove_css_class("entry-invalid");
                 apply_state

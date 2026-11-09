@@ -219,6 +219,7 @@ fn test_spoilboard_grid_does_not_change_machine_settings() {
         feed_rate: 1000.0,
         laser_power: 100.0,
         laser_mode: "M4".to_string(),
+        home_before_job: true,
     })
     .generate()
     .expect("grid");

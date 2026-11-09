@@ -61,6 +61,8 @@ pub struct UndoManager {
     redo_stack: Vec<Vec<TextChange>>,
     max_depth: usize,
     current_batch: Option<Vec<TextChange>>,
+    /// Nesting depth of open batches; the batch commits when it returns to 0.
+    batch_depth: usize,
 }
 
 impl UndoManager {
@@ -79,6 +81,7 @@ impl UndoManager {
             redo_stack: Vec::new(),
             max_depth,
             current_batch: None,
+            batch_depth: 0,
         }
     }
 
@@ -112,18 +115,32 @@ impl UndoManager {
 
     /// Start batching changes (for multi-operation edits)
     ///
-    /// If a batch is already open it stays open, so nested begin/end pairs
-    /// still produce a single undo step.
+    /// Batches nest: if a batch is already open, this only increases the
+    /// nesting depth, and the changes are committed when the outermost batch
+    /// ends. Every call must be paired with a call to
+    /// [`UndoManager::end_batch`].
     pub fn begin_batch(&mut self) {
         if self.current_batch.is_none() {
             self.current_batch = Some(Vec::new());
         }
+        self.batch_depth += 1;
     }
 
-    /// End batch and commit all its changes as a single, atomic undo step
+    /// End a batch
+    ///
+    /// Ending an inner (nested) batch only decreases the nesting depth. Ending
+    /// the outermost batch commits all of its changes as a single, atomic undo
+    /// step. Calling this with no open batch does nothing.
     pub fn end_batch(&mut self) {
-        if let Some(batch) = self.current_batch.take() {
-            self.push_undo(batch);
+        if self.batch_depth == 0 {
+            tracing::warn!("UndoManager::end_batch called without a matching begin_batch");
+            return;
+        }
+        self.batch_depth -= 1;
+        if self.batch_depth == 0 {
+            if let Some(batch) = self.current_batch.take() {
+                self.push_undo(batch);
+            }
         }
     }
 
@@ -165,6 +182,7 @@ impl UndoManager {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.current_batch = None;
+        self.batch_depth = 0;
     }
 
     /// Get number of undo steps available

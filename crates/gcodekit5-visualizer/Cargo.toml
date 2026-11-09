@@ -24,6 +24,7 @@ bytemuck = "1.14"
 lyon = "1.0"
 
 [dev-dependencies]
+gcodekit5-camtools = { path = "../gcodekit5-camtools" }
 proptest = "1.4"
 tempfile = "3.10"
 criterion = { version = "0.8", features = ["html_reports"] }

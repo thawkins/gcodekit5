@@ -17,6 +17,7 @@
 //!
 //! Dependencies: `cavalier_contours` for polyline/shape offsetting.
 
+use std::collections::BTreeSet;
 use std::f64::consts::PI;
 use std::panic;
 
@@ -271,6 +272,71 @@ fn order_loops(levels: &[Loops]) -> Vec<Vec<Point>> {
     ordered
 }
 
+/// Remaining raster spans indexed by scanline.
+///
+/// Spans keep their scan order inside each scanline bucket and are marked as taken instead
+/// of being removed, so taking a span is O(1) and a connected link only has to look at the
+/// two neighbouring buckets.
+struct SpanIndex {
+    /// Spans per scanline as `(start, end, taken)`.
+    buckets: Vec<Vec<(Point, Point, bool)>>,
+    /// Untaken spans per scanline.
+    live_per_line: Vec<usize>,
+    /// Scanlines that still have untaken spans, in scan order.
+    live_lines: BTreeSet<usize>,
+    /// Total untaken spans.
+    remaining: usize,
+}
+
+impl SpanIndex {
+    /// Builds the index from spans per scanline.
+    fn new(lines: &[Vec<(Point, Point)>]) -> Self {
+        let buckets: Vec<Vec<(Point, Point, bool)>> = lines
+            .iter()
+            .map(|spans| spans.iter().map(|&(a, b)| (a, b, false)).collect())
+            .collect();
+        let live_per_line: Vec<usize> = buckets.iter().map(Vec::len).collect();
+        let live_lines = live_per_line
+            .iter()
+            .enumerate()
+            .filter(|(_, &n)| n > 0)
+            .map(|(li, _)| li)
+            .collect();
+        let remaining = live_per_line.iter().sum();
+        Self {
+            buckets,
+            live_per_line,
+            live_lines,
+            remaining,
+        }
+    }
+
+    /// Untaken spans on scanline `line` as `(span index, start, end)`, in scan order.
+    fn live_on(&self, line: usize) -> impl Iterator<Item = (usize, Point, Point)> + '_ {
+        self.buckets
+            .get(line)
+            .into_iter()
+            .flatten()
+            .enumerate()
+            .filter(|(_, (_, _, taken))| !taken)
+            .map(|(si, &(a, b, _))| (si, a, b))
+    }
+
+    /// Marks span `si` of scanline `line` as taken and returns it.
+    fn take(&mut self, line: usize, si: usize) -> (Point, Point) {
+        let span = &mut self.buckets[line][si];
+        debug_assert!(!span.2, "raster span taken twice");
+        span.2 = true;
+        let (a, b) = (span.0, span.1);
+        self.live_per_line[line] -= 1;
+        if self.live_per_line[line] == 0 {
+            self.live_lines.remove(&line);
+        }
+        self.remaining -= 1;
+        (a, b)
+    }
+}
+
 /// Orders raster spans so that each connected part of the region is finished before
 /// moving to the next.
 ///
@@ -281,6 +347,11 @@ fn order_loops(levels: &[Loops]) -> Vec<Vec<Point>> {
 /// no such span exists does the order jump to the nearest remaining span. With
 /// `bidirectional` a span may be cut in either direction (whichever entry is closer);
 /// otherwise every span keeps its original direction.
+///
+/// The remaining spans are indexed by scanline ([`SpanIndex`]), so a connected link only
+/// examines the spans of the two adjacent scanlines; the scan over every remaining span is
+/// done only for disconnected transitions. Ties are broken in scan order (lower scanline
+/// first, then span order within a scanline).
 ///
 /// # Arguments
 /// * `lines` - Spans per scanline, in scan order.
@@ -294,65 +365,65 @@ fn order_raster_spans(
     allowed: &[Vec<Point>],
     bidirectional: bool,
 ) -> Vec<(Point, Point)> {
-    let mut remaining: Vec<(usize, Point, Point)> = lines
-        .iter()
-        .enumerate()
-        .flat_map(|(li, spans)| spans.iter().map(move |&(a, b)| (li, a, b)))
-        .collect();
-    let mut ordered = Vec::with_capacity(remaining.len());
-    if remaining.is_empty() {
+    let mut index = SpanIndex::new(lines);
+    let mut ordered = Vec::with_capacity(index.remaining);
+    let Some(&first_line) = index.live_lines.iter().next() else {
         return ordered;
-    }
-
-    // Entry options for a span: (distance, reversed).
-    let entries = |pos: &Point, a: &Point, b: &Point| -> Vec<(f64, bool)> {
-        let mut e = vec![(pos.distance_to(a), false)];
-        if bidirectional {
-            e.push((pos.distance_to(b), true));
-        }
-        e
     };
 
-    let (first_line, first_a, first_b) = remaining.remove(0);
+    // Entry options for a span: (distance, reversed).
+    let entries = |pos: &Point, a: &Point, b: &Point| -> ([(f64, bool); 2], usize) {
+        let options = [(pos.distance_to(a), false), (pos.distance_to(b), true)];
+        (options, if bidirectional { 2 } else { 1 })
+    };
+
+    let (first_a, first_b) = index.take(first_line, 0);
     ordered.push((first_a, first_b));
     let mut pos = first_b;
     let mut line = first_line;
 
-    while !remaining.is_empty() {
-        // Best linkable span on an adjacent scanline.
-        let mut best: Option<(usize, bool, f64)> = None;
-        for (idx, (li, a, b)) in remaining.iter().enumerate() {
-            if li.abs_diff(line) != 1 {
-                continue;
-            }
-            for (d, rev) in entries(&pos, a, b) {
-                if best.is_some_and(|(_, _, bd)| bd <= d) {
-                    continue;
-                }
-                let entry = if rev { b } else { a };
-                if segment_stays_inside(&pos, entry, allowed) {
-                    best = Some((idx, rev, d));
+    while index.remaining > 0 {
+        // Best linkable span on an adjacent scanline (lower scanline first, as in scan order).
+        let mut best: Option<(usize, usize, bool, f64)> = None;
+        let adjacent = [line.checked_sub(1), line.checked_add(1)];
+        for li in adjacent.into_iter().flatten() {
+            for (si, a, b) in index.live_on(li) {
+                let (options, count) = entries(&pos, &a, &b);
+                for &(d, rev) in &options[..count] {
+                    if best.is_some_and(|(_, _, _, bd)| bd <= d) {
+                        continue;
+                    }
+                    let entry = if rev { b } else { a };
+                    if segment_stays_inside(&pos, &entry, allowed) {
+                        best = Some((li, si, rev, d));
+                    }
                 }
             }
         }
 
         // Otherwise, the nearest remaining span anywhere (this may need a retract).
-        let (idx, rev) = match best {
-            Some((idx, rev, _)) => (idx, rev),
+        let (li, si, rev) = match best {
+            Some((li, si, rev, _)) => (li, si, rev),
             None => {
-                let mut nearest = (0usize, false, f64::MAX);
-                for (idx, (_, a, b)) in remaining.iter().enumerate() {
-                    for (d, rev) in entries(&pos, a, b) {
-                        if d < nearest.2 {
-                            nearest = (idx, rev, d);
+                let mut nearest: Option<(usize, usize, bool, f64)> = None;
+                for &li in &index.live_lines {
+                    for (si, a, b) in index.live_on(li) {
+                        let (options, count) = entries(&pos, &a, &b);
+                        for &(d, rev) in &options[..count] {
+                            if nearest.is_none_or(|(_, _, _, nd)| d < nd) {
+                                nearest = Some((li, si, rev, d));
+                            }
                         }
                     }
                 }
-                (nearest.0, nearest.1)
+                match nearest {
+                    Some((li, si, rev, _)) => (li, si, rev),
+                    None => break,
+                }
             }
         };
 
-        let (li, a, b) = remaining.remove(idx);
+        let (a, b) = index.take(li, si);
         let (start, end) = if rev { (b, a) } else { (a, b) };
         ordered.push((start, end));
         pos = end;

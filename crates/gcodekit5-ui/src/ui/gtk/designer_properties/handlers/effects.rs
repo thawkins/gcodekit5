@@ -1,10 +1,10 @@
 //! Effects property handlers (offset, chamfer with live preview).
 
+use crate::ui::gtk::designer_properties::SharedMeasurementSystem;
 use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption, SharedVec};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::Shape;
-use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
 use gtk4::{Entry, EventControllerFocus};
 use std::rc::Rc;
@@ -25,7 +25,7 @@ pub fn setup_offset_handler(
     state: Shared<DesignerState>,
     preview_shapes: SharedVec<Shape>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
 ) {
@@ -42,12 +42,12 @@ pub fn setup_offset_handler(
         let redraw = redraw.clone();
         let offset_entry = offset_entry_clone.clone();
         let updating = updating_clone.clone();
-        let settings = settings.clone();
+        let measurement_system = measurement_system.clone();
         move || {
             if *updating.borrow() {
                 return;
             }
-            let system = settings.borrow().config().ui.measurement_system;
+            let system = measurement_system.get();
             if let Ok(dist) = units::parse_length(&offset_entry.text(), system).map(f64::from) {
                 offset_entry.remove_css_class("entry-invalid");
                 let designer_state = state.borrow();
@@ -78,9 +78,9 @@ pub fn setup_offset_handler(
     let preview_activate = preview_shapes.clone();
     let redraw_activate = redraw_callback.clone();
     let offset_entry_activate = offset_entry.clone();
-    let settings_activate = settings.clone();
+    let system_activate = measurement_system.clone();
     offset_entry.connect_activate(move |_| {
-        let system = settings_activate.borrow().config().ui.measurement_system;
+        let system = system_activate.get();
         if let Ok(dist) = units::parse_length(&offset_entry_activate.text(), system).map(f64::from)
         {
             preview_activate.borrow_mut().clear();
@@ -109,7 +109,7 @@ pub fn setup_offset_handler(
     let preview_focus = preview_shapes.clone();
     let redraw_focus = redraw_callback.clone();
     let offset_entry_focus = offset_entry.clone();
-    let settings_focus = settings.clone();
+    let system_focus = measurement_system.clone();
     let has_focus_enter = has_focus.clone();
     focus_controller.connect_enter(move |_| {
         *has_focus_enter.borrow_mut() = true;
@@ -117,7 +117,7 @@ pub fn setup_offset_handler(
     let has_focus_leave = has_focus.clone();
     focus_controller.connect_leave(move |_| {
         *has_focus_leave.borrow_mut() = false;
-        let system = settings_focus.borrow().config().ui.measurement_system;
+        let system = system_focus.get();
         if let Ok(dist) = units::parse_length(&offset_entry_focus.text(), system).map(f64::from) {
             preview_focus.borrow_mut().clear();
             let mut designer_state = state_focus.borrow_mut();
@@ -148,7 +148,7 @@ pub fn setup_chamfer_handler(
     state: Shared<DesignerState>,
     preview_shapes: SharedVec<Shape>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
 ) {
@@ -165,12 +165,12 @@ pub fn setup_chamfer_handler(
         let redraw = redraw.clone();
         let chamfer_entry = chamfer_entry_clone.clone();
         let updating = updating_clone.clone();
-        let settings = settings.clone();
+        let measurement_system = measurement_system.clone();
         move || {
             if *updating.borrow() {
                 return;
             }
-            let system = settings.borrow().config().ui.measurement_system;
+            let system = measurement_system.get();
             if let Ok(dist) = units::parse_length(&chamfer_entry.text(), system).map(f64::from) {
                 chamfer_entry.remove_css_class("entry-invalid");
                 let designer_state = state.borrow();
@@ -201,9 +201,9 @@ pub fn setup_chamfer_handler(
     let preview_activate = preview_shapes.clone();
     let redraw_activate = redraw_callback.clone();
     let chamfer_entry_activate = chamfer_entry.clone();
-    let settings_activate = settings.clone();
+    let system_activate = measurement_system.clone();
     chamfer_entry.connect_activate(move |_| {
-        let system = settings_activate.borrow().config().ui.measurement_system;
+        let system = system_activate.get();
         if let Ok(dist) = units::parse_length(&chamfer_entry_activate.text(), system).map(f64::from)
         {
             preview_activate.borrow_mut().clear();
@@ -232,7 +232,7 @@ pub fn setup_chamfer_handler(
     let preview_focus = preview_shapes.clone();
     let redraw_focus = redraw_callback.clone();
     let chamfer_entry_focus = chamfer_entry.clone();
-    let settings_focus = settings.clone();
+    let system_focus = measurement_system.clone();
     let has_focus_enter = has_focus.clone();
     focus_controller.connect_enter(move |_| {
         *has_focus_enter.borrow_mut() = true;
@@ -240,7 +240,7 @@ pub fn setup_chamfer_handler(
     let has_focus_leave = has_focus.clone();
     focus_controller.connect_leave(move |_| {
         *has_focus_leave.borrow_mut() = false;
-        let system = settings_focus.borrow().config().ui.measurement_system;
+        let system = system_focus.get();
         if let Ok(dist) = units::parse_length(&chamfer_entry_focus.text(), system).map(f64::from) {
             preview_focus.borrow_mut().clear();
             let mut designer_state = state_focus.borrow_mut();

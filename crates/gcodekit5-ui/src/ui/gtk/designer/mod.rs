@@ -495,13 +495,21 @@ impl DesignerView {
         }
 
         // Measurement-system changes change the units shown in the properties panel.
+        // Listeners run before the change is saved (the settings dialog saves only
+        // on Accept), so the new system must come from `value`, not from the saved
+        // settings; the panel then uses it for both display and parsing.
         {
             let properties_weak = Rc::downgrade(&properties);
-            settings_controller.on_setting_changed(move |key, _value| {
-                if key == "measurement_system" || key == "units.measurement_system" {
-                    if let Some(properties) = properties_weak.upgrade() {
-                        properties.update_from_selection();
-                    }
+            settings_controller.on_setting_changed(move |key, value| {
+                if key != "measurement_system" && key != "units.measurement_system" {
+                    return;
+                }
+                let Ok(system) = value.parse::<gcodekit5_core::units::MeasurementSystem>() else {
+                    tracing::warn!(value, "Ignoring unknown measurement system");
+                    return;
+                };
+                if let Some(properties) = properties_weak.upgrade() {
+                    properties.set_measurement_system(system);
                 }
             });
         }

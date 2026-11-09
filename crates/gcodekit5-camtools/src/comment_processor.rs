@@ -90,7 +90,11 @@ pub fn strip_comments(line: &str) -> String {
 ///
 /// Comments are stripped first. Whitespace between a letter and its number is allowed
 /// (`G 1` is `G1`), as is a leading `+`. Characters that do not form a word (block delete,
-/// line-number `%`, GRBL `$` commands) are skipped.
+/// line-number `%`, the `$` sigil) are skipped.
+///
+/// GRBL system commands (`$H`, `$X`, `$$`, `$J=...`) are not G-code: their letters would be
+/// returned as words with a `NaN` value. Callers classify such lines with
+/// [`system_command`] first.
 ///
 /// # Arguments
 /// * `line` - One line of G-code.
@@ -124,6 +128,73 @@ pub fn words(line: &str) -> Vec<Word> {
         out.push(Word { letter, value });
     }
     out
+}
+
+/// A GRBL system command: a line whose code starts with `$`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SystemCommand {
+    /// A known non-motion command (`$`, `$$`, `$#`, `$G`, `$I`, `$N`, `$C`, `$X`, `$H`,
+    /// `$HX`, `$SLP`, `$RST=$|#|*`, `$I=...`, `$N0=...`, `$100=80`, ...). Holds the
+    /// normalised command text (upper case, no whitespace).
+    Known(String),
+    /// A `$J=` jog. Holds the G-code payload after `$J=` (upper case, no whitespace).
+    Jog(String),
+    /// Any other `$` line. Holds the normalised command text.
+    Unknown(String),
+}
+
+/// `true` for a GRBL setting assignment body such as `100=80.0` (without the `$`).
+fn is_setting_assignment(body: &str) -> bool {
+    match body.split_once('=') {
+        Some((number, value)) => {
+            !number.is_empty()
+                && number.chars().all(|c| c.is_ascii_digit())
+                && number.parse::<u16>().is_ok()
+                && value.parse::<f64>().is_ok_and(f64::is_finite)
+        }
+        None => false,
+    }
+}
+
+/// Classify a GRBL system (`$`) command line.
+///
+/// Comments are stripped first. Like GRBL, whitespace is ignored and letters are compared
+/// in upper case.
+///
+/// # Arguments
+/// * `line` - One line of G-code or a GRBL command.
+///
+/// # Returns
+/// `None` if the line's code does not start with `$` (it is ordinary G-code), otherwise the
+/// classified [`SystemCommand`].
+pub fn system_command(line: &str) -> Option<SystemCommand> {
+    let code = strip_comments(line);
+    if !code.starts_with('$') {
+        return None;
+    }
+    let normalised: String = code
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let body = &normalised[1..];
+
+    if let Some(payload) = body.strip_prefix("J=") {
+        return Some(SystemCommand::Jog(payload.to_string()));
+    }
+    let known = matches!(
+        body,
+        "" | "$" | "#" | "G" | "I" | "N" | "C" | "X" | "H" | "SLP" | "RST=$" | "RST=#" | "RST=*"
+    ) || matches!(body, "HX" | "HY" | "HZ" | "HA" | "HB" | "HC")
+        || body.starts_with("I=")
+        || body.starts_with("N0=")
+        || body.starts_with("N1=")
+        || is_setting_assignment(body);
+    Some(if known {
+        SystemCommand::Known(normalised)
+    } else {
+        SystemCommand::Unknown(normalised)
+    })
 }
 
 /// Processes comments in G-code

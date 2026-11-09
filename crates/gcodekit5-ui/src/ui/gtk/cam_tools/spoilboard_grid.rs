@@ -248,15 +248,12 @@ impl SpoilboardGridTool {
                 feed_rate: w_gen.feed_rate.text().parse().unwrap_or(1000.0),
                 laser_power: w_gen.laser_power.text().parse().unwrap_or(1000.0),
                 laser_mode: laser_mode_str,
+                home_before_job: home_before,
             };
 
             let generator = SpoilboardGridGenerator::new(params);
             match generator.generate() {
-                Ok(mut gcode) => {
-                    gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
+                Ok(gcode) => {
                     on_generate(gcode);
                 }
                 Err(e) => {

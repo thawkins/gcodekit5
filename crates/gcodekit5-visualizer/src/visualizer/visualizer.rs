@@ -617,6 +617,8 @@ impl Visualizer {
         let mut absolute = true;
         let mut inches = false;
         let mut motion_counts = [0usize; 4];
+        // Highest work Z reached so far; used to place G53 retracts (see below).
+        let mut max_z_seen = current_pos.z;
 
         for (line_num, line) in gcode.lines().enumerate() {
             let original_line = line.trim();
@@ -635,6 +637,7 @@ impl Visualizer {
             let mut set_position = false;
             let mut home_move = false;
             let mut axes_not_motion = false;
+            let mut machine_coords = false;
 
             for word in &words {
                 let value = word.value as f32;
@@ -655,6 +658,7 @@ impl Visualizer {
                             (20, 0) => inches = true,
                             (21, 0) => inches = false,
                             (28, 0) | (30, 0) => home_move = true,
+                            (53, 0) => machine_coords = true,
                             (80, 0) => current_motion_mode = MotionMode::None,
                             (90, 0) => absolute = true,
                             (91, 0) => absolute = false,
@@ -745,6 +749,35 @@ impl Visualizer {
                 continue;
             }
 
+            if machine_coords {
+                // G53 (non-modal): the axis words are machine coordinates, whose
+                // relation to the work coordinates (the WCS offset) is unknown here.
+                // Generators use G53 only to retract toward the top of travel (e.g.
+                // `G53 G0 Z-1` after homing), so draw it as a travel move that never
+                // goes below the highest work Z reached so far, with X/Y unchanged.
+                // Plotting it at work Z-1 would show (and simulate) a false cut.
+                let to = Point3D::new(
+                    current_pos.x,
+                    current_pos.y,
+                    if params.z.is_some() {
+                        current_pos.z.max(max_z_seen)
+                    } else {
+                        current_pos.z
+                    },
+                );
+                motion_counts[0] += 1;
+                commands.push(GCodeCommand::Move {
+                    from: current_pos,
+                    to,
+                    rapid: true,
+                    intensity: None,
+                });
+                bounds.update(current_pos.x, current_pos.y, current_pos.z);
+                bounds.update(to.x, to.y, to.z);
+                current_pos = to;
+                continue;
+            }
+
             let resolve = |current: f32, value: Option<f32>| -> f32 {
                 match value {
                     Some(v) if absolute => v,
@@ -825,6 +858,7 @@ impl Visualizer {
                     debug!("Movement without motion mode at line {}", line_num);
                 }
             }
+            max_z_seen = max_z_seen.max(current_pos.z);
         }
 
         debug!(

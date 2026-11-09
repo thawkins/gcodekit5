@@ -1,3 +1,15 @@
+## [Unreleased] - 2026-11-09 (review follow-up to #62)
+
+### Fixed
+- **CAM homing safety**: with "home before job" on, every post-homing travel/retract in the jigsaw, tabbed box, spoilboard surfacing, spoilboard grid and drill press is a machine-coordinate move (`G53 G0 Z-1`), so a retained G54 Z offset can no longer send Z above the homed position. With homing off, output stays in work coordinates and no longer silently clears the X/Y work offset
+- **TCP connections**: reads poll with the same 10 ms timeout as serial instead of the 5 s connect timeout, so Pause/E-stop are no longer delayed; a closed TCP connection now disconnects
+- **CAM validator**: GRBL system commands (`$H`, `$X`, `$$`, ...) are accepted and `$J=` jog payloads are validated; stats/optimizer handle `$` lines
+- **Editor undo**: nested batches commit only when the outermost batch ends
+- **Quit**: File → Quit and its shortcut ask before discarding unsaved designer changes, and exit the whole app
+- **Designer units**: property fields switch units as soon as the measurement system changes; display and parsing share one unit source
+- **Stock simulation**: the stock origin is a "Stock Z0 at: Top/Bottom" option (default Top) instead of a guess from the lowest Z; designer CNC output records `; Stock Z0: bottom` in its header and is detected automatically
+- **Raster pocket ordering**: spans indexed by scanline, so large pockets order in linear time (60,000 spans: 3.9 s → 0.09 s)
+
 ## [Unreleased] - 2026-11-09 (warnings and GTK 4.10 deprecations)
 
 ### Changed

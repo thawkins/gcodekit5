@@ -269,7 +269,7 @@ impl TabbedBoxMaker {
         let home_row = ActionRow::builder()
             .title(t!("Home Device Before Start"))
             .subtitle(t!(
-                "Runs $H and clears the G54 X/Y offset (Z offset kept). Off: uses the work zero you set; no Z move above Z0 after homing."
+                "Runs $H and clears the G54 X/Y offset (Z offset kept). Travel/retract moves then use machine Z-1 (G53), never above the homed position. Off: uses the work zero you set."
             ))
             .build();
         home_row.add_suffix(&home_before);

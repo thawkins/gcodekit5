@@ -439,6 +439,13 @@ impl serial::SerialPort for TcpAsSerialPort {
                 std::io::ErrorKind::ConnectionAborted,
                 "connection closed by the controller",
             )),
+            // `SerialCommunicator::receive` treats BrokenPipe as "no data" for the sake of
+            // serial-port cleanup. On a socket it means the peer is gone, so report it as
+            // a closed connection instead.
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                e,
+            )),
             other => other,
         }
     }
@@ -452,6 +459,18 @@ impl serial::SerialPort for TcpAsSerialPort {
     }
 }
 
+/// Returns true for read errors that mean the connection itself is gone (as opposed to
+/// a timeout or a transient fault), so the port must be dropped.
+fn is_terminal_read_error(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::UnexpectedEof
+            | std::io::ErrorKind::NotConnected
+    )
+}
+
 impl Communicator for SerialCommunicator {
     /// Opens the connection described by `params`.
     ///
@@ -463,11 +482,18 @@ impl Communicator for SerialCommunicator {
         let opened: gcodekit5_core::Result<Box<dyn serial::SerialPort>> = match params.driver {
             ConnectionDriver::Serial => serial::RealSerialPort::open(params)
                 .map(|p| Box::new(p) as Box<dyn serial::SerialPort>),
-            ConnectionDriver::Tcp => tcp::RealTcpPort::open(params).map(|p| {
-                Box::new(TcpAsSerialPort {
+            ConnectionDriver::Tcp => tcp::RealTcpPort::open(params).and_then(|p| {
+                // `open` applies `timeout_ms` to connect, read and write. Reads here are
+                // polled with the communicator lock held, so use the same short timeout
+                // as the serial port; `timeout_ms` still governs connecting and writes.
+                p.set_read_timeout(Some(serial::POLL_READ_TIMEOUT))
+                    .map_err(|e| {
+                        gcodekit5_core::Error::other(format!("Failed to set TCP read timeout: {e}"))
+                    })?;
+                Ok(Box::new(TcpAsSerialPort {
                     inner: Box::new(p),
                     name: format!("{}:{}", params.port, params.network_port),
-                }) as Box<dyn serial::SerialPort>
+                }) as Box<dyn serial::SerialPort>)
             }),
             ConnectionDriver::WebSocket => Err(gcodekit5_core::Error::other(
                 "WebSocket connections are not supported yet",
@@ -564,8 +590,22 @@ impl Communicator for SerialCommunicator {
                     {
                         Ok(vec![])
                     } else if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        // BrokenPipe during receive often happens during cleanup or disconnect
+                        // BrokenPipe during receive often happens during serial cleanup or
+                        // disconnect. (The TCP adapter maps a socket BrokenPipe to
+                        // ConnectionAborted, so it is handled as terminal below.)
                         Ok(vec![])
+                    } else if is_terminal_read_error(e.kind()) {
+                        // The connection is gone: drop the port so is_connected() is false
+                        // and listeners (the UI) see the disconnect.
+                        if let Some(mut port) = self.port.take() {
+                            if let Err(close_err) = port.close() {
+                                tracing::debug!("Error closing dead port: {}", close_err);
+                            }
+                        }
+                        let msg = format!("Connection lost: {}", e);
+                        tracing::warn!("{}", msg);
+                        self.notify_listeners(CommunicatorEvent::Disconnected, &msg);
+                        Err(gcodekit5_core::Error::other(msg))
                     } else {
                         let msg = format!("Receive error: {}", e);
                         // tracing::error!("{}", msg);

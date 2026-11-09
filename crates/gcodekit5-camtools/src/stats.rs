@@ -4,7 +4,7 @@
 //!
 //! Lines are tokenized with [`crate::comment_processor::words`], so comments are ignored.
 
-use crate::comment_processor::words;
+use crate::comment_processor::{system_command, words};
 
 /// G-code statistics
 #[derive(Debug, Clone, Default)]
@@ -52,7 +52,8 @@ impl StatsCalculator {
     /// Calculate statistics for a program.
     ///
     /// Comments are ignored; only whole words count (`G0`/`G00` are rapids, `G38.2` is not
-    /// counted as a move).
+    /// counted as a move). GRBL `$` system commands (including `$J=` jogs) are counted in
+    /// `total_commands` only; they add no moves and do not affect the bounds.
     ///
     /// # Arguments
     /// * `lines` - Program lines.
@@ -71,6 +72,13 @@ impl StatsCalculator {
         };
 
         for line in lines {
+            // GRBL `$` commands (`$H`, `$X`, `$J=...`) count as commands but are not program
+            // motion: their letters are not G-code words and a jog does not belong in the
+            // program's bounds.
+            if system_command(line).is_some() {
+                stats.total_commands += 1;
+                continue;
+            }
             let line_words = words(line);
             if line_words.is_empty() {
                 continue;

@@ -74,6 +74,54 @@ fn test_tcp_transport_reports_closed_connection() {
         saw_error,
         "a closed TCP connection must be reported, not read as no data"
     );
+    assert!(
+        !comm.is_connected(),
+        "a closed TCP connection must no longer report as connected"
+    );
+    assert!(
+        comm.receive().is_err(),
+        "receive after the peer closed must keep failing, not read as no data"
+    );
+}
+
+#[test]
+fn test_tcp_transport_idle_receive_returns_quickly() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind local listener");
+    let port = listener.local_addr().expect("listener address").port();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        // Accept and stay silent until the test is done, like an idle controller.
+        let (_stream, _) = listener.accept().expect("accept connection");
+        let _ = done_rx.recv_timeout(Duration::from_secs(10));
+    });
+
+    let params = ConnectionParams::tcp("127.0.0.1", port);
+    assert!(
+        params.timeout_ms >= 1000,
+        "test assumes the default (long) connection timeout, got {} ms",
+        params.timeout_ms
+    );
+    let mut comm = SerialCommunicator::new();
+    comm.connect(&params)
+        .expect("TCP connect should be supported");
+
+    let started = Instant::now();
+    let data = comm
+        .receive()
+        .expect("an idle receive should report no data, not an error");
+    let elapsed = started.elapsed();
+
+    assert!(data.is_empty(), "{data:?}");
+    assert!(
+        elapsed < Duration::from_millis(200),
+        "idle TCP receive blocked for {elapsed:?}; it holds the communicator lock that \
+         Pause and E-stop need"
+    );
+    assert!(comm.is_connected());
+
+    comm.disconnect().expect("disconnect");
+    done_tx.send(()).expect("signal server");
+    server.join().expect("server thread");
 }
 
 #[test]

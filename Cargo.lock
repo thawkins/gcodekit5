@@ -1533,6 +1533,7 @@ version = "1.1.0-beta.1"
 dependencies = [
  "ropey",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1596,6 +1597,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "criterion",
+ "gcodekit5-camtools",
  "gcodekit5-core",
  "gcodekit5-designer",
  "glam",

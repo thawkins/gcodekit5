@@ -415,15 +415,12 @@ impl DrillPressTool {
                 safe_z,
                 x,
                 y,
+                home_before_job: home_before,
             };
 
             let generator = DrillPressGenerator::new(params);
             match generator.generate() {
-                Ok(mut gcode) => {
-                    gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
+                Ok(gcode) => {
 
                     if let Some(mc) = mc_run.as_ref() {
                         mc.start_job(&gcode);
@@ -503,6 +500,7 @@ impl DrillPressTool {
             safe_z: units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0) as f64,
             x: units::parse_length(&w.x.text(), system).unwrap_or(0.0) as f64,
             y: units::parse_length(&w.y.text(), system).unwrap_or(0.0) as f64,
+            home_before_job: w.home_before.is_active(),
         };
 
         dialog.pick_save(None::<&gtk4::Window>, move |file| {
@@ -517,6 +515,7 @@ impl DrillPressTool {
     fn load_params(w: &DrillPressWidgets, settings: &Rc<SettingsController>) {
         let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Parameters");
 
+        let home_before_clone = w.home_before.clone();
         let w_clone = Rc::new((
             w.hole_diameter.clone(),
             w.tool_diameter.clone(),
@@ -537,6 +536,7 @@ impl DrillPressTool {
                 if let Ok(content) = fs::read_to_string(path) {
                     if let Ok(params) = serde_json::from_str::<DrillPressParameters>(&content) {
                         Self::apply_params(&w_clone, &params, &settings_clone);
+                        home_before_clone.set_active(params.home_before_job);
                     }
                 }
             }

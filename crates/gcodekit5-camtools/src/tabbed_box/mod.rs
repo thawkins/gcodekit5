@@ -1333,8 +1333,14 @@ impl TabbedBoxMaker {
 
         gcode.push_str("M5 ; Ensure laser off\n");
         if has_z {
-            // Back to the first-pass (focus) height; never above work Z0.
-            gcode.push_str("G0 Z0.00 ; Return to first-pass height\n");
+            if self.params.home_before_job {
+                // Work Z0 is not machine Z0 (the Z work offset is kept), so the final retract
+                // after homing is made in machine coordinates, never above the homed position.
+                gcode.push_str(&crate::job_preamble::travel_z_line(true, 0.0, "Retract"));
+            } else {
+                // Back to the first-pass (focus) height in the user's work coordinates.
+                gcode.push_str("G0 Z0.00 ; Return to first-pass height\n");
+            }
         }
         gcode.push_str("G0 X0 Y0 ; Return to origin\n");
         gcode.push_str("M2 ; Program end\n");
