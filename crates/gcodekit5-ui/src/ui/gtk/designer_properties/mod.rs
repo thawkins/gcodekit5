@@ -24,7 +24,14 @@ use gtk4::{
     Box, CheckButton, DropDown, Entry, EventControllerFocus, Expression, Frame, Label, Orientation,
     ScrolledWindow, StringList,
 };
+use std::cell::Cell;
 use std::rc::Rc;
+
+/// Measurement system shared by the properties panel and its entry handlers.
+///
+/// It is the single source used both to format lengths for display and to parse
+/// them back, so the two can never disagree.
+pub(crate) type SharedMeasurementSystem = Rc<Cell<units::MeasurementSystem>>;
 
 const MM_PER_PT: f64 = 25.4 / 72.0;
 
@@ -42,7 +49,8 @@ fn format_font_points(mm: f64) -> String {
 pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
     pub(crate) state: Shared<DesignerState>,
-    pub(crate) settings: Shared<SettingsPersistence>,
+    /// Measurement system used to display and parse lengths.
+    pub(crate) measurement_system: SharedMeasurementSystem,
     pub(crate) preview_shapes: SharedVec<Shape>,
     pub(crate) _content: Box,
     pub(crate) header: Label,
@@ -161,11 +169,19 @@ pub struct PropertiesPanel {
 
 impl PropertiesPanel {
     /// Create a new properties panel.
+    ///
+    /// # Arguments
+    /// * `state` - Designer state whose selection the panel edits.
+    /// * `settings` - Saved settings; only read for the initial measurement system.
+    ///   Later changes must be passed in with [`PropertiesPanel::set_measurement_system`].
+    /// * `preview_shapes` - Shapes the canvas draws as a live effect preview.
     pub fn new(
         state: Shared<DesignerState>,
         settings: Shared<SettingsPersistence>,
         preview_shapes: SharedVec<Shape>,
     ) -> Rc<Self> {
+        let measurement_system: SharedMeasurementSystem =
+            Rc::new(Cell::new(settings.borrow().config().ui.measurement_system));
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
@@ -319,7 +335,7 @@ impl PropertiesPanel {
         let panel = Rc::new(Self {
             widget: scrolled,
             state: state.clone(),
-            settings: settings.clone(),
+            measurement_system,
             preview_shapes: preview_shapes.clone(),
             _content: content,
             pos_frame,
@@ -437,7 +453,7 @@ impl PropertiesPanel {
             lock_aspect: self.lock_aspect_ratio.clone(),
             aspect_ratio: self.aspect_ratio.clone(),
             state: self.state.clone(),
-            settings: self.settings.clone(),
+            measurement_system: self.measurement_system.clone(),
             redraw_callback: self.redraw_callback.clone(),
             updating: self.updating.clone(),
             has_focus: self.has_focus.clone(),
@@ -459,7 +475,7 @@ impl PropertiesPanel {
         handlers::geometry::setup_corner_radius_handler(
             &self.corner_radius_entry,
             self.state.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
@@ -546,7 +562,7 @@ impl PropertiesPanel {
         handlers::cam::setup_step_down_handler(
             &self.step_down_entry,
             self.state.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
@@ -555,7 +571,7 @@ impl PropertiesPanel {
         handlers::cam::setup_step_in_handler(
             &self.step_in_entry,
             self.state.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
@@ -671,7 +687,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );
@@ -681,7 +697,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );

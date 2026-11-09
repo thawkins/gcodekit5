@@ -4,10 +4,10 @@
 //! [`super::connect_entry_commit`], so each edit is exactly one undo step.
 
 use super::{change_selected_with_undo, connect_entry_commit};
+use crate::ui::gtk::designer_properties::SharedMeasurementSystem;
 use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption};
 use gcodekit5_designer::designer_state::DesignerState;
-use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
 use gtk4::{CheckButton, Entry};
 use std::rc::Rc;
@@ -30,8 +30,8 @@ pub struct DimensionContext {
     pub aspect_ratio: Shared<f64>,
     /// Designer state.
     pub state: Shared<DesignerState>,
-    /// Settings (measurement system).
-    pub settings: Shared<SettingsPersistence>,
+    /// Measurement system used to parse the entries.
+    pub measurement_system: SharedMeasurementSystem,
     /// Canvas redraw + panel refresh callback.
     pub redraw_callback: SharedOption<Rc<dyn Fn()>>,
     /// Programmatic-update guard.
@@ -42,7 +42,7 @@ pub struct DimensionContext {
 
 impl DimensionContext {
     fn system(&self) -> units::MeasurementSystem {
-        self.settings.borrow().config().ui.measurement_system
+        self.measurement_system.get()
     }
 
     fn parse(&self, entry: &Entry) -> Option<f64> {

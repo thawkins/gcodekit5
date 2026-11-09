@@ -907,9 +907,15 @@ pub fn main() {
         for name in action_names {
             let action = gio::SimpleAction::new(name, None);
             if name == "quit" {
-                let app_for_quit = app.clone();
+                // Close the main window instead of quitting outright so Quit goes
+                // through the same unsaved-changes prompt as the window close button
+                // (see `connect_close_request` below). The window's destroy handler
+                // ends the application once the close goes ahead.
+                let window_weak = window.downgrade();
                 action.connect_activate(move |_, _| {
-                    app_for_quit.quit();
+                    if let Some(window) = window_weak.upgrade() {
+                        window.close();
+                    }
                 });
             } else if name == "machine_connect" || name == "machine_disconnect" {
                 // Toggle via the Machine Control connect button, but only in the
@@ -1062,6 +1068,14 @@ pub fn main() {
                 // `destroy` does not emit close-request again, so this cannot loop.
                 designer_close.confirm_discard_changes(move || win.destroy());
                 glib::Propagation::Stop
+            });
+
+            // Once the main window is gone the application is finished, even if
+            // other application windows (e.g. the help browser) are still open.
+            let app_for_quit = app.clone();
+            window.connect_destroy(move |_| {
+                tracing::info!("Main window destroyed; quitting application");
+                app_for_quit.quit();
             });
         }
 

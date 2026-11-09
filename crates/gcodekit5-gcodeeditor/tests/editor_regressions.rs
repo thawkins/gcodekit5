@@ -77,12 +77,30 @@ fn test_undo_manager_nested_batch_stays_single_step() {
     manager.begin_batch();
     manager.record(TextChange::new(1..1, String::new(), "b".into(), 1, 2));
     manager.end_batch();
+    // Ending the inner batch must not commit the outer one.
+    assert_eq!(manager.undo_count(), 0);
+    manager.record(TextChange::new(2..2, String::new(), "c".into(), 2, 3));
+    manager.end_batch();
     assert_eq!(manager.undo_count(), 1);
     let inverses = manager.undo().expect("undo");
     // Inverses come last-change-first.
-    assert_eq!(inverses.len(), 2);
-    assert_eq!(inverses[0].char_range, 1..2);
-    assert_eq!(inverses[1].char_range, 0..1);
+    assert_eq!(inverses.len(), 3);
+    assert_eq!(inverses[0].char_range, 2..3);
+    assert_eq!(inverses[1].char_range, 1..2);
+    assert_eq!(inverses[2].char_range, 0..1);
+    assert!(!manager.can_undo());
+}
+
+#[test]
+fn test_undo_manager_unmatched_end_batch_is_ignored() {
+    let mut manager = UndoManager::new();
+    manager.end_batch();
+    manager.begin_batch();
+    manager.record(TextChange::new(0..0, String::new(), "a".into(), 0, 1));
+    manager.end_batch();
+    manager.end_batch();
+    manager.record(TextChange::new(1..1, String::new(), "b".into(), 1, 2));
+    assert_eq!(manager.undo_count(), 2);
 }
 
 #[test]

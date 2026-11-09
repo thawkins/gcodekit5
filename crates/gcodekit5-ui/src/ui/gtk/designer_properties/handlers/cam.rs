@@ -1,11 +1,11 @@
 //! CAM property handlers (operation type, depth, step down, step in, ramp angle, strategy, raster fill).
 
 use super::connect_entry_commit;
+use crate::ui::gtk::designer_properties::SharedMeasurementSystem;
 use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::pocket_operations::PocketStrategy;
-use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
 use gtk4::{CheckButton, DropDown, Entry};
 use std::rc::Rc;
@@ -65,7 +65,7 @@ fn redraw(redraw_callback: &SharedOption<Rc<dyn Fn()>>) {
 fn setup_length_entry(
     entry: &Entry,
     state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
@@ -73,7 +73,7 @@ fn setup_length_entry(
 ) {
     let apply_state = state.clone();
     connect_entry_commit(entry, state, updating, has_focus, move |entry| {
-        let system = settings.borrow().config().ui.measurement_system;
+        let system = measurement_system.get();
         if let Ok(val) = units::parse_length(&entry.text(), system) {
             entry.remove_css_class("entry-invalid");
             setter(&mut apply_state.borrow_mut(), val as f64);
@@ -89,7 +89,7 @@ fn setup_length_entry(
 pub fn setup_step_down_handler(
     step_down_entry: &Entry,
     state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
@@ -97,7 +97,7 @@ pub fn setup_step_down_handler(
     setup_length_entry(
         step_down_entry,
         state,
-        settings,
+        measurement_system,
         redraw_callback,
         updating,
         has_focus,
@@ -110,7 +110,7 @@ pub fn setup_step_down_handler(
 pub fn setup_step_in_handler(
     step_in_entry: &Entry,
     state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
@@ -118,7 +118,7 @@ pub fn setup_step_in_handler(
     setup_length_entry(
         step_in_entry,
         state,
-        settings,
+        measurement_system,
         redraw_callback,
         updating,
         has_focus,

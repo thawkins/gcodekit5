@@ -21,15 +21,46 @@ impl PropertiesPanel {
     }
 
     /// Update the panel from the current selection.
+    ///
+    /// Does nothing while the user is editing one of the panel's entries.
     pub fn update_from_selection(&self) {
+        self.refresh_from_selection(false);
+    }
+
+    /// Switch the measurement system used to display and parse lengths, and
+    /// refresh the panel so every length field shows the new units.
+    ///
+    /// The refresh runs even while an entry has focus: otherwise its text would
+    /// still be in the old units but be parsed in the new ones when committed.
+    ///
+    /// # Arguments
+    /// * `system` - The newly selected measurement system.
+    pub fn set_measurement_system(&self, system: units::MeasurementSystem) {
+        if self.measurement_system.get() == system {
+            return;
+        }
+        tracing::debug!(
+            ?system,
+            "Designer properties panel switching measurement system"
+        );
+        self.measurement_system.set(system);
+        self.refresh_from_selection(true);
+    }
+
+    /// Refresh the panel from the current selection.
+    ///
+    /// # Arguments
+    /// * `force` - Refresh even while the user is editing an entry.
+    fn refresh_from_selection(&self, force: bool) {
         // Do not rewrite entries while the user is typing; this preserves caret
         // position and avoids forced formatting mid-edit.
-        if *self.has_focus.borrow() {
+        if !force && *self.has_focus.borrow() {
             return;
         }
 
-        // Get current measurement system
-        let system = self.settings.borrow().config().ui.measurement_system;
+        // The panel's measurement system is the single source for both display
+        // and parsing (see `set_measurement_system`).
+        let system = self.measurement_system.get();
         let unit_label = units::get_unit_label(system);
 
         // Update unit labels
