@@ -45,7 +45,8 @@ fn copper_params() -> GerberParameters {
 fn test_gerber_format_2_4_coordinates_scaled_correctly() {
     // X10 Y10 mm encoded in 2.4 format; used to come out 100x too large.
     let gerber = "%FSLAX24Y24*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\nX100000Y100000D03*\nM02*\n";
-    let gcode = GerberConverter::generate(&copper_params(), gerber).unwrap();
+    let gcode = GerberConverter::generate(&copper_params(), gerber)
+        .expect("regression test setup should succeed");
     let moves = xy_moves(&gcode);
     assert!(!moves.is_empty());
     for (x, y) in moves {
@@ -57,7 +58,8 @@ fn test_gerber_format_2_4_coordinates_scaled_correctly() {
 fn test_gerber_isolation_offsets_away_from_copper() {
     // 2mm round pad at (10,10): isolation path must be at r = 1 + 0.1, not 1 - 0.1.
     let gerber = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\nX10000000Y10000000D03*\nM02*\n";
-    let gcode = GerberConverter::generate(&copper_params(), gerber).unwrap();
+    let gcode = GerberConverter::generate(&copper_params(), gerber)
+        .expect("regression test setup should succeed");
     for (x, y) in xy_moves(&gcode) {
         let r = ((x - 10.0).powi(2) + (y - 10.0).powi(2)).sqrt();
         assert!(r > 1.05, "isolation path cuts into the pad (r = {r})");
@@ -70,7 +72,8 @@ fn test_gerber_isolation_hole_offsets_into_hole() {
     // inside the hole, i.e. at least 0.25 + 0.1 from the trace centreline.
     let gerber = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,0.5*%\nD10*\nX0Y0D02*\n\
                   X10000000Y0D01*\nX10000000Y10000000D01*\nX0Y10000000D01*\nX0Y0D01*\nM02*\n";
-    let gcode = GerberConverter::generate(&copper_params(), gerber).unwrap();
+    let gcode = GerberConverter::generate(&copper_params(), gerber)
+        .expect("regression test setup should succeed");
     for (x, y) in xy_moves(&gcode) {
         let inside = x > 0.0 && x < 10.0 && y > 0.0 && y < 10.0;
         if inside {
@@ -88,7 +91,8 @@ fn test_gerber_offset_applied_once() {
         ..copper_params()
     };
     let gerber = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\nX10000000Y10000000D03*\nM02*\n";
-    let gcode = GerberConverter::generate(&params, gerber).unwrap();
+    let gcode =
+        GerberConverter::generate(&params, gerber).expect("regression test setup should succeed");
     // Work zero must not be shifted by the offset (it is already in every coordinate).
     assert!(!gcode.contains("G0 X20.000 Y30.000"));
     let (x, y) = xy_moves(&gcode)[0];
@@ -119,9 +123,11 @@ fn single_pixel_image(width: u32, height: u32, x: u32) -> DynamicImage {
 
 #[test]
 fn test_laser_single_pixel_burns_full_pixel_width() {
-    let engraver =
-        BitmapImageEngraver::from_image(single_pixel_image(4, 1, 1), engraver_params()).unwrap();
-    let gcode = engraver.generate_gcode().unwrap();
+    let engraver = BitmapImageEngraver::from_image(single_pixel_image(4, 1, 1), engraver_params())
+        .expect("regression test setup should succeed");
+    let gcode = engraver
+        .generate_gcode()
+        .expect("regression test setup should succeed");
     // Pixel 1 spans X0.1..X0.2; previously this was a zero-length G1.
     assert!(gcode.contains("G0 X0.100 Y0.000 S0"), "{gcode}");
     assert!(gcode.contains("G1 X0.200 S"), "{gcode}");
@@ -129,9 +135,11 @@ fn test_laser_single_pixel_burns_full_pixel_width() {
 
 #[test]
 fn test_laser_reverse_pass_travels_right_to_left() {
-    let engraver =
-        BitmapImageEngraver::from_image(single_pixel_image(4, 2, 1), engraver_params()).unwrap();
-    let gcode = engraver.generate_gcode().unwrap();
+    let engraver = BitmapImageEngraver::from_image(single_pixel_image(4, 2, 1), engraver_params())
+        .expect("regression test setup should succeed");
+    let gcode = engraver
+        .generate_gcode()
+        .expect("regression test setup should succeed");
     // Second (reverse) line must start at the right edge of the pixel and burn leftward.
     assert!(gcode.contains("G0 X0.200 Y0.100 S0"), "{gcode}");
     assert!(gcode.contains("G1 X0.100 S"), "{gcode}");
@@ -145,9 +153,9 @@ fn test_laser_line_spacing_skips_lines_instead_of_stretching() {
         ..engraver_params()
     };
     let gcode = BitmapImageEngraver::from_image(img, params)
-        .unwrap()
+        .expect("regression test setup should succeed")
         .generate_gcode()
-        .unwrap();
+        .expect("regression test setup should succeed");
     let max_y = xy_moves(&gcode)
         .iter()
         .map(|&(_, y)| y)
@@ -220,7 +228,7 @@ fn test_spoilboard_surfacing_keeps_z_work_offset() {
     };
     let gcode = SpoilboardSurfacingGenerator::new(params)
         .generate()
-        .unwrap();
+        .expect("regression test setup should succeed");
     assert!(!gcode
         .lines()
         .any(|l| l.starts_with("G10") && l.contains("Z0")));
@@ -237,14 +245,20 @@ fn test_probe_backoff_uses_grbl_compatible_relative_moves() {
     };
     let out = ProbeRoutineEngine::new(routine)
         .generate(Position::new(0.0, 0.0, 5.0))
-        .unwrap();
+        .expect("regression test setup should succeed");
     assert!(!out.gcode.contains("PRB_"), "{}", out.gcode);
     assert!(out.gcode.contains("G91"));
     assert!(out.gcode.contains("G0 Z2.000"));
     assert!(out.gcode.contains("G38.2 Z-2.500 F25.0"));
     // Absolute mode must be restored before the final retract
-    let g90 = out.gcode.rfind("G90").unwrap();
-    let retract = out.gcode.rfind("Retract to safe height").unwrap();
+    let g90 = out
+        .gcode
+        .rfind("G90")
+        .expect("regression test setup should succeed");
+    let retract = out
+        .gcode
+        .rfind("Retract to safe height")
+        .expect("regression test setup should succeed");
     assert!(g90 < retract);
 }
 
@@ -260,7 +274,7 @@ fn test_probe_corner_find_y_probe_is_not_zero_length() {
     };
     let out = ProbeRoutineEngine::new(routine)
         .generate(Position::new(50.0, 50.0, 5.0))
-        .unwrap();
+        .expect("regression test setup should succeed");
     assert!(!out.gcode.contains("G0 Y40.000"), "{}", out.gcode);
     assert!(out.gcode.contains("G38.2 Y40.000"));
 }
@@ -286,7 +300,8 @@ fn test_probe_corner_result_without_backoff_uses_x_trigger() {
         true,
         Units::MM,
     ));
-    let corner = ProbeRoutineEngine::compute_result(&report).unwrap();
+    let corner =
+        ProbeRoutineEngine::compute_result(&report).expect("regression test setup should succeed");
     assert!((corner.x - 10.0).abs() < 1e-4);
     assert!((corner.y - 20.0).abs() < 1e-4);
 }
@@ -301,7 +316,7 @@ fn test_probe_boss_center_probes_toward_boss() {
     };
     let out = ProbeRoutineEngine::new(routine)
         .generate(Position::new(50.0, 50.0, 5.0))
-        .unwrap();
+        .expect("regression test setup should succeed");
     // Start at X38 (outside left) and probe toward the center, never away from it.
     assert!(out.gcode.contains("G38.2 X50.000"), "{}", out.gcode);
     assert!(!out.gcode.contains("G38.2 X26.000"));
@@ -320,14 +335,19 @@ fn test_wcs_g10_uses_p1_for_g54_and_only_measured_axes() {
     for (x, y) in [(40.0, 50.0), (60.0, 50.0), (50.0, 40.0), (50.0, 60.0)] {
         report.add_trigger(ProbeResult::new(Position::new(x, y, -5.0), true, Units::MM));
     }
-    let result = service.process_probe_report(&report).unwrap();
+    let result = service
+        .process_probe_report(&report)
+        .expect("regression test setup should succeed");
     assert_eq!(result.command, "G10 L2 P1 X50.000 Y50.000");
 }
 
 #[test]
 fn test_jigsaw_passes_step_down_from_plunge_depth() {
-    let mut maker = JigsawPuzzleMaker::new(PuzzleParameters::default()).unwrap();
-    maker.generate().unwrap();
+    let mut maker = JigsawPuzzleMaker::new(PuzzleParameters::default())
+        .expect("regression test setup should succeed");
+    maker
+        .generate()
+        .expect("regression test setup should succeed");
     let gcode = maker.to_gcode(500.0, 1.0);
     // Default: 3 passes, 0.5 step: Z-1.00 (plunge), Z-1.50, Z-2.00 — never back up to Z-0.50.
     assert!(gcode.contains("G0 Z-1.50 ; Move to pass depth"));
@@ -337,8 +357,11 @@ fn test_jigsaw_passes_step_down_from_plunge_depth() {
 
 #[test]
 fn test_tabbed_box_each_panel_starts_at_first_pass_height() {
-    let mut maker = TabbedBoxMaker::new(BoxParameters::default()).unwrap();
-    maker.generate().unwrap();
+    let mut maker = TabbedBoxMaker::new(BoxParameters::default())
+        .expect("regression test setup should succeed");
+    maker
+        .generate()
+        .expect("regression test setup should succeed");
     let gcode = maker.to_gcode();
     let mut z = 0.0f32;
     for line in gcode.lines() {
@@ -346,7 +369,12 @@ fn test_tabbed_box_each_panel_starts_at_first_pass_height() {
             assert!(z.abs() < 1e-6, "panel started at Z{z} instead of Z0");
         }
         if let Some(rest) = line.strip_prefix("G0 Z") {
-            z = rest.split_whitespace().next().unwrap().parse().unwrap();
+            z = rest
+                .split_whitespace()
+                .next()
+                .expect("regression test setup should succeed")
+                .parse()
+                .expect("regression test setup should succeed");
             if line.contains("safe height") {
                 z = 0.0; // initial safe-height move precedes the first panel
             }
@@ -365,8 +393,10 @@ fn test_tabbed_box_divider_slot_pitch_matches_fingers() {
     let kerf = params.burn;
     let pitch = (params.finger_joint.finger + params.finger_joint.space) * t;
     let slot_h = params.finger_joint.finger * t - kerf;
-    let mut maker = TabbedBoxMaker::new(params).unwrap();
-    maker.generate().unwrap();
+    let mut maker = TabbedBoxMaker::new(params).expect("regression test setup should succeed");
+    maker
+        .generate()
+        .expect("regression test setup should succeed");
 
     // Vertical slot rectangles in the first wall: width t - kerf, height finger - kerf
     let mut slots: Vec<(f32, f32)> = maker
