@@ -359,17 +359,18 @@ impl BackupManager {
 
     /// Clean old backups
     pub fn cleanup(&self) -> Result<()> {
-        let mut backups = self.list_backups()?;
+        // Sorted newest first
+        let backups = self.list_backups()?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
-        // Remove old backups
-        backups.retain(|b| now - b.timestamp <= self.max_age);
-
-        // Keep only max backups
-        if backups.len() > self.max_backups {
-            let to_remove = backups.len() - self.max_backups;
-            for backup in &backups[..to_remove] {
+        let mut kept = 0usize;
+        for backup in &backups {
+            let expired = now.saturating_sub(backup.timestamp) > self.max_age;
+            if expired || kept >= self.max_backups {
+                // Delete expired backups and the oldest ones beyond the limit
                 fs::remove_file(&backup.backup_path).ok();
+            } else {
+                kept += 1;
             }
         }
 
@@ -523,6 +524,12 @@ impl BasicProber {
         )
     }
 
+    /// Generate a probe command followed by a retract to `safe_z`, so that the
+    /// next XY move does not drag the probe across the surface.
+    pub fn generate_probe_and_retract(&self, target_z: f64, safe_z: f64) -> String {
+        format!("{}G0 Z{}\n", self.generate_probe_command(target_z), safe_z)
+    }
+
     /// Calculate work offset from probe
     pub fn calculate_offset(&self, probed_z: f64) -> f64 {
         probed_z - self.probe_offset
@@ -597,7 +604,8 @@ impl AdvancedProber {
                 point.x,
                 point.y
             ));
-            sequence.push_str(&self.base.generate_probe_command(-50.0)); // Probe down
+            // Probe down, then retract before moving to the next point
+            sequence.push_str(&self.base.generate_probe_and_retract(-50.0, 10.0));
         }
 
         sequence.push_str("; Return to start\nG0 Z10\n");
@@ -612,12 +620,12 @@ impl AdvancedProber {
             "G0 X{} Y{}\n; Probe corner 1\n",
             corner_1.0, corner_1.1
         ));
-        sequence.push_str(&self.base.generate_probe_command(-50.0));
+        sequence.push_str(&self.base.generate_probe_and_retract(-50.0, 10.0));
         sequence.push_str(&format!(
             "G0 X{} Y{}\n; Probe corner 2\n",
             corner_2.0, corner_2.1
         ));
-        sequence.push_str(&self.base.generate_probe_command(-50.0));
+        sequence.push_str(&self.base.generate_probe_and_retract(-50.0, 10.0));
         sequence.push_str("; Return\nG0 Z10\n");
         sequence
     }
@@ -639,7 +647,7 @@ impl AdvancedProber {
                 y,
                 i + 1
             ));
-            sequence.push_str(&self.base.generate_probe_command(-50.0));
+            sequence.push_str(&self.base.generate_probe_and_retract(-50.0, 10.0));
         }
 
         sequence.push_str("; Return\nG0 Z10\n");

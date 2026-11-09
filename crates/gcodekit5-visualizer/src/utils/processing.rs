@@ -21,8 +21,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::gcode::arc::{angular_travel, arc_bounds, center_offset_from_radius};
+use crate::gcode::words::{code_number, parse_line, word_value, Word};
 use crate::utils::GcodeFileReader;
-use gcodekit5_core::Position;
 
 /// File processing statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +42,7 @@ pub struct FileStatistics {
     pub arc_moves: u64,
     /// Number of M-codes (miscellaneous)
     pub m_codes: u64,
-    /// Total distance traveled (in current units)
+    /// Total distance traveled (mm; G20 input is converted)
     pub total_distance: f32,
     /// Estimated execution time (seconds)
     pub estimated_time: u64,
@@ -295,7 +296,7 @@ pub struct ProcessedFile {
     pub content: String,
     /// File statistics
     pub statistics: FileStatistics,
-    /// Original line count
+    /// Original line count (all lines, including comments and blanks)
     pub original_lines: u64,
     /// Processed line count
     pub processed_lines: u64,
@@ -360,8 +361,9 @@ impl FileProcessingPipeline {
         let reader = GcodeFileReader::new(path)?;
         let mut statistics = FileStatistics::new();
         let mut processed_lines = Vec::new();
-        let mut current_position = Position::default();
-        let mut last_position = Position::default();
+        let mut tracker = MotionTracker::default();
+        let mut feed_sum = 0.0f64;
+        let mut speed_sum = 0.0f64;
 
         reader.read_lines(|line| {
             let trimmed = line.trim();
@@ -373,111 +375,77 @@ impl FileProcessingPipeline {
                 return Ok(());
             }
 
-            if trimmed.starts_with(';') || trimmed.starts_with('(') {
+            let words = parse_line(trimmed);
+            if words.is_empty() {
+                // Comment-only (or otherwise word-less) line
                 statistics.comment_lines += 1;
                 return Ok(());
             }
 
-            // Parse and count commands
-            let upper = trimmed.to_uppercase();
-
-            // Count motion commands
-            if upper.contains("G00") || upper.starts_with("G0 ") {
-                statistics.rapid_moves += 1;
-                *statistics
-                    .command_counts
-                    .entry(Cow::Borrowed("G0"))
-                    .or_insert(0) += 1;
-            } else if upper.contains("G01") || upper.starts_with("G1 ") {
-                statistics.linear_moves += 1;
-                *statistics
-                    .command_counts
-                    .entry(Cow::Borrowed("G1"))
-                    .or_insert(0) += 1;
-            } else if upper.contains("G02") || upper.contains("G2 ") {
-                statistics.arc_moves += 1;
-                *statistics
-                    .command_counts
-                    .entry(Cow::Borrowed("G2"))
-                    .or_insert(0) += 1;
-            } else if upper.contains("G03") || upper.contains("G3 ") {
-                statistics.arc_moves += 1;
-                *statistics
-                    .command_counts
-                    .entry(Cow::Borrowed("G3"))
-                    .or_insert(0) += 1;
-            }
-
-            // Count M-codes
-            if upper.contains('M') {
-                statistics.m_codes += 1;
-                if let Some(m_pos) = upper.find('M') {
-                    if m_pos + 3 <= upper.len() {
-                        let m_code = &upper[m_pos..m_pos + 3];
+            for word in &words {
+                match word.letter {
+                    'M' => {
+                        statistics.m_codes += 1;
+                        let (major, minor) = code_number(word.value);
+                        let key = if minor == 0 {
+                            format!("M{}", major)
+                        } else {
+                            format!("M{}.{}", major, minor)
+                        };
                         *statistics
                             .command_counts
-                            .entry(Cow::Owned(m_code.to_string()))
+                            .entry(Cow::Owned(key))
                             .or_insert(0) += 1;
                     }
+                    'F' => {
+                        statistics.feed_rate_stats.update(word.value);
+                        if word.value > 0.0 {
+                            feed_sum += word.value;
+                        }
+                    }
+                    'S' => {
+                        statistics.spindle_stats.update(word.value);
+                        if word.value > 0.0 {
+                            speed_sum += word.value;
+                        }
+                    }
+                    _ => {}
                 }
             }
 
-            // Extract feed rate
-            if let Some(f_pos) = upper.find('F') {
-                if let Ok(feed_str) = upper[f_pos + 1..]
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("0")
-                    .parse::<f64>()
-                {
-                    statistics.feed_rate_stats.update(feed_str);
-                }
-            }
+            if let Some(motion) = tracker.apply(&words) {
+                let key = match motion.kind {
+                    MotionKind::Rapid => {
+                        statistics.rapid_moves += 1;
+                        "G0"
+                    }
+                    MotionKind::Linear => {
+                        statistics.linear_moves += 1;
+                        "G1"
+                    }
+                    MotionKind::ArcCw => {
+                        statistics.arc_moves += 1;
+                        "G2"
+                    }
+                    MotionKind::ArcCcw => {
+                        statistics.arc_moves += 1;
+                        "G3"
+                    }
+                };
+                *statistics
+                    .command_counts
+                    .entry(Cow::Borrowed(key))
+                    .or_insert(0) += 1;
 
-            // Extract spindle speed
-            if let Some(s_pos) = upper.find('S') {
-                if let Ok(speed_str) = upper[s_pos + 1..]
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("0")
-                    .parse::<f64>()
-                {
-                    statistics.spindle_stats.update(speed_str);
-                }
+                let (min, max) = motion.bounds;
+                statistics
+                    .bounding_box
+                    .update(min[0] as f32, min[1] as f32, min[2] as f32);
+                statistics
+                    .bounding_box
+                    .update(max[0] as f32, max[1] as f32, max[2] as f32);
+                statistics.total_distance += motion.length as f32;
             }
-
-            // Extract coordinates
-            if let Some(x_pos) = upper.find('X') {
-                if let Ok(x) = extract_number(&upper, x_pos) {
-                    current_position.x = x;
-                }
-            }
-            if let Some(y_pos) = upper.find('Y') {
-                if let Ok(y) = extract_number(&upper, y_pos) {
-                    current_position.y = y;
-                }
-            }
-            if let Some(z_pos) = upper.find('Z') {
-                if let Ok(z) = extract_number(&upper, z_pos) {
-                    current_position.z = z;
-                }
-            }
-
-            // Update bounding box
-            statistics.bounding_box.update(
-                current_position.x,
-                current_position.y,
-                current_position.z,
-            );
-
-            // Calculate distance
-            let dx = current_position.x - last_position.x;
-            let dy = current_position.y - last_position.y;
-            let dz = current_position.z - last_position.z;
-            let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-            statistics.total_distance += distance;
-
-            last_position = current_position;
 
             // Add to processed output
             processed_lines.push(trimmed.to_string());
@@ -485,24 +453,25 @@ impl FileProcessingPipeline {
             Ok(())
         })?;
 
-        // Estimate time (simplified: assume 60 mm/min for rapid, 20 mm/min for feed)
-        // This is a rough estimate - actual time depends on many factors
-        let rapid_distance = (statistics.rapid_moves as f32) * 10.0; // assume 10mm per rapid move avg
-        let feed_distance = statistics.total_distance - rapid_distance;
-        let rapid_time = (rapid_distance / 60.0) * 60.0; // 60 mm/min -> seconds
-        let feed_time = if statistics.feed_rate_stats.max_feed > 0.0 {
-            (feed_distance / (statistics.feed_rate_stats.max_feed as f32)) * 60.0
-        } else {
-            0.0
-        };
-        statistics.estimated_time = ((rapid_time + feed_time) as f64) as u64;
+        if statistics.feed_rate_stats.changes > 0 {
+            statistics.feed_rate_stats.avg_feed =
+                feed_sum / statistics.feed_rate_stats.changes as f64;
+        }
+        if statistics.spindle_stats.on_count > 0 {
+            statistics.spindle_stats.avg_speed =
+                speed_sum / statistics.spindle_stats.on_count as f64;
+        }
+
+        // Estimated time: feed moves at their programmed feed rate (mm/min, or
+        // inverse time under G93), rapids at DEFAULT_RAPID_RATE_MM_PER_MIN, plus dwells.
+        statistics.estimated_time = tracker.time_seconds.max(0.0).round() as u64;
 
         let processed_content = processed_lines.join("\n");
         let processed_result = ProcessedFile {
             source_path: path.to_path_buf(),
             content: processed_content,
+            original_lines: statistics.total_lines,
             statistics,
-            original_lines: reader.file_size(),
             processed_lines: processed_lines.len() as u64,
         };
 
@@ -527,16 +496,205 @@ impl Default for FileProcessingPipeline {
     }
 }
 
-/// Extract numeric value from G-code
-fn extract_number(line: &str, pos: usize) -> Result<f32> {
-    let end = pos
-        + 1
-        + line[pos + 1..]
-            .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-            .unwrap_or(line.len() - pos - 1);
+/// Assumed rapid (G0) traverse rate used for time estimation, in mm/min.
+///
+/// The real value is machine specific (`$110`-`$112` on GRBL); this is a
+/// conservative default for hobby CNC and laser machines.
+pub const DEFAULT_RAPID_RATE_MM_PER_MIN: f64 = 3000.0;
 
-    let num_str = &line[pos + 1..end].trim();
-    num_str.parse::<f32>().map_err(|e| anyhow::anyhow!(e))
+/// Kind of motion produced by a G-code line
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MotionKind {
+    Rapid,
+    Linear,
+    ArcCw,
+    ArcCcw,
+}
+
+/// A single motion with its geometry, used for statistics
+#[derive(Debug, Clone, Copy)]
+struct Motion {
+    kind: MotionKind,
+    /// Path length in mm
+    length: f64,
+    /// Axis-aligned bounds (min, max) of the motion in mm
+    bounds: ([f64; 3], [f64; 3]),
+}
+
+/// Minimal modal interpreter for statistics (positions kept in mm)
+#[derive(Debug, Clone)]
+struct MotionTracker {
+    position: [f64; 3],
+    motion: Option<MotionKind>,
+    /// Arc plane axes (first, second, linear) with 0 = X, 1 = Y, 2 = Z
+    plane: (usize, usize, usize),
+    absolute: bool,
+    inches: bool,
+    inverse_time: bool,
+    /// Current feed rate in mm/min
+    feed_mm_per_min: f64,
+    /// Accumulated execution time in seconds
+    time_seconds: f64,
+}
+
+impl Default for MotionTracker {
+    fn default() -> Self {
+        Self {
+            position: [0.0; 3],
+            motion: None,
+            plane: (0, 1, 2),
+            absolute: true,
+            inches: false,
+            inverse_time: false,
+            feed_mm_per_min: 0.0,
+            time_seconds: 0.0,
+        }
+    }
+}
+
+impl MotionTracker {
+    /// Apply one line of words; returns the motion it produced, if any.
+    fn apply(&mut self, words: &[Word]) -> Option<Motion> {
+        let mut dwell = false;
+        let mut home_move = false;
+        let mut set_position = false;
+        let mut axes_not_motion = false;
+
+        for word in words.iter().filter(|w| w.letter == 'G') {
+            match code_number(word.value) {
+                (0, 0) => self.motion = Some(MotionKind::Rapid),
+                (1, 0) => self.motion = Some(MotionKind::Linear),
+                (2, 0) => self.motion = Some(MotionKind::ArcCw),
+                (3, 0) => self.motion = Some(MotionKind::ArcCcw),
+                (4, 0) => dwell = true,
+                (10, _) | (28, 1) | (30, 1) | (43, 1) => axes_not_motion = true,
+                (17, 0) => self.plane = (0, 1, 2),
+                (18, 0) => self.plane = (2, 0, 1),
+                (19, 0) => self.plane = (1, 2, 0),
+                (20, 0) => self.inches = true,
+                (21, 0) => self.inches = false,
+                (28, 0) | (30, 0) => home_move = true,
+                (80, 0) => self.motion = None,
+                (90, 0) => self.absolute = true,
+                (91, 0) => self.absolute = false,
+                (92, 0) => set_position = true,
+                (93, 0) => self.inverse_time = true,
+                (94, 0) | (95, 0) => self.inverse_time = false,
+                _ => {}
+            }
+        }
+
+        let scale = if self.inches { 25.4 } else { 1.0 };
+        let feed_word = word_value(words, 'F');
+        if let Some(f) = feed_word {
+            if !self.inverse_time {
+                self.feed_mm_per_min = f * scale;
+            }
+        }
+
+        if dwell {
+            if let Some(p) = word_value(words, 'P') {
+                self.time_seconds += p.max(0.0);
+            }
+            return None;
+        }
+
+        let axis_words = [
+            word_value(words, 'X'),
+            word_value(words, 'Y'),
+            word_value(words, 'Z'),
+        ];
+        if axes_not_motion || axis_words.iter().all(Option::is_none) {
+            return None;
+        }
+
+        if set_position {
+            for (axis, value) in axis_words.iter().enumerate() {
+                if let Some(v) = value {
+                    self.position[axis] = v * scale;
+                }
+            }
+            return None;
+        }
+
+        let mut target = self.position;
+        for (axis, value) in axis_words.iter().enumerate() {
+            if let Some(v) = value {
+                target[axis] = if self.absolute {
+                    v * scale
+                } else {
+                    target[axis] + v * scale
+                };
+            }
+        }
+
+        let kind = if home_move {
+            MotionKind::Rapid
+        } else {
+            self.motion?
+        };
+
+        let start = self.position;
+        let mut min = [0.0; 3];
+        let mut max = [0.0; 3];
+        for axis in 0..3 {
+            min[axis] = start[axis].min(target[axis]);
+            max[axis] = start[axis].max(target[axis]);
+        }
+        let chord = ((target[0] - start[0]).powi(2)
+            + (target[1] - start[1]).powi(2)
+            + (target[2] - start[2]).powi(2))
+        .sqrt();
+        let mut length = chord;
+
+        if matches!(kind, MotionKind::ArcCw | MotionKind::ArcCcw) {
+            let clockwise = kind == MotionKind::ArcCw;
+            let (a0, a1, lin) = self.plane;
+            let offset_word = |axis: usize| -> Option<f64> {
+                word_value(words, ['I', 'J', 'K'][axis]).map(|v| v * scale)
+            };
+            let (dx, dy) = (target[a0] - start[a0], target[a1] - start[a1]);
+            let offsets = match (offset_word(a0), offset_word(a1)) {
+                (None, None) => word_value(words, 'R')
+                    .and_then(|r| center_offset_from_radius(dx, dy, r * scale, clockwise)),
+                (i, j) => Some((i.unwrap_or(0.0), j.unwrap_or(0.0))),
+            };
+            if let Some((oi, oj)) = offsets {
+                let radius = (oi * oi + oj * oj).sqrt();
+                if radius > 1e-9 {
+                    let sweep = angular_travel((-oi, -oj), (dx - oi, dy - oj), clockwise);
+                    let planar = radius * sweep.abs();
+                    let helical = target[lin] - start[lin];
+                    length = (planar * planar + helical * helical).sqrt();
+                    let start_angle = (-oj).atan2(-oi);
+                    let center = (start[a0] + oi, start[a1] + oj);
+                    let (bx0, by0, bx1, by1) = arc_bounds(center, radius, start_angle, sweep);
+                    min[a0] = min[a0].min(bx0);
+                    min[a1] = min[a1].min(by0);
+                    max[a0] = max[a0].max(bx1);
+                    max[a1] = max[a1].max(by1);
+                }
+            }
+        }
+
+        self.time_seconds += match kind {
+            MotionKind::Rapid => length / DEFAULT_RAPID_RATE_MM_PER_MIN * 60.0,
+            _ if self.inverse_time => match feed_word {
+                // G93: F is the inverse of the move duration in minutes
+                Some(f) if f > 0.0 => 60.0 / f,
+                _ => 0.0,
+            },
+            _ if self.feed_mm_per_min > 0.0 => length / self.feed_mm_per_min * 60.0,
+            _ => 0.0,
+        };
+
+        self.position = target;
+        Some(Motion {
+            kind,
+            length,
+            bounds: (min, max),
+        })
+    }
 }
 
 #[cfg(test)]

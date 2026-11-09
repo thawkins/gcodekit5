@@ -9,11 +9,13 @@
 //! - Command listener framework
 //! - Stream management (reading from files or strings)
 
+pub mod arc;
 pub mod command;
 pub mod parser;
 pub mod pipeline;
 pub mod processors;
 pub mod stream;
+pub mod words;
 
 pub use command::*;
 pub use parser::*;

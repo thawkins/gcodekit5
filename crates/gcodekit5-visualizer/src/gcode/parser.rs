@@ -1,8 +1,8 @@
 //! G-Code parser and modal state tracking
 
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use super::words::{code_number, parse_line, strip_comments, Word};
 use super::{CommandNumberGenerator, GcodeCommand};
 
 /// G-Code parser with modal state tracking
@@ -257,6 +257,54 @@ impl GcodeState {
         Ok(())
     }
 
+    /// Update the modal state from a raw G-code line.
+    ///
+    /// Comments are ignored and every word on the line is honoured, so lines
+    /// such as `G90 G1 X10 F500` update both the distance and motion modes.
+    ///
+    /// # Arguments
+    /// * `line` - Raw G-code line (comments allowed).
+    ///
+    /// # Errors
+    /// Returns an error for invalid values such as a negative feed rate.
+    pub fn apply_line(&mut self, line: &str) -> Result<(), String> {
+        self.apply_words(&parse_line(line))
+    }
+
+    /// Update the modal state from already tokenized words.
+    ///
+    /// # Arguments
+    /// * `words` - Words of a single line.
+    ///
+    /// # Errors
+    /// Returns an error for invalid values such as a negative feed rate.
+    pub fn apply_words(&mut self, words: &[Word]) -> Result<(), String> {
+        for word in words {
+            match word.letter {
+                'G' => match code_number(word.value) {
+                    (g @ 0..=3, 0) => self.set_motion_mode(g as u8)?,
+                    (g @ 17..=19, 0) => self.set_plane_mode(g as u8)?,
+                    (g @ (20 | 21), 0) => self.set_units_mode(g as u8)?,
+                    (g @ 40..=42, 0) => self.set_compensation_mode(g as u8)?,
+                    (g @ (43 | 49), 0) => self.set_tool_offset_mode(g as u8)?,
+                    (g @ 54..=59, 0) => self.set_coordinate_system(g as u8)?,
+                    (61, 0) => self.path_control_mode = 61,
+                    (64, 0) => self.path_control_mode = 64,
+                    (g @ (90 | 91), 0) => self.set_distance_mode(g as u8)?,
+                    (g @ 93..=95, 0) => self.set_feed_rate_mode(g as u8)?,
+                    _ => {}
+                },
+                'F' => self.set_feed_rate(word.value)?,
+                'S' => self.set_spindle_speed(word.value)?,
+                'T' if word.value >= 0.0 && word.value <= u16::MAX as f64 => {
+                    self.set_tool_number(word.value as u16);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     /// Get a human-readable description of the current motion mode
     pub fn motion_mode_description(&self) -> &'static str {
         match self.motion_mode {
@@ -334,10 +382,7 @@ impl GcodeParser {
 
     /// Remove comments from a G-Code line
     fn remove_comments(&self, line: &str) -> String {
-        static COMMENT_REGEX: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        let regex =
-            COMMENT_REGEX.get_or_init(|| Regex::new(r"[;(].*").expect("invalid regex pattern"));
-        regex.replace(line, "").to_string()
+        strip_comments(line).trim().to_string()
     }
 
     /// Get current modal state (for backward compatibility)
@@ -360,202 +405,10 @@ impl GcodeParser {
         self.current_state = state;
     }
 
-// ---
-
-fn update_modal_state(&mut self, command: &GcodeCommand) -> Result<(), String> {
-    let cmd_upper = command.command.to_uppercase();
-
-    // ★ EXTRAER EL COMANDO G REAL ★
-    // Buscar "G" seguido de números, con o sin espacios
-    let g_code = self.extract_g_code(&cmd_upper);
-
-    if let Some(g) = g_code {
-        // Motion modes (G00, G01, G02, G03)
-        match g {
-            0 => self.current_state.set_motion_mode(0)?,
-            1 => self.current_state.set_motion_mode(1)?,
-            2 => self.current_state.set_motion_mode(2)?,
-            3 => self.current_state.set_motion_mode(3)?,
-            // Plane selection (G17, G18, G19)
-            17 => self.current_state.set_plane_mode(17)?,
-            18 => self.current_state.set_plane_mode(18)?,
-            19 => self.current_state.set_plane_mode(19)?,
-            // Distance mode (G90, G91)
-            90 => self.current_state.set_distance_mode(90)?,
-            91 => self.current_state.set_distance_mode(91)?,
-            // Feed rate mode (G93, G94, G95)
-            93 => self.current_state.set_feed_rate_mode(93)?,
-            94 => self.current_state.set_feed_rate_mode(94)?,
-            95 => self.current_state.set_feed_rate_mode(95)?,
-            // Units (G20, G21)
-            20 => self.current_state.set_units_mode(20)?,
-            21 => self.current_state.set_units_mode(21)?,
-            // Coordinate systems (G54-G59)
-            54..=59 => self.current_state.set_coordinate_system(g as u8)?,
-            // Tool offset (G43, G49)
-            43 => self.current_state.set_tool_offset_mode(43)?,
-            49 => self.current_state.set_tool_offset_mode(49)?,
-            // Cutter compensation (G40, G41, G42)
-            40 => self.current_state.set_compensation_mode(40)?,
-            41 => self.current_state.set_compensation_mode(41)?,
-            42 => self.current_state.set_compensation_mode(42)?,
-            _ => { /* Ignorar otros G-codes */ }
-        }
-    }
-
-        // Parse F value (feed rate)
-        if let Some(f_pos) = cmd_upper.find('F') {
-            let remaining = &cmd_upper[f_pos + 1..];
-            if let Some(f_value) = remaining.split_whitespace().next() {
-                if let Ok(rate) = f_value.parse::<f64>() {
-                    self.current_state.set_feed_rate(rate)?;
-                }
-            }
-        }
-
-        // Parse S value (spindle speed)
-        if let Some(s_pos) = cmd_upper.find('S') {
-            let remaining = &cmd_upper[s_pos + 1..];
-            if let Some(s_value) = remaining.split_whitespace().next() {
-                if let Ok(speed) = s_value.parse::<f64>() {
-                    self.current_state.set_spindle_speed(speed)?;
-                }
-            }
-        }
-
-        // Parse T value (tool number)
-        if let Some(t_pos) = cmd_upper.find('T') {
-            let remaining = &cmd_upper[t_pos + 1..];
-            if let Some(t_value) = remaining.split_whitespace().next() {
-                if let Ok(tool) = t_value.parse::<u16>() {
-                    self.current_state.set_tool_number(tool);
-                }
-            }
-        }
-
-    Ok(())
-}
-
-/// Extrae el número del comando G de una línea de G-code
-fn extract_g_code(&self, line: &str) -> Option<u32> {
-    // Buscar "G" seguido de números (con o sin espacios)
-    // Ejemplos: "G0", "G00", "G01", "G0X10", "G01X10"
-    let re = Regex::new(r"G(\d+)(?:\.\d+)?").ok()?;
-    if let Some(caps) = re.captures(line) {
-        if let Some(m) = caps.get(1) {
-            if let Ok(num) = m.as_str().parse::<u32>() {
-                return Some(num);
-            }
-        }
-    }
-    None
-}
-
-/*
-    /// Update modal state based on parsed command
     fn update_modal_state(&mut self, command: &GcodeCommand) -> Result<(), String> {
-        let cmd_upper = command.command.to_uppercase();
-
-        // Parse G-codes
-        if cmd_upper.contains("G00") {
-            self.current_state.set_motion_mode(0)?;
-        } else if cmd_upper.contains("G01") {
-            self.current_state.set_motion_mode(1)?;
-        } else if cmd_upper.contains("G02") {
-            self.current_state.set_motion_mode(2)?;
-        } else if cmd_upper.contains("G03") {
-            self.current_state.set_motion_mode(3)?;
-        }
-
-        // Plane selection
-        if cmd_upper.contains("G17") {
-            self.current_state.set_plane_mode(17)?;
-        } else if cmd_upper.contains("G18") {
-            self.current_state.set_plane_mode(18)?;
-        } else if cmd_upper.contains("G19") {
-            self.current_state.set_plane_mode(19)?;
-        }
-
-        // Distance mode
-        if cmd_upper.contains("G90") {
-            self.current_state.set_distance_mode(90)?;
-        } else if cmd_upper.contains("G91") {
-            self.current_state.set_distance_mode(91)?;
-        }
-
-        // Feed rate mode
-        if cmd_upper.contains("G93") {
-            self.current_state.set_feed_rate_mode(93)?;
-        } else if cmd_upper.contains("G94") {
-            self.current_state.set_feed_rate_mode(94)?;
-        } else if cmd_upper.contains("G95") {
-            self.current_state.set_feed_rate_mode(95)?;
-        }
-
-        // Units
-        if cmd_upper.contains("G20") {
-            self.current_state.set_units_mode(20)?;
-        } else if cmd_upper.contains("G21") {
-            self.current_state.set_units_mode(21)?;
-        }
-
-        // Coordinate system (G54-G59)
-        for cs in 54..=59 {
-            if cmd_upper.contains(&format!("G{}", cs)) {
-                self.current_state.set_coordinate_system(cs as u8)?;
-                break;
-            }
-        }
-
-        // Tool offset
-        if cmd_upper.contains("G43") {
-            self.current_state.set_tool_offset_mode(43)?;
-        } else if cmd_upper.contains("G49") {
-            self.current_state.set_tool_offset_mode(49)?;
-        }
-
-        // Cutter compensation
-        if cmd_upper.contains("G40") {
-            self.current_state.set_compensation_mode(40)?;
-        } else if cmd_upper.contains("G41") {
-            self.current_state.set_compensation_mode(41)?;
-        } else if cmd_upper.contains("G42") {
-            self.current_state.set_compensation_mode(42)?;
-        }
-
-        // Parse F value (feed rate)
-        if let Some(f_pos) = cmd_upper.find('F') {
-            let remaining = &cmd_upper[f_pos + 1..];
-            if let Some(f_value) = remaining.split_whitespace().next() {
-                if let Ok(rate) = f_value.parse::<f64>() {
-                    self.current_state.set_feed_rate(rate)?;
-                }
-            }
-        }
-
-        // Parse S value (spindle speed)
-        if let Some(s_pos) = cmd_upper.find('S') {
-            let remaining = &cmd_upper[s_pos + 1..];
-            if let Some(s_value) = remaining.split_whitespace().next() {
-                if let Ok(speed) = s_value.parse::<f64>() {
-                    self.current_state.set_spindle_speed(speed)?;
-                }
-            }
-        }
-
-        // Parse T value (tool number)
-        if let Some(t_pos) = cmd_upper.find('T') {
-            let remaining = &cmd_upper[t_pos + 1..];
-            if let Some(t_value) = remaining.split_whitespace().next() {
-                if let Ok(tool) = t_value.parse::<u16>() {
-                    self.current_state.set_tool_number(tool);
-                }
-            }
-        }
-
-        Ok(())
+        self.current_state.apply_line(&command.command)
     }
-*/
+
     /// Get command number generator
     pub fn command_generator(&self) -> &CommandNumberGenerator {
         &self.command_generator

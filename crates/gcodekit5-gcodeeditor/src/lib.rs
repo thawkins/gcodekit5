@@ -123,9 +123,9 @@ impl EditorState {
 
     /// Perform undo
     pub fn undo(&mut self) -> bool {
-        if let Some(change) = self.undo_manager.undo() {
-            // Apply inverse of the change
-            let inv = change.inverse();
+        // `UndoManager::undo` already returns the inverse of the recorded change;
+        // inverting it again would re-apply the original edit.
+        if let Some(inv) = self.undo_manager.undo() {
             self.buffer.delete(inv.char_range.clone());
             if !inv.new_text.is_empty() {
                 self.buffer.insert(inv.char_range.start, &inv.new_text);
