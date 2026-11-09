@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-10 (agent instructions)
+
+### Changed
+- **Agent instructions**: `AGENTS.md` rewritten with the general working rules; Rust-specific guidance (formatting, build/test commands, test layout, code rules) moved to the new `AGENTS-LANGUAGE.md`, which `AGENTS.md` includes. The previous version is kept as `AGENTS-OLD.md`
+
 ## [Unreleased] - 2026-11-09 (review follow-up to #62)
 
 ### Fixed
