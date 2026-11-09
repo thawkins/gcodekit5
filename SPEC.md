@@ -2088,3 +2088,11 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - All 11 major UI panels have been refactored to use the new theme and shared components.
 - Removed ad-hoc styling and local component definitions from individual panel files.
 - Improved consistency in layout, spacing, and interaction patterns across the application.
+
+## Audit Follow-up (November 2026)
+- **Streaming**: GRBL character-counting flow control (bytes in flight ≤ 127). The job sender polls status (`?`, 200 ms) itself so the DRO, alarm state and overrides stay live; an `ALARM:`/`error:` reply stops the job with the reason.
+- **Connections**: device profiles carry a TCP host and port; connecting with a TCP profile opens a TCP stream through the same communicator as serial. WebSocket is not supported yet.
+- **Machine Control**: rotary A/B/C axes shown from the profile/status; Pause/Resume/Stop only during a job; inch jog presets (0.0001–1 in); probe failures restore G90 once idle.
+- **Designer**: property fields commit on Enter/focus-out (one undo step per edit); every property edit is undoable; unsaved-changes prompt on New/Open/window close; SVG transforms and viewBox units; DXF `$INSUNITS`.
+- **CAM probe tool**: routines use relative (G91) moves from the current position with probe depth, tip-radius and plate-thickness compensation; "Probe" runs the routine and reports the result; "Apply to WCS" sends `G10 L2` (or `G43.1` for tool length).
+- **Bitmap engraving**: dark pixels receive more power by default; the Invert option engraves light areas.

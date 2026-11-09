@@ -182,6 +182,7 @@ impl DeviceManagerWindow {
             self.edit_port.set_text(&profile.port);
             self.edit_baud_rate
                 .set_active_id(Some(profile.baud_rate.as_str()));
+            self.edit_tcp_host.set_text(profile.tcp_host.trim());
             self.edit_tcp_port.set_text(profile.tcp_port.trim());
             self.edit_timeout.set_text(profile.timeout_ms.trim());
             self.edit_auto_reconnect.set_active(profile.auto_reconnect);
@@ -230,11 +231,13 @@ impl DeviceManagerWindow {
             "Serial" => {
                 self.edit_port.set_sensitive(true);
                 self.edit_baud_rate.set_sensitive(true);
+                self.edit_tcp_host.set_sensitive(false);
                 self.edit_tcp_port.set_sensitive(false);
             }
             "TCP/IP" | "WebSocket" => {
                 self.edit_port.set_sensitive(false);
                 self.edit_baud_rate.set_sensitive(false);
+                self.edit_tcp_host.set_sensitive(true);
                 self.edit_tcp_port.set_sensitive(true);
             }
             _ => {}
@@ -292,6 +295,7 @@ impl DeviceManagerWindow {
                     return;
                 }
             };
+            model.tcp_host = self.edit_tcp_host.text().trim().to_string();
             model.tcp_port = tcp_port.to_string();
             model.timeout_ms = timeout_ms.to_string();
             model.auto_reconnect = self.edit_auto_reconnect.is_active();

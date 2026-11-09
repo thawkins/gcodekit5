@@ -1,5 +1,6 @@
 //! Undo/Redo manager for text editing operations
 
+use std::collections::VecDeque;
 use std::ops::Range;
 
 /// Represents a single text change for undo/redo
@@ -51,9 +52,13 @@ impl TextChange {
 }
 
 /// Manages undo/redo stacks for text editing
+///
+/// Every undo step is a group of one or more [`TextChange`]s. Changes recorded
+/// between [`UndoManager::begin_batch`] and [`UndoManager::end_batch`] form a
+/// single group, so they are undone and redone atomically.
 pub struct UndoManager {
-    undo_stack: Vec<TextChange>,
-    redo_stack: Vec<TextChange>,
+    undo_stack: VecDeque<Vec<TextChange>>,
+    redo_stack: Vec<Vec<TextChange>>,
     max_depth: usize,
     current_batch: Option<Vec<TextChange>>,
 }
@@ -65,79 +70,84 @@ impl UndoManager {
     }
 
     /// Create with custom maximum undo depth
+    ///
+    /// # Arguments
+    /// * `max_depth` - Maximum number of undo steps (groups) kept.
     pub fn with_depth(max_depth: usize) -> Self {
         Self {
-            undo_stack: Vec::with_capacity(max_depth),
-            redo_stack: Vec::with_capacity(max_depth),
+            undo_stack: VecDeque::with_capacity(max_depth.min(1024)),
+            redo_stack: Vec::new(),
             max_depth,
             current_batch: None,
         }
     }
 
     /// Record a change to the undo stack
+    ///
+    /// While a batch is open the change joins the batch; otherwise it becomes
+    /// its own undo step.
     pub fn record(&mut self, change: TextChange) {
         if let Some(batch) = &mut self.current_batch {
-            // Add to current batch
             batch.push(change);
         } else {
-            // Direct push
-            self.push_undo(change);
+            self.push_undo(vec![change]);
         }
     }
 
-    /// Push a change to undo stack
-    fn push_undo(&mut self, change: TextChange) {
+    /// Push a group of changes to the undo stack as one step
+    fn push_undo(&mut self, group: Vec<TextChange>) {
+        if group.is_empty() {
+            return;
+        }
         // Clear redo stack when new change is made
         self.redo_stack.clear();
 
-        // Add to undo stack
-        self.undo_stack.push(change);
+        self.undo_stack.push_back(group);
 
-        // Trim if exceeds max depth
-        if self.undo_stack.len() > self.max_depth {
-            self.undo_stack.remove(0);
+        // Trim if exceeds max depth (O(1) with a VecDeque)
+        while self.undo_stack.len() > self.max_depth {
+            self.undo_stack.pop_front();
         }
     }
 
     /// Start batching changes (for multi-operation edits)
+    ///
+    /// If a batch is already open it stays open, so nested begin/end pairs
+    /// still produce a single undo step.
     pub fn begin_batch(&mut self) {
-        self.current_batch = Some(Vec::new());
-    }
-
-    /// End batch and commit as single undo operation
-    pub fn end_batch(&mut self) {
-        if let Some(batch) = self.current_batch.take() {
-            if !batch.is_empty() {
-                // Merge batch into single change if possible
-                if batch.len() == 1 {
-                    if let Some(change) = batch.into_iter().next() {
-                        self.push_undo(change);
-                    }
-                } else {
-                    // For multiple changes, push them individually
-                    // (could be optimized to merge adjacent changes)
-                    for change in batch {
-                        self.push_undo(change);
-                    }
-                }
-            }
+        if self.current_batch.is_none() {
+            self.current_batch = Some(Vec::new());
         }
     }
 
-    /// Undo last change
-    pub fn undo(&mut self) -> Option<TextChange> {
-        self.undo_stack.pop().map(|change| {
-            let inverse = change.inverse();
-            self.redo_stack.push(change);
-            inverse
-        })
+    /// End batch and commit all its changes as a single, atomic undo step
+    pub fn end_batch(&mut self) {
+        if let Some(batch) = self.current_batch.take() {
+            self.push_undo(batch);
+        }
     }
 
-    /// Redo last undone change
-    pub fn redo(&mut self) -> Option<TextChange> {
-        self.redo_stack.pop().inspect(|change| {
-            self.undo_stack.push(change.clone());
-        })
+    /// Undo the last step
+    ///
+    /// # Returns
+    /// The inverse changes of the step, in the order they must be applied
+    /// (last change first), or `None` when there is nothing to undo.
+    pub fn undo(&mut self) -> Option<Vec<TextChange>> {
+        let group = self.undo_stack.pop_back()?;
+        let inverses = group.iter().rev().map(TextChange::inverse).collect();
+        self.redo_stack.push(group);
+        Some(inverses)
+    }
+
+    /// Redo the last undone step
+    ///
+    /// # Returns
+    /// The changes of the step, in the order they must be applied, or `None`
+    /// when there is nothing to redo.
+    pub fn redo(&mut self) -> Option<Vec<TextChange>> {
+        let group = self.redo_stack.pop()?;
+        self.undo_stack.push_back(group.clone());
+        Some(group)
     }
 
     /// Check if undo is available
@@ -157,12 +167,12 @@ impl UndoManager {
         self.current_batch = None;
     }
 
-    /// Get number of undo operations available
+    /// Get number of undo steps available
     pub fn undo_count(&self) -> usize {
         self.undo_stack.len()
     }
 
-    /// Get number of redo operations available
+    /// Get number of redo steps available
     pub fn redo_count(&self) -> usize {
         self.redo_stack.len()
     }

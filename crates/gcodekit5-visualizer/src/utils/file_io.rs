@@ -34,12 +34,22 @@ const READ_BUFFER_SIZE: usize = 256 * 1024;
 pub enum FileEncoding {
     /// UTF-8 encoding
     Utf8,
-    /// ASCII encoding (7-bit)
+    /// ASCII encoding (7-bit). Valid ASCII is also valid UTF-8, so
+    /// [`FileEncoding::detect`] reports it as `Utf8`; kept for compatibility.
     Ascii,
+    /// Single-byte Latin-1 / ISO-8859-1, used for data that is not valid UTF-8
+    /// (e.g. comments written by legacy Windows CAM tools).
+    Latin1,
 }
 
 impl FileEncoding {
     /// Detect encoding from file bytes
+    ///
+    /// # Arguments
+    /// * `data` - Raw bytes (a line or a chunk of the file).
+    ///
+    /// # Returns
+    /// `Utf8` for a UTF-8 BOM or valid UTF-8, otherwise `Latin1`.
     pub fn detect(data: &[u8]) -> Self {
         // Check for UTF-8 BOM
         if data.starts_with(&[0xEF, 0xBB, 0xBF]) {
@@ -51,9 +61,42 @@ impl FileEncoding {
             return FileEncoding::Utf8;
         }
 
-        // Fall back to ASCII
-        FileEncoding::Ascii
+        // Not UTF-8: decode as a single-byte encoding, which never fails
+        FileEncoding::Latin1
     }
+
+    /// Decode raw bytes into UTF-8 text using this encoding.
+    ///
+    /// `Utf8`/`Ascii` decode lossily (invalid sequences become U+FFFD);
+    /// `Latin1` maps every byte to the code point of the same value.
+    ///
+    /// # Arguments
+    /// * `data` - Raw bytes to decode.
+    ///
+    /// # Returns
+    /// The decoded text.
+    pub fn decode(self, data: &[u8]) -> String {
+        match self {
+            FileEncoding::Utf8 | FileEncoding::Ascii => String::from_utf8_lossy(data).into_owned(),
+            FileEncoding::Latin1 => data.iter().map(|&b| b as char).collect(),
+        }
+    }
+}
+
+/// Decode a whole file's bytes, detecting the encoding.
+///
+/// A leading UTF-8 BOM is removed. Valid UTF-8 is returned as-is; anything
+/// else is decoded as Latin-1 so no byte is lost and decoding never fails.
+///
+/// # Arguments
+/// * `data` - Raw file bytes.
+///
+/// # Returns
+/// `(text, detected_encoding)`.
+pub fn decode_bytes(data: &[u8]) -> (String, FileEncoding) {
+    let body = data.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(data);
+    let encoding = FileEncoding::detect(body);
+    (encoding.decode(body), encoding)
 }
 
 /// File read statistics
@@ -137,7 +180,12 @@ impl GcodeFileReader {
             );
         }
 
-        fs::read_to_string(&self.path).map_err(|e| anyhow!("Failed to read file: {}", e))
+        let bytes = fs::read(&self.path).map_err(|e| anyhow!("Failed to read file: {}", e))?;
+        let (text, encoding) = decode_bytes(&bytes);
+        if encoding != FileEncoding::Utf8 {
+            tracing::debug!(path = %self.path.display(), ?encoding, "decoded non-UTF-8 file");
+        }
+        Ok(text)
     }
 
     /// Read file with line-by-line streaming callback
@@ -155,23 +203,34 @@ impl GcodeFileReader {
     {
         let start_time = SystemTime::now();
         let file = File::open(&self.path)?;
-        let reader = BufReader::with_capacity(READ_BUFFER_SIZE, file);
+        let mut reader = BufReader::with_capacity(READ_BUFFER_SIZE, file);
 
         let mut lines_read = 0u64;
         let mut bytes_read = 0u64;
+        // Becomes `Latin1` (and stays so) once a line is found that is not
+        // valid UTF-8; every later line is then decoded the same way.
         let mut encoding = FileEncoding::Utf8;
-        let mut first_chunk = true;
+        let mut buf: Vec<u8> = Vec::new();
 
-        for line_result in reader.lines() {
-            let line = line_result?;
-
-            // Detect encoding from first chunk
-            if first_chunk {
-                encoding = FileEncoding::detect(line.as_bytes());
-                first_chunk = false;
+        loop {
+            buf.clear();
+            let n = reader.read_until(b'\n', &mut buf)?;
+            if n == 0 {
+                break;
             }
+            bytes_read += n as u64;
 
-            bytes_read += line.len() as u64 + 1; // +1 for newline
+            let mut raw: &[u8] = &buf;
+            if lines_read == 0 {
+                raw = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw);
+            }
+            raw = raw.strip_suffix(b"\n").unwrap_or(raw);
+            raw = raw.strip_suffix(b"\r").unwrap_or(raw);
+
+            if encoding == FileEncoding::Utf8 && std::str::from_utf8(raw).is_err() {
+                encoding = FileEncoding::Latin1;
+            }
+            let line = encoding.decode(raw);
 
             callback(&line)?;
             lines_read += 1;
@@ -188,6 +247,28 @@ impl GcodeFileReader {
         })
     }
 
+    /// Detect the encoding of the file from its first 64 KiB.
+    ///
+    /// # Errors
+    /// Returns error if the file cannot be read
+    pub fn detect_encoding(&self) -> Result<FileEncoding> {
+        use std::io::Read;
+        let mut head = Vec::new();
+        File::open(&self.path)?
+            .take(64 * 1024)
+            .read_to_end(&mut head)?;
+        // A chunk boundary may split a UTF-8 sequence; ignore an incomplete tail.
+        let valid = match std::str::from_utf8(&head) {
+            Ok(_) => true,
+            Err(e) => e.error_len().is_none(),
+        };
+        Ok(if valid {
+            FileEncoding::Utf8
+        } else {
+            FileEncoding::Latin1
+        })
+    }
+
     /// Read file with limited number of lines
     ///
     /// # Arguments
@@ -197,14 +278,11 @@ impl GcodeFileReader {
     /// Returns error if file cannot be read
     pub fn read_lines_limited(&self, max_lines: usize) -> Result<(Vec<String>, FileReadStats)> {
         let mut lines = Vec::new();
-        let mut encoding = FileEncoding::Utf8;
+        let encoding = self.detect_encoding()?;
         let file_size = self.file_size;
 
         self.read_lines(|line| {
             if lines.len() < max_lines {
-                if lines.is_empty() {
-                    encoding = FileEncoding::detect(line.as_bytes());
-                }
                 lines.push(line.to_string());
                 Ok(())
             } else {

@@ -30,11 +30,46 @@ const _GRID_MINOR_STEP_MM: f32 = 1.0;
 const _GRID_MAJOR_VISIBILITY_SCALE: f32 = 0.3;
 const _GRID_MINOR_VISIBILITY_SCALE: f32 = 1.5;
 
+/// Decide whether `new` replaces `old` (a newly loaded program) rather than
+/// being an edit of it.
+///
+/// Used by the UI to keep the user's view while editing and to re-fit it only
+/// when a different program is loaded. The text shared by both versions is
+/// measured as the common prefix plus the common suffix; an edit keeps most of
+/// the old text, a new file keeps little of it.
+///
+/// # Arguments
+/// * `old` - Text currently shown.
+/// * `new` - Incoming text.
+///
+/// # Returns
+/// `true` when `old` is blank and `new` is not, or when less than half of the
+/// shorter text is shared; `false` otherwise (including when `new` is blank).
+pub fn is_content_replacement(old: &str, new: &str) -> bool {
+    if new.trim().is_empty() {
+        return false;
+    }
+    if old.trim().is_empty() {
+        return true;
+    }
+    let (a, b) = (old.as_bytes(), new.as_bytes());
+    let prefix = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+    let max_suffix = a.len().min(b.len()) - prefix;
+    let suffix = a
+        .iter()
+        .rev()
+        .zip(b.iter().rev())
+        .take(max_suffix)
+        .take_while(|(x, y)| x == y)
+        .count();
+    let shared = prefix + suffix;
+    shared * 2 < a.len().min(b.len())
+}
+
 /// Colors according to power.
 ///
 /// Uses detected min/max S range and quantizes the gray ramp to a fixed
 /// number of levels to keep rendering stable for dense raster engravings.
-
 fn intensity_to_color(intensity: f32, max_intensity: f32) -> (f32, f32, f32) {
     if max_intensity <= 0.0 {
         return (0.5, 0.5, 0.5);
@@ -48,7 +83,11 @@ fn intensity_to_color(intensity: f32, max_intensity: f32) -> (f32, f32, f32) {
     )
 }
 
-/// New Gcode
+/// Modal motion mode (group 1).
+///
+/// Parsing starts in `Rapid` because GRBL powers up in G0, so axis-only lines
+/// before the first explicit G0/G1 are still drawn. `None` is only entered via
+/// G80 (motion mode cancel).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum MotionMode {
     None,
@@ -124,6 +163,18 @@ impl ArcPlane {
     }
 }
 
+/// Spindle / laser state (M3/M4 on, M5 off).
+///
+/// `Unknown` is the state before any M3/M4/M5 has been seen; moves are then
+/// treated as powered so that programs that never switch the spindle (common in
+/// hand-written or test files) keep their existing appearance.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SpindleState {
+    Unknown,
+    On,
+    Off,
+}
+
 /// Structure for extracted parameters
 /// Supports 6-axis coordinates (X, Y, Z linear + A, B, C rotary)
 #[derive(Default)]
@@ -194,7 +245,7 @@ fn push_arc_commands(
     clockwise: bool,
     ijk: [Option<f32>; 3],
     radius_word: Option<f32>,
-    intensity: f32,
+    intensity: Option<f32>,
 ) -> bool {
     let (a0, a1, lin) = plane.axes();
     let (sx, sy) = (point_axis(from, a0), point_axis(from, a1));
@@ -247,7 +298,7 @@ fn push_arc_commands(
                 to: next,
                 center: Point3D::new(cx as f32, cy as f32, prev.z),
                 clockwise,
-                intensity: Some(intensity),
+                intensity,
             });
             prev = next;
         }
@@ -270,7 +321,7 @@ fn push_arc_commands(
                 from: prev,
                 to: next,
                 rapid: false,
-                intensity: Some(intensity),
+                intensity,
             });
             bounds.update(next.x, next.y, next.z);
             prev = next;
@@ -288,25 +339,19 @@ fn update_bounds_with_arc(
     center: Point3D,
     clockwise: bool,
 ) {
-    let (oi, oj) = ((center.x - from.x) as f64, (center.y - from.y) as f64);
-    let radius = (oi * oi + oj * oj).sqrt();
     bounds.update(from.x, from.y, from.z);
     bounds.update(to.x, to.y, to.z);
-    if !radius.is_finite() || radius < 1e-6 {
-        return;
-    }
-    let start_angle = (-oj).atan2(-oi);
-    let sweep = arc::angular_travel(
-        (-oi, -oj),
-        ((to.x - center.x) as f64, (to.y - center.y) as f64),
+    let center_xy = (center.x as f64, center.y as f64);
+    let Some(sweep) = arc::arc_sweep(
+        center_xy,
+        (from.x as f64, from.y as f64),
+        (to.x as f64, to.y as f64),
         clockwise,
-    );
-    let (min_x, min_y, max_x, max_y) = arc::arc_bounds(
-        (center.x as f64, center.y as f64),
-        radius,
-        start_angle,
-        sweep,
-    );
+    ) else {
+        return;
+    };
+    let (min_x, min_y, max_x, max_y) =
+        arc::arc_bounds(center_xy, sweep.radius, sweep.start_angle, sweep.sweep);
     bounds.update(min_x as f32, min_y as f32, from.z);
     bounds.update(max_x as f32, max_y as f32, to.z);
 }
@@ -318,6 +363,8 @@ pub enum GCodeCommand {
         from: Point3D,
         to: Point3D,
         rapid: bool,
+        /// Spindle/laser power (S word) for the move; `None` when the
+        /// spindle/laser was switched off (M5), i.e. a non-cutting move.
         intensity: Option<f32>,
     },
     Arc {
@@ -325,6 +372,7 @@ pub enum GCodeCommand {
         to: Point3D,
         center: Point3D,
         clockwise: bool,
+        /// Spindle/laser power; `None` when the spindle/laser is off (M5).
         intensity: Option<f32>,
     },
     Dwell {
@@ -563,7 +611,8 @@ impl Visualizer {
         let mut bounds = Bounds::new();
 
         // Modal state
-        let mut current_motion_mode = MotionMode::None;
+        let mut current_motion_mode = MotionMode::Rapid;
+        let mut spindle = SpindleState::Unknown;
         let mut plane = ArcPlane::XY;
         let mut absolute = true;
         let mut inches = false;
@@ -613,6 +662,11 @@ impl Visualizer {
                             _ => {}
                         }
                     }
+                    'M' => match words::code_number(word.value) {
+                        (3, 0) | (4, 0) => spindle = SpindleState::On,
+                        (5, 0) => spindle = SpindleState::Off,
+                        _ => {}
+                    },
                     'X' => params.x = Some(value),
                     'Y' => params.y = Some(value),
                     'Z' => params.z = Some(value),
@@ -633,6 +687,13 @@ impl Visualizer {
             if let Some(intensity) = params.s {
                 self.current_intensity = intensity;
             }
+            // Moves made while the spindle/laser is off (after M5) carry no
+            // intensity, so renderers draw them as travel, not as cuts.
+            let move_intensity = if spindle == SpindleState::Off {
+                None
+            } else {
+                Some(self.current_intensity)
+            };
 
             // Convert linear words to mm (G20 applies to the whole line)
             let scale = if inches { 25.4f32 } else { 1.0 };
@@ -723,7 +784,7 @@ impl Visualizer {
                         from: current_pos,
                         to: target,
                         rapid,
-                        intensity: Some(self.current_intensity),
+                        intensity: move_intensity,
                     });
                     bounds.update(current_pos.x, current_pos.y, current_pos.z);
                     bounds.update(target.x, target.y, target.z);
@@ -741,7 +802,7 @@ impl Visualizer {
                         clockwise,
                         params.ijk(),
                         params.r,
-                        self.current_intensity,
+                        move_intensity,
                     );
                     if !drawn {
                         debug!(
@@ -752,7 +813,7 @@ impl Visualizer {
                             from: current_pos,
                             to: target,
                             rapid: false,
-                            intensity: Some(self.current_intensity),
+                            intensity: move_intensity,
                         });
                         bounds.update(current_pos.x, current_pos.y, current_pos.z);
                         bounds.update(target.x, target.y, target.z);

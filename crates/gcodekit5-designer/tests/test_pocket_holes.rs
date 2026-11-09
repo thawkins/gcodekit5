@@ -286,3 +286,39 @@ fn test_text_pocket_leaves_letter_counter_uncut() {
         }
     }
 }
+
+#[test]
+fn test_raster_ring_pocket_bounds_retract_count() {
+    // A 40 mm square ring with a 20 mm hole. Every scanline that crosses the hole is
+    // split into two spans; cutting them line by line would retract on each such line
+    // (about two dozen per pass). Finishing one side of the ring before the other must
+    // keep the retracts per pass to a small constant.
+    for bidirectional in [true, false] {
+        let path = nested_squares_path(&[(0.0, 40.0), (10.0, 30.0)]);
+        let mut gen = generator(PocketStrategy::Raster {
+            angle: 0.0,
+            bidirectional,
+        });
+        gen.set_start_depth(0.0);
+        let toolpaths = gen.generate_path_pocket(&path, 2.0, 1.0, 1.0);
+        assert_eq!(toolpaths.len(), 2, "expected two depth passes");
+
+        for tp in &toolpaths {
+            let retracts = tp
+                .segments
+                .iter()
+                .filter(|s| s.segment_type == ToolpathSegmentType::RapidMove)
+                .count();
+            assert!(
+                retracts <= 4,
+                "bidirectional={bidirectional}: {retracts} retracts in one pass"
+            );
+        }
+
+        // Ordering must not lose coverage or clearance.
+        let cuts = cutting_segments(&toolpaths);
+        assert_clearance(&cuts, (0.0, 40.0), &[(10.0, 30.0)], 3.175 / 2.0);
+        assert!(cuts.iter().any(|s| s.start.x < 10.0));
+        assert!(cuts.iter().any(|s| s.start.x > 30.0));
+    }
+}

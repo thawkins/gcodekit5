@@ -561,6 +561,17 @@ impl Canvas {
         let target_w = if update_size { w } else { old_w };
         let target_h = if update_size { h } else { old_h };
 
+        // Nothing to do: returning no updates keeps no-op edits (e.g. committing an
+        // unchanged property field) from pushing empty undo steps.
+        const NO_CHANGE_EPS: f64 = 1e-9;
+        if (target_center_x - old_center_x).abs() <= NO_CHANGE_EPS
+            && (target_center_y - old_center_y).abs() <= NO_CHANGE_EPS
+            && (target_w - old_w).abs() <= NO_CHANGE_EPS
+            && (target_h - old_h).abs() <= NO_CHANGE_EPS
+        {
+            return updates;
+        }
+
         // Calculate target top-left from center
         let target_x = target_center_x - target_w / 2.0;
         let target_y = target_center_y - target_h / 2.0;

@@ -4,6 +4,10 @@
 //! Supports halftoning via pepecore, mirroring, rotation, grayscale power modulation,
 //! bidirectional scanning, and various image formats.
 //! Images are rendered from bottom to top to match device coordinate space where Y increases upward.
+//!
+//! Power polarity: dark pixels get more power (black = `max_power`, white = `min_power`), so
+//! a photo engraves as a positive. [`ImageTransformations::invert`] engraves the light areas
+//! instead (a negative).
 
 use anyhow::{Context, Result};
 use image::{DynamicImage, GrayImage};
@@ -61,7 +65,9 @@ pub struct ImageTransformations {
     pub halftone_dot_size: usize,
     /// Halftone threshold (0-255, deprecated - kept for compatibility)
     pub halftone_threshold: u8,
-    /// Invert image (dark becomes light, light becomes dark)
+    /// Engrave the light areas instead of the dark ones (photographic negative).
+    ///
+    /// When `false` (the default) dark pixels receive more laser power.
     pub invert: bool,
 }
 
@@ -106,12 +112,17 @@ pub struct EngravingParameters {
     pub power_scale: f32,
     /// Image transformations (halftoning, mirroring, rotation)
     pub transformations: ImageTransformations,
-    /// X offset from machine origin
+    /// X position of the image's lower-left corner in work coordinates (mm)
     pub offset_x: f32,
-    /// Y offset from machine origin
+    /// Y position of the image's lower-left corner in work coordinates (mm)
     pub offset_y: f32,
     /// Number of axes on the target device (default 3).
     pub num_axes: u8,
+    /// Home (`$H`) and clear the G54 X/Y offset before engraving (default `false`).
+    ///
+    /// See [`crate::job_preamble`]. The engraver never moves Z, so the focus height set by
+    /// the user is kept either way.
+    pub home_before_job: bool,
 }
 
 impl Default for EngravingParameters {
@@ -132,6 +143,7 @@ impl Default for EngravingParameters {
             offset_x: 10.0,
             offset_y: 10.0,
             num_axes: 3,
+            home_before_job: false,
         }
     }
 }
@@ -493,29 +505,13 @@ impl BitmapImageEngraver {
         gcode.push_str("G17 ; XY plane selection\n");
         gcode.push('\n');
 
-        gcode.push_str("; Home and set work coordinate system\n");
-        gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset\n");
-        } else {
-            gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 offset\n");
-        }
-        gcode.push_str("G54 ; Select work coordinate system 1\n");
+        // The engraver never moves Z: the user's focus height is kept, and nothing is
+        // commanded above Z0 after homing.
+        crate::job_preamble::push_work_setup(&mut gcode, self.params.home_before_job);
         gcode.push_str(&format!(
-            "G0 X{:.1} Y{:.1} ; Move to work origin\n",
+            "; Image origin (lower-left) at X{:.2} Y{:.2}\n",
             self.params.offset_x, self.params.offset_y
         ));
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
-        } else {
-            gcode.push_str("G10 L20 P1 X0 Y0 ; Set current position as work zero\n");
-        }
-        if self.params.num_axes >= 3 {
-            gcode.push_str(&format!(
-                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-                5.0, self.params.travel_rate
-            ));
-        }
         gcode.push('\n');
 
         gcode.push_str("M5 ; Laser off\n");
@@ -606,7 +602,11 @@ impl BitmapImageEngraver {
             } else {
                 width as f32 * pixel_width
             };
-            gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", start_x, y_pos));
+            gcode.push_str(&format!(
+                "G0 X{:.3} Y{:.3}\n",
+                start_x + self.params.offset_x,
+                y_pos + self.params.offset_y
+            ));
 
             let powers: Vec<u32> = (0..width)
                 .map(|x| self.pixel_power(image.get_pixel(x, y).0[0]))
@@ -614,7 +614,9 @@ impl BitmapImageEngraver {
             self.scan_line(
                 gcode,
                 &powers,
-                ScanAxes::X { y: y_pos },
+                ScanAxes::X {
+                    y: y_pos + self.params.offset_y,
+                },
                 pixel_width,
                 forward,
             );
@@ -717,10 +719,13 @@ impl BitmapImageEngraver {
         power: u32,
         is_new_segment: bool,
     ) {
-        let scan_axis = match axes {
-            ScanAxes::X { .. } => 'X',
-            ScanAxes::Y { .. } => 'Y',
+        // `start`/`end` are image-relative; shift them into work coordinates.
+        let (scan_axis, scan_offset) = match axes {
+            ScanAxes::X { .. } => ('X', self.params.offset_x),
+            ScanAxes::Y { .. } => ('Y', self.params.offset_y),
         };
+        let start = start + scan_offset;
+        let end = end + scan_offset;
 
         if is_new_segment {
             // Rapid positioning with the laser at zero power
@@ -773,7 +778,11 @@ impl BitmapImageEngraver {
             } else {
                 height as f32 * pixel_width
             };
-            gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", x_pos, start_y));
+            gcode.push_str(&format!(
+                "G0 X{:.3} Y{:.3}\n",
+                x_pos + self.params.offset_x,
+                start_y + self.params.offset_y
+            ));
 
             // Pixel k along the line counts from the bottom of the image (device Y up).
             let powers: Vec<u32> = (0..height)
@@ -782,7 +791,9 @@ impl BitmapImageEngraver {
             self.scan_line(
                 gcode,
                 &powers,
-                ScanAxes::Y { x: x_pos },
+                ScanAxes::Y {
+                    x: x_pos + self.params.offset_x,
+                },
                 pixel_width,
                 forward,
             );
@@ -814,12 +825,15 @@ impl BitmapImageEngraver {
         power_value.min(self.params.power_scale.max(0.0).round() as u32)
     }
 
-    /// Convert pixel intensity to laser power
+    /// Convert pixel intensity to laser power.
+    ///
+    /// Dark pixels burn: intensity 0 (black) maps to `max_power` and 255 (white) to
+    /// `min_power`. Inversion, when requested, has already been applied to the image.
     fn intensity_to_power(&self, intensity: u8) -> f32 {
-        let normalized = intensity as f32 / 255.0;
+        let darkness = 1.0 - intensity as f32 / 255.0;
 
         let gamma = 0.7;
-        let corrected = normalized.powf(gamma);
+        let corrected = darkness.powf(gamma);
 
         self.params.min_power + (corrected * (self.params.max_power - self.params.min_power))
     }

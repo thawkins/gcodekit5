@@ -25,11 +25,18 @@ pub struct PuzzleParameters {
     /// Number of axes on the target device (default 3).
     #[serde(default = "default_num_axes")]
     pub num_axes: u8,
+    /// Home (`$H`) and clear the G54 X/Y offset before cutting (default `false`).
+    /// See [`crate::job_preamble`].
+    #[serde(default)]
+    pub home_before_job: bool,
 }
 
 fn default_num_axes() -> u8 {
     3
 }
+
+/// Travel height above the work surface used when the user has set the work zero (mm).
+const JIGSAW_SAFE_Z: f32 = 5.0;
 
 impl Default for PuzzleParameters {
     fn default() -> Self {
@@ -50,6 +57,7 @@ impl Default for PuzzleParameters {
             offset_x: 10.0,
             offset_y: 10.0,
             num_axes: 3,
+            home_before_job: false,
         }
     }
 }
@@ -498,27 +506,19 @@ impl JigsawPuzzleMaker {
         gcode.push_str("G17 ; XY plane selection\n");
         gcode.push('\n');
 
-        gcode.push_str("; Home and set work coordinate system\n");
-        gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset\n");
-        } else {
-            gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 offset\n");
-        }
-        gcode.push_str("G54 ; Select work coordinate system 1\n");
+        let has_z = self.params.num_axes >= 3;
+        let travel_z = crate::job_preamble::travel_z(self.params.home_before_job, JIGSAW_SAFE_Z);
+        let (ox, oy) = (self.params.offset_x, self.params.offset_y);
+
+        crate::job_preamble::push_work_setup(&mut gcode, self.params.home_before_job);
         gcode.push_str(&format!(
-            "G0 X{:.1} Y{:.1} ; Move to work origin\n",
-            self.params.offset_x, self.params.offset_y
+            "; Puzzle origin (lower-left) at X{:.2} Y{:.2}\n",
+            ox, oy
         ));
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
-        } else {
-            gcode.push_str("G10 L20 P1 X0 Y0 ; Set current position as work zero\n");
-        }
-        if self.params.num_axes >= 3 {
+        if has_z {
             gcode.push_str(&format!(
-                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-                5.0, self.params.feed_rate
+                "G0 Z{:.2} ; Move to travel height (work coordinates)\n",
+                travel_z
             ));
         }
         gcode.push('\n');
@@ -538,9 +538,10 @@ impl JigsawPuzzleMaker {
             if let Some(first_point) = path.first() {
                 gcode.push_str(&format!(
                     "G0 X{:.2} Y{:.2} ; Rapid to start\n",
-                    first_point.x, first_point.y
+                    first_point.x + ox,
+                    first_point.y + oy
                 ));
-                if self.params.num_axes >= 3 {
+                if has_z {
                     gcode.push_str(&format!(
                         "G1 Z{:.2} F{:.0} ; Plunge\n",
                         -cut_depth, plunge_rate
@@ -555,16 +556,22 @@ impl JigsawPuzzleMaker {
                         pass_num, self.params.laser_passes, z_depth
                     ));
 
-                    if pass_num > 1 && self.params.num_axes >= 3 {
+                    if pass_num > 1 && has_z {
                         gcode.push_str(&format!("G0 Z{:.2} ; Move to pass depth\n", z_depth));
                     }
 
-                    gcode.push_str(&format!("M3 S{} ; Laser on\n", self.params.laser_power));
+                    // M4 (dynamic power) scales power with speed so corners do not over-burn.
+                    gcode.push_str(&format!(
+                        "M4 S{} ; Laser on (dynamic power)\n",
+                        self.params.laser_power
+                    ));
 
                     for point in path.iter().skip(1) {
                         gcode.push_str(&format!(
                             "G1 X{:.2} Y{:.2} F{:.0}\n",
-                            point.x, point.y, self.params.feed_rate
+                            point.x + ox,
+                            point.y + oy,
+                            self.params.feed_rate
                         ));
                     }
 
@@ -573,20 +580,21 @@ impl JigsawPuzzleMaker {
                     if pass_num < self.params.laser_passes {
                         gcode.push_str(&format!(
                             "G0 X{:.2} Y{:.2} ; Return to start for next pass\n",
-                            first_point.x, first_point.y
+                            first_point.x + ox,
+                            first_point.y + oy
                         ));
                     }
                 }
             }
 
-            if self.params.num_axes >= 3 {
-                gcode.push_str(&format!("G0 Z{:.2} ; Retract\n\n", 5.0));
+            if has_z {
+                gcode.push_str(&format!("G0 Z{:.2} ; Retract\n\n", travel_z));
             }
         }
 
         gcode.push_str("M5 ; Ensure laser off\n");
-        if self.params.num_axes >= 3 {
-            gcode.push_str("G0 Z10.0 ; Move to safe height\n");
+        if has_z {
+            gcode.push_str(&format!("G0 Z{:.2} ; Move to travel height\n", travel_z));
         }
         gcode.push_str("G0 X0 Y0 ; Return to origin\n");
         gcode.push_str("M2 ; Program end\n");

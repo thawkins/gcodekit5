@@ -168,8 +168,10 @@ pub fn format_positions(x: f64, y: f64, z: f64) -> String {
     )
 }
 
-/// Parse GRBL settings string response into number and value
-pub fn parse_setting_response(line: &str) -> Option<(u8, String)> {
+/// Parse GRBL settings string response (`$<n>=<value>`) into number and value.
+///
+/// The number is a `u16` so grblHAL extended settings (`$256` and above) are kept.
+pub fn parse_setting_response(line: &str) -> Option<(u16, String)> {
     if !line.starts_with('$') {
         return None;
     }
@@ -181,7 +183,7 @@ pub fn parse_setting_response(line: &str) -> Option<(u8, String)> {
         return None;
     }
 
-    let setting_num = parts[0].trim().parse::<u8>().ok()?;
+    let setting_num = parts[0].trim().parse::<u16>().ok()?;
     let value = parts[1].trim().to_string();
 
     Some((setting_num, value))

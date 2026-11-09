@@ -222,8 +222,26 @@ impl ProbeReport {
 
     /// Build the suggested G-code commands from the computed position and routine.
     ///
+    /// The computed position is taken to be in machine coordinates. A `G92`
+    /// suggestion needs the tool's current machine position as well, so none is
+    /// produced here; use [`ProbeReport::build_commands_with_current`] for that.
+    ///
     /// * `wcs` — target work coordinate system number (54-59 for G54-G59).
     pub fn build_commands(&mut self, wcs: u8) {
+        self.build_commands_with_current(wcs, None);
+    }
+
+    /// Build the suggested G-code commands, including a `G92` alternative when the
+    /// tool's current machine position is known.
+    ///
+    /// `G92 X<v>` declares that the tool is *now* at work X = `v`. For the probed
+    /// point to become the work zero, `v` must be `current - probed`, so the `G92`
+    /// suggestion is only produced when `current` is given.
+    ///
+    /// # Arguments
+    /// * `wcs` - Target work coordinate system number (54-59 for G54-G59).
+    /// * `current` - The tool's current machine position, if known.
+    pub fn build_commands_with_current(&mut self, wcs: u8, current: Option<Position>) {
         let Some(pos) = self.computed else {
             return;
         };
@@ -245,8 +263,15 @@ impl ProbeReport {
                     "G10 L2 P{} X{:.3} Y{:.3} Z{:.3}",
                     p_index, pos.x, pos.y, pos.z
                 ));
-                // Temporary offset alternative
-                self.suggested_g92 = Some(format!("G92 X{:.3} Y{:.3} Z{:.3}", pos.x, pos.y, pos.z));
+                // Temporary offset alternative: make the probed point the work zero.
+                self.suggested_g92 = current.map(|cur| {
+                    format!(
+                        "G92 X{:.3} Y{:.3} Z{:.3}",
+                        cur.x - pos.x,
+                        cur.y - pos.y,
+                        cur.z - pos.z
+                    )
+                });
             }
         }
     }

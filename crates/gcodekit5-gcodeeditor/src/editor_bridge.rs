@@ -30,8 +30,19 @@ impl EditorBridgeBackend {
         self.state.borrow().get_text()
     }
 
+    /// Insert text at the cursor, recording an undo step.
     pub fn insert_text(&self, text: &str) {
         self.state.borrow_mut().insert_text(text);
+    }
+
+    /// Current cursor position (character index).
+    pub fn cursor(&self) -> usize {
+        self.state.borrow().cursor()
+    }
+
+    /// Move the cursor (clamped to the document length).
+    pub fn set_cursor(&self, char_idx: usize) {
+        self.state.borrow_mut().set_cursor(char_idx);
     }
 
     pub fn can_undo(&self) -> bool {

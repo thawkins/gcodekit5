@@ -545,7 +545,8 @@ pub struct CalibrationResult {
     pub expected_value: f64,
     pub deviation: f64,
     pub passed: bool,
-    pub timestamp: String,
+    /// When the measurement was recorded (UTC; convert to local time in the UI).
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 /// Calibration wizard
@@ -645,7 +646,7 @@ impl CalibrationWizard {
                 expected_value: step.target_value,
                 deviation,
                 passed,
-                timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                timestamp: chrono::Utc::now(),
             });
 
             self.current_step += 1;
@@ -811,7 +812,8 @@ impl PerformanceProfiler {
 /// Diagnostic report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagnosticReport {
-    pub timestamp: String,
+    /// When the report was created (UTC; convert to local time in the UI).
+    pub timestamp: chrono::DateTime<chrono::Utc>,
     pub communication: CommunicationDiagnostics,
     pub buffer: Option<BufferDiagnostics>,
     pub uptime_seconds: u64,
@@ -822,7 +824,7 @@ impl DiagnosticReport {
     /// Create diagnostic report
     pub fn new(communication: CommunicationDiagnostics) -> Self {
         Self {
-            timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            timestamp: chrono::Utc::now(),
             communication,
             buffer: None,
             uptime_seconds: 0,
@@ -834,7 +836,10 @@ impl DiagnosticReport {
     pub fn format_report(&self) -> String {
         let mut report = String::new();
         report.push_str("=== Diagnostic Report ===\n");
-        report.push_str(&format!("Timestamp: {}\n\n", self.timestamp));
+        report.push_str(&format!(
+            "Timestamp: {}\n\n",
+            self.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
 
         report.push_str("--- Communication ---\n");
         report.push_str(&format!("Connected: {}\n", self.communication.connected));

@@ -418,26 +418,75 @@ impl Default for SerialCommunicator {
     }
 }
 
+/// Presents a TCP connection through the [`serial::SerialPort`] interface, so the
+/// byte-stream code built on [`SerialCommunicator`] works unchanged over the network
+/// (e.g. FluidNC or grblHAL controllers reached by Wi-Fi/Ethernet).
+struct TcpAsSerialPort {
+    inner: Box<dyn tcp::TcpPort>,
+    name: String,
+}
+
+impl serial::SerialPort for TcpAsSerialPort {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        self.inner.write(data)
+    }
+
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.inner.read(buf) {
+            // A zero-byte read on a TCP stream means the peer closed the connection;
+            // report it instead of returning "no data" forever.
+            Ok(0) if !buf.is_empty() => Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "connection closed by the controller",
+            )),
+            other => other,
+        }
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn close(&mut self) -> std::io::Result<()> {
+        self.inner.close()
+    }
+}
+
 impl Communicator for SerialCommunicator {
+    /// Opens the connection described by `params`.
+    ///
+    /// Serial ports are opened directly; TCP connections are opened with
+    /// [`tcp::RealTcpPort`] and carried through the same byte-stream interface.
+    /// WebSocket connections are not supported and return an error.
     fn connect(&mut self, params: &ConnectionParams) -> gcodekit5_core::Result<()> {
         params.validate()?;
-        if params.driver != ConnectionDriver::Serial {
-            return Err(gcodekit5_core::Error::other(
-                "SerialCommunicator requires Serial driver type",
-            ));
-        }
+        let opened: gcodekit5_core::Result<Box<dyn serial::SerialPort>> = match params.driver {
+            ConnectionDriver::Serial => serial::RealSerialPort::open(params)
+                .map(|p| Box::new(p) as Box<dyn serial::SerialPort>),
+            ConnectionDriver::Tcp => tcp::RealTcpPort::open(params).map(|p| {
+                Box::new(TcpAsSerialPort {
+                    inner: Box::new(p),
+                    name: format!("{}:{}", params.port, params.network_port),
+                }) as Box<dyn serial::SerialPort>
+            }),
+            ConnectionDriver::WebSocket => Err(gcodekit5_core::Error::other(
+                "WebSocket connections are not supported yet",
+            )),
+        };
 
-        // Try to open the port
-        match serial::RealSerialPort::open(params) {
+        match opened {
             Ok(port) => {
-                self.port = Some(Box::new(port));
+                let name = port.name();
+                self.port = Some(port);
                 self.params = Some(params.clone());
-                self.notify_listeners(CommunicatorEvent::Connected, "Connected to serial port");
+                self.notify_listeners(
+                    CommunicatorEvent::Connected,
+                    &format!("Connected to {name}"),
+                );
                 Ok(())
             }
             Err(e) => {
                 let msg = format!("Failed to connect: {}", e);
-                // tracing::error!("{}", msg);
                 self.notify_listeners(CommunicatorEvent::Error, &msg);
                 Err(e)
             }

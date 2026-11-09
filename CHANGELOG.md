@@ -1,3 +1,24 @@
+## [Unreleased] - 2026-11-09 (audit follow-up)
+
+### Fixed
+- **Streaming**: the job sender now uses GRBL character-counting flow control (≤127 bytes in flight) instead of 40 lines, parses replies line by line, and reports "Job stopped: <reason>" on alarm/error/reset/disconnect (an `error:` reply now stops the job)
+- **Live status during jobs**: the job sender polls `?` itself, so the DRO, machine state, Unlock button and `Ov:` overrides update while streaming; "Set %" override now works mid-job
+- **Machine Control**: rotary A/B/C rows, zero buttons and visibility wired; WCS buttons refuse during jobs; inch jog presets; invalid jog feed flagged; Connect no longer blocks the UI; Pause/Resume/Stop only enabled during a job; quick-probe failures handled without error dialogs; Device Config no longer rebuilt twice a second; machine type read from `$32`; Clear editor confirms; console capped at 5000 lines; more strings translated
+- **TCP controllers**: device profiles have a TCP host; connecting with a TCP profile opens a TCP connection (WebSocket reports "not supported")
+- **DeviceDB**: one bad profile no longer prevents loading the others, and the original file is backed up before it could be overwritten
+- **Settings**: listeners no longer panic by re-borrowing the settings dialog; grblHAL settings ≥256 parsed; `Config::merge` keeps UI settings
+- **Serial ports**: `/dev/ttyS*`, `/dev/ttyAMA*`, `/dev/rfcomm*` and similar UARTs are listed
+- **Validator**: G91/G20 modal tracking and words without spaces (`X10Y20`)
+- **GrblController**: `[PRB:]` probe results parsed, work offsets from `WCO`/`$#`, work zero via `G10 L20`; G2Core/TinyG report "not supported" instead of silently doing nothing
+- **Designer G-code**: one pocket-depth rule for every shape; ramped contours descend at most one step-down per lap; no false out-of-bounds warning for normal negative-Z cuts; laser power changes emitted per segment; raster pockets in rings need far fewer retracts
+- **Import**: SVG nested transforms (translate/scale/rotate/skew/matrix) on every element and viewBox→mm scaling; DXF `$INSUNITS` and mirrored (negative extrusion) entities
+- **Designer model**: gears/sprockets mirror correctly; path bounds match the drawn path; path `parametric_source` saved
+- **Designer UI**: property fields apply on Enter/focus-out with one undo step per edit; all position/size/image/laser edits undoable; undo restores z-order and previous groups; delete is one undo step; laser override applies to every selected shape; no more 100 ms selection polling or main-loop spinning; zoom-aware click tolerance; topmost shape picked consistently; partial circular arrays spaced correctly; repeated paste offsets each copy; unsaved-changes prompts on New/Open and when closing the window; toolpath preview matches generated G-code; laser fields showing global values refresh when the globals change
+- **CAM tools**: bitmap engraving maps dark pixels to more power by default (old preset files are converted); probe routines use relative moves, with probe depth, tip-radius and plate-thickness compensation; the probe tool's Probe and Apply to WCS buttons work; tool-length probing is relative; homing preamble optional and never raises Z above machine zero; spoilboard grid no longer changes `$32`; tabbed box/jigsaw use M4; Gerber drill depth, rubout origin and true rectangle/obround apertures; CAM presets stored in mm with errors reported; device polling timers released with their tool
+- **Probe offsets**: suggested `G92` now makes the probed point the work zero
+- **Visualizer**: editing no longer re-parses on every keystroke or resets the camera; status timer paused while hidden; preview and live tool markers separated; bounds show units; machine defaults to G0; shared arc maths in the 3D renderer; stock simulation removes material with a top-at-Z0 or bottom-zero stock; laser-off moves drawn as travel
+- **Editor**: Replace All uses the search options; batch undo is atomic; text inserted at the cursor is undoable; non-UTF-8 files load
+
 ## [Unreleased] - 2026-09-03
 
 ### Added

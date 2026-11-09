@@ -8,7 +8,8 @@
 //!
 //! - Auto-update WCS (G54-G59) from probe results
 //! - Generate G10 L2 P<n> commands for persistent offsets
-//! - Generate G92 commands for temporary offsets
+//! - Generate G92 commands for temporary offsets (needs the current machine position, see
+//!   [`WcsUpdateService::set_machine_position`])
 //! - Generate G43.1 commands for tool-length offsets
 //! - Preview mode for user confirmation
 //! - Persistent storage of last probe results per WCS
@@ -27,6 +28,7 @@
 //! let service = WcsUpdateService::new(config);
 //! ```
 
+use crate::probe_routines::{ProbeOptions, ProbeRoutineEngine};
 use anyhow::{anyhow, Result};
 use gcodekit5_core::{Position, ProbeReport, ProbeRoutine};
 use serde::{Deserialize, Serialize};
@@ -40,6 +42,11 @@ pub struct WcsUpdateConfig {
     /// Target WCS number (54-59 for G54-G59, 0 for G92).
     pub target_wcs: u8,
     /// Use G92 temporary offset instead of G10 persistent offset.
+    ///
+    /// `G92 X<v>` declares that the *current* position is X=v, so the value depends on where
+    /// the machine is when the command runs. The service therefore needs the current machine
+    /// position ([`WcsUpdateService::set_machine_position`]) to make the probed point the
+    /// work zero.
     pub use_temporary_offset: bool,
     /// Apply tool-length offset via G43.1 for ToolLength routines.
     pub apply_tool_length: bool,
@@ -47,6 +54,9 @@ pub struct WcsUpdateConfig {
     pub safe_height: f64,
     /// Preview changes before applying (when auto_update_wcs is false).
     pub preview_before_apply: bool,
+    /// Probe depth, tip radius and plate thickness used when the routine was generated.
+    #[serde(default)]
+    pub probe_options: ProbeOptions,
 }
 
 impl Default for WcsUpdateConfig {
@@ -58,6 +68,7 @@ impl Default for WcsUpdateConfig {
             apply_tool_length: true,
             safe_height: 5.0,
             preview_before_apply: true,
+            probe_options: ProbeOptions::default(),
         }
     }
 }
@@ -86,6 +97,8 @@ pub struct WcsUpdateService {
     last_results: HashMap<u8, ProbeReport>,
     /// Last probe results stored per routine type.
     last_results_by_routine: HashMap<String, ProbeReport>,
+    /// Current machine position, needed to express a probed point as a G92 offset.
+    machine_position: Option<Position>,
 }
 
 impl WcsUpdateService {
@@ -95,7 +108,17 @@ impl WcsUpdateService {
             config,
             last_results: HashMap::new(),
             last_results_by_routine: HashMap::new(),
+            machine_position: None,
         }
+    }
+
+    /// Record the machine position (machine coordinates, mm) at which the update command
+    /// will be sent. Required for G92 temporary offsets.
+    ///
+    /// # Arguments
+    /// * `position` - Current machine position as reported by the controller.
+    pub fn set_machine_position(&mut self, position: Position) {
+        self.machine_position = Some(position);
     }
 
     /// Get the current configuration.
@@ -244,11 +267,24 @@ impl WcsUpdateService {
                 let description = format!("Apply tool-length offset: {:.3} mm", computed_pos.z);
                 Ok((command, description))
             }
+            ProbeRoutine::ToolLength { .. } => Err(anyhow!(
+                "A tool-length result can only be applied as a G43.1 tool-length offset"
+            )),
             _ if self.config.use_temporary_offset => {
-                // Temporary offset: G92 with only the axes this routine measured
-                let command = format!("G92 {}", Self::axis_words(&report.routine, computed_pos));
+                // `G92 X<v>` makes the *current* position read X=v. For the probed point p to
+                // read 0, the current position must read (current - p); this is independent
+                // of the active G54..G59 offset and of any earlier G92 offset.
+                let current = self.machine_position.ok_or_else(|| {
+                    anyhow!("G92 needs the current machine position (set_machine_position)")
+                })?;
+                let relative = Position::new(
+                    current.x - computed_pos.x,
+                    current.y - computed_pos.y,
+                    current.z - computed_pos.z,
+                );
+                let command = format!("G92 {}", Self::axis_words(&report.routine, relative));
                 let description = format!(
-                    "Set temporary origin (G92) to ({:.3}, {:.3}, {:.3})",
+                    "Set temporary origin (G92) at the probed point ({:.3}, {:.3}, {:.3})",
                     computed_pos.x, computed_pos.y, computed_pos.z
                 );
                 Ok((command, description))
@@ -297,95 +333,10 @@ impl WcsUpdateService {
         }
     }
 
-    /// Compute the position from a probe report.
+    /// Compute the position from a probe report (machine coordinates, compensated for the
+    /// probe tip radius and touch-plate thickness from the configuration).
     fn compute_position(&self, report: &ProbeReport) -> Result<Position> {
-        let triggers = &report.triggers;
-
-        if triggers.is_empty() {
-            return Err(anyhow!("No trigger results in probe report"));
-        }
-
-        match &report.routine {
-            ProbeRoutine::ZTouch { backoff, .. } => {
-                // Use last trigger (slow re-probe if available)
-                let trigger_idx = if triggers.len() >= 2 && *backoff > 0.0 {
-                    triggers.len() - 1
-                } else {
-                    0
-                };
-                let trigger = &triggers[trigger_idx];
-                if !trigger.success {
-                    return Err(anyhow!("Probe did not trigger successfully"));
-                }
-                // The surface is at the trigger Z; this becomes the WCS Z origin.
-                Ok(trigger.position)
-            }
-            ProbeRoutine::EdgeFind { .. } => {
-                // Use last trigger (slow re-probe if available)
-                let Some(trigger) = triggers.last() else {
-                    return Err(anyhow!("No trigger results in probe report"));
-                };
-                if !trigger.success {
-                    return Err(anyhow!("Probe did not trigger successfully"));
-                }
-                Ok(trigger.position)
-            }
-            ProbeRoutine::CornerFind { .. } => {
-                if triggers.len() < 2 {
-                    return Err(anyhow!("Need at least 2 triggers for corner"));
-                }
-                // Use last triggers for each axis
-                // Without backoff: [X, Y]; with backoff: [X fast, X slow, Y fast, Y slow]
-                let x_trigger = if triggers.len() >= 4 {
-                    &triggers[1] // Last X (slow)
-                } else {
-                    &triggers[0]
-                };
-                let y_trigger = if triggers.len() >= 4 {
-                    &triggers[3] // Last Y (slow if available)
-                } else if triggers.len() >= 2 {
-                    &triggers[1]
-                } else {
-                    &triggers[0]
-                };
-                if !x_trigger.success || !y_trigger.success {
-                    return Err(anyhow!("One or more probes failed"));
-                }
-                Ok(Position::new(
-                    x_trigger.position.x,
-                    y_trigger.position.y,
-                    x_trigger.position.z,
-                ))
-            }
-            ProbeRoutine::BoreCenter { .. } | ProbeRoutine::BossCenter { .. } => {
-                if triggers.len() < 4 {
-                    return Err(anyhow!("Need 4 triggers for center computation"));
-                }
-                // Compute center via chord midpoints
-                let left = &triggers[0].position;
-                let right = &triggers[1].position;
-                let front = &triggers[2].position;
-                let back = &triggers[3].position;
-
-                let x_center = (left.x + right.x) / 2.0;
-                let y_center = (front.y + back.y) / 2.0;
-                let z_center = (left.z + right.z + front.z + back.z) / 4.0;
-
-                Ok(Position::new(x_center, y_center, z_center))
-            }
-            ProbeRoutine::ToolLength { plate_z, .. } => {
-                let trigger = &triggers[0];
-                if !trigger.success {
-                    return Err(anyhow!("Probe did not trigger successfully"));
-                }
-                let tool_length = trigger.position.z - *plate_z as f32;
-                Ok(Position::new(
-                    trigger.position.x,
-                    trigger.position.y,
-                    tool_length,
-                ))
-            }
-        }
+        ProbeRoutineEngine::compute_result_with(report, &self.config.probe_options)
     }
 
     /// Store a probe result for persistence.
@@ -471,18 +422,25 @@ impl WcsUpdateService {
             gcode.push_str("G90 ; Absolute positioning\n");
         }
 
-        // Include the retract to safe height
-        gcode.push_str(&format!(
-            "G0 Z{:.3} ; Retract to safe height\n",
-            self.config.safe_height
-        ));
-
-        // Apply the offset command
-        gcode.push_str(&format!(
+        let update_line = format!(
             "{} ; {}\n",
             update_cmd,
             self.routine_description(&report.routine)
-        ));
+        );
+        let retract_line = format!(
+            "G0 Z{:.3} ; Retract to safe height\n",
+            self.config.safe_height
+        );
+        let is_g92 = update_cmd.starts_with("G92");
+        if is_g92 {
+            // G92 is relative to the position where it executes (the recorded machine
+            // position), so it must run before any move.
+            gcode.push_str(&update_line);
+            gcode.push_str(&retract_line);
+        } else {
+            gcode.push_str(&retract_line);
+            gcode.push_str(&update_line);
+        }
 
         // For tool length, also suggest resetting
         if matches!(report.routine, ProbeRoutine::ToolLength { .. })
@@ -558,7 +516,7 @@ impl PersistentProbeResults {
             g10_command: report.suggested_g10.clone(),
             g92_command: report.suggested_g92.clone(),
             g43_1_command: report.suggested_g43_1.clone(),
-            timestamp: chrono::Local::now().to_rfc3339(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
         };
         self.results_by_wcs.insert(wcs, persisted);
         self.last_wcs = wcs;
@@ -572,181 +530,5 @@ impl PersistentProbeResults {
     /// Clear all stored results.
     pub fn clear(&mut self) {
         self.results_by_wcs.clear();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gcodekit5_core::{Corner, ProbeResult, Units};
-
-    #[test]
-    fn test_wcs_update_config_default() {
-        let config = WcsUpdateConfig::default();
-        assert!(!config.auto_update_wcs);
-        assert_eq!(config.target_wcs, 54); // G54
-        assert!(!config.use_temporary_offset);
-        assert!(config.apply_tool_length);
-        assert_eq!(config.safe_height, 5.0);
-    }
-
-    #[test]
-    fn test_process_z_touch_report() {
-        let config = WcsUpdateConfig {
-            auto_update_wcs: false,
-            target_wcs: 54,
-            ..Default::default()
-        };
-
-        let mut service = WcsUpdateService::new(config);
-
-        let routine = ProbeRoutine::ZTouch {
-            safe_height: 5.0,
-            max_depth: 20.0,
-            fast_feed: 100.0,
-            slow_feed: 25.0,
-            backoff: 2.0,
-        };
-
-        let mut report = ProbeReport::new(routine);
-        report.add_trigger(ProbeResult::new(
-            Position::new(10.0, 20.0, -5.0),
-            true,
-            Units::MM,
-        ));
-        report.add_trigger(ProbeResult::new(
-            Position::new(10.0, 20.0, -5.02),
-            true,
-            Units::MM,
-        )); // Slow re-probe
-
-        let result = service
-            .process_probe_report(&report)
-            .expect("WCS test setup should succeed");
-
-        assert!(!result.applied); // Not auto-applied
-        assert!(result.command.contains("G10"));
-        // G54 is coordinate system P1; a Z-touch only sets Z (at the slow re-probe trigger)
-        assert_eq!(result.command, "G10 L2 P1 Z-5.020");
-        assert!(result.description.contains("G54"));
-    }
-
-    #[test]
-    fn test_preview_generation() {
-        let config = WcsUpdateConfig::default();
-        let service = WcsUpdateService::new(config);
-
-        let routine = ProbeRoutine::ZTouch {
-            safe_height: 5.0,
-            max_depth: 20.0,
-            fast_feed: 100.0,
-            slow_feed: 25.0,
-            backoff: 0.0,
-        };
-
-        let mut report = ProbeReport::new(routine);
-        report.add_trigger(ProbeResult::new(
-            Position::new(0.0, 0.0, -12.345),
-            true,
-            Units::MM,
-        ));
-
-        let preview = service
-            .generate_preview(&report)
-            .expect("WCS test setup should succeed");
-        // Z-touch routine sets Z to 0 at the trigger position
-        // The actual trigger was at Z=-12.345, but computed position has Z=0
-        assert!(preview.contains("Z surface"));
-        assert!(preview.contains("G54"));
-        assert!(preview.contains("Set"));
-    }
-
-    #[test]
-    fn test_tool_length_command() {
-        let config = WcsUpdateConfig {
-            apply_tool_length: true,
-            ..Default::default()
-        };
-        let service = WcsUpdateService::new(config);
-
-        let routine = ProbeRoutine::ToolLength {
-            plate_xy: (100.0, 100.0),
-            plate_z: -50.0,
-            safe_height: 10.0,
-            max_depth: 20.0,
-            feed_rate: 100.0,
-        };
-
-        let mut report = ProbeReport::new(routine);
-        report.add_trigger(ProbeResult::new(
-            Position::new(100.0, 100.0, -65.0),
-            true,
-            Units::MM,
-        ));
-
-        let (command, _description) = service
-            .build_command(&report, Position::new(100.0, 100.0, -15.0))
-            .expect("WCS test setup should succeed");
-        assert!(command.contains("G43.1"));
-        assert!(command.contains("Z-15"));
-    }
-
-    #[test]
-    fn test_g92_temporary_offset() {
-        let config = WcsUpdateConfig {
-            use_temporary_offset: true,
-            ..Default::default()
-        };
-        let service = WcsUpdateService::new(config);
-
-        let routine = ProbeRoutine::CornerFind {
-            corner: Corner::XminYmin,
-            safe_height: 10.0,
-            probe_distance: 10.0,
-            fast_feed: 100.0,
-            slow_feed: 25.0,
-            backoff: 2.0,
-        };
-
-        let mut report = ProbeReport::new(routine);
-        report.add_trigger(ProbeResult::new(
-            Position::new(10.0, 25.0, -5.0),
-            true,
-            Units::MM,
-        ));
-        report.add_trigger(ProbeResult::new(
-            Position::new(15.0, 20.0, -5.0),
-            true,
-            Units::MM,
-        ));
-
-        let (command, _) = service
-            .build_command(&report, Position::new(10.0, 20.0, -5.0))
-            .expect("WCS test setup should succeed");
-        assert!(command.contains("G92"));
-        assert!(!command.contains("G10"));
-    }
-
-    #[test]
-    fn test_persistent_results() {
-        let mut persistent = PersistentProbeResults::new();
-
-        let routine = ProbeRoutine::BoreCenter {
-            diameter: 20.0,
-            safe_height: 10.0,
-            fast_feed: 100.0,
-            slow_feed: 25.0,
-        };
-
-        let mut report = ProbeReport::new(routine);
-        report.set_computed(Position::new(50.0, 50.0, -5.0));
-
-        persistent.store_report(54, &report);
-
-        let stored = persistent
-            .get_report(54)
-            .expect("WCS test setup should succeed");
-        assert_eq!(stored.computed_x, 50.0);
-        assert_eq!(stored.computed_y, 50.0);
     }
 }

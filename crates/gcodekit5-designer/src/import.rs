@@ -22,6 +22,8 @@ use anyhow::{anyhow, Result};
 use lyon::math::{point, vector};
 use lyon::path::Path;
 
+mod svg_parse;
+
 /// Represents an imported design from a file
 #[derive(Debug)]
 pub struct ImportedDesign {
@@ -83,40 +85,27 @@ impl ImportedShape {
         }
     }
 
+    /// Flips the shape vertically about `center_y` (SVG is Y-down, the designer is
+    /// Y-up) and applies the import offset. A flip reverses the sense of rotation.
     fn convert(self, center_y: f64, offset_x: f64, offset_y: f64) -> Shape {
+        let flip = |p: Point| Point::new(p.x + offset_x, -p.y + 2.0 * center_y + offset_y);
         match self {
             Self::Rect(r) => {
-                // y' = -y + 2c
-                // New min_y is -(old_max_y) + 2c = -(r.y + r.height) + 2c
-                let new_y = -(r.center.y + r.height / 2.0) + 2.0 * center_y + offset_y;
-                let new_x = r.center.x - r.width / 2.0 + offset_x;
-                Shape::Rectangle(Rectangle::new(new_x, new_y, r.width, r.height))
+                let c = flip(r.center);
+                let mut rect =
+                    Rectangle::new(c.x - r.width / 2.0, c.y - r.height / 2.0, r.width, r.height);
+                rect.rotation = -r.rotation;
+                Shape::Rectangle(rect)
             }
-            Self::Circle(c) => {
-                let new_y = -c.center.y + 2.0 * center_y + offset_y;
-                let new_x = c.center.x + offset_x;
-                Shape::Circle(Circle::new(Point::new(new_x, new_y), c.radius))
-            }
-            Self::Line(l) => {
-                let start_y = -l.start.y + 2.0 * center_y + offset_y;
-                let start_x = l.start.x + offset_x;
-                let end_y = -l.end.y + 2.0 * center_y + offset_y;
-                let end_x = l.end.x + offset_x;
-                Shape::Line(Line::new(
-                    Point::new(start_x, start_y),
-                    Point::new(end_x, end_y),
-                ))
-            }
+            Self::Circle(c) => Shape::Circle(Circle::new(flip(c.center), c.radius)),
+            Self::Line(l) => Shape::Line(Line::new(flip(l.start), flip(l.end))),
             Self::Ellipse(e) => {
-                let new_y = -e.center.y + 2.0 * center_y + offset_y;
-                let new_x = e.center.x + offset_x;
-                Shape::Ellipse(Ellipse::new(Point::new(new_x, new_y), e.rx, e.ry))
+                let mut ellipse = Ellipse::new(flip(e.center), e.rx, e.ry);
+                ellipse.rotation = -e.rotation;
+                Shape::Ellipse(ellipse)
             }
             Self::Path(p) => {
-                // Transform: Translate(0, -c) -> Scale(1, -1) -> Translate(0, c) -> Translate(off_x, off_y)
-                // y' = -y + 2c + off_y
-                // x' = x + off_x
-
+                // y' = -y + 2c + off_y, x' = x + off_x
                 let transform = lyon::math::Transform::new(
                     1.0,
                     0.0,
@@ -125,12 +114,79 @@ impl ImportedShape {
                     offset_x as f32,
                     (2.0 * center_y + offset_y) as f32,
                 );
-                let mut new_p = p.clone();
+                let mut new_p = p;
                 new_p.transform(&transform);
                 Shape::Path(new_p)
             }
         }
     }
+}
+
+/// SVG container elements whose children are never rendered directly.
+const SVG_NON_RENDERED: &[&str] = &[
+    "defs",
+    "clipPath",
+    "mask",
+    "symbol",
+    "pattern",
+    "marker",
+    "linearGradient",
+    "radialGradient",
+    "style",
+    "title",
+    "desc",
+    "metadata",
+];
+
+/// Builds a closed lyon path through `pts`.
+fn closed_polygon_path(pts: &[Point]) -> Path {
+    let mut b = Path::builder();
+    if let Some((first, rest)) = pts.split_first() {
+        b.begin(point(first.x as f32, first.y as f32));
+        for p in rest {
+            b.line_to(point(p.x as f32, p.y as f32));
+        }
+        b.close();
+    }
+    b.build()
+}
+
+/// Builds an ellipse outline (four cubic arcs) in local coordinates.
+fn ellipse_path(cx: f64, cy: f64, rx: f64, ry: f64) -> Path {
+    // Cubic Bezier circle constant.
+    const K: f64 = 0.552_284_749_830_793_4;
+    let p = |x: f64, y: f64| point(x as f32, y as f32);
+    let mut b = Path::builder();
+    b.begin(p(cx + rx, cy));
+    b.cubic_bezier_to(
+        p(cx + rx, cy + K * ry),
+        p(cx + K * rx, cy + ry),
+        p(cx, cy + ry),
+    );
+    b.cubic_bezier_to(
+        p(cx - K * rx, cy + ry),
+        p(cx - rx, cy + K * ry),
+        p(cx - rx, cy),
+    );
+    b.cubic_bezier_to(
+        p(cx - rx, cy - K * ry),
+        p(cx - K * rx, cy - ry),
+        p(cx, cy - ry),
+    );
+    b.cubic_bezier_to(
+        p(cx + K * rx, cy - ry),
+        p(cx + rx, cy - K * ry),
+        p(cx + rx, cy),
+    );
+    b.close();
+    b.build()
+}
+
+/// Wraps a lyon path transformed by `ctm` as an imported path shape.
+fn transformed_path(path: &Path, ctm: &svg_parse::Affine) -> ImportedShape {
+    ImportedShape::Path(PathShape::from_lyon_path(
+        &path.clone().transformed(&ctm.to_lyon()),
+    ))
 }
 
 impl SvgImporter {
@@ -143,257 +199,83 @@ impl SvgImporter {
         }
     }
 
-    /// Import SVG from string content
+    /// Imports SVG from string content.
+    ///
+    /// Geometry from `path`, `rect`, `circle`, `ellipse`, `line`, `polyline` and
+    /// `polygon` elements is converted to millimetres using the full transform stack:
+    /// the root `viewBox` → physical size mapping (`width`/`height` in mm, cm, in, pt,
+    /// pc or px at 96 dpi; unitless values are taken as mm), every enclosing group's
+    /// and the element's own `transform` attribute (`matrix`, `translate`, `scale`,
+    /// `rotate`, `skewX`, `skewY`), and finally the importer's `scale`. Content of
+    /// non-rendered containers such as `<defs>` is skipped.
+    ///
+    /// # Arguments
+    /// * `svg_content` - The SVG document text.
+    ///
+    /// # Returns
+    /// The imported design (shapes flipped to the designer's Y-up axis), or an error
+    /// when the text has no `<svg>` element.
     pub fn import_string(&self, svg_content: &str) -> Result<ImportedDesign> {
-        // Validate SVG structure by checking for basic tags
-        if !svg_content.contains("<svg") {
+        use svg_parse::{Affine, TagKind};
+
+        let tags = svg_parse::tokenize(svg_content);
+        let Some(root_idx) = tags.iter().position(|t| t.name == "svg") else {
             anyhow::bail!("Invalid SVG: missing <svg> element");
-        }
+        };
+
+        let user_scale = Affine::scale(self.scale, self.scale);
+        let (root_t, (doc_w, doc_h)) = svg_parse::root_transform(&tags[root_idx]);
+        let root_ctm = user_scale.mul(&root_t);
 
         let mut imported_shapes: Vec<ImportedShape> = Vec::new();
-        let mut viewbox_width = 100.0f64;
-        let mut _viewbox_height = 100.0f64;
+        // Current transformation matrix of each open element.
+        let mut stack: Vec<(String, Affine)> = Vec::new();
+        // Depth of the stack at which a non-rendered container was opened.
+        let mut hidden_from: Option<usize> = None;
 
-        // Parse width and height from SVG element
-        if let Some(svg_start) = svg_content.find("<svg") {
-            if let Some(svg_end) = svg_content[svg_start..].find('>') {
-                let svg_tag = &svg_content[svg_start..svg_start + svg_end];
-
-                if let Some(w) = Self::extract_attr_f64(svg_tag, "width") {
-                    viewbox_width = w;
-                }
-                if let Some(h) = Self::extract_attr_f64(svg_tag, "height") {
-                    _viewbox_height = h;
-                }
-            }
-        }
-
-        // Parse viewBox from SVG element (overrides width/height for logical dimensions if present)
-        if let Some(viewbox_start) = svg_content.find("viewBox=\"") {
-            if let Some(viewbox_end) = svg_content[viewbox_start + 9..].find('"') {
-                let viewbox_str = &svg_content[viewbox_start + 9..viewbox_start + 9 + viewbox_end];
-                let parts: Vec<&str> = viewbox_str.split_whitespace().collect();
-                if parts.len() >= 4 {
-                    viewbox_width = parts[2].parse().unwrap_or(100.0);
-                    _viewbox_height = parts[3].parse().unwrap_or(100.0);
-                }
-            }
-        }
-
-        // Extract group transform matrix
-        let mut group_transform = None;
-        if let Some(g_start) = svg_content.find("<g") {
-            if let Some(g_end) = svg_content[g_start..].find('>') {
-                let g_tag = &svg_content[g_start..g_start + g_end];
-                if let Some(transform_start) = g_tag.find("transform=\"") {
-                    if let Some(transform_end) = g_tag[transform_start + 11..].find('"') {
-                        let transform_str =
-                            &g_tag[transform_start + 11..transform_start + 11 + transform_end];
-                        group_transform = Self::parse_matrix_transform(transform_str);
+        for tag in &tags[root_idx..] {
+            if tag.kind == TagKind::End {
+                if let Some(idx) = stack.iter().rposition(|(n, _)| *n == tag.name) {
+                    stack.truncate(idx);
+                    if hidden_from.is_some_and(|h| stack.len() <= h) {
+                        hidden_from = None;
                     }
                 }
+                continue;
             }
-        }
 
-        // Extract all <rect .../> elements
-        let mut search_pos = 0;
-        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "rect") {
-            let abs_tag_start = search_pos + tag_start;
-            if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
-                let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
+            let parent_ctm = stack.last().map(|(_, m)| *m).unwrap_or(root_ctm);
+            let ctm = if stack.is_empty() && tag.name == "svg" {
+                // The root's own transform attribute is applied inside its viewBox.
+                root_ctm.mul(
+                    &tag.attr("transform")
+                        .map(svg_parse::parse_transform)
+                        .unwrap_or(Affine::IDENTITY),
+                )
+            } else {
+                parent_ctm.mul(
+                    &tag.attr("transform")
+                        .map(svg_parse::parse_transform)
+                        .unwrap_or(Affine::IDENTITY),
+                )
+            };
 
-                let x = Self::extract_attr_f64(tag_content, "x").unwrap_or(0.0);
-                let y = Self::extract_attr_f64(tag_content, "y").unwrap_or(0.0);
-                let width = Self::extract_attr_f64(tag_content, "width").unwrap_or(0.0);
-                let height = Self::extract_attr_f64(tag_content, "height").unwrap_or(0.0);
-
-                if width > 0.0 && height > 0.0 {
-                    let rect = Rectangle::new(
-                        x * self.scale,
-                        y * self.scale,
-                        width * self.scale,
-                        height * self.scale,
-                    );
-                    imported_shapes.push(ImportedShape::Rect(rect));
+            if hidden_from.is_none() && SVG_NON_RENDERED.contains(&tag.name.as_str()) {
+                hidden_from = Some(stack.len());
+            }
+            if hidden_from.is_none() {
+                if let Some(shape) = Self::element_to_shape(tag, &ctm) {
+                    imported_shapes.push(shape);
                 }
-                search_pos = abs_tag_start + tag_end + 1;
-            } else {
-                break;
             }
-        }
 
-        // Extract all <circle .../> elements
-        let mut search_pos = 0;
-        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "circle") {
-            let abs_tag_start = search_pos + tag_start;
-            if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
-                let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
-
-                let cx = Self::extract_attr_f64(tag_content, "cx").unwrap_or(0.0);
-                let cy = Self::extract_attr_f64(tag_content, "cy").unwrap_or(0.0);
-                let r = Self::extract_attr_f64(tag_content, "r").unwrap_or(0.0);
-
-                if r > 0.0 {
-                    let circle =
-                        Circle::new(Point::new(cx * self.scale, cy * self.scale), r * self.scale);
-                    imported_shapes.push(ImportedShape::Circle(circle));
-                }
-                search_pos = abs_tag_start + tag_end + 1;
-            } else {
-                break;
-            }
-        }
-
-        // Extract all <line .../> elements
-        let mut search_pos = 0;
-        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "line") {
-            let abs_tag_start = search_pos + tag_start;
-            if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
-                let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
-
-                let x1 = Self::extract_attr_f64(tag_content, "x1").unwrap_or(0.0);
-                let y1 = Self::extract_attr_f64(tag_content, "y1").unwrap_or(0.0);
-                let x2 = Self::extract_attr_f64(tag_content, "x2").unwrap_or(0.0);
-                let y2 = Self::extract_attr_f64(tag_content, "y2").unwrap_or(0.0);
-
-                let line = Line::new(
-                    Point::new(x1 * self.scale, y1 * self.scale),
-                    Point::new(x2 * self.scale, y2 * self.scale),
-                );
-                imported_shapes.push(ImportedShape::Line(line));
-
-                search_pos = abs_tag_start + tag_end + 1;
-            } else {
-                break;
-            }
-        }
-
-        // Extract all <ellipse .../> elements
-        let mut search_pos = 0;
-        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "ellipse") {
-            let abs_tag_start = search_pos + tag_start;
-            if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
-                let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
-
-                let cx = Self::extract_attr_f64(tag_content, "cx").unwrap_or(0.0);
-                let cy = Self::extract_attr_f64(tag_content, "cy").unwrap_or(0.0);
-                let rx = Self::extract_attr_f64(tag_content, "rx").unwrap_or(0.0);
-                let ry = Self::extract_attr_f64(tag_content, "ry").unwrap_or(0.0);
-
-                if rx > 0.0 && ry > 0.0 {
-                    let ellipse = Ellipse::new(
-                        Point::new(cx * self.scale, cy * self.scale),
-                        rx * self.scale,
-                        ry * self.scale,
-                    );
-                    imported_shapes.push(ImportedShape::Ellipse(ellipse));
-                }
-                search_pos = abs_tag_start + tag_end + 1;
-            } else {
-                break;
-            }
-        }
-
-        // Extract all <polyline .../> elements
-        let mut search_pos = 0;
-        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "polyline") {
-            let abs_tag_start = search_pos + tag_start;
-            if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
-                let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
-
-                if let Some(points_str) = Self::extract_attr_str(tag_content, "points") {
-                    let points: Vec<Point> = points_str
-                        .split([' ', ','])
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<&str>>()
-                        .chunks(2)
-                        .filter_map(|chunk| {
-                            if chunk.len() == 2 {
-                                let x = chunk[0].parse::<f64>().ok()?;
-                                let y = chunk[1].parse::<f64>().ok()?;
-                                Some(Point::new(x * self.scale, y * self.scale))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-
-                    if !points.is_empty() {
-                        imported_shapes
-                            .push(ImportedShape::Path(PathShape::from_points(&points, false)));
-                    }
-                }
-                search_pos = abs_tag_start + tag_end + 1;
-            } else {
-                break;
-            }
-        }
-
-        // Extract all <polygon .../> elements
-        let mut search_pos = 0;
-        while let Some(tag_start) = Self::find_element(&svg_content[search_pos..], "polygon") {
-            let abs_tag_start = search_pos + tag_start;
-            if let Some(tag_end) = svg_content[abs_tag_start..].find('>') {
-                let tag_content = &svg_content[abs_tag_start..abs_tag_start + tag_end];
-
-                if let Some(points_str) = Self::extract_attr_str(tag_content, "points") {
-                    let points: Vec<Point> = points_str
-                        .split([' ', ','])
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<&str>>()
-                        .chunks(2)
-                        .filter_map(|chunk| {
-                            if chunk.len() == 2 {
-                                let x = chunk[0].parse::<f64>().ok()?;
-                                let y = chunk[1].parse::<f64>().ok()?;
-                                Some(Point::new(x * self.scale, y * self.scale))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-
-                    if !points.is_empty() {
-                        imported_shapes
-                            .push(ImportedShape::Path(PathShape::from_points(&points, true)));
-                    }
-                }
-                search_pos = abs_tag_start + tag_end + 1;
-            } else {
-                break;
-            }
-        }
-
-        // Extract all <path d="..."/> elements
-        let mut search_pos = 0;
-        while let Some(path_start) = svg_content[search_pos..].find("<path") {
-            let abs_path_start = search_pos + path_start;
-            if let Some(path_end) = svg_content[abs_path_start..].find('>') {
-                let path_tag_end = abs_path_start + path_end;
-
-                // Find d attribute (word-boundary aware so `id="..."` is not matched)
-                if let Some(d_value) =
-                    Self::extract_attr_str(&svg_content[abs_path_start..path_tag_end], "d")
-                {
-                    // Parse SVG path data
-                    if let Some(path) = PathShape::from_svg_path(d_value) {
-                        let mut new_path = path.clone();
-                        if let Some((a, b, c, d_coeff, e, f)) = group_transform {
-                            let transform = lyon::math::Transform::new(a, b, c, d_coeff, e, f);
-                            new_path.transform(&transform);
-                        }
-
-                        let scale_transform =
-                            lyon::math::Transform::scale(self.scale as f32, self.scale as f32);
-                        new_path.transform(&scale_transform);
-
-                        imported_shapes.push(ImportedShape::Path(new_path));
-                    }
-                }
-
-                search_pos = path_tag_end + 1;
-            } else {
-                break;
+            if tag.kind == TagKind::Start {
+                stack.push((tag.name.clone(), ctm));
+            } else if hidden_from.is_some_and(|h| h == stack.len())
+                && SVG_NON_RENDERED.contains(&tag.name.as_str())
+            {
+                // A self-closing non-rendered element hides nothing after it.
+                hidden_from = None;
             }
         }
 
@@ -427,7 +309,7 @@ impl SvgImporter {
 
         Ok(ImportedDesign {
             shapes,
-            dimensions: (viewbox_width * self.scale, _viewbox_height * self.scale),
+            dimensions: (doc_w * self.scale, doc_h * self.scale),
             format: FileFormat::Svg,
             layer_count,
             mesh_3d: None,
@@ -436,66 +318,103 @@ impl SvgImporter {
         })
     }
 
-    /// Finds the byte offset of the next `<name` element start whose name is not
-    /// merely a prefix of a longer tag (e.g. `<line` must not match `<linearGradient`).
-    fn find_element(content: &str, name: &str) -> Option<usize> {
-        let needle = format!("<{}", name);
-        let mut from = 0;
-        while let Some(pos) = content[from..].find(&needle) {
-            let abs = from + pos;
-            let after = abs + needle.len();
-            match content[after..].chars().next() {
-                Some(c) if c.is_whitespace() || c == '/' || c == '>' => return Some(abs),
-                None => return None,
-                _ => from = after,
+    /// Converts one SVG geometry element, already resolved to the transform `ctm`
+    /// (element user units → mm), into an imported shape.
+    ///
+    /// Primitives keep their type when `ctm` allows it (axis-aligned scale, or a
+    /// rotation with uniform scale for rectangles and ellipses); otherwise they become
+    /// transformed paths so skews and non-uniform scales are exact.
+    fn element_to_shape(tag: &svg_parse::XmlTag, ctm: &svg_parse::Affine) -> Option<ImportedShape> {
+        let num = |name: &str| tag.attr_f64(name).unwrap_or(0.0);
+        let points_attr = || -> Vec<Point> {
+            tag.attr("points")
+                .map(svg_parse::parse_numbers)
+                .unwrap_or_default()
+                .chunks_exact(2)
+                .map(|c| Point::new(c[0], c[1]))
+                .collect()
+        };
+
+        match tag.name.as_str() {
+            "rect" => {
+                let (x, y, w, h) = (num("x"), num("y"), num("width"), num("height"));
+                if w <= 0.0 || h <= 0.0 {
+                    return None;
+                }
+                let center = ctm.apply(Point::new(x + w / 2.0, y + h / 2.0));
+                if ctm.is_axis_aligned() {
+                    let (sw, sh) = (w * ctm.a.abs(), h * ctm.d.abs());
+                    let rect = Rectangle::new(center.x - sw / 2.0, center.y - sh / 2.0, sw, sh);
+                    Some(ImportedShape::Rect(rect))
+                } else if let Some((s, angle)) = ctm.as_similarity() {
+                    let mut rect = Rectangle::new(
+                        center.x - w * s / 2.0,
+                        center.y - h * s / 2.0,
+                        w * s,
+                        h * s,
+                    );
+                    rect.rotation = angle;
+                    Some(ImportedShape::Rect(rect))
+                } else {
+                    let corners = [
+                        Point::new(x, y),
+                        Point::new(x + w, y),
+                        Point::new(x + w, y + h),
+                        Point::new(x, y + h),
+                    ];
+                    Some(transformed_path(&closed_polygon_path(&corners), ctm))
+                }
             }
-        }
-        None
-    }
-
-    fn extract_attr_str<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
-        let pattern = format!("{}=\"", attr);
-        let mut from = 0;
-        while let Some(pos) = tag[from..].find(&pattern) {
-            let start = from + pos;
-            // The attribute name must start at a word boundary, otherwise `x` would
-            // match `rx`, `width` would match `stroke-width` and `d` would match `id`.
-            let at_boundary = tag[..start]
-                .chars()
-                .next_back()
-                .is_none_or(|c| c.is_whitespace());
-            let val_start = start + pattern.len();
-            if at_boundary {
-                return tag[val_start..]
-                    .find('"')
-                    .map(|end| &tag[val_start..val_start + end]);
+            "circle" | "ellipse" => {
+                let (cx, cy) = (num("cx"), num("cy"));
+                let (rx, ry) = if tag.name == "circle" {
+                    (num("r"), num("r"))
+                } else {
+                    (num("rx"), num("ry"))
+                };
+                if rx <= 0.0 || ry <= 0.0 {
+                    return None;
+                }
+                let center = ctm.apply(Point::new(cx, cy));
+                if let Some((s, angle)) = ctm.as_similarity() {
+                    if (rx - ry).abs() < 1e-12 {
+                        return Some(ImportedShape::Circle(Circle::new(center, rx * s)));
+                    }
+                    let mut e = Ellipse::new(center, rx * s, ry * s);
+                    e.rotation = angle;
+                    Some(ImportedShape::Ellipse(e))
+                } else if ctm.is_axis_aligned() {
+                    Some(ImportedShape::Ellipse(Ellipse::new(
+                        center,
+                        rx * ctm.a.abs(),
+                        ry * ctm.d.abs(),
+                    )))
+                } else {
+                    Some(transformed_path(&ellipse_path(cx, cy, rx, ry), ctm))
+                }
             }
-            from = val_start;
-        }
-        None
-    }
-
-    fn extract_attr_f64(tag: &str, attr: &str) -> Option<f64> {
-        Self::extract_attr_str(tag, attr).and_then(|s| s.parse().ok())
-    }
-
-    /// Parse matrix transform from SVG matrix(a,b,c,d,e,f) format
-    fn parse_matrix_transform(transform_str: &str) -> Option<(f32, f32, f32, f32, f32, f32)> {
-        let trimmed = transform_str.trim();
-        if !trimmed.starts_with("matrix(") || !trimmed.ends_with(")") {
-            return None;
-        }
-
-        let inner = &trimmed[7..trimmed.len() - 1];
-        let values: Result<Vec<f32>, _> =
-            inner.split(',').map(|s| s.trim().parse::<f32>()).collect();
-
-        if let Ok(vals) = values {
-            if vals.len() == 6 {
-                return Some((vals[0], vals[1], vals[2], vals[3], vals[4], vals[5]));
+            "line" => Some(ImportedShape::Line(Line::new(
+                ctm.apply(Point::new(num("x1"), num("y1"))),
+                ctm.apply(Point::new(num("x2"), num("y2"))),
+            ))),
+            "polyline" | "polygon" => {
+                let pts: Vec<Point> = points_attr().into_iter().map(|p| ctm.apply(p)).collect();
+                if pts.is_empty() {
+                    return None;
+                }
+                Some(ImportedShape::Path(PathShape::from_points(
+                    &pts,
+                    tag.name == "polygon",
+                )))
             }
+            "path" => {
+                let d = tag.attr("d")?;
+                let mut path = PathShape::from_svg_path(d)?;
+                path.transform(&ctm.to_lyon());
+                Some(ImportedShape::Path(path))
+            }
+            _ => None,
         }
-        None
     }
 }
 
@@ -540,8 +459,10 @@ impl DxfImporter {
     pub fn import_string(&self, content: &str) -> Result<ImportedDesign> {
         let mut dxf_file = DxfParser::parse(content)?;
 
-        // Apply scaling
-        dxf_file.scale(self.scale);
+        // Convert the drawing units ($INSUNITS) to millimetres, then apply the
+        // caller's scale.
+        let unit_factor = dxf_file.header.unit.to_mm_factor();
+        dxf_file.scale(unit_factor * self.scale);
 
         // Convert DXF entities to Designer shapes
         let (shapes, z_metadata) = self.convert_entities_to_shapes(&dxf_file)?;

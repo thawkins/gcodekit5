@@ -5,14 +5,13 @@
 //! and job execution (start/pause/stop).
 
 use gcodekit5_communication::firmware::grbl::status_parser::{
-    FeedSpindleState, OverrideState, StatusParser,
+    FeedSpindleState, OverrideState, StatusParser, WorkCoordinateOffset,
 };
 use gcodekit5_communication::{
     Communicator, ConnectionDriver, ConnectionParams, SerialCommunicator,
 };
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, parse_feed_rate, FeedRateUnits,
-    MeasurementSystem,
+    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
 };
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::glib;
@@ -30,7 +29,11 @@ use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
 use crate::ui::gtk::machine_control::continuous_jog::{numpad_jog, ContinuousJogState};
-use crate::ui::gtk::machine_control::direct_sender::DirectSender;
+use crate::ui::gtk::machine_control::direct_sender::{DirectSender, JobOutcome, SenderEvent};
+use crate::ui::gtk::machine_control::grbl_stream::{
+    format_probe_move, jog_step_presets, nearest_jog_step_preset, parse_jog_feed,
+};
+use crate::ui::gtk::machine_control::status_report::QuickProbeState;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
 use gcodekit5_core::{
@@ -38,10 +41,20 @@ use gcodekit5_core::{
 };
 use std::rc::Rc;
 
+mod connection;
 mod continuous_jog;
 mod direct_sender;
+pub mod grbl_stream;
 mod state;
+mod status_report;
 mod ui_builders;
+
+/// Quick Z probe: signed distance (mm) along Z.
+const PROBE_Z_MOVE: (char, f32) = ('Z', -20.0);
+/// Quick edge-find probe distance (mm).
+const PROBE_EDGE_DISTANCE_MM: f32 = 10.0;
+/// Quick probe feed (mm/min).
+const PROBE_FEED_MM_PER_MIN: f32 = 100.0;
 
 pub use ui_builders::{create_dro, make_section};
 
@@ -147,6 +160,10 @@ pub struct MachineControlView {
     pub limits_a: Option<Label>,
     pub limits_b: Option<Label>,
     pub limits_c: Option<Label>,
+    // Rotary axis limit rows (label + value), shown with their axis
+    pub limits_a_row: Option<gtk4::Box>,
+    pub limits_b_row: Option<gtk4::Box>,
+    pub limits_c_row: Option<gtk4::Box>,
     // Axis count for dynamic UI
     pub axis_count: std::rc::Rc<std::cell::Cell<u8>>,
     // Coolant controls
@@ -195,6 +212,19 @@ pub struct MachineControlView {
     pub last_overrides: ThreadSafe<OverrideState>,
     pub job_start_time: ThreadSafeOption<std::time::Instant>,
     pub direct_sender: ThreadSafeOption<DirectSender>,
+    /// Last Work Coordinate Offset reported (GRBL only sends WCO in some reports).
+    pub(crate) last_wco: Rc<Cell<Option<WorkCoordinateOffset>>>,
+    /// Progress of a quick probe started from the panel.
+    pub(crate) quick_probe: Rc<Cell<QuickProbeState>>,
+    /// Bumped on every connect so a stale status poller stops itself.
+    pub(crate) poll_generation: Rc<Cell<u64>>,
+    /// Index (0 = G54) of the work coordinate system last selected.
+    pub(crate) active_wcs: Rc<Cell<usize>>,
+    /// Set while a WCS toggle is being reverted, so the revert sends nothing.
+    pub(crate) wcs_reverting: Rc<Cell<bool>>,
+    /// Device profiles; the active profile chooses serial vs. network connection.
+    pub(crate) device_manager:
+        Rc<std::cell::RefCell<Option<std::sync::Arc<gcodekit5_devicedb::DeviceManager>>>>,
 }
 
 impl MachineControlView {
@@ -210,9 +240,6 @@ impl MachineControlView {
         widget.set_vexpand(true);
 
         use crate::ui::gtk::machine_control::ui_builders::make_section;
-
-        // Helper function to disable connection-dependent buttons
-        use crate::ui::gtk::machine_control::state::set_controls_enabled;
 
         // ═════════════════════════════════════════════
         // LEFT SIDEBAR
@@ -1020,8 +1047,29 @@ impl MachineControlView {
         // Conectar botones del editor
         if let Some(editor) = &editor {
             let editor_clone = editor.clone();
-            clear_editor_btn.connect_clicked(move |_| {
-                editor_clone.set_text("");
+            clear_editor_btn.connect_clicked(move |btn| {
+                if editor_clone.get_text().trim().is_empty() {
+                    editor_clone.set_text("");
+                    return;
+                }
+                let dialog = gtk4::MessageDialog::builder()
+                    .message_type(gtk4::MessageType::Question)
+                    .buttons(gtk4::ButtonsType::YesNo)
+                    .text(t!("Clear the editor?"))
+                    .secondary_text(t!("All G-code in the editor will be removed."))
+                    .build();
+                if let Some(win) = btn.root().and_downcast::<gtk4::Window>() {
+                    dialog.set_transient_for(Some(&win));
+                    dialog.set_modal(true);
+                }
+                let editor = editor_clone.clone();
+                dialog.connect_response(move |d, resp| {
+                    if resp == gtk4::ResponseType::Yes {
+                        editor.set_text("");
+                    }
+                    d.close();
+                });
+                dialog.show();
             });
 
             let editor_clone_save = editor.clone();
@@ -1132,16 +1180,9 @@ impl MachineControlView {
         // Populate jog UI from initial settings
         {
             let unit_label = get_unit_label(initial_units);
-            step_label.set_text(&format!("Step ({unit_label}):"));
-            let presets_mm: [f32; 6] = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0];
-            for mm in presets_mm {
-                step_combo.append(
-                    Some(&format!("{mm}")),
-                    &format!("{} {unit_label}", format_length(mm, initial_units)),
-                );
-            }
-            step_combo.set_active_id(Some("1"));
-            *jog_step_mm.lock() = 1.0;
+            step_label.set_text(&format!("{} ({unit_label}):", t!("Step")));
+            let step_mm = Self::populate_step_presets(&step_combo, initial_units, 1.0);
+            *jog_step_mm.lock() = step_mm;
 
             jog_feed_units.set_text(&initial_feed_units.to_string());
             jog_feed_entry.set_text(&format_feed_rate(2000.0, initial_feed_units));
@@ -1159,6 +1200,13 @@ impl MachineControlView {
             let jog_feed_units_clone = jog_feed_units.clone();
             let jog_feed_entry_clone = jog_feed_entry.clone();
             let jog_feed_mm_per_min_clone = jog_feed_mm_per_min.clone();
+            let probe_btns = [
+                probe_z_btn.clone(),
+                probe_x_neg_btn.clone(),
+                probe_x_pos_btn.clone(),
+                probe_y_neg_btn.clone(),
+                probe_y_pos_btn.clone(),
+            ];
 
             controller.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
@@ -1173,18 +1221,15 @@ impl MachineControlView {
 
                     let units = new_units;
                     let unit_label = get_unit_label(units);
-                    step_label_clone.set_text(&format!("Step ({unit_label}):"));
+                    step_label_clone.set_text(&format!("{} ({unit_label}):", t!("Step")));
 
+                    // Inch mode offers inch presets; the nearest one replaces the
+                    // current step. The value stays in mm internally.
                     let selected_mm = *jog_step_mm_clone.lock();
-                    step_combo_clone.remove_all();
-                    let presets_mm: [f32; 6] = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0];
-                    for mm in presets_mm {
-                        step_combo_clone.append(
-                            Some(&format!("{mm}")),
-                            &format!("{} {unit_label}", format_length(mm, units)),
-                        );
-                    }
-                    step_combo_clone.set_active_id(Some(&format!("{selected_mm}")));
+                    let step_mm =
+                        Self::populate_step_presets(&step_combo_clone, units, selected_mm);
+                    *jog_step_mm_clone.lock() = step_mm;
+                    Self::update_probe_tooltips(&probe_btns, units, *feed_units_clone.lock());
                 }
 
                 if key == "feed_rate_units" {
@@ -1195,6 +1240,7 @@ impl MachineControlView {
                         _ => FeedRateUnits::MmPerMin,
                     };
                     *feed_units_clone.lock() = new_units;
+                    Self::update_probe_tooltips(&probe_btns, *units_clone.lock(), new_units);
                     jog_feed_units_clone.set_text(&new_units.to_string());
                     let current_mm_per_min = *jog_feed_mm_per_min_clone.lock();
                     jog_feed_entry_clone.set_text(&format_feed_rate(current_mm_per_min, new_units));
@@ -1285,6 +1331,9 @@ impl MachineControlView {
             limits_a: Some(limits_a),
             limits_b: Some(limits_b),
             limits_c: Some(limits_c),
+            limits_a_row: Some(limits_a_row),
+            limits_b_row: Some(limits_b_row),
+            limits_c_row: Some(limits_c_row),
             // Axis count for dynamic UI
             axis_count: std::rc::Rc::new(std::cell::Cell::new(3)),
             // Coolant controls (initially None)
@@ -1334,7 +1383,26 @@ impl MachineControlView {
             }),
             job_start_time: thread_safe_none(),
             direct_sender: thread_safe_none(),
+            last_wco: Rc::new(Cell::new(None)),
+            quick_probe: Rc::new(Cell::new(QuickProbeState::Idle)),
+            poll_generation: Rc::new(Cell::new(0)),
+            active_wcs: Rc::new(Cell::new(0)),
+            wcs_reverting: Rc::new(Cell::new(false)),
+            device_manager: Rc::new(std::cell::RefCell::new(None)),
         };
+
+        Self::update_probe_tooltips(
+            &[
+                probe_z_btn.clone(),
+                probe_x_neg_btn.clone(),
+                probe_x_pos_btn.clone(),
+                probe_y_neg_btn.clone(),
+                probe_y_pos_btn.clone(),
+            ],
+            initial_units,
+            initial_feed_units,
+        );
+        view.update_axis_visibility(device_status::get_active_num_axes());
 
         // Keep internal jog values in base units (mm, mm/min)
         {
@@ -1353,8 +1421,31 @@ impl MachineControlView {
             let current_feed_units = view.current_feed_units.clone();
             view.jog_feed_entry.connect_changed(move |e| {
                 let units = *current_feed_units.lock();
-                if let Ok(v) = parse_feed_rate(&e.text(), units) {
-                    *jog_feed_mm_per_min.lock() = v;
+                match parse_jog_feed(&e.text(), units) {
+                    Ok(v) => {
+                        *jog_feed_mm_per_min.lock() = v;
+                        e.remove_css_class("error");
+                        e.set_tooltip_text(None);
+                    }
+                    Err(err) => {
+                        // Keep the last valid feed, but make the problem visible.
+                        if !e.has_css_class("error") {
+                            tracing::warn!(
+                                entry = %e.text(),
+                                kept_mm_per_min = *jog_feed_mm_per_min.lock(),
+                                "Invalid jog feed entry: {err}"
+                            );
+                        }
+                        e.add_css_class("error");
+                        e.set_tooltip_text(Some(&format!(
+                            "{} {:.2} {}",
+                            t!("Invalid jog feed; still using"),
+                            format_feed_rate(*jog_feed_mm_per_min.lock(), units)
+                                .parse::<f32>()
+                                .unwrap_or_default(),
+                            units
+                        )));
+                    }
                 }
             });
         }
@@ -1362,40 +1453,7 @@ impl MachineControlView {
         view.refresh_ports();
 
         // Disable all controls initially (until connected)
-        set_controls_enabled(
-            &view.send_btn,
-            &view.stop_btn,
-            &view.pause_btn,
-            &view.resume_btn,
-            &view.home_btn,
-            &view.unlock_btn,
-            &view.wcs_btns,
-            &view.x_zero_btn,
-            &view.y_zero_btn,
-            &view.z_zero_btn,
-            &view.zero_all_btn,
-            &view.goto_zero_btn,
-            &view.step_combo,
-            &view.jog_feed_entry,
-            &view.jog_x_pos,
-            &view.jog_x_neg,
-            &view.jog_y_pos,
-            &view.jog_y_neg,
-            &view.jog_z_pos,
-            &view.jog_z_neg,
-            &view.estop_btn,
-            // Rotary axis controls
-            view.a_zero_btn.as_ref(),
-            view.b_zero_btn.as_ref(),
-            view.c_zero_btn.as_ref(),
-            view.jog_a_pos.as_ref(),
-            view.jog_a_neg.as_ref(),
-            view.jog_b_pos.as_ref(),
-            view.jog_b_neg.as_ref(),
-            view.jog_c_pos.as_ref(),
-            view.jog_c_neg.as_ref(),
-            false,
-        );
+        view.set_connection_controls(false);
         // Setup jog button handlers
         /// Returns true (and logs why) when a job is streaming, so manual motion /
         /// offset commands are not interleaved with the job's G-code.
@@ -1638,6 +1696,9 @@ impl MachineControlView {
 
             // Boton de pausa
             view.pause_btn.connect_clicked(move |_| {
+                if !view_pause.job_active() {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> ! (Pause)\n");
                 }
@@ -1675,6 +1736,7 @@ impl MachineControlView {
                 }
 
                 *is_paused.lock() = true;
+                view_pause.update_job_controls();
             });
         }
 
@@ -1688,6 +1750,9 @@ impl MachineControlView {
             let view_resume = view.clone();
 
             view.resume_btn.connect_clicked(move |_| {
+                if !view_resume.job_active() {
+                    return;
+                }
                 if let Some(c) = console.as_ref() {
                     c.append_log("> ~ (Resume)\n");
                 }
@@ -1701,6 +1766,7 @@ impl MachineControlView {
                     }
                 }
                 *is_paused.lock() = false;
+                view_resume.update_job_controls();
 
                 // Kickstart if stalled
                 if *is_streaming.lock() && !*waiting_for_ack.lock() {
@@ -1754,9 +1820,9 @@ impl MachineControlView {
                 if let Some(sb) = status_bar.as_ref() {
                     sb.set_progress(0.0, "", "");
                 }
-                // Reactivar botón Send al parar
+                // Re-enable Send; Pause/Resume/Stop follow the (now ended) job state.
                 view_stop.send_btn.set_sensitive(true);
-                view_stop.stop_btn.set_sensitive(true);
+                view_stop.update_job_controls();
             });
         }
 
@@ -1806,85 +1872,49 @@ impl MachineControlView {
                     dialog.show();
                     return;
                 }
-                // Habilitar botones de control al iniciar
-                view_clone.stop_btn.set_sensitive(true);
-                view_clone.pause_btn.set_sensitive(true);
-                view_clone.resume_btn.set_sensitive(true);
+                let content = view_clone.prepare_job_content(content);
 
-                // Deshabilitar send_btn durante la ejecución
+                // Send is disabled while the job runs; Pause/Stop follow the job state.
                 view_clone.send_btn.set_sensitive(false);
 
-                // Usar DirectSender
-                let (sender, receiver) = DirectSender::new(
-                    communicator_clone.clone(),
-                    view_clone.is_streaming.clone(),
-                    view_clone.is_paused.clone(),
-                    view_clone.waiting_for_ack.clone(),
-                );
-
-                // Guardar el sender en direct_sender para pausa/stop
+                let (sender, receiver) =
+                    DirectSender::new(communicator_clone.clone(), view_clone.is_streaming.clone());
+                // Keep the sender for pause/stop/E-stop.
                 *view_clone.direct_sender.lock() = Some(sender.clone());
+                *view_clone.is_paused.lock() = false;
 
-                let status_bar = view_clone.status_bar.clone();
-                let job_start_time = view_clone.job_start_time.clone();
                 let view_timeout = view_clone.clone();
-                let is_streaming_timeout = view_clone.is_streaming.clone();
-
-                // Timeout para leer progreso
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                    while let Ok(message) = receiver.try_recv() {
-                        // println!("🔍 Mensaje recibido: '{}'", message);
-
-                        if message.starts_with('>') {
-                            if let Some(console) = view_timeout.device_console.as_ref() {
-                                console.append_log(&format!("{}\n", message));
+                    while let Ok(event) = receiver.try_recv() {
+                        match event {
+                            SenderEvent::Log(msg) => view_timeout.log(&msg),
+                            SenderEvent::Response(line) => {
+                                view_timeout.log(&Self::decode_response_line(&line));
                             }
-                            continue;
-                        }
-
-                        // Mostrar barra de progreso
-                        if message.starts_with('*') {
-                            if let Some(sb) = status_bar.as_ref() {
-                                let percent_str =
-                                    message.trim_start_matches('*').trim().trim_end_matches('%');
-                                if let Ok(percent) = percent_str.parse::<f64>() {
-                                    MachineControlView::update_progress(
-                                        &status_bar,
-                                        &job_start_time,
-                                        percent,
-                                        None,
-                                        None,
-                                        None,
-                                    );
-                                    if percent >= 100.0 {
-                                        sb.set_progress(0.0, "", "");
-                                        view_timeout.pause_btn.set_sensitive(true);
-                                        view_timeout.resume_btn.set_sensitive(true);
-                                        view_timeout.stop_btn.set_sensitive(true); // Siempre true
-                                        *is_streaming_timeout.lock() = false;
-                                    }
-                                }
+                            SenderEvent::Status(line) => view_timeout.apply_status_report(&line),
+                            SenderEvent::Progress(percent) => {
+                                Self::update_progress(
+                                    &view_timeout.status_bar,
+                                    &view_timeout.job_start_time,
+                                    f64::from(percent),
+                                    None,
+                                    None,
+                                    None,
+                                );
                             }
-                        }
-
-                        if message.contains("Completed") || message.contains("completed") {
-                            if let Some(sb) = status_bar.as_ref() {
-                                sb.set_progress(0.0, "", "");
+                            SenderEvent::Finished(outcome) => {
+                                view_timeout.finish_direct_job(&outcome);
+                                // The worker has finished: stop polling, otherwise every
+                                // Send adds another 100 ms timer that runs forever.
+                                return glib::ControlFlow::Break;
                             }
-                            view_timeout.pause_btn.set_sensitive(true);
-                            view_timeout.resume_btn.set_sensitive(true);
-                            view_timeout.stop_btn.set_sensitive(true); // Siempre true
-                            view_timeout.send_btn.set_sensitive(true);
-                            *is_streaming_timeout.lock() = false;
-                            // The worker thread has finished: stop polling, otherwise every
-                            // Send adds another 100 ms timer that runs forever.
-                            return glib::ControlFlow::Break;
                         }
                     }
                     glib::ControlFlow::Continue
                 });
 
                 *view_clone.job_start_time.lock() = Some(std::time::Instant::now());
+                view_clone.update_job_controls();
                 sender.send_gcode(&content);
             });
         }
@@ -1920,26 +1950,42 @@ impl MachineControlView {
                     let mut comm = communicator.lock();
                     let _ = comm.send_command("$X");
                 }
-                view_unlock.pause_btn.set_sensitive(true);
-                view_unlock.resume_btn.set_sensitive(true);
+                view_unlock.update_job_controls();
             });
         }
 
         // WCS Controls
         for (i, btn) in view.wcs_btns.iter().enumerate() {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
+            let view_wcs = view.clone();
             let cmd = format!("G{}", 54 + i);
             btn.connect_toggled(move |b| {
-                if !b.is_active() {
+                if !b.is_active() || view_wcs.wcs_reverting.get() {
                     return;
                 }
-                if let Some(c) = console.as_ref() {
-                    c.append_log(&format!("> {}\n", cmd));
+                if *view_wcs.is_streaming.lock() {
+                    // Changing the WCS mid-job would shift every following move: put the
+                    // toggle back on the WCS that is really active and send nothing.
+                    let previous = view_wcs.active_wcs.get();
+                    if let Some(prev_btn) = view_wcs.wcs_btns.get(previous) {
+                        view_wcs.wcs_reverting.set(true);
+                        prev_btn.set_active(true);
+                        view_wcs.wcs_reverting.set(false);
+                    }
+                    tracing::info!(requested = %cmd, "WCS change ignored while a job is running");
+                    view_wcs.log(&format!(
+                        "{} ({cmd})",
+                        t!("Work coordinate change ignored: a job is running.")
+                    ));
+                    return;
                 }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send_command(&cmd);
+                view_wcs.log(&format!("> {cmd}"));
+                let result = view_wcs.communicator.lock().send_command(&cmd);
+                match result {
+                    Ok(()) => view_wcs.active_wcs.set(i),
+                    Err(e) => {
+                        tracing::warn!(command = %cmd, error = %e, "Failed to select WCS");
+                        view_wcs.log(&format!("{}: {e}", t!("Error sending")));
+                    }
                 }
             });
         }
@@ -2015,6 +2061,36 @@ impl MachineControlView {
                     let mut comm = communicator.lock();
                     let _ = comm.send_command(&cmd);
                 }
+            });
+        }
+        // Rotary axis zero buttons (shown when the machine has A/B/C axes)
+        for (btn, axis) in [
+            (view.a_zero_btn.as_ref(), 'A'),
+            (view.b_zero_btn.as_ref(), 'B'),
+            (view.c_zero_btn.as_ref(), 'C'),
+        ] {
+            let Some(btn) = btn else {
+                continue;
+            };
+            let communicator = view.communicator.clone();
+            let wcs_btns = view.wcs_btns.clone();
+            let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            btn.connect_clicked(move |_| {
+                if job_running(&is_streaming, &console) {
+                    return;
+                }
+                let p = wcs_btns
+                    .iter()
+                    .position(|b| b.is_active())
+                    .map(|i| i + 1)
+                    .unwrap_or(1);
+                let cmd = format!("G10 L20 P{p} {axis}0");
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("> {}\n", cmd));
+                }
+                let mut comm = communicator.lock();
+                let _ = comm.send_command(&cmd);
             });
         }
         {
@@ -2101,108 +2177,33 @@ impl MachineControlView {
             });
         }
 
-        // Quick Probe Z (Milestone 6)
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let is_streaming = view.is_streaming.clone();
-            probe_z_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
-                    return;
-                }
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> Quick Z-touch probe\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    // G38.2 targets are absolute in G90: probe *relative* to the current
-                    // position (in mm), then restore absolute distance mode.
-                    let _ = comm.send_command("G21 G91 G38.2 Z-20 F100");
-                    let _ = comm.send_command("G90");
-                }
-            });
-        }
-
-        // Quick Edge Find buttons (Milestone 6)
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let is_streaming = view.is_streaming.clone();
-            probe_x_neg_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
-                    return;
-                }
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> Probe X- edge\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    // G38.2 targets are absolute in G90: probe *relative* to the current
-                    // position (in mm), then restore absolute distance mode.
-                    let _ = comm.send_command("G21 G91 G38.2 X-10 F100");
-                    let _ = comm.send_command("G90");
-                }
-            });
-        }
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let is_streaming = view.is_streaming.clone();
-            probe_x_pos_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
-                    return;
-                }
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> Probe X+ edge\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    // G38.2 targets are absolute in G90: probe *relative* to the current
-                    // position (in mm), then restore absolute distance mode.
-                    let _ = comm.send_command("G21 G91 G38.2 X10 F100");
-                    let _ = comm.send_command("G90");
-                }
-            });
-        }
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let is_streaming = view.is_streaming.clone();
-            probe_y_neg_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
-                    return;
-                }
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> Probe Y- edge\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    // G38.2 targets are absolute in G90: probe *relative* to the current
-                    // position (in mm), then restore absolute distance mode.
-                    let _ = comm.send_command("G21 G91 G38.2 Y-10 F100");
-                    let _ = comm.send_command("G90");
-                }
-            });
-        }
-        {
-            let communicator = view.communicator.clone();
-            let console = view.device_console.clone();
-            let is_streaming = view.is_streaming.clone();
-            probe_y_pos_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
-                    return;
-                }
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> Probe Y+ edge\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    // G38.2 targets are absolute in G90: probe *relative* to the current
-                    // position (in mm), then restore absolute distance mode.
-                    let _ = comm.send_command("G21 G91 G38.2 Y10 F100");
-                    let _ = comm.send_command("G90");
-                }
-            });
+        // Quick probe buttons (Milestone 6). Distances/feeds are fixed in mm (sent with
+        // G21); the log and tooltips show them in the display units.
+        for (btn, name, axis_move) in [
+            (&probe_z_btn, t!("Quick Z-touch probe"), PROBE_Z_MOVE),
+            (
+                &probe_x_neg_btn,
+                t!("Probe X- edge"),
+                ('X', -PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_x_pos_btn,
+                t!("Probe X+ edge"),
+                ('X', PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_y_neg_btn,
+                t!("Probe Y- edge"),
+                ('Y', -PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_y_pos_btn,
+                t!("Probe Y+ edge"),
+                ('Y', PROBE_EDGE_DISTANCE_MM),
+            ),
+        ] {
+            let view_probe = view.clone();
+            btn.connect_clicked(move |_| view_probe.start_quick_probe(&name, axis_move));
         }
 
         // Console Command Send
@@ -2253,754 +2254,8 @@ impl MachineControlView {
         }
 
         let view_clone = view.clone();
-        view.connect_btn.connect_clicked(move |_| {
-            let is_connected = view_clone.communicator.lock().is_connected();
-
-            if is_connected {
-                // Disconnect
-                let mut comm = view_clone.communicator.lock();
-                match comm.disconnect() {
-                    Ok(_) => {
-                        set_button_icon_label(&view_clone.connect_btn, "network-wired-symbolic", &t!("Connect"));
-                        view_clone.connect_btn.remove_css_class("destructive-action");
-                        view_clone.connect_btn.add_css_class("suggested-action");
-                        view_clone.port_combo.set_sensitive(true);
-                        view_clone.refresh_btn.set_sensitive(true);
-
-                        view_clone.conn_status_port.set_text(&t!("Port: -"));
-                        view_clone.conn_status_baud.set_text(&t!("Baud: 115200"));
-                        view_clone.conn_status_state.set_text(&t!("State: Disconnected"));
-                        view_clone.state_label.set_text(&t!("Disconnected"));
-                        view_clone.disabled_reason_label.set_text(&t!("Connect to enable controls."));
-
-                        // Update global device status
-                        device_status::update_connection_status(false, None);
-
-                                                  // Disable all controls on disconnect
-                                                  set_controls_enabled(
-                                                      &view_clone.send_btn,
-                                                      &view_clone.stop_btn,
-                                                      &view_clone.pause_btn,
-                                                      &view_clone.resume_btn,
-                                                      &view_clone.home_btn,
-                                                      &view_clone.unlock_btn,
-                                                      &view_clone.wcs_btns,
-                                                      &view_clone.x_zero_btn,
-                                                      &view_clone.y_zero_btn,
-                                                      &view_clone.z_zero_btn,
-                                                      &view_clone.zero_all_btn,
-                                                      &view_clone.goto_zero_btn,
-                                                      &view_clone.step_combo,
-                                                      &view_clone.jog_feed_entry,
-                                                      &view_clone.jog_x_pos,
-                                                      &view_clone.jog_x_neg,
-                                                      &view_clone.jog_y_pos,
-                                                      &view_clone.jog_y_neg,
-                                                      &view_clone.jog_z_pos,
-                                                      &view_clone.jog_z_neg,
-                                                      &view_clone.estop_btn,
-                                                      // Rotary axis controls
-                                                      view_clone.a_zero_btn.as_ref(),
-                                                      view_clone.b_zero_btn.as_ref(),
-                                                      view_clone.c_zero_btn.as_ref(),
-                                                      view_clone.jog_a_pos.as_ref(),
-                                                      view_clone.jog_a_neg.as_ref(),
-                                                      view_clone.jog_b_pos.as_ref(),
-                                                      view_clone.jog_b_neg.as_ref(),
-                                                      view_clone.jog_c_pos.as_ref(),
-                                                      view_clone.jog_c_neg.as_ref(),
-                                                      false,
-                                                  );
-                        // Update StatusBar
-                        if let Some(ref status_bar) = view_clone.status_bar {
-                            status_bar.set_connected(false, "");
-                        }
-
-                        // Log to device console
-                        if let Some(ref console) = view_clone.device_console {
-                            console.append_log(&format!("{}\n", t!("Disconnected")));
-                        }
-                    }
-                    Err(e) => {
-                        // Log error to device console
-                        if let Some(ref console) = view_clone.device_console {
-                            console.append_log(&format!("{}: {}\n", t!("Error disconnecting"), e));
-                        }
-                    }
-                }
-            } else {
-                // Connect
-                if view_clone.port_combo.active_id().as_deref() == Some("none") {
-                    return;
-                }
-                if let Some(port_name) = view_clone.port_combo.active_text() {
-                    // Disable connect button while connecting
-                    view_clone.connect_btn.set_sensitive(false);
-                    view_clone.state_label.set_text(&t!("Connecting…"));
-                    view_clone.conn_status_state.set_text(&t!("State: Connecting…"));
-
-                    let params = ConnectionParams {
-                        driver: ConnectionDriver::Serial,
-                        port: port_name.to_string(),
-                                         baud_rate: 115200,
-                                         ..Default::default()
-                    };
-
-                    // Perform synchronous connection (it's fast)
-                    let result = view_clone.communicator.lock().connect(&params);
-
-                    match result {
-                        Ok(_) => {
-                            set_button_icon_label(&view_clone.connect_btn, "network-offline-symbolic", &t!("Disconnect"));
-                            view_clone.connect_btn.remove_css_class("suggested-action");
-                            view_clone.connect_btn.add_css_class("destructive-action");
-                            view_clone.connect_btn.set_sensitive(true);
-                            view_clone.port_combo.set_sensitive(false);
-                            view_clone.refresh_btn.set_sensitive(false);
-
-                            view_clone.conn_status_port.set_text(&format!("{} {}", t!("Port:"), port_name));
-                            view_clone.conn_status_baud.set_text(&t!("Baud: 115200"));
-                            view_clone.conn_status_state.set_text(&t!("State: Connected"));
-                            view_clone.state_label.set_text(&t!("Connected"));
-                            view_clone.disabled_reason_label.set_text("");
-
-
-                            // Update global device status
-                            device_status::update_connection_status(true, Some(port_name.to_string()));
-
-                            // Update StatusBar
-                            if let Some(ref sb) = view_clone.status_bar {
-                                sb.set_connected(true, port_name.as_ref());
-                            }
-
-                            // Log to device console
-                            if let Some(ref console) = view_clone.device_console {
-                                console.append_log(&format!(
-                                    "{} {}\n",
-                                    t!("Connected to"),
-                                                            port_name
-                                ));
-                            }
-
-                                                          // Enable all controls on successful connection
-                                                          set_controls_enabled(
-                                                              &view_clone.send_btn,
-                                                              &view_clone.stop_btn,
-                                                              &view_clone.pause_btn,
-                                                              &view_clone.resume_btn,
-                                                              &view_clone.home_btn,
-                                                              &view_clone.unlock_btn,
-                                                              &view_clone.wcs_btns,
-                                                              &view_clone.x_zero_btn,
-                                                              &view_clone.y_zero_btn,
-                                                              &view_clone.z_zero_btn,
-                                                              &view_clone.zero_all_btn,
-                                                              &view_clone.goto_zero_btn,
-                                                              &view_clone.step_combo,
-                                                              &view_clone.jog_feed_entry,
-                                                              &view_clone.jog_x_pos,
-                                                              &view_clone.jog_x_neg,
-                                                              &view_clone.jog_y_pos,
-                                                              &view_clone.jog_y_neg,
-                                                              &view_clone.jog_z_pos,
-                                                              &view_clone.jog_z_neg,
-                                                              &view_clone.estop_btn,
-                                                              // Rotary axis controls
-                                                              view_clone.a_zero_btn.as_ref(),
-                                                              view_clone.b_zero_btn.as_ref(),
-                                                              view_clone.c_zero_btn.as_ref(),
-                                                              view_clone.jog_a_pos.as_ref(),
-                                                              view_clone.jog_a_neg.as_ref(),
-                                                              view_clone.jog_b_pos.as_ref(),
-                                                              view_clone.jog_b_neg.as_ref(),
-                                                              view_clone.jog_c_pos.as_ref(),
-                                                              view_clone.jog_c_neg.as_ref(),
-                                                              true,
-                                                          );
-                            // Unlock button should initially be disabled until ALARM state is detected
-                            view_clone.unlock_btn.set_sensitive(false);
-
-                            // Trigger startup banner (some firmwares only emit it after reset) and then query firmware + settings.
-                            // Important: some controllers ignore commands sent immediately after Ctrl-X.
-                            { let mut comm = view_clone.communicator.lock();
-                                if let Some(c) = view_clone.device_console.as_ref() { c.append_log("> 0x18 (Reset)\n"); }
-                                let _ = comm.send(&[0x18]); // Ctrl-X (soft reset)
-                            }
-
-                            {
-                                let communicator_init = view_clone.communicator.clone();
-                                let console = view_clone.device_console.clone();
-                                glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
-                                    if let Some(mut comm) = communicator_init.try_lock() {
-                                        if comm.is_connected() {
-                                            if let Some(c) = console.as_ref() { c.append_log("> $I\n"); }
-                                            let _ = comm.send_command("$I");
-                                        }
-                                    }
-                                    glib::ControlFlow::Break
-                                });
-                            }
-
-                            {
-                                let communicator_init = view_clone.communicator.clone();
-                                let console = view_clone.device_console.clone();
-                                glib::timeout_add_local(std::time::Duration::from_millis(800), move || {
-                                    if let Some(mut comm) = communicator_init.try_lock() {
-                                        if comm.is_connected() {
-                                            if let Some(c) = console.as_ref() { c.append_log("> $$\n"); }
-                                            let _ = comm.send_command("$$");
-                                            // Ensure status report mask includes Overrides (32) and Feed/Speed (8)
-                                            // $10=47 (1+2+4+8+32) = WPos | Buf | Ln | FS | Ov
-                                            if let Some(c) = console.as_ref() { c.append_log("> $10=47\n"); }
-                                            let _ = comm.send_command("$10=47");
-                                        }
-                                    }
-                                    glib::ControlFlow::Break
-                                });
-                            }
-
-                            // Simple polling using glib::timeout_add_local - runs on main thread, no blocking
-                            let state_label_poll = view_clone.state_label.clone();
-                            let state_feed_label_poll = view_clone.state_feed_label.clone();
-                            let state_spindle_label_poll = view_clone.state_spindle_label.clone();
-                            let state_buffer_label_poll = view_clone.state_buffer_label.clone();
-                            let conn_status_state_poll = view_clone.conn_status_state.clone();
-                            let disabled_reason_label_poll = view_clone.disabled_reason_label.clone();
-
-                            let x_dro_poll = view_clone.x_dro.clone();
-                            let y_dro_poll = view_clone.y_dro.clone();
-                            let z_dro_poll = view_clone.z_dro.clone();
-                            let world_x_poll = view_clone.world_x.clone();
-                            let world_y_poll = view_clone.world_y.clone();
-                            let world_z_poll = view_clone.world_z.clone();
-                            let feed_value_poll = view_clone.feed_value.clone();
-                            let spindle_value_poll = view_clone.spindle_value.clone();
-                            let unlock_btn_poll = view_clone.unlock_btn.clone();
-                            let communicator_poll = view_clone.communicator.clone();
-                            let status_bar_poll = view_clone.status_bar.clone();
-                            let is_streaming_poll = view_clone.is_streaming.clone();
-                            let is_paused_poll = view_clone.is_paused.clone();
-                            let waiting_for_ack_poll = view_clone.waiting_for_ack.clone();
-                            let send_queue_poll = view_clone.send_queue.clone();
-                            let device_console_poll = view_clone.device_console.clone();
-                            let visualizer_poll = view_clone.visualizer.clone();
-                            let total_lines_poll = view_clone.total_lines.clone();
-                            let current_units_poll = view_clone.current_units.clone();
-                            let current_feed_units_poll = view_clone.current_feed_units.clone();
-                            let last_overrides_poll = view_clone.last_overrides.clone();
-                            let widget_poll = view_clone.widget.clone();
-                            let job_start_time_poll = view_clone.job_start_time.clone();
-                            let direct_sender_poll = view_clone.direct_sender.clone();
-                            let continuous_jog_poll = view_clone.continuous_jog.clone();
-
-                            let mut query_counter = 0u32;
-                            let mut response_buffer = String::new();
-                            let mut firmware_detected = false;
-
-                            // Cache the last known Work Coordinate Offset (WCO)
-                            // This allows us to derive WPos from MPos even when WCO isn't in every status report
-                            let mut last_wco: Option<gcodekit5_communication::firmware::grbl::status_parser::WorkCoordinateOffset> = None;
-
-                            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                                query_counter += 1;
-
-                                // Check if still connected
-                                let is_connected = {
-                                    if let Some(comm) = communicator_poll.try_lock() {
-                                        comm.is_connected()
-                                    } else {
-                                        return glib::ControlFlow::Continue;
-                                    }
-                                };
-
-                                if !is_connected {
-                                    return glib::ControlFlow::Break;
-                                }
-
-                                // Ceder el puerto por completo mientras DirectSender graba una imagen:
-                                // evita robar los "ok" que su ventana de flujo necesita contar.
-                                // Only DirectSender reads the port itself; the legacy queue
-                                // streamer (`start_job`) relies on this loop to consume the
-                                // acks and send the next line, so it must keep running then.
-                                let direct_sender_running = direct_sender_poll
-                                    .lock()
-                                    .as_ref()
-                                    .is_some_and(|s| s.is_running());
-                                if direct_sender_running {
-                                    return glib::ControlFlow::Continue;
-                                }
-
-                                // Try to read data (non-blocking, quick)
-                                if let Some(mut comm) = communicator_poll.try_lock() {
-                                    if let Ok(response_bytes) = comm.receive() {
-                                        if !response_bytes.is_empty() {
-                                            let s = String::from_utf8_lossy(&response_bytes);
-
-                                            response_buffer.push_str(&s);
-
-                                            // Process complete lines (support both \n and \r line endings)
-                                            while let Some(idx) = {
-                                                let idx_n = response_buffer.find('\n');
-                                                let idx_r = response_buffer.find('\r');
-                                                match (idx_n, idx_r) {
-                                                    (Some(n), Some(r)) => Some(n.min(r)),
-                                                    (Some(n), None) => Some(n),
-                                                    (None, Some(r)) => Some(r),
-                                                    (None, None) => None,
-                                                }
-                                            } {
-                                                let line = response_buffer[..idx].trim().to_string();
-                                                response_buffer.drain(..idx + 1);
-
-                                                // --- Tiempo total de trabajo
-                                                if line.contains("Program End") {
-                                                    let elapsed = job_start_time_poll.lock().map_or(0.0, |start| start.elapsed().as_secs_f64());
-                                                    let mins = (elapsed / 60.0).floor() as u32;
-                                                    let secs = (elapsed % 60.0) as u32;
-
-                                                    if let Some(c) = device_console_poll.as_ref() {
-                                                        c.append_log(&format!(
-                                                            "{} {}:{:02}\n",
-                                                            t!("✅ Work completed in:"),
-                                                            mins,
-                                                            secs
-                                                        ));
-                                                    }
-                                                    *job_start_time_poll.lock() = None;
-
-                                                    // Limpiar barra de progreso
-                                                    if let Some(sb) = status_bar_poll.as_ref() {
-                                                        sb.set_progress(0.0, "", "");
-                                                    }
-                                                }
-
-                                                if line.is_empty() { continue; }
-
-                                                // Detect firmware version info
-                                                if !firmware_detected && (line.starts_with("[VER:") || line.contains("Grbl")) {
-                                                    use gcodekit5_communication::firmware::firmware_detector::FirmwareDetector;
-                                                    if let Ok(detection) = FirmwareDetector::parse_response(&line) {
-                                                        let fw_type = format!("{:?}", detection.firmware_type);
-                                                        let fw_version = detection.version_string.clone();
-                                                        device_status::update_firmware_info(fw_type, fw_version, None);
-                                                        firmware_detected = true;
-                                                    }
-                                                }
-
-                                                // Capture GRBL $$ settings lines into global state (for Device Config / CAM).
-                                                if line.starts_with('$') && line.contains('=') {
-                                                    if let Some((n, v)) = gcodekit5_communication::firmware::grbl::settings::SettingsManager::parse_setting_line(&line) {
-                                                        device_status::update_grbl_setting(n, v);
-                                                    }
-                                                }
-
-                                                // Handle 'ok' or 'error' for streaming
-                                                let is_ack = line == "ok";
-                                                let lower = line.to_ascii_lowercase();
-                                                let lower_trim = lower.trim_start();
-                                                let is_error = lower_trim.starts_with("error:");
-                                                // Replies to continuous-jog increments are counted
-                                                // there; a rejected increment (e.g. soft limit)
-                                                // ends the jog and is logged, not shown as a dialog.
-                                                let jog_reply = (is_ack || is_error)
-                                                    && continuous_jog_poll.lock().on_reply(is_error);
-
-                                                // If this is an `error:n`, decode it and append the decoded text to the console log line.
-                                                let mut line_for_log = line.clone();
-                                                if is_error {
-                                                    let rest = lower_trim.trim_start_matches("error:").trim();
-                                                    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-                                                    if let Ok(code_u16) = digits.parse::<u16>() {
-                                                        if let Ok(code) = u8::try_from(code_u16) {
-                                                            let decoded = gcodekit5_communication::firmware::grbl::decode_error(code);
-                                                            line_for_log = format!("{} - {}", line, decoded);
-
-                                                            // Only show dialog if NOT streaming, otherwise just log
-                                                            if !*is_streaming_poll.lock() && !jog_reply {
-                                                                let secondary = format!("error:{} - {}", code, decoded);
-                                                                let dialog = gtk4::MessageDialog::builder()
-                                                                .message_type(gtk4::MessageType::Error)
-                                                                .buttons(gtk4::ButtonsType::Ok)
-                                                                .text(t!("Controller error"))
-                                                                .secondary_text(&secondary)
-                                                                .build();
-
-                                                                dialog.connect_response(|d, _| d.close());
-
-                                                                // Best-effort parent association.
-                                                                if let Some(root) = widget_poll.root() {
-                                                                    if let Ok(win) = root.downcast::<gtk4::Window>() {
-                                                                        dialog.set_transient_for(Some(&win));
-                                                                        dialog.set_modal(true);
-                                                                    }
-                                                                }
-                                                                dialog.show();
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                // Log to console, filtering out status reports and 'ok' acks to avoid spam
-                                                if !line.starts_with('<') && line != "ok" {
-                                                    if let Some(c) = device_console_poll.as_ref() {
-                                                        c.append_log(&format!("{}\n", line_for_log));
-                                                    }
-                                                }
-
-                                                if is_ack || is_error {
-                                                    *waiting_for_ack_poll.lock() = false;
-
-                                                    if *is_streaming_poll.lock() && !*is_paused_poll.lock() {
-                                                        let mut queue = send_queue_poll.lock();
-                                                        let total_lines_val = *total_lines_poll.lock();
-                                                        let remaining = queue.len();
-                                                        let sent = total_lines_val - remaining;
-
-                                                        let progress = if total_lines_val > 0 {
-                                                            (sent as f64 / total_lines_val as f64) * 100.0
-                                                        } else {
-                                                            0.0
-                                                        };
-
-                                                        Self::update_progress(
-                                                            &status_bar_poll,
-                                                            &job_start_time_poll,
-                                                            progress,
-                                                            Some(sent),
-                                                            Some(total_lines_val),
-                                                            Some(remaining),
-                                                        );
-
-                                                        if let Some(next_cmd) = queue.pop_front() {
-                                                                if let Some(c) = device_console_poll.as_ref() {
-                                                                    c.append_log(&format!("> {}\n", next_cmd));
-                                                                }
-                                                                let _ = comm.send_command(&next_cmd);
-                                                                *waiting_for_ack_poll.lock() = true;
-                                                            } else {
-                                                                // Done streaming
-                                                                *is_streaming_poll.lock() = false;
-                                                                *is_paused_poll.lock() = false;
-
-                                                                // Don't clear job_start_time yet - wait for machine to be Idle
-                                                                // *job_start_time_poll.lock() = None;
-
-                                                                if let Some(c) = device_console_poll.as_ref() {
-                                                                    c.append_log(&format!("{}\n", t!("Streaming Completed.")));
-                                                                }
-                                                            }
-                                                    }
-                                                }
-
-                                                // Parse GRBL status: <Idle|MPos:0.000,0.000,0.000|...>
-                                                if line.starts_with('<') && line.ends_with('>') {
-                                                    // Update machine state
-                                                    if let Some(state) = StatusParser::parse_machine_state(&line) {
-                                                        conn_status_state_poll.set_text(&format!(
-                                                            "{} {}",
-                                                            t!("State:"),
-                                                            state
-                                                        ));
-                                                        state_label_poll.set_text(&state);
-
-                                                        for cls in [
-                                                            "state-idle",
-                                                    "state-run",
-                                                    "state-hold",
-                                                    "state-alarm",
-                                                        ] {
-                                                            state_label_poll.remove_css_class(cls);
-                                                        }
-                                                        let low = state.to_lowercase();
-                                                        let cls = if low.starts_with("alarm") {
-                                                            "state-alarm"
-                                                        } else if low.starts_with("run") {
-                                                            "state-run"
-                                                        } else if low.starts_with("hold") {
-                                                            "state-hold"
-                                                        } else {
-                                                            "state-idle"
-                                                        };
-                                                        state_label_poll.add_css_class(cls);
-
-                                                        device_status::update_state(state.clone());
-
-                                                        // Update StatusBar with state
-                                                        if let Some(sb) = status_bar_poll.as_ref() {
-                                                            sb.set_state(&state);
-                                                        }
-
-
-                                                        // If machine is Idle and not streaming, just clear the timer without showing duplicate message
-                                                        if state == "Idle" && !*is_streaming_poll.lock() {
-                                                            let mut start_time = job_start_time_poll.lock();
-                                                            if start_time.is_some() {
-                                                                *start_time = None;
-                                                                if let Some(sb) = status_bar_poll.as_ref() {
-                                                                    sb.set_progress(0.0, "", "");
-                                                                }
-                                                                // NO mostrar mensaje de tiempo aquí - ya se muestra con "Program End"
-                                                            }
-                                                        }
-
-                                                        // Unlock button only enabled in ALARM state
-                                                        let is_alarm = low.starts_with("alarm");
-                                                        unlock_btn_poll.set_sensitive(is_alarm);
-                                                        if is_alarm {
-                                                            disabled_reason_label_poll
-                                                            .set_text(&t!("ALARM: Unlock required."));
-                                                        } else {
-                                                            disabled_reason_label_poll.set_text("");
-                                                        }
-                                                    }
-
-                                                    let full_status = StatusParser::parse_full(&line);
-
-                                                    // Update machine position (MPos)
-                                                    if let Some(mpos) = full_status.mpos {
-                                                        let units = *current_units_poll.lock();
-                                                        let unit_label = gcodekit5_core::units::get_unit_label(units);
-
-                                                        world_x_poll.set_text(&format!(
-                                                            "MX: {} {}",
-                                                            format_length(mpos.x as f32, units),
-                                                                unit_label
-                                                        ));
-                                                        world_y_poll.set_text(&format!(
-                                                            "MY: {} {}",
-                                                            format_length(mpos.y as f32, units),
-                                                                unit_label
-                                                        ));
-                                                        world_z_poll.set_text(&format!(
-                                                            "MZ: {} {}",
-                                                            format_length(mpos.z as f32, units),
-                                                                unit_label
-                                                        ));
-
-                                                        device_status::update_machine_position(mpos);
-
-                                                        // Update StatusBar with position
-                                                        if let Some(sb) = status_bar_poll.as_ref() {
-                                                            sb.set_position(
-                                                                mpos.x as f32,
-                                                                mpos.y as f32,
-                                                                mpos.z as f32,
-                                                                mpos.a.unwrap_or(0.0) as f32,
-                                                                            mpos.b.unwrap_or(0.0) as f32,
-                                                                            mpos.c.unwrap_or(0.0) as f32,
-                                                                            units,
-                                                            );
-                                                        }
-                                                    }
-
-                                                    // Update work position (WPos)
-                                                    // WPos is either reported directly by GRBL or derived from MPos-WCO
-                                                    // parse_full() automatically derives it when possible
-                                                    if let Some(wpos) = full_status.wpos {
-                                                        let units = *current_units_poll.lock();
-                                                        let unit_label = gcodekit5_core::units::get_unit_label(units);
-
-                                                        // Update DRO (Digital ReadOut) with work coordinates
-                                                        x_dro_poll.set_text(&format!(
-                                                            "{} {}",
-                                                            format_length(wpos.x as f32, units),
-                                                                unit_label
-                                                        ));
-                                                        y_dro_poll.set_text(&format!(
-                                                            "{} {}",
-                                                            format_length(wpos.y as f32, units),
-                                                                unit_label
-                                                        ));
-                                                        z_dro_poll.set_text(&format!(
-                                                            "{} {}",
-                                                            format_length(wpos.z as f32, units),
-                                                                unit_label
-                                                        ));
-
-                                                        device_status::update_work_position(wpos);
-
-                                                        // Update Visualizer with WORK position (not machine position!)
-                                                        // Users work in work coordinates, so visualizer should show WPos
-                                                        if let Some(vis) = visualizer_poll.as_ref() {
-                                                            vis.set_current_position(wpos.x as f32, wpos.y as f32, wpos.z as f32);
-                                                        }
-                                                    }
-
-                                                    // Update work coordinate offset - cache it for WPos calculation
-                                                    if let Some(wco) = full_status.wco {
-                                                        last_wco = Some(wco);
-                                                        device_status::update_work_coordinate_offset(wco);
-                                                    }
-
-                                                    // If we didn't get WPos from GRBL, but we have MPos and cached WCO, derive it now
-                                                    if full_status.wpos.is_none() && full_status.mpos.is_some() && last_wco.is_some() {
-                                                        if let (Some(mpos), Some(wco)) = (full_status.mpos, last_wco) {
-                                                            use gcodekit5_communication::firmware::grbl::status_parser::StatusParser;
-                                                            let wpos = StatusParser::wpos_from_mpos_wco(mpos, wco);
-
-                                                            let units = *current_units_poll.lock();
-                                                            let unit_label = gcodekit5_core::units::get_unit_label(units);
-
-                                                            // Update DRO with derived work coordinates
-                                                            x_dro_poll.set_text(&format!(
-                                                                "{} {}",
-                                                                format_length(wpos.x as f32, units),
-                                                                    unit_label
-                                                            ));
-                                                            y_dro_poll.set_text(&format!(
-                                                                "{} {}",
-                                                                format_length(wpos.y as f32, units),
-                                                                    unit_label
-                                                            ));
-                                                            z_dro_poll.set_text(&format!(
-                                                                "{} {}",
-                                                                format_length(wpos.z as f32, units),
-                                                                    unit_label
-                                                            ));
-
-                                                            device_status::update_work_position(wpos);
-
-                                                            // Update Visualizer with derived work position
-                                                            if let Some(vis) = visualizer_poll.as_ref() {
-                                                                vis.set_current_position(wpos.x as f32, wpos.y as f32, wpos.z as f32);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    // Update buffer state
-                                                    if let Some(buffer) = full_status.buffer {
-                                                        state_buffer_label_poll.set_text(&format!(
-                                                            "{} {}/{}",
-                                                            t!("Buffer:"),
-                                                                                                  buffer.plan,
-                                                                                                  buffer.rx
-                                                        ));
-                                                        device_status::update_buffer_state(buffer);
-                                                    }
-
-                                                    // Update overrides
-                                                    let (feed_ov, spindle_ov) = if let Some(ov) = full_status.overrides {
-                                                        {
-                                                            let mut last = last_overrides_poll.lock();
-                                                            *last = ov;
-                                                        }
-                                                        (ov.feed, ov.spindle)
-                                                    } else {
-                                                        let last = last_overrides_poll.lock();
-                                                        (last.feed, last.spindle)
-                                                    };
-
-                                                    // Update feed/spindle state
-                                                    // Note: Feed rate and spindle speed are only reported if $10 bit 3 is set (FS field)
-                                                    // Default $10 is often 1 or 3, which doesn't include FS. Users may need $10=15 for full status.
-
-                                                    // Handle feed rate even if spindle is None
-                                                    // Prefer commanded feed rate if available, otherwise use reported feed rate
-                                                    let commanded_feed = device_status::DEVICE_STATUS.read().commanded_feed_rate;
-                                                    let reported_feed = full_status.feed_rate.map(|f| f as f32);
-                                                    // If we have a commanded feed rate, use it. If not, fall back to reported.
-                                                    // However, if reported is 0 (idle), we might still want to show the last commanded?
-                                                    // The user wants to see "Commanded" rather than "Actual" which fluctuates.
-                                                    // So if we have a commanded value, use it.
-                                                    let display_feed = commanded_feed.or(reported_feed);
-
-                                                    if let Some(feed_rate) = display_feed {
-                                                        let units = *current_feed_units_poll.lock();
-                                                        let feed = format_feed_rate(feed_rate, units);
-                                                        state_feed_label_poll.set_text(&format!(
-                                                            "{} {} {}",
-                                                            t!("Feed:"),
-                                                                                                feed,
-                                                                                                units
-                                                        ));
-
-                                                        // Calculate adjusted feed
-                                                        let adjusted_feed = feed_rate * (feed_ov as f32 / 100.0);
-                                                        let adjusted_feed_str = format_feed_rate(adjusted_feed, units);
-
-                                                        let mut text = format!("{} ({}%)", adjusted_feed_str, feed_ov);
-                                                        if feed_ov >= 200 { text.push_str(" MAX"); }
-                                                        if feed_ov <= 10 { text.push_str(" MIN"); }
-
-                                                        feed_value_poll.set_text(&text);
-                                                        if feed_ov >= 200 || feed_ov <= 10 {
-                                                            feed_value_poll.add_css_class("error");
-                                                        } else {
-                                                            feed_value_poll.remove_css_class("error");
-                                                        }
-                                                    }
-
-                                                    // Handle spindle speed even if feed is None
-                                                    let commanded_spindle = device_status::DEVICE_STATUS.read().commanded_spindle_speed;
-                                                    let reported_spindle = full_status.spindle_speed.map(|s| s as f32);
-                                                    let display_spindle = commanded_spindle.or(reported_spindle);
-
-                                                    if let Some(spindle_speed) = display_spindle {
-                                                        state_spindle_label_poll.set_text(&format!(
-                                                            "{} {} S",
-                                                            t!("Spindle:"),
-                                                                                                   spindle_speed
-                                                        ));
-
-                                                        // Calculate adjusted spindle
-                                                        let adjusted_spindle = spindle_speed * (spindle_ov as f32 / 100.0);
-
-                                                        let mut text = format!("{:.0} S ({}%)", adjusted_spindle, spindle_ov);
-                                                        if spindle_ov >= 200 { text.push_str(" MAX"); }
-                                                        if spindle_ov <= 50 { text.push_str(" MIN"); }
-
-                                                        spindle_value_poll.set_text(&text);
-                                                        if spindle_ov >= 200 || spindle_ov <= 50 {
-                                                            spindle_value_poll.add_css_class("error");
-                                                        } else {
-                                                            spindle_value_poll.remove_css_class("error");
-                                                        }
-                                                    }
-
-                                                    // Update status bar and device_status if we have both
-                                                    if let (Some(feed_rate), Some(spindle_speed)) = (display_feed, display_spindle) {
-                                                        let units = *current_feed_units_poll.lock();
-                                                        let feed_spindle = FeedSpindleState {
-                                                            feed_rate: feed_rate as f64,
-                                                    spindle_speed: spindle_speed as u32,
-                                                        };
-
-                                                        // Update status bar with feed/spindle
-                                                        if let Some(sb) = status_bar_poll.as_ref() {
-                                                            sb.set_feed_spindle(feed_rate as f64, spindle_speed as u32, units);
-                                                        }
-
-                                                        device_status::update_feed_spindle_state(feed_spindle);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Send status query every ~250ms (every 5 cycles of 50ms)
-                                    if query_counter.is_multiple_of(5) {
-                                        let _ = comm.send(b"?");
-                                    }
-                                }
-
-                                glib::ControlFlow::Continue
-                            });
-                        }
-                        Err(e) => {
-                            view_clone.connect_btn.set_sensitive(true);
-                            view_clone.state_label.set_text(&t!("Disconnected"));
-                            view_clone.conn_status_state.set_text(&t!("State: Disconnected"));
-                            view_clone.disabled_reason_label.set_text(&t!("Connect to enable controls."));
-
-                            // Log error to device console
-                            if let Some(ref console) = view_clone.device_console {
-                                console.append_log(&format!("{}: {}\n", t!("Error connecting"), e));
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        view.connect_btn
+            .connect_clicked(move |_| view_clone.on_connect_clicked());
 
         // Setup override handlers
         Self::setup_override_handlers(&view);
@@ -3102,15 +2357,172 @@ impl MachineControlView {
             label.set_visible(show_c);
         }
 
-        // Show/hide machine limits labels
-        if let Some(ref label) = self.limits_a {
-            label.set_visible(show_a);
+        // Show/hide the whole machine limits rows (axis label and value)
+        for (row, show) in [
+            (&self.limits_a_row, show_a),
+            (&self.limits_b_row, show_b),
+            (&self.limits_c_row, show_c),
+        ] {
+            if let Some(row) = row {
+                row.set_visible(show);
+            }
         }
-        if let Some(ref label) = self.limits_b {
-            label.set_visible(show_b);
+        for (label, show) in [
+            (&self.limits_a, show_a),
+            (&self.limits_b, show_b),
+            (&self.limits_c, show_c),
+        ] {
+            if let Some(label) = label {
+                label.set_visible(show);
+            }
         }
-        if let Some(ref label) = self.limits_c {
-            label.set_visible(show_c);
+    }
+
+    /// Fills the jog step combo with the presets for `units` and selects the one
+    /// closest to `step_mm`.
+    ///
+    /// # Arguments
+    /// * `combo` - The step combo box; its ids are step sizes in mm.
+    /// * `units` - Display measurement system.
+    /// * `step_mm` - The step to keep (or approximate).
+    ///
+    /// # Returns
+    /// The selected step in mm.
+    fn populate_step_presets(combo: &ComboBoxText, units: MeasurementSystem, step_mm: f32) -> f32 {
+        let presets = jog_step_presets(units);
+        combo.remove_all();
+        for preset in &presets {
+            combo.append(Some(&format!("{}", preset.mm)), &preset.label);
+        }
+        match nearest_jog_step_preset(&presets, step_mm).and_then(|i| presets.get(i)) {
+            Some(preset) => {
+                combo.set_active_id(Some(&format!("{}", preset.mm)));
+                preset.mm
+            }
+            None => step_mm,
+        }
+    }
+
+    /// Updates the quick probe tooltips with distances and feed in the display units.
+    ///
+    /// # Arguments
+    /// * `buttons` - Probe Z, X-, X+, Y-, Y+ buttons.
+    /// * `units` - Display length unit.
+    /// * `feed_units` - Display feed unit.
+    fn update_probe_tooltips(
+        buttons: &[Button; 5],
+        units: MeasurementSystem,
+        feed_units: FeedRateUnits,
+    ) {
+        let texts = [
+            (
+                t!("Quick Z-touch probe at current XY position"),
+                PROBE_Z_MOVE,
+            ),
+            (t!("Probe X- edge"), ('X', -PROBE_EDGE_DISTANCE_MM)),
+            (t!("Probe X+ edge"), ('X', PROBE_EDGE_DISTANCE_MM)),
+            (t!("Probe Y- edge"), ('Y', -PROBE_EDGE_DISTANCE_MM)),
+            (t!("Probe Y+ edge"), ('Y', PROBE_EDGE_DISTANCE_MM)),
+        ];
+        for (btn, (text, axis_move)) in buttons.iter().zip(texts) {
+            let detail = format_probe_move(axis_move, PROBE_FEED_MM_PER_MIN, units, feed_units);
+            btn.set_tooltip_text(Some(&format!("{text} ({detail})")));
+        }
+    }
+
+    /// Starts a quick probe (G38.2) along one axis, relative to the current position.
+    ///
+    /// The command is always metric (G21); the log shows it in the display units. Only
+    /// the probe line is sent: `G90` is restored once the result is known (see the
+    /// status poller), so a failed probe no longer triggers a "G-code locked" error.
+    ///
+    /// # Arguments
+    /// * `name` - Human-readable probe name for the log.
+    /// * `axis_move` - Axis letter and signed distance in mm.
+    pub(crate) fn start_quick_probe(&self, name: &str, axis_move: (char, f32)) {
+        if *self.is_streaming.lock() {
+            self.log(&t!("Command ignored: a job is running."));
+            return;
+        }
+        if self.quick_probe.get() == QuickProbeState::AwaitingResult {
+            self.log(&t!("A probe is already in progress."));
+            return;
+        }
+        let units = *self.current_units.lock();
+        let feed_units = *self.current_feed_units.lock();
+        let detail = format_probe_move(axis_move, PROBE_FEED_MM_PER_MIN, units, feed_units);
+        let (axis, distance) = axis_move;
+        // G38.2 targets are absolute in G90: probe *relative* to the current position.
+        let cmd = format!("G21 G91 G38.2 {axis}{distance} F{PROBE_FEED_MM_PER_MIN}");
+
+        let mut comm = self.communicator.lock();
+        if !comm.is_connected() {
+            return;
+        }
+        self.log(&format!("> {name}: {detail}"));
+        self.log(&format!("> {cmd}"));
+        match comm.send_command(&cmd) {
+            Ok(()) => self.quick_probe.set(QuickProbeState::AwaitingResult),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to send quick probe");
+                self.log(&format!("{}: {e}", t!("Error sending")));
+            }
+        }
+    }
+
+    /// Updates the panel when a DirectSender job ends.
+    ///
+    /// # Arguments
+    /// * `outcome` - How the job ended.
+    fn finish_direct_job(&self, outcome: &JobOutcome) {
+        *self.is_streaming.lock() = false;
+        *self.is_paused.lock() = false;
+        match outcome {
+            JobOutcome::Completed => {
+                // Buffered moves may still be executing; the job timer (and Stop/Pause)
+                // end once the controller reports Idle.
+                tracing::info!("Job completed");
+                self.log(&t!("Job Completed"));
+            }
+            JobOutcome::Cancelled => {
+                *self.job_start_time.lock() = None;
+                self.log(&format!("{} {}", t!("Job stopped:"), t!("stopped by user")));
+            }
+            JobOutcome::Stopped(reason) => {
+                // After an `error:` the controller keeps executing the moves it already
+                // buffered, so keep the job active until it reports Idle.
+                if !reason.starts_with("error:") {
+                    *self.job_start_time.lock() = None;
+                }
+                tracing::warn!(reason = %reason, "Job stopped");
+                let text = format!(
+                    "{} {}",
+                    t!("Job stopped:"),
+                    Self::decode_response_line(reason)
+                );
+                self.log(&text);
+                self.show_controller_error(&text);
+            }
+        }
+        if let Some(sb) = self.status_bar.as_ref() {
+            sb.set_progress(0.0, "", "");
+        }
+        self.send_btn
+            .set_sensitive(device_status::DEVICE_STATUS.read().is_connected);
+        self.update_job_controls();
+    }
+
+    /// Returns the job content to stream, prefixed with `G90` when a failed quick probe
+    /// left the controller in incremental mode.
+    fn prepare_job_content(&self, content: String) -> String {
+        if self.quick_probe.get() == QuickProbeState::NeedsAbsoluteRestore {
+            self.quick_probe.set(QuickProbeState::Idle);
+            self.log(&t!(
+                "Restoring absolute mode (G90) before the job (a probe failed)."
+            ));
+            format!("G90\n{content}")
+        } else {
+            content
         }
     }
 

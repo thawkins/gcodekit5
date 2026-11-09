@@ -184,6 +184,12 @@ impl DesignerState {
             gcode_gen = gcode_gen.with_machine_limits(limits);
         }
 
+        // In CNC mode machine Z is absolute with the table at 0 and the stock top
+        // at the stock thickness, so a configured stock bounds Z from below at 0.
+        if self.machine_mode() == MachineMode::Cnc3D && self.stock_material.is_some() {
+            gcode_gen = gcode_gen.with_z_min_limit(0.0);
+        }
+
         // Use state mode:
         match self.machine_mode() {
             MachineMode::Laser2D => {
@@ -316,7 +322,7 @@ impl DesignerState {
                         (
                             self.toolpath_generator.generate_rectangle_pocket(
                                 rect,
-                                effective_shape_obj.start_depth,
+                                effective_shape_obj.effective_pocket_depth(),
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
@@ -335,13 +341,7 @@ impl DesignerState {
 
                 crate::model::Shape::Circle(circle) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        // Asegurar que pocket_depth sea positivo
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            // Si no hay pocket_depth definido, usar un valor por defecto
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_circle_pocket(
                                 circle,
@@ -370,11 +370,7 @@ impl DesignerState {
 
                 crate::model::Shape::Ellipse(ellipse) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_ellipse_pocket(
                                 ellipse,
@@ -402,11 +398,7 @@ impl DesignerState {
                     let rotated_path = path_shape;
 
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_path_pocket(
                                 rotated_path,
@@ -458,11 +450,7 @@ impl DesignerState {
 
                 crate::model::Shape::Triangle(triangle) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_triangle_pocket(
                                 triangle,
@@ -485,11 +473,7 @@ impl DesignerState {
 
                 crate::model::Shape::Polygon(polygon) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_polygon_pocket(
                                 polygon,
@@ -521,11 +505,7 @@ impl DesignerState {
                     let design_path = crate::PathShape::from_lyon_path(&path);
 
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_path_pocket(
                                 &design_path,
@@ -644,7 +624,10 @@ impl DesignerState {
                 use crate::engraving::ImageEngraver;
 
                 if raster.image_data.is_empty() && raster.original_path.is_none() {
-                    eprintln!("Warning: RasterImage ID={} has no image data", shape.id);
+                    tracing::warn!(
+                        shape_id = shape.id,
+                        "RasterImage has no image data; skipping"
+                    );
                     continue;
                 }
 
@@ -694,7 +677,7 @@ impl DesignerState {
                     match image::load_from_memory(&raster.image_data) {
                         Ok(img) => ImageEngraver::from_image(img, params),
                         Err(e) => {
-                            eprintln!("Error loading image from memory: {}", e);
+                            tracing::error!(shape_id = shape.id, error = %e, "Failed to load raster image from memory");
                             continue;
                         }
                     }
@@ -709,13 +692,14 @@ impl DesignerState {
                             gcode.push('\n');
                         }
                         Err(e) => {
-                            eprintln!("Error generating G-code for image ID={}: {}", shape.id, e);
+                            tracing::error!(shape_id = shape.id, error = %e, "Failed to generate raster G-code");
                         }
                     },
                     Err(e) => {
-                        eprintln!(
-                            "Error creating ImageEngraver for image ID={}: {}",
-                            shape.id, e
+                        tracing::error!(
+                            shape_id = shape.id,
+                            error = %e,
+                            "Failed to create raster image engraver"
                         );
                     }
                 }
@@ -740,8 +724,10 @@ impl DesignerState {
 
             if shape.operation_type == OperationType::Pocket {
                 gcode.push_str(&format!(
-                    "; Z depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n",
-                    shape.start_depth, shape.step_down, shape.step_in
+                    "; Pocket depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n",
+                    shape.effective_pocket_depth(),
+                    shape.step_down,
+                    shape.step_in
                 ));
                 gcode.push_str(&format!("; Strategy: {:?}\n", shape.pocket_strategy));
             } else {

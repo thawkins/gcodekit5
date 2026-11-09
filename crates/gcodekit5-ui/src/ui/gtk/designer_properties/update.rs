@@ -293,6 +293,9 @@ impl PropertiesPanel {
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
+                self.rotation_entry.set_tooltip_text(Some(&t!(
+                    "Rotation angle (degrees). Applied on Enter or when leaving the field."
+                )));
                 self.pos_frame.set_visible(true);
                 self.size_frame.set_visible(true);
                 self.rot_frame.set_visible(true);
@@ -658,6 +661,14 @@ impl PropertiesPanel {
                 }
                 self.set_entry_text_if_changed(&self.width_entry, (max_x - min_x) as f32, system);
                 self.set_entry_text_if_changed(&self.height_entry, (max_y - min_y) as f32, system);
+
+                // For a multi-selection the rotation entry is a relative angle: the
+                // committed value rotates the whole selection once, then resets to 0.
+                self.rotation_entry.set_text("0.0");
+                self.rotation_entry.set_sensitive(true);
+                self.rotation_entry.set_tooltip_text(Some(&t!(
+                    "Rotate the selection by this angle (degrees). Applied on Enter or when leaving the field."
+                )));
             }
 
             // Update CAM properties (common to all shapes)

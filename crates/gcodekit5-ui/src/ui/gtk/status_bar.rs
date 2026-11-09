@@ -9,6 +9,7 @@ use gcodekit5_core::units::{
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
 
+use crate::t;
 use gcodekit5_core::{shared_none, SharedOption};
 use gtk4::pango::EllipsizeMode;
 
@@ -42,6 +43,7 @@ impl Default for StatusBar {
 }
 
 impl StatusBar {
+    /// Builds the status bar (connection, state, position, progress and E-stop).
     pub fn new() -> Self {
         let widget = Box::new(Orientation::Horizontal, 0);
         widget.set_height_request(30);
@@ -58,7 +60,7 @@ impl StatusBar {
         left_box.set_valign(Align::Center);
 
         // eStop Button
-        let estop_btn = Button::with_label("eStop");
+        let estop_btn = Button::with_label(&t!("eStop"));
         estop_btn.add_css_class("estop-button");
         estop_btn.set_sensitive(false);
         left_box.append(&estop_btn);
@@ -73,7 +75,7 @@ impl StatusBar {
         left_box.append(&status_indicator);
 
         // Port
-        let port_label = Label::new(Some("Disconnected"));
+        let port_label = Label::new(Some(&t!("Disconnected")));
         port_label.add_css_class("status-text");
         left_box.append(&port_label);
 
@@ -142,7 +144,7 @@ impl StatusBar {
         right_box.append(&progress_bar);
 
         // Add active machine name to status bar
-        let device_info_label = Label::new(Some("No device selected"));
+        let device_info_label = Label::new(Some(&t!("No device selected")));
         device_info_label.add_css_class("dim-label");
         device_info_label.set_halign(Align::Start);
         device_info_label.set_ellipsize(EllipsizeMode::End);
@@ -153,12 +155,12 @@ impl StatusBar {
         #[allow(clippy::type_complexity)]
         let cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>> = shared_none();
 
-        let cancel_btn = Button::builder().tooltip_text("Cancel").build();
+        let cancel_btn = Button::builder().tooltip_text(t!("Cancel")).build();
         cancel_btn.set_visible(false);
         {
             let child = Box::new(Orientation::Horizontal, 6);
             child.append(&Image::from_icon_name("process-stop-symbolic"));
-            child.append(&Label::new(Some("Cancel")));
+            child.append(&Label::new(Some(&t!("Cancel"))));
             cancel_btn.set_child(Some(&child));
         }
         {
@@ -200,6 +202,7 @@ impl StatusBar {
         }
     }
 
+    /// Shows the connection state and port name.
     pub fn set_connected(&self, connected: bool, port: &str) {
         self.estop_btn.set_sensitive(connected);
         if connected {
@@ -215,7 +218,7 @@ impl StatusBar {
         } else {
             self.status_indicator.remove_css_class("connected");
             self.status_indicator.add_css_class("disconnected");
-            self.port_label.set_text("Disconnected");
+            self.port_label.set_text(&t!("Disconnected"));
             self.version_label.set_text("");
             self.state_separator.set_visible(false);
             self.state_label.set_visible(false);
@@ -229,11 +232,13 @@ impl StatusBar {
         }
     }
 
+    /// Shows the firmware version.
     pub fn set_version(&self, version: &str) {
         self.version_label
-            .set_text(&format!("Version: {}", version));
+            .set_text(&format!("{} {}", t!("Version:"), version));
     }
 
+    /// Shows the machine state, coloured by state class.
     pub fn set_state(&self, state: &str) {
         self.state_label.set_text(state);
 
@@ -256,6 +261,7 @@ impl StatusBar {
         }
     }
 
+    /// Shows the machine position (mm in, display units out).
     // Status bar update requires all machine state fields.
     #[allow(clippy::too_many_arguments)]
     pub fn set_position(
@@ -281,6 +287,7 @@ impl StatusBar {
         ));
     }
 
+    /// Shows feed (mm/min in, display units out) and spindle speed.
     pub fn set_feed_spindle(&self, feed_rate: f64, spindle_speed: u32, feed_units: FeedRateUnits) {
         self.feed_spindle_label.set_text(&format!(
             "F: {}  S: {} RPM",
@@ -289,6 +296,7 @@ impl StatusBar {
         ));
     }
 
+    /// Shows job progress (percent) with elapsed and remaining time; 0 hides it.
     pub fn set_progress(&self, progress: f64, elapsed: &str, remaining: &str) {
         if progress > 0.0 {
             self.progress_bar.set_visible(true);
@@ -301,13 +309,13 @@ impl StatusBar {
                 self.elapsed_label.set_text("");
             } else {
                 self.elapsed_label
-                    .set_text(&format!("Elapsed: {}", elapsed));
+                    .set_text(&format!("{} {}", t!("Elapsed:"), elapsed));
             }
             if remaining.is_empty() {
                 self.remaining_label.set_text("");
             } else {
                 self.remaining_label
-                    .set_text(&format!("Remaining: {}", remaining));
+                    .set_text(&format!("{} {}", t!("Remaining:"), remaining));
             }
         } else {
             self.progress_bar.set_visible(false);
@@ -316,6 +324,7 @@ impl StatusBar {
         }
     }
 
+    /// Sets (or clears) the action run by the Cancel button.
     pub fn set_cancel_action(&self, action: Option<std::boxed::Box<dyn Fn() + 'static>>) {
         *self.cancel_action.borrow_mut() = action;
         let visible = self.cancel_action.borrow().is_some();
@@ -323,11 +332,13 @@ impl StatusBar {
         self.cancel_btn.set_sensitive(visible);
     }
 
+    /// Shows the active device name, controller and type.
     pub fn set_device_info(&self, name: &str, controller: &str, device_type: &str) {
         let text = format!("{} | {} | {}", name, controller, device_type);
         self.device_info_label.set_text(&text);
     }
 
+    /// Shows the active device profile from the device manager.
     pub fn refresh_device_info(&self, device_manager: &gcodekit5_devicedb::DeviceManager) {
         if let Some(profile) = device_manager.get_active_profile() {
             let controller_type = format!("{:?}", profile.controller_type);

@@ -795,80 +795,94 @@ impl ToolpathGenerator {
                 .sum();
 
             if contour_length > 0.001 {
+                // Each lap descends at most `lap_step` (the step-down). The ramp runs at
+                // the requested angle only over the distance needed to reach the lap's
+                // floor, after which the rest of the lap is cut flat at that floor.
+                let lap_step = if step_down > 0.001 {
+                    step_down
+                } else {
+                    total_dist
+                };
+                let tan_angle = self.ramp_angle.to_radians().tan();
                 let mut current_z = start_z;
-                let mut loop_guard = 0;
+                let mut loop_guard = 0usize;
                 let max_segments = 20000;
                 let path_segment_count = segments.len();
 
-                while current_z > target_z {
+                while current_z - target_z > 0.001 {
                     loop_guard += 1;
 
-                    if loop_guard * path_segment_count > max_segments {
-                        let mut final_pass = Toolpath::new(self.tool_diameter, target_z);
-                        final_pass.segments = segments
-                            .iter()
-                            .map(|s| {
-                                let mut ns = s.clone();
-                                ns.start_z = Some(target_z);
-                                ns.z_depth = Some(target_z);
-                                ns
-                            })
-                            .collect();
-                        toolpaths.push(final_pass);
-                        return toolpaths;
-                    }
-
-                    if loop_guard > 1000 {
+                    if loop_guard * path_segment_count > max_segments || loop_guard > 1000 {
                         break;
                     }
 
-                    let mut pass_segments = Vec::new();
-                    let mut segment_start_z = current_z;
-                    let pass_start_z = current_z;
+                    let lap_floor = (current_z - lap_step).max(target_z);
+                    let mut pass_segments = Vec::with_capacity(segments.len() + 1);
+                    let mut z = current_z;
 
                     for seg in &segments {
-                        if seg.segment_type == ToolpathSegmentType::RapidMove {
+                        if seg.segment_type == ToolpathSegmentType::RapidMove
+                            || z - lap_floor <= 1e-9
+                        {
                             let mut new_seg = seg.clone();
-                            new_seg.start_z = Some(segment_start_z);
-                            new_seg.z_depth = Some(segment_start_z);
+                            new_seg.start_z = Some(z);
+                            new_seg.z_depth = Some(z);
                             pass_segments.push(new_seg);
                             continue;
                         }
 
                         let seg_len = seg.start.distance_to(&seg.end);
-                        let z_drop = seg_len * self.ramp_angle.to_radians().tan();
+                        let z_drop = seg_len * tan_angle;
 
-                        let mut next_z = segment_start_z - z_drop;
-                        if next_z < target_z {
-                            next_z = target_z;
+                        if z - z_drop >= lap_floor {
+                            let mut new_seg = seg.clone();
+                            new_seg.start_z = Some(z);
+                            new_seg.z_depth = Some(z - z_drop);
+                            pass_segments.push(new_seg);
+                            z -= z_drop;
+                            continue;
                         }
 
-                        let mut new_seg = seg.clone();
-                        new_seg.start_z = Some(segment_start_z);
-                        new_seg.z_depth = Some(next_z);
-                        pass_segments.push(new_seg);
+                        // The ramp reaches the lap floor part-way along this segment.
+                        let remaining_drop = z - lap_floor;
+                        if seg.segment_type == ToolpathSegmentType::LinearMove
+                            && tan_angle > 1e-12
+                            && seg_len > 1e-9
+                        {
+                            let t = (remaining_drop / tan_angle / seg_len).clamp(0.0, 1.0);
+                            let split = Point::new(
+                                seg.start.x + (seg.end.x - seg.start.x) * t,
+                                seg.start.y + (seg.end.y - seg.start.y) * t,
+                            );
+                            let mut ramp_seg = seg.clone();
+                            ramp_seg.end = split;
+                            ramp_seg.start_z = Some(z);
+                            ramp_seg.z_depth = Some(lap_floor);
+                            pass_segments.push(ramp_seg);
 
-                        segment_start_z = next_z;
+                            let mut flat_seg = seg.clone();
+                            flat_seg.start = split;
+                            flat_seg.start_z = Some(lap_floor);
+                            flat_seg.z_depth = Some(lap_floor);
+                            pass_segments.push(flat_seg);
+                        } else {
+                            // Arcs are not split: descending to the floor over the whole
+                            // arc is shallower than the requested ramp angle.
+                            let mut new_seg = seg.clone();
+                            new_seg.start_z = Some(z);
+                            new_seg.z_depth = Some(lap_floor);
+                            pass_segments.push(new_seg);
+                        }
+                        z = lap_floor;
                     }
 
-                    current_z = segment_start_z;
-
-                    let mut tp = Toolpath::new(self.tool_diameter, current_z);
+                    let mut tp = Toolpath::new(self.tool_diameter, z);
                     tp.segments = pass_segments;
                     toolpaths.push(tp);
 
-                    if (current_z - target_z).abs() < 0.001 {
-                        break;
-                    }
-
-                    if (pass_start_z - current_z).abs() < 0.001 {
-                        let fallback_step = if step_down > 0.0 {
-                            step_down
-                        } else {
-                            self.tool_diameter
-                        };
-                        current_z = (current_z - fallback_step).max(target_z);
-                    }
+                    // A lap must always make progress; with a near-zero angle fall back
+                    // to dropping a full step so the loop terminates.
+                    current_z = if current_z - z < 1e-6 { lap_floor } else { z };
                 }
 
                 let mut final_pass = Toolpath::new(self.tool_diameter, target_z);

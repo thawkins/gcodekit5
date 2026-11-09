@@ -153,14 +153,13 @@ impl DrillPressTool {
         sidebar_actions.set_visible(connected);
         offline_msg.set_visible(!connected);
 
-        // Connection status polling
-        let sidebar_actions_clone = sidebar_actions.clone();
-        let offline_msg_clone = offline_msg.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-            let connected = device_status::get_status().is_connected;
-            sidebar_actions_clone.set_visible(connected);
-            offline_msg_clone.set_visible(!connected);
-            glib::ControlFlow::Continue
+        // Connection status polling: weak refs only, stopped when the page is destroyed.
+        let sidebar_actions_weak = sidebar_actions.downgrade();
+        super::common::poll_connection_status(&offline_msg, move |offline_msg, connected| {
+            if let Some(actions) = sidebar_actions_weak.upgrade() {
+                actions.set_visible(connected);
+            }
+            offline_msg.set_visible(!connected);
         });
 
         // Content Area

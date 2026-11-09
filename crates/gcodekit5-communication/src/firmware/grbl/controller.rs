@@ -8,11 +8,11 @@ use crate::firmware::grbl::override_sequencer::{
     is_valid_override_target, next_override_step, OverrideStepCodes, FEED_OVERRIDE_CODES,
     MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
 };
-use crate::firmware::grbl::status_parser::StatusParser;
+use crate::firmware::grbl::status_parser::{FullStatus, StatusParser, WorkCoordinateOffset};
 use crate::firmware::grbl::{GrblCommunicator, GrblCommunicatorConfig};
 use async_trait::async_trait;
 use gcodekit5_core::{thread_safe_rw, ThreadSafeRw, ThreadSafeRwMap};
-use gcodekit5_core::{ControllerState, ControllerStatus, PartialPosition, ProbeResult};
+use gcodekit5_core::{ControllerState, ControllerStatus, PartialPosition, ProbeResult, Units};
 use gcodekit5_core::{ControllerTrait, OverrideState};
 
 /// Default timeout for probe operations in milliseconds.
@@ -55,8 +55,19 @@ pub struct GrblControllerState {
     pub is_streaming: bool,
     /// Status poll rate (milliseconds)
     pub poll_rate_ms: u64,
-    /// Probe result sender — populated when a probe command is in flight.
-    #[allow(dead_code)]
+    /// Last work coordinate offset reported by the controller (`WCO:` field).
+    ///
+    /// GRBL only includes `WCO:` every few status reports (and right after an
+    /// offset changes), so it is remembered here and used to derive the
+    /// coordinate space the controller did not report: `WPos = MPos - WCO`.
+    /// It is the *total* offset (active G54-G59 + G92 + tool length offset).
+    pub work_coordinate_offset: Option<WorkCoordinateOffset>,
+    /// Active work coordinate system (54-59), from `[GC:...]` parser state reports.
+    pub active_wcs: u8,
+    /// Stored G54-G59 offsets keyed by 54-59, from `$#` (`[G54:x,y,z]`) reports.
+    pub wcs_offsets: std::collections::HashMap<u8, WorkCoordinateOffset>,
+    /// Probe result sender — populated when a probe command is in flight and
+    /// fulfilled by the IO loop when `[PRB:...]` (or a probe alarm) arrives.
     pub probe_result_tx:
         std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<ProbeResult>>>>,
     /// Whether a probe cycle is currently in progress.
@@ -73,9 +84,211 @@ impl Default for GrblControllerState {
             work_position: gcodekit5_core::Position::default(),
             is_streaming: false,
             poll_rate_ms: 100,
+            work_coordinate_offset: None,
+            // GRBL powers up in G54.
+            active_wcs: 54,
+            wcs_offsets: std::collections::HashMap::new(),
             probe_result_tx: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             probe_in_progress: false,
         }
+    }
+}
+
+/// Parse a GRBL probe report `[PRB:x,y,z(,a...):flag]`.
+///
+/// The position is in machine coordinates, in the controller's report units
+/// (mm unless `$13=1`). A missing flag is treated as success.
+///
+/// # Arguments
+/// * `line` - One trimmed line received from the controller.
+///
+/// # Returns
+/// The probe result, or `None` if the line is not a well-formed probe report.
+pub fn parse_probe_report(line: &str) -> Option<ProbeResult> {
+    let inner = line.trim().strip_prefix("[PRB:")?.strip_suffix(']')?;
+    let mut parts = inner.splitn(2, ':');
+    let coords: Vec<f32> = parts
+        .next()?
+        .split(',')
+        .map(|v| v.trim().parse::<f32>())
+        .collect::<Result<_, _>>()
+        .ok()?;
+    if coords.len() < 3 {
+        return None;
+    }
+    let success = match parts.next().map(str::trim) {
+        None | Some("") => true,
+        Some(flag) => flag.parse::<u8>().ok()? != 0,
+    };
+    let mut position = gcodekit5_core::Position::new(coords[0], coords[1], coords[2]);
+    position.a = coords.get(3).copied();
+    Some(ProbeResult::new(position, success, Units::MM))
+}
+
+/// Parse a stored work coordinate system line from `$#`, e.g. `[G55:10.000,0.000,-5.000]`.
+///
+/// # Returns
+/// `(wcs, offset)` with `wcs` in 54..=59, or `None` for any other line.
+pub fn parse_wcs_offset_report(line: &str) -> Option<(u8, WorkCoordinateOffset)> {
+    let inner = line.trim().strip_prefix("[G")?.strip_suffix(']')?;
+    let (code, coords) = inner.split_once(':')?;
+    let wcs: u8 = code.parse().ok()?;
+    if !(54..=59).contains(&wcs) {
+        return None;
+    }
+    let v: Vec<f64> = coords
+        .split(',')
+        .map(|c| c.trim().parse::<f64>())
+        .collect::<Result<_, _>>()
+        .ok()?;
+    if v.len() < 3 {
+        return None;
+    }
+    Some((
+        wcs,
+        WorkCoordinateOffset {
+            x: v[0],
+            y: v[1],
+            z: v[2],
+            a: v.get(3).copied(),
+            b: v.get(4).copied(),
+            c: v.get(5).copied(),
+        },
+    ))
+}
+
+/// Extract the active work coordinate system (54-59) from a `[GC:...]` parser
+/// state report, e.g. `[GC:G0 G55 G17 G21 G90 G94 M5 M9 T0 F0 S0]`.
+pub fn parse_active_wcs(line: &str) -> Option<u8> {
+    let inner = line.trim().strip_prefix("[GC:")?.strip_suffix(']')?;
+    inner
+        .split_whitespace()
+        .filter_map(|w| w.strip_prefix('G'))
+        .filter_map(|n| n.parse::<u8>().ok())
+        .find(|n| (54..=59).contains(n))
+}
+
+/// Normalise a WCS identifier: 54-59 (G-code) or 1-6 (`P` index) map to 54-59,
+/// and 0 means the currently active system.
+fn normalise_wcs(wcs: u8, active: u8) -> anyhow::Result<u8> {
+    match wcs {
+        0 => Ok(active),
+        1..=6 => Ok(53 + wcs),
+        54..=59 => Ok(wcs),
+        _ => Err(anyhow::anyhow!(
+            "Work coordinate system must be 54-59 (or 1-6, 0 = active), got {wcs}"
+        )),
+    }
+}
+
+/// Apply a parsed status report to the controller state.
+///
+/// Updates the remembered `WCO` when the report carries one, then fills in
+/// machine and work position, deriving whichever one GRBL did not report from
+/// the remembered offset (`WPos = MPos - WCO`, `MPos = WPos + WCO`).
+pub fn apply_status_positions(state: &mut GrblControllerState, full: &FullStatus) {
+    if let Some(wco) = full.wco {
+        state.work_coordinate_offset = Some(wco);
+    }
+    let wco = state.work_coordinate_offset;
+
+    let mpos = full.mpos.or_else(|| {
+        let (w, o) = (full.wpos?, wco?);
+        Some(crate::firmware::grbl::status_parser::MachinePosition {
+            x: w.x + o.x,
+            y: w.y + o.y,
+            z: w.z + o.z,
+            a: w.a.zip(o.a).map(|(p, q)| p + q).or(w.a),
+            b: w.b.zip(o.b).map(|(p, q)| p + q).or(w.b),
+            c: w.c.zip(o.c).map(|(p, q)| p + q).or(w.c),
+        })
+    });
+    let wpos = full.wpos.or_else(|| {
+        let (m, o) = (full.mpos?, wco?);
+        Some(StatusParser::wpos_from_mpos_wco(m, o))
+    });
+
+    if let Some(m) = mpos {
+        state.machine_position.x = m.x as f32;
+        state.machine_position.y = m.y as f32;
+        state.machine_position.z = m.z as f32;
+        if let Some(a) = m.a {
+            state.machine_position.a = Some(a as f32);
+        }
+    }
+    if let Some(w) = wpos {
+        state.work_position.x = w.x as f32;
+        state.work_position.y = w.y as f32;
+        state.work_position.z = w.z as f32;
+        if let Some(a) = w.a {
+            state.work_position.a = Some(a as f32);
+        }
+    }
+}
+
+/// Work coordinate offset for `wcs` from the controller state.
+///
+/// For the active system (or `wcs == 0`) this is the reported `WCO`
+/// (`MPos - WPos`); otherwise the stored `$#` value. Errors if neither is known
+/// yet (send `$#` or wait for a status report containing `WCO:`).
+pub fn wcs_offset_from_state(
+    state: &GrblControllerState,
+    wcs: u8,
+) -> anyhow::Result<PartialPosition> {
+    let wcs = normalise_wcs(wcs, state.active_wcs)?;
+    let offset = if wcs == state.active_wcs {
+        state
+            .work_coordinate_offset
+            .or_else(|| state.wcs_offsets.get(&wcs).copied())
+    } else {
+        state.wcs_offsets.get(&wcs).copied()
+    };
+    let o = offset
+        .ok_or_else(|| anyhow::anyhow!("Offset for G{wcs} not known yet; query it with $#"))?;
+    Ok(PartialPosition {
+        x: Some(o.x as f32),
+        y: Some(o.y as f32),
+        z: Some(o.z as f32),
+        a: o.a.map(|v| v as f32),
+        b: o.b.map(|v| v as f32),
+        c: o.c.map(|v| v as f32),
+    })
+}
+
+/// Build a `G10 L20 P0` block that makes the current position zero in the active
+/// WCS for each requested axis (`X`,`Y`,`Z`,`A`,`B`,`C`, case-insensitive).
+/// Unlike `G92`, `G10 L20` is persisted by GRBL in EEPROM.
+///
+/// # Returns
+/// The command, or `None` if `axes` names no valid axis.
+pub fn work_zero_command(axes: &str) -> Option<String> {
+    let mut cmd = String::from("G10 L20 P0");
+    let mut any = false;
+    for axis in ['X', 'Y', 'Z', 'A', 'B', 'C'] {
+        if axes.chars().any(|c| c.to_ascii_uppercase() == axis) {
+            cmd.push(' ');
+            cmd.push(axis);
+            cmd.push('0');
+            any = true;
+        }
+    }
+    any.then_some(cmd)
+}
+
+/// Deliver a probe result to the waiting `send_probe_command`, if any.
+fn fulfil_probe(state: &ThreadSafeRw<GrblControllerState>, result: ProbeResult) {
+    let slot = state.read().probe_result_tx.clone();
+    let sender = match slot.try_lock() {
+        Ok(mut guard) => guard.take(),
+        Err(_) => None,
+    };
+    match sender {
+        Some(tx) => {
+            if tx.send(result).is_err() {
+                tracing::debug!("Probe result arrived after the probe call gave up");
+            }
+        }
+        None => tracing::debug!("Probe report received with no probe in flight"),
     }
 }
 
@@ -219,19 +432,22 @@ impl GrblController {
     // Initialize the controller and query its capabilities
     // fn initialize(&self) -> anyhow::Result<()> { ... } - Removed as we use async send_command in connect
 
-    /// Send a probe command and wait for the  response.
+    /// Send a probe command and wait for the `[PRB:...]` response.
     ///
     /// # Arguments
-    /// *  — One of , , , .
-    /// *  — Axis character (, , ).
-    /// *  — Target coordinate in **current units** (mm by default).
-    /// *  — Probe feed rate in units/min.
-    /// *  — Maximum time to wait for  or alarm.
+    /// * `g38_variant` — One of `G38.2`, `G38.3`, `G38.4`, `G38.5`.
+    /// * `axis` — Axis character (`X`, `Y`, `Z`).
+    /// * `target` — Target coordinate in **current units** (mm by default).
+    /// * `feed_rate` — Probe feed rate in units/min.
+    /// * `timeout_ms` — Maximum time to wait for `[PRB:...]` or an alarm.
+    ///
+    /// # Returns
+    /// The trigger position in machine coordinates.
     ///
     /// # Fail-safe behaviour
-    /// If the probe does not trigger and an error/alarm is raised, the method
-    /// automatically issues a  retract of [] along
-    /// the probe axis before returning an error.
+    /// If the probe does not trigger, an alarm is raised or the wait times out,
+    /// the method issues a `G91 G0 Z+` retract of [`PROBE_FAILSAFE_RETRACT_MM`]
+    /// before returning an error.
     pub async fn send_probe_command(
         &mut self,
         g38_variant: &str,
@@ -242,13 +458,14 @@ impl GrblController {
     ) -> anyhow::Result<PartialPosition> {
         let (tx, rx) = tokio::sync::oneshot::channel::<gcodekit5_core::ProbeResult>();
 
-        {
+        let slot = {
             let mut state = self.state.write();
             state.probe_in_progress = true;
-            if let Ok(mut guard) = state.probe_result_tx.clone().try_lock() {
-                *guard = Some(tx);
-            }
-        }
+            state.probe_result_tx.clone()
+        };
+        // Install the sender before the probe command is queued so the IO loop
+        // can always deliver the `[PRB:...]` report.
+        *slot.lock().await = Some(tx);
 
         let cmd = format!("{}{}{:.3}F{:.0}", g38_variant, axis, target, feed_rate);
         if let Err(e) = self.send_command(&cmd).await {
@@ -369,18 +586,7 @@ impl GrblController {
                                     let full_status = StatusParser::parse_full(&line);
                                     let mut state_guard = state.write();
 
-                                    if let Some(mpos) = full_status.mpos {
-                                        state_guard.machine_position.x = mpos.x as f32;
-                                        state_guard.machine_position.y = mpos.y as f32;
-                                        state_guard.machine_position.z = mpos.z as f32;
-                                        // Update other axes...
-                                    }
-
-                                    if let Some(wpos) = full_status.wpos {
-                                        state_guard.work_position.x = wpos.x as f32;
-                                        state_guard.work_position.y = wpos.y as f32;
-                                        state_guard.work_position.z = wpos.z as f32;
-                                    }
+                                    apply_status_positions(&mut state_guard, &full_status);
 
                                     // The override state is only ever taken from the
                                     // controller's own `Ov:` report, never from what was
@@ -459,6 +665,26 @@ impl GrblController {
                                             jog.release(1);
                                             jog.rejected.store(true, Ordering::SeqCst);
                                         }
+                                    }
+                                } else if let Some(result) = parse_probe_report(&line) {
+                                    // `[PRB:...]` precedes the probe's `ok`; it does not
+                                    // consume a command slot.
+                                    fulfil_probe(&state, result);
+                                } else if let Some((wcs, offset)) = parse_wcs_offset_report(&line) {
+                                    state.write().wcs_offsets.insert(wcs, offset);
+                                } else if let Some(wcs) = parse_active_wcs(&line) {
+                                    state.write().active_wcs = wcs;
+                                } else if line.to_ascii_uppercase().starts_with("ALARM:") {
+                                    tracing::error!("GRBL Alarm: {}", line);
+                                    // A failed G38.2/G38.4 raises ALARM:4/5 instead of a
+                                    // PRB report; fail the waiting probe immediately
+                                    // rather than letting it time out.
+                                    if state.read().probe_in_progress {
+                                        let pos = state.read().machine_position;
+                                        fulfil_probe(
+                                            &state,
+                                            ProbeResult::new(pos, false, Units::MM),
+                                        );
                                     }
                                 } else {
                                     // Other messages (welcome, settings, etc)
@@ -794,20 +1020,14 @@ impl ControllerTrait for GrblController {
     }
 
     async fn set_work_zero(&mut self) -> anyhow::Result<()> {
-        self.send_command("G92X0Y0Z0").await?;
-        Ok(())
+        // G10 L20 P0 writes the active WCS (persisted); G92 would be lost on reset.
+        self.set_work_zero_axes("XYZ").await
     }
 
     async fn set_work_zero_axes(&mut self, axes: &str) -> anyhow::Result<()> {
-        let mut cmd = String::from("G92");
-        for axis in axes.chars() {
-            if ['X', 'Y', 'Z', 'A', 'B', 'C'].contains(&axis) {
-                cmd.push(axis);
-                cmd.push('0');
-            }
-        }
-        self.send_command(&cmd).await?;
-        Ok(())
+        let cmd = work_zero_command(axes)
+            .ok_or_else(|| anyhow::anyhow!("No valid axes to zero in '{axes}'"))?;
+        self.send_command(&cmd).await
     }
 
     async fn go_to_work_zero(&mut self) -> anyhow::Result<()> {
@@ -822,17 +1042,17 @@ impl ControllerTrait for GrblController {
 
         let cmd = format!("G{}", wcs);
         self.send_command(&cmd).await?;
+        let mut state = self.state.write();
+        if state.active_wcs != wcs {
+            state.active_wcs = wcs;
+            // The remembered WCO belongs to the previous system until GRBL reports anew.
+            state.work_coordinate_offset = None;
+        }
         Ok(())
     }
 
-    async fn get_wcs_offset(&self, _wcs: u8) -> anyhow::Result<PartialPosition> {
-        let state = self.state.read();
-        Ok(PartialPosition {
-            x: Some(state.work_position.x),
-            y: Some(state.work_position.y),
-            z: Some(state.work_position.z),
-            ..Default::default()
-        })
+    async fn get_wcs_offset(&self, wcs: u8) -> anyhow::Result<PartialPosition> {
+        wcs_offset_from_state(&self.state.read(), wcs)
     }
 
     async fn query_status(&mut self) -> anyhow::Result<ControllerStatus> {

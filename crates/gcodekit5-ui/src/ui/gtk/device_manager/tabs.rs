@@ -81,6 +81,7 @@ impl DeviceManagerWindow {
         ComboBoxText,
         Entry,
         Entry,
+        Entry,
         CheckButton,
     ) {
         let scroll = ScrolledWindow::new();
@@ -132,6 +133,16 @@ impl DeviceManagerWindow {
         grid.attach(&edit_baud_rate, 1, row, 1, 1);
         row += 1;
 
+        // TCP Host
+        let tcp_host_label = Label::new(Some("TCP Host:"));
+        tcp_host_label.set_halign(Align::Start);
+        let edit_tcp_host = Entry::new();
+        edit_tcp_host.set_input_purpose(gtk4::InputPurpose::Url);
+        edit_tcp_host.set_placeholder_text(Some("192.168.1.100"));
+        grid.attach(&tcp_host_label, 0, row, 1, 1);
+        grid.attach(&edit_tcp_host, 1, row, 1, 1);
+        row += 1;
+
         // TCP Port
         let tcp_label = Label::new(Some("TCP Port:"));
         tcp_label.set_halign(Align::Start);
@@ -162,6 +173,7 @@ impl DeviceManagerWindow {
             edit_connection_type,
             edit_port,
             edit_baud_rate,
+            edit_tcp_host,
             edit_tcp_port,
             edit_timeout,
             edit_auto_reconnect,

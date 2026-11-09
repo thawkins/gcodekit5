@@ -253,7 +253,10 @@ fn test_file_stream_seek_mid_file_not_eof() {
     let mut reader = FileStreamReader::new(&path).expect("reader");
     reader.seek_to_line(2).expect("seek");
     assert!(!reader.is_eof());
-    assert_eq!(reader.read_line().as_deref().map(str::trim), Some("L3"));
+    assert_eq!(
+        reader.read_line().expect("read").as_deref().map(str::trim),
+        Some("L3")
+    );
 }
 
 #[test]

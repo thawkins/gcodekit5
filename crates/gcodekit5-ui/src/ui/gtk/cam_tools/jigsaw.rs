@@ -11,7 +11,7 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
+use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use super::CamToolsView;
 use crate::t;
 use crate::ui::gtk::help_browser;
@@ -192,6 +192,9 @@ impl JigsawTool {
 
         let home_row = ActionRow::builder()
             .title(t!("Home Device Before Start"))
+            .subtitle(t!(
+                "Runs $H and clears the G54 X/Y offset (Z offset kept). Off: uses the work zero you set; no Z move above Z0 after homing."
+            ))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -297,7 +300,6 @@ impl JigsawTool {
         let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&w_gen, &settings_gen);
-            let home_before = w_gen.home_before.is_active();
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
@@ -365,15 +367,8 @@ impl JigsawTool {
                     }
                     let mut maker = JigsawPuzzleMaker::new(params)?;
                     maker.generate()?;
-                    let mut gcode = maker.to_gcode(500.0, 1.0);
-
-                    // Handle homing
-                    gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
-
-                    Ok(gcode)
+                    // Homing is part of the generated preamble (`home_before_job`).
+                    Ok(maker.to_gcode(500.0, 1.0))
                 })();
 
                 let _ = result_tx.send(result);
@@ -482,6 +477,7 @@ impl JigsawTool {
             offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
             offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
             num_axes: crate::device_status::get_active_num_axes(),
+            home_before_job: w.home_before.is_active(),
         }
     }
 
@@ -504,8 +500,12 @@ impl JigsawTool {
             if response == ResponseType::Accept {
                 if let Some(file) = d.file() {
                     if let Some(path) = file.path() {
-                        if let Ok(json) = serde_json::to_string_pretty(&params_clone) {
-                            let _ = fs::write(path, json);
+                        match serde_json::to_string_pretty(&params_clone) {
+                            Ok(json) => write_preset_file(&path, &json),
+                            Err(e) => CamToolsView::show_error_dialog(
+                                &t!("Save Error"),
+                                &format!("{}", e),
+                            ),
                         }
                     }
                 }
@@ -534,9 +534,24 @@ impl JigsawTool {
             if response == ResponseType::Accept {
                 if let Some(file) = d.file() {
                     if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) = serde_json::from_str::<PuzzleParameters>(&content) {
-                                Self::apply_params(&w_clone, &params, &settings_clone);
+                        let loaded = fs::read_to_string(&path)
+                            .map_err(|e| e.to_string())
+                            .and_then(|content| {
+                                serde_json::from_str::<PuzzleParameters>(&content)
+                                    .map_err(|e| e.to_string())
+                            });
+                        match loaded {
+                            Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                            Err(e) => {
+                                tracing::warn!(
+                                    path = %path.display(),
+                                    error = %e,
+                                    "Failed to load parameters"
+                                );
+                                CamToolsView::show_error_dialog(
+                                    &t!("Load Error"),
+                                    &format!("{}: {}", path.display(), e),
+                                );
                             }
                         }
                     }
@@ -569,6 +584,7 @@ impl JigsawTool {
             .set_text(&units::format_length(p.offset_x, system));
         w.offset_y
             .set_text(&units::format_length(p.offset_y, system));
+        w.home_before.set_active(p.home_before_job);
     }
 }
 

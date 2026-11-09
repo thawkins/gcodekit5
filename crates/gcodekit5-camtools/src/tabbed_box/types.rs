@@ -125,6 +125,10 @@ pub struct BoxParameters {
     /// Number of axes on the target device (default 3).
     #[serde(default = "default_num_axes")]
     pub num_axes: u8,
+    /// Home (`$H`) and clear the G54 X/Y offset before cutting (default `false`).
+    /// See [`crate::job_preamble`].
+    #[serde(default)]
+    pub home_before_job: bool,
 }
 
 fn default_num_axes() -> u8 {
@@ -153,6 +157,7 @@ impl Default for BoxParameters {
             optimize_layout: false,
             key_divider_type: KeyDividerType::WallsAndFloor,
             num_axes: 3,
+            home_before_job: false,
         }
     }
 }

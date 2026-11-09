@@ -7,7 +7,6 @@ use crate::t;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
 use gcodekit5_settings::controller::SettingsController;
-use glib;
 use gtk4::prelude::*;
 use gtk4::{
     Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ResponseType, ScrolledWindow,
@@ -20,8 +19,6 @@ use sourceview5::{
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::thread;
 use tracing::error;
 
 pub struct GcodeEditor {
@@ -456,64 +453,26 @@ impl GcodeEditor {
         });
 
         // Connect Replace All Button
-        let buffer_clone = buffer.clone();
+        //
+        // Replace through the search context so Replace All uses exactly the same
+        // matching options (case sensitivity, regex, word boundaries) as the search
+        // highlighting, and lands as a single undoable user action.
+        let context_clone = search_context.clone();
         let replace_entry_clone = replace_entry.clone();
         let search_settings_clone = search_settings.clone();
-        let status_bar_clone = status_bar.clone();
 
         replace_all_btn.connect_clicked(move |_| {
-            let replace_text = replace_entry_clone.text().to_string();
-            let search_text = search_settings_clone
+            let has_search_text = search_settings_clone
                 .search_text()
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-
-            if search_text.is_empty() {
+                .is_some_and(|s| !s.is_empty());
+            if !has_search_text {
                 return;
             }
 
-            let buffer = buffer_clone.clone();
-            let status_bar = status_bar_clone.clone();
-
-            // Get text from buffer (must be on main thread)
-            let start = buffer.start_iter();
-            let end = buffer.end_iter();
-            let text = buffer.text(&start, &end, true).to_string();
-
-            if let Some(sb) = &status_bar {
-                sb.set_progress(10.0, &t!("Calculating..."), &t!("Please wait"));
+            let replace_text = replace_entry_clone.text().to_string();
+            if let Err(e) = context_clone.replace_all(&replace_text) {
+                tracing::warn!(error = %e, "editor replace all failed");
             }
-
-            // Spawn thread
-            let (sender, receiver) = mpsc::channel();
-
-            thread::spawn(move || {
-                // Perform replacement
-                let new_text = text.replace(&search_text, &replace_text);
-                let _ = sender.send(new_text);
-            });
-
-            let buffer = buffer_clone.clone();
-            let status_bar = status_bar_clone.clone();
-
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                match receiver.try_recv() {
-                    Ok(new_text) => {
-                        buffer.set_text(&new_text);
-                        if let Some(sb) = &status_bar {
-                            sb.set_progress(0.0, "", ""); // Clear
-                        }
-                        glib::ControlFlow::Break
-                    }
-                    Err(mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        if let Some(sb) = &status_bar {
-                            sb.set_progress(0.0, "", ""); // Clear
-                        }
-                        glib::ControlFlow::Break
-                    }
-                }
-            });
         });
 
         let editor = Self {

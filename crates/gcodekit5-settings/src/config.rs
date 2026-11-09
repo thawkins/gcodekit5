@@ -628,17 +628,18 @@ impl Config {
             .truncate(self.file_processing.recent_files_count);
     }
 
-    /// Merge another config into this one (preserves existing values for missing sections)
+    /// Merge another config into this one.
+    ///
+    /// Each section of `other` replaces the corresponding section of `self` when it is
+    /// populated (i.e. passes the same sanity check `validate()` applies to that
+    /// section); empty/zeroed sections are treated as missing and leave `self`
+    /// unchanged. The UI section is judged by its window size, not its theme, so
+    /// a config using the System theme still merges its UI preferences.
     pub fn merge(&mut self, other: &Config) {
-        // Only merge non-zero/non-default values
         if other.connection.timeout_ms > 0 {
             self.connection = other.connection.clone();
         }
-        // Theme is an enum, so we can't check for empty string.
-        // We assume if it's not default (System), we might want to merge it,
-        // but merging logic is tricky with enums.
-        // For now, let's assume if the other config has a specific theme set (not System), we take it.
-        if other.ui.theme != Theme::System {
+        if other.ui.window_width > 0 && other.ui.window_height > 0 {
             self.ui = other.ui.clone();
         }
         if other.file_processing.arc_segment_length > 0.0 {
@@ -646,6 +647,15 @@ impl Config {
         }
         if other.machine.jog_feed_rate > 0.0 {
             self.machine = other.machine.clone();
+        }
+        if other.probe.default_fast_feed > 0.0 && other.probe.default_slow_feed > 0.0 {
+            self.probe = other.probe.clone();
+        }
+        if !other.recent_files.is_empty() {
+            self.recent_files = other.recent_files.clone();
+        }
+        if other.last_opened_path.is_some() {
+            self.last_opened_path = other.last_opened_path.clone();
         }
     }
 }

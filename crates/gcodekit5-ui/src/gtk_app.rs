@@ -294,6 +294,16 @@ pub fn main() {
             Some(visualizer.clone()),
             Some(settings_controller.clone()),
         );
+        // The active device profile decides whether Connect opens a serial port or a
+        // TCP/WebSocket host; keep the port area in sync when the profile changes.
+        machine_control.set_device_manager(device_manager.clone());
+        {
+            let mc = machine_control.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
+                mc.refresh_connection_target();
+                glib::ControlFlow::Continue
+            });
+        }
 
         // ==========================================
         // CAM TOOLS
@@ -420,7 +430,10 @@ pub fn main() {
         let config_settings_clone = config_settings.clone();
         let communicator_for_device = machine_control.communicator.clone();
 
-        // Update device info when connection changes
+        // Update Device Config when the connection or the reported device info changes.
+        // Only push changes: re-applying them every tick overwrote Device Config status
+        // messages and rebuilt the capabilities list twice a second.
+        let last_device_info: Rc<RefCell<Option<DeviceInfoSnapshot>>> = Rc::new(RefCell::new(None));
         glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
             // Don't block the GTK main thread while a streaming thread holds the port.
             let Some(comm) = communicator_for_device.try_lock() else {
@@ -429,26 +442,49 @@ pub fn main() {
             let connected = comm.is_connected();
             drop(comm);
 
-            if connected {
-                // Get firmware info from device status
+            let snapshot = if connected {
                 let status = device_status::get_status();
-                let firmware_type = status.firmware_type.as_deref().unwrap_or("GRBL");
-                let firmware_version = status.firmware_version.as_deref().unwrap_or("Unknown");
                 let device_name = status
                     .device_name
-                    .as_deref()
-                    .unwrap_or_else(|| status.port_name.as_deref().unwrap_or("CNC Device"));
-
-                config_settings_clone.set_connected(true);
-                config_settings_clone.set_device_info(
-                    true,
+                    .clone()
+                    .or_else(|| status.port_name.clone())
+                    .unwrap_or_else(|| t!("CNC Device").to_string());
+                DeviceInfoSnapshot {
+                    connected: true,
                     device_name,
-                    firmware_type,
-                    firmware_version,
-                );
+                    firmware_type: status
+                        .firmware_type
+                        .clone()
+                        .unwrap_or_else(|| "GRBL".to_string()),
+                    firmware_version: status
+                        .firmware_version
+                        .clone()
+                        .unwrap_or_else(|| t!("Unknown").to_string()),
+                }
             } else {
-                config_settings_clone.set_connected(false);
-                config_settings_clone.set_device_info(false, "", "", "");
+                DeviceInfoSnapshot::default()
+            };
+
+            let mut last = last_device_info.borrow_mut();
+            let connection_changed = last.as_ref().map(|l| l.connected) != Some(connected);
+            if connection_changed {
+                config_settings_clone.set_connected(connected);
+            }
+            if last.as_ref() != Some(&snapshot) {
+                config_settings_clone.set_device_info(
+                    snapshot.connected,
+                    &snapshot.device_name,
+                    &snapshot.firmware_type,
+                    &snapshot.firmware_version,
+                );
+                *last = Some(snapshot);
+            }
+            drop(last);
+
+            // Settings from `$$` arrive after connecting; pick up new ones (cheap no-op
+            // when nothing changed).
+            if connected {
+                config_settings_clone.sync_device_settings();
             }
 
             glib::ControlFlow::Continue
@@ -881,8 +917,16 @@ pub fn main() {
                 let want_connected = name == "machine_connect";
                 let mc = machine_control.clone();
                 action.connect_activate(move |_, _| {
-                    let connected = mc.communicator.lock().is_connected();
-                    if connected != want_connected && mc.connect_btn.is_sensitive() {
+                    // The button is insensitive while a connect is in progress; its worker
+                    // thread then holds the port lock, so never block on it here.
+                    if !mc.connect_btn.is_sensitive() {
+                        return;
+                    }
+                    let Some(connected) = mc.communicator.try_lock().map(|c| c.is_connected())
+                    else {
+                        return;
+                    };
+                    if connected != want_connected {
                         mc.connect_btn.emit_clicked();
                     }
                 });
@@ -1006,6 +1050,20 @@ pub fn main() {
             StartupTab::Materials => "materials",
         };
         stack.set_visible_child_name(initial_tab);
+
+        // Ask before closing the window while the design has unsaved changes.
+        {
+            let designer_close = designer.clone();
+            window.connect_close_request(move |win| {
+                if !designer_close.has_unsaved_changes() {
+                    return glib::Propagation::Proceed;
+                }
+                let win = win.clone();
+                // `destroy` does not emit close-request again, so this cannot loop.
+                designer_close.confirm_discard_changes(move || win.destroy());
+                glib::Propagation::Stop
+            });
+        }
 
         //        window.maximize();
         window.present();
@@ -1133,4 +1191,14 @@ fn apply_theme(theme: Theme) {
         Theme::Light => manager.set_color_scheme(libadwaita::ColorScheme::ForceLight),
         Theme::Dark => manager.set_color_scheme(libadwaita::ColorScheme::ForceDark),
     }
+}
+
+/// Connection and firmware details last pushed to the Device Config view, so the
+/// periodic refresh only updates it when something actually changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DeviceInfoSnapshot {
+    connected: bool,
+    device_name: String,
+    firmware_type: String,
+    firmware_version: String,
 }
