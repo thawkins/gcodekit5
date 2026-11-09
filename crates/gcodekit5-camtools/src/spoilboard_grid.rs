@@ -3,6 +3,9 @@
 //! Generates G-code for laser-engraved alignment grids on CNC spoilboards.
 //! Produces a rectangular grid pattern at configurable spacing with
 //! laser power and feed rate parameters.
+//!
+//! Homing is optional (off by default) and handled by [`crate::job_preamble`]. The grid
+//! never moves Z.
 
 use anyhow::Result;
 
@@ -14,6 +17,8 @@ pub struct SpoilboardGridParameters {
     pub feed_rate: f64,
     pub laser_power: f64,
     pub laser_mode: String, // "M3" or "M4"
+    /// Home (`$H`) and clear the G54 X/Y offset before engraving (default `false`).
+    pub home_before_job: bool,
 }
 
 pub struct SpoilboardGridGenerator {
@@ -47,12 +52,7 @@ impl SpoilboardGridGenerator {
         gcode.push_str("G90 ; Absolute positioning\n");
         gcode.push_str("G17 ; XY plane selection\n\n");
 
-        gcode.push_str("; Home and set work coordinate system\n");
-        gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-        gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 offset\n");
-        gcode.push_str("G54 ; Select work coordinate system 1\n");
-        gcode.push_str("G0 X0.0 Y0.0 ; Move to work origin\n");
-        gcode.push_str("G10 L20 P1 X0 Y0 ; Set current position as work zero\n");
+        crate::job_preamble::push_work_setup(&mut gcode, p.home_before_job);
 
         // Laser mode ($32) is a persistent controller setting. It is not changed here: writing
         // it would silently alter the machine configuration for every later (spindle) job.

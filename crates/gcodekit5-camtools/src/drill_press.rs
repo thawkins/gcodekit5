@@ -7,6 +7,11 @@
 //!
 //! All dimensional parameters are in millimeters (mm)
 //! and feed rates in mm/min.
+//!
+//! Homing is optional (off by default) and handled by [`crate::job_preamble`]: when it is on,
+//! only the G54 X/Y offset is cleared and the safe-height travel/retract moves become `G53`
+//! machine-coordinate moves that never rise above the homed position. The peck-drilling
+//! chip-clearing retracts stay at `top_z` in work coordinates.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -36,6 +41,9 @@ pub struct DrillPressParameters {
     pub x: f64,
     /// Y coordinate of the hole center (mm)
     pub y: f64,
+    /// Home (`$H`) and clear the G54 X/Y offset before drilling (default `false`).
+    #[serde(default)]
+    pub home_before_job: bool,
 }
 
 /// Generator for Drill Press G-Code
@@ -67,7 +75,12 @@ impl DrillPressGenerator {
         // Initialization
         gcode.push_str("G21 ; Set units to millimeters\n");
         gcode.push_str("G90 ; Absolute positioning\n");
-        gcode.push_str(&format!("G0 Z{:.3} ; Move to safe height\n", p.safe_z));
+        crate::job_preamble::push_work_setup(&mut gcode, p.home_before_job);
+        gcode.push_str(&crate::job_preamble::travel_z_line(
+            p.home_before_job,
+            p.safe_z as f32,
+            "Move to safe height",
+        ));
         gcode.push_str(&format!("M3 S{:.0} ; Start spindle\n", p.spindle_speed));
         gcode.push_str(&format!(
             "G0 X{:.3} Y{:.3} ; Move to hole center\n",
@@ -81,7 +94,11 @@ impl DrillPressGenerator {
         }
 
         // Retract and end
-        gcode.push_str(&format!("G0 Z{:.3} ; Retract to safe height\n", p.safe_z));
+        gcode.push_str(&crate::job_preamble::travel_z_line(
+            p.home_before_job,
+            p.safe_z as f32,
+            "Retract to safe height",
+        ));
         gcode.push_str("M5 ; Stop spindle\n");
         gcode.push_str("M30 ; End program\n");
 
@@ -111,7 +128,10 @@ impl DrillPressGenerator {
                 gcode.push_str(&format!("G0 Z{:.3} ; Retract to clear chips\n", start_z));
                 if current_z > target_z {
                     // Rapid back to just above last cut (0.5mm clearance)
-                    gcode.push_str(&format!("G0 Z{:.3}\n", current_z + 0.5));
+                    gcode.push_str(&format!(
+                        "G0 Z{:.3} ; Back to just above last cut\n",
+                        current_z + 0.5
+                    ));
                 }
             }
         }

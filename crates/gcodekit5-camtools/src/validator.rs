@@ -4,8 +4,14 @@
 //!
 //! Lines are tokenized with [`crate::comment_processor::words`], so comments are ignored and
 //! only whole words are checked.
+//!
+//! GRBL system commands (lines starting with `$`) are classified with
+//! [`crate::comment_processor::system_command`]: known commands (`$H`, `$X`, `$$`, `$#`,
+//! `$RST=*`, `$100=80`, ...) are accepted, unknown ones are reported, and the G-code payload
+//! of a `$J=` jog is checked with the normal word checks (it must also carry a feed rate, as
+//! GRBL requires).
 
-use crate::comment_processor::words;
+use crate::comment_processor::{system_command, words, SystemCommand, Word};
 
 /// Validation error
 #[derive(Debug, Clone)]
@@ -76,18 +82,43 @@ impl GCodeValidator {
     }
 
     fn validate_line(&self, line: &str, line_num: usize) -> Result<(), Vec<ValidationError>> {
-        let mut errors = Vec::new();
-        let mut push = |message: String| {
-            errors.push(ValidationError {
-                line: line_num,
-                message,
-            })
+        let messages = match system_command(line) {
+            None => self.check_words(&words(line)),
+            Some(SystemCommand::Known(_)) => Vec::new(),
+            Some(SystemCommand::Jog(payload)) => {
+                let jog_words = words(&payload);
+                let mut messages = self.check_words(&jog_words);
+                if jog_words.is_empty() {
+                    messages.push("Jog command '$J=' has no G-code payload".to_string());
+                } else if !jog_words.iter().any(|w| w.letter == 'F') {
+                    messages.push("Jog command '$J=' requires a feed rate (F)".to_string());
+                }
+                messages
+            }
+            Some(SystemCommand::Unknown(command)) => {
+                vec![format!("Unknown GRBL system command '{}'", command)]
+            }
         };
 
-        // Comments are removed first so letters inside them are not read as words.
-        for word in words(line) {
+        if messages.is_empty() {
+            Ok(())
+        } else {
+            Err(messages
+                .into_iter()
+                .map(|message| ValidationError {
+                    line: line_num,
+                    message,
+                })
+                .collect())
+        }
+    }
+
+    /// Check G-code words for unparsable numbers, out-of-range coordinates and bad feeds.
+    fn check_words(&self, line_words: &[Word]) -> Vec<String> {
+        let mut messages = Vec::new();
+        for word in line_words {
             if word.value.is_nan() {
-                push(format!("Invalid number for word '{}'", word.letter));
+                messages.push(format!("Invalid number for word '{}'", word.letter));
                 continue;
             }
             let range = match word.letter {
@@ -98,22 +129,17 @@ impl GCodeValidator {
             };
             if let Some((min, max)) = range {
                 if word.value < min || word.value > max {
-                    push(format!(
+                    messages.push(format!(
                         "{} {} out of range [{}, {}]",
                         word.letter, word.value, min, max
                     ));
                 }
             }
             if word.letter == 'F' && word.value <= 0.0 {
-                push(format!("Feed rate must be positive, got {}", word.value));
+                messages.push(format!("Feed rate must be positive, got {}", word.value));
             }
         }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+        messages
     }
 }
 

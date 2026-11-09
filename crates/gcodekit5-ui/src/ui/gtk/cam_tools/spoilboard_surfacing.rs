@@ -268,15 +268,12 @@ impl SpoilboardSurfacingTool {
                     as f64,
                 stepover_percent: w_gen.stepover_percent.text().parse().unwrap_or(40.0),
                 safe_z: units::parse_length(&w_gen.safe_z.text(), system).unwrap_or(5.0) as f64,
+                home_before_job: home_before,
             };
 
             let generator = SpoilboardSurfacingGenerator::new(params);
             match generator.generate() {
-                Ok(mut gcode) => {
-                    gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
+                Ok(gcode) => {
                     on_generate(gcode);
                 }
                 Err(e) => {

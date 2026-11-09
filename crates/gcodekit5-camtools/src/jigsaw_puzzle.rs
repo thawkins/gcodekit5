@@ -507,18 +507,19 @@ impl JigsawPuzzleMaker {
         gcode.push('\n');
 
         let has_z = self.params.num_axes >= 3;
-        let travel_z = crate::job_preamble::travel_z(self.params.home_before_job, JIGSAW_SAFE_Z);
+        let home = self.params.home_before_job;
         let (ox, oy) = (self.params.offset_x, self.params.offset_y);
 
-        crate::job_preamble::push_work_setup(&mut gcode, self.params.home_before_job);
+        crate::job_preamble::push_work_setup(&mut gcode, home);
         gcode.push_str(&format!(
             "; Puzzle origin (lower-left) at X{:.2} Y{:.2}\n",
             ox, oy
         ));
         if has_z {
-            gcode.push_str(&format!(
-                "G0 Z{:.2} ; Move to travel height (work coordinates)\n",
-                travel_z
+            gcode.push_str(&crate::job_preamble::travel_z_line(
+                home,
+                JIGSAW_SAFE_Z,
+                "Move to travel height",
             ));
         }
         gcode.push('\n');
@@ -588,13 +589,22 @@ impl JigsawPuzzleMaker {
             }
 
             if has_z {
-                gcode.push_str(&format!("G0 Z{:.2} ; Retract\n\n", travel_z));
+                gcode.push_str(&crate::job_preamble::travel_z_line(
+                    home,
+                    JIGSAW_SAFE_Z,
+                    "Retract",
+                ));
+                gcode.push('\n');
             }
         }
 
         gcode.push_str("M5 ; Ensure laser off\n");
         if has_z {
-            gcode.push_str(&format!("G0 Z{:.2} ; Move to travel height\n", travel_z));
+            gcode.push_str(&crate::job_preamble::travel_z_line(
+                home,
+                JIGSAW_SAFE_Z,
+                "Move to travel height",
+            ));
         }
         gcode.push_str("G0 X0 Y0 ; Return to origin\n");
         gcode.push_str("M2 ; Program end\n");

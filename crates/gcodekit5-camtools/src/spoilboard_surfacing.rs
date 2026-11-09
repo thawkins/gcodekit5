@@ -3,6 +3,11 @@
 //! Generates G-code for flattening/surfacing CNC spoilboards using a
 //! fly cutter or large end mill. Produces a raster pattern with
 //! configurable stepover, depth, and spindle speed.
+//!
+//! Homing is optional (off by default) and handled by [`crate::job_preamble`]: when it is on,
+//! only the G54 X/Y offset is cleared (the Z work offset, i.e. the spoilboard surface, is
+//! kept) and every Z travel/retract is a `G53` machine-coordinate move that never rises above
+//! the homed position.
 
 use anyhow::Result;
 
@@ -16,6 +21,8 @@ pub struct SpoilboardSurfacingParameters {
     pub cut_depth: f64,
     pub stepover_percent: f64,
     pub safe_z: f64,
+    /// Home (`$H`) and clear the G54 X/Y offset before surfacing (default `false`).
+    pub home_before_job: bool,
 }
 
 pub struct SpoilboardSurfacingGenerator {
@@ -53,16 +60,15 @@ impl SpoilboardSurfacingGenerator {
         gcode.push_str("G90 ; Absolute positioning\n");
         gcode.push_str("G17 ; XY plane selection\n\n");
 
-        gcode.push_str("; Home and set work coordinate system\n");
-        gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-        // Only X/Y are re-zeroed: the Z work offset (spoilboard surface) must be kept,
-        // otherwise Z0 would become the homed (top of travel) position and the cut depth
-        // would be measured from there.
-        gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 X/Y offset\n");
-        gcode.push_str("G54 ; Select work coordinate system 1\n");
-        gcode.push_str("G0 X0.0 Y0.0 ; Move to work origin\n");
-        gcode.push_str("G10 L20 P1 X0 Y0 ; Set current X/Y position as work zero\n");
-        gcode.push_str(&format!("G0 Z{:.3} F500 ; Move to safe height\n", p.safe_z));
+        // Only X/Y are re-zeroed when homing: the Z work offset (spoilboard surface) is kept,
+        // so the cut depth is measured from the surface, not from the homed position.
+        crate::job_preamble::push_work_setup(&mut gcode, p.home_before_job);
+        // Clear the work before any X/Y move.
+        gcode.push_str(&crate::job_preamble::travel_z_line(
+            p.home_before_job,
+            p.safe_z as f32,
+            "Move to safe height",
+        ));
 
         // Spindle start
         gcode.push_str(&format!("M3 S{:.0}\n", p.spindle_speed));
@@ -93,7 +99,11 @@ impl SpoilboardSurfacingGenerator {
             }
         }
 
-        gcode.push_str(&format!("G0 Z{:.3}\n", p.safe_z));
+        gcode.push_str(&crate::job_preamble::travel_z_line(
+            p.home_before_job,
+            p.safe_z as f32,
+            "Retract",
+        ));
 
         // Stop spindle and end program
         gcode.push_str("M5\n");

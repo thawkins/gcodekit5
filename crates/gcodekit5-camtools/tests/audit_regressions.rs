@@ -199,6 +199,7 @@ fn test_spoilboard_zero_stepover_or_spacing_errors_instead_of_hanging() {
         cut_depth: 0.5,
         stepover_percent: 0.0,
         safe_z: 5.0,
+        home_before_job: false,
     };
     assert!(SpoilboardSurfacingGenerator::new(surfacing)
         .generate()
@@ -211,6 +212,7 @@ fn test_spoilboard_zero_stepover_or_spacing_errors_instead_of_hanging() {
         feed_rate: 1000.0,
         laser_power: 100.0,
         laser_mode: "M4".to_string(),
+        home_before_job: false,
     };
     assert!(SpoilboardGridGenerator::new(grid).generate().is_err());
 }
@@ -226,6 +228,7 @@ fn test_spoilboard_surfacing_keeps_z_work_offset() {
         cut_depth: 0.5,
         stepover_percent: 50.0,
         safe_z: 5.0,
+        home_before_job: true,
     };
     let gcode = SpoilboardSurfacingGenerator::new(params)
         .generate()

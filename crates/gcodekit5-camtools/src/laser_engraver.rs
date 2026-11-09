@@ -505,8 +505,8 @@ impl BitmapImageEngraver {
         gcode.push_str("G17 ; XY plane selection\n");
         gcode.push('\n');
 
-        // The engraver never moves Z: the user's focus height is kept, and nothing is
-        // commanded above Z0 after homing.
+        // The engraver never moves Z: the user's focus height is kept, so homing cannot lead
+        // to a Z move above the homed position.
         crate::job_preamble::push_work_setup(&mut gcode, self.params.home_before_job);
         gcode.push_str(&format!(
             "; Image origin (lower-left) at X{:.2} Y{:.2}\n",
