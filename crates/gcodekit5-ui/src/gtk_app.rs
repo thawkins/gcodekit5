@@ -301,7 +301,9 @@ pub fn main() {
             Some(machine_control.clone()),
             move |gcode| {
                 editor_for_cam.set_text(&gcode);
-                stack_for_cam.set_visible_child_name("editor");
+                // The G-code editor lives inside the Machine Control page (there is no
+                // "editor" stack page, so switching to it silently did nothing).
+                stack_for_cam.set_visible_child_name("machine");
                 editor_for_cam.grab_focus();
             },
             Some(designer.clone()),
@@ -388,36 +390,9 @@ pub fn main() {
             comm.add_listener(console_listener);
         }
 
-        // Wire up console send
-        let communicator = machine_control.communicator.clone();
-        let console_clone = device_console.clone();
-
-        let send_cmd = move || {
-            let text = console_clone.command_entry.text();
-            if !text.is_empty() {
-                let mut comm = communicator.lock();
-                if comm.is_connected() {
-                    if let Err(e) = comm.send_command(&text) {
-                        console_clone.append_log(&format!("Error sending: {}\n", e));
-                    } else {
-                        console_clone.append_log(&format!("> {}\n", text));
-                        console_clone.command_entry.set_text("");
-                    }
-                } else {
-                    console_clone.append_log("Not connected\n");
-                }
-            }
-        };
-
-        let send_cmd_clone = send_cmd.clone();
-        device_console.send_btn.connect_clicked(move |_| {
-            send_cmd_clone();
-        });
-
-        let send_cmd_clone = send_cmd.clone();
-        device_console.command_entry.connect_activate(move |_| {
-            send_cmd_clone();
-        });
+        // Console send (button + Enter) is wired by MachineControlView, which shares this
+        // DeviceConsoleView; wiring it here as well registered a second, order-dependent
+        // handler for the same signals.
 
         // Connect Editor to Visualizer
         let vis_clone = visualizer.clone();
@@ -443,8 +418,12 @@ pub fn main() {
 
         // Update device info when connection changes
         glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-            let comm = communicator_for_device.lock();
+            // Don't block the GTK main thread while a streaming thread holds the port.
+            let Some(comm) = communicator_for_device.try_lock() else {
+                return glib::ControlFlow::Continue;
+            };
             let connected = comm.is_connected();
+            drop(comm);
 
             if connected {
                 // Get firmware info from device status
@@ -476,49 +455,12 @@ pub fn main() {
         // Append the StatusBar
         main_box.append(&status_bar.widget);
 
-        // Connect eStop (Ctrl-X / 0x18), same behavior as MachineControlView's E-Stop.
+        // Connect eStop (Ctrl-X / 0x18): delegate to MachineControlView so the DirectSender
+        // worker thread is stopped too (resetting only the flags let it keep streaming).
         {
-            let communicator = machine_control.communicator.clone();
-            let is_streaming = machine_control.is_streaming.clone();
-            let is_paused = machine_control.is_paused.clone();
-            let waiting_for_ack = machine_control.waiting_for_ack.clone();
-            let send_queue = machine_control.send_queue.clone();
-            let job_start_time = machine_control.job_start_time.clone();
-            let sb = status_bar.clone();
-            let estop_btn = status_bar.estop_btn.clone();
-            let device_console = device_console.clone();
-
-            estop_btn.connect_clicked(move |_| {
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(&[0x18]);
-                }
-
-                // Reset streaming state - recover from poisoned locks
-                {
-                    let mut guard = is_streaming.lock();
-                    *guard = false;
-                }
-                {
-                    let mut guard = is_paused.lock();
-                    *guard = false;
-                }
-                {
-                    let mut guard = waiting_for_ack.lock();
-                    *guard = false;
-                }
-                {
-                    let mut guard = job_start_time.lock();
-                    *guard = None;
-                }
-                {
-                    let mut guard = send_queue.lock();
-                    guard.clear();
-                }
-
-                sb.set_progress(0.0, "", "");
-
-                device_console.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
+            let machine_control_estop = machine_control.clone();
+            status_bar.estop_btn.connect_clicked(move |_| {
+                machine_control_estop.emergency_stop();
             });
         }
 
@@ -926,6 +868,32 @@ pub fn main() {
                 let app_for_quit = app.clone();
                 action.connect_activate(move |_, _| {
                     app_for_quit.quit();
+                });
+            } else if name == "machine_connect" || name == "machine_disconnect" {
+                // Toggle via the Machine Control connect button, but only in the
+                // direction the menu item names.
+                let want_connected = name == "machine_connect";
+                let mc = machine_control.clone();
+                action.connect_activate(move |_, _| {
+                    let connected = mc.communicator.lock().is_connected();
+                    if connected != want_connected && mc.connect_btn.is_sensitive() {
+                        mc.connect_btn.emit_clicked();
+                    }
+                });
+            } else if name == "machine_home" {
+                let mc = machine_control.clone();
+                action.connect_activate(move |_, _| {
+                    // Respect the button state (disabled while disconnected).
+                    if mc.home_btn.is_sensitive() {
+                        mc.home_btn.emit_clicked();
+                    }
+                });
+            } else if name == "machine_reset" {
+                let mc = machine_control.clone();
+                action.connect_activate(move |_, _| {
+                    if mc.communicator.lock().is_connected() {
+                        mc.emergency_stop();
+                    }
                 });
             } else if name == "help_docs" {
                 // Acción para abrir la ayuda principal

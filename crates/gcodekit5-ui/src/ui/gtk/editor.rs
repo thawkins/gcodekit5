@@ -562,7 +562,13 @@ impl GcodeEditor {
         label.set_text(&format!("Line {} / {}", current_line, total_lines));
     }
 
+    /// Replace the editor content with newly generated / cleared G-code.
+    ///
+    /// The content no longer corresponds to the previously opened file, so the file
+    /// association is dropped: otherwise "Save" would silently overwrite that file with
+    /// unrelated generated G-code.
     pub fn set_text(&self, text: &str) {
+        *self.current_file.borrow_mut() = None;
         self.buffer.set_text(text);
         // Move cursor to start (line 1, column 1)
         let mut start_iter = self.buffer.start_iter();
@@ -621,6 +627,7 @@ impl GcodeEditor {
     pub fn open_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
         let dialog = super::file_dialog::open_dialog(&t!("Open G-Code File"), parent.as_ref());
+        super::file_dialog::set_last_working_directory(&dialog, self.settings_controller.as_deref());
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));

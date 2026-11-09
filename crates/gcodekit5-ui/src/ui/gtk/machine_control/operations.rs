@@ -119,6 +119,12 @@ impl MachineControlView {
             let _ = comm.send(&[0x18]);
         }
 
+        // Also halt the DirectSender worker thread, otherwise it keeps streaming the
+        // rest of the job into the controller right after the soft reset.
+        if let Some(sender) = self.direct_sender.lock().as_ref() {
+            sender.stop();
+        }
+
         *self.is_streaming.lock() = false;
         *self.is_paused.lock() = false;
         *self.waiting_for_ack.lock() = false;
@@ -128,6 +134,11 @@ impl MachineControlView {
         // Reset progress
         if let Some(sb) = self.status_bar.as_ref() {
             sb.set_progress(0.0, "", "");
+        }
+
+        // Allow a new job to be sent once the controller is reset.
+        if self.communicator.lock().is_connected() {
+            self.send_btn.set_sensitive(true);
         }
 
         // Match StatusBar eStop behavior

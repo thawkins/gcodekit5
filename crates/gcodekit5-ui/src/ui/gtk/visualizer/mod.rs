@@ -2876,8 +2876,17 @@ show_stock_removal.connect_toggled(move |checkbox| {
         // ============================================================
         let is_2d = self.is_machine_2d();
 
-        // Ocultar/mostrar el checkbox de simulación
-        self.show_stock_removal.set_visible(!is_2d);
+        // Ocultar/mostrar el checkbox de simulación (respect the experimental gate:
+        // previously any 3D G-code load re-showed it even with the feature disabled).
+        let stock_removal_enabled = self
+            .settings_controller
+            .persistence
+            .borrow()
+            .config()
+            .ui
+            .enable_stock_removal_3d;
+        self.show_stock_removal
+            .set_visible(!is_2d && stock_removal_enabled);
         if is_2d {
             self.show_stock_removal.set_active(false);
         }

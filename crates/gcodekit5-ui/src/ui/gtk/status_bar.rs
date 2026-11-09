@@ -163,8 +163,14 @@ impl StatusBar {
         }
         {
             let cancel_action = cancel_action.clone();
-            cancel_btn.connect_clicked(move |_| {
-                if let Some(cb) = cancel_action.borrow().as_ref() {
+            cancel_btn.connect_clicked(move |btn| {
+                // Take the callback out before running it: callbacks commonly end up calling
+                // `set_cancel_action(None)` (e.g. via a toggled handler), which would panic
+                // with "already borrowed" if the RefCell were still borrowed here.
+                // Cancelling is one-shot, so the action is not restored afterwards.
+                let cb = cancel_action.borrow_mut().take();
+                btn.set_visible(false);
+                if let Some(cb) = cb {
                     cb();
                 }
             });
@@ -237,12 +243,16 @@ impl StatusBar {
         self.state_label.remove_css_class("state-hold");
         self.state_label.remove_css_class("state-idle");
 
-        match state {
-            "ALARM" => self.state_label.add_css_class("state-alarm"),
-            "Run" => self.state_label.add_css_class("state-run"),
-            s if s.starts_with("Hold") => self.state_label.add_css_class("state-hold"),
-            "Idle" | "IDLE" => self.state_label.add_css_class("state-idle"),
-            _ => {}
+        // GRBL reports e.g. "Alarm", "Hold:0", "Run", "Idle" (case varies by firmware).
+        let low = state.to_ascii_lowercase();
+        if low.starts_with("alarm") {
+            self.state_label.add_css_class("state-alarm");
+        } else if low.starts_with("run") {
+            self.state_label.add_css_class("state-run");
+        } else if low.starts_with("hold") {
+            self.state_label.add_css_class("state-hold");
+        } else if low.starts_with("idle") {
+            self.state_label.add_css_class("state-idle");
         }
     }
 
