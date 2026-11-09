@@ -67,8 +67,8 @@ impl DrillPressGenerator {
         // Initialization
         gcode.push_str("G21 ; Set units to millimeters\n");
         gcode.push_str("G90 ; Absolute positioning\n");
-        gcode.push_str(&format!("M3 S{:.0} ; Start spindle\n", p.spindle_speed));
         gcode.push_str(&format!("G0 Z{:.3} ; Move to safe height\n", p.safe_z));
+        gcode.push_str(&format!("M3 S{:.0} ; Start spindle\n", p.spindle_speed));
         gcode.push_str(&format!(
             "G0 X{:.3} Y{:.3} ; Move to hole center\n",
             p.x, p.y

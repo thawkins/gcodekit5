@@ -31,6 +31,14 @@ impl SpoilboardSurfacingGenerator {
         let mut gcode = String::new();
         let p = &self.params;
 
+        let step_dist = p.tool_diameter * (p.stepover_percent / 100.0);
+        if !(step_dist.is_finite() && step_dist > 0.0) {
+            anyhow::bail!("Tool diameter and stepover must be positive");
+        }
+        if !(p.width > 0.0 && p.height >= 0.0) {
+            anyhow::bail!("Surfacing width must be positive and height non-negative");
+        }
+
         // Header
         gcode.push_str("; Spoilboard Surfacing Toolpath\n");
         gcode.push_str(&format!(
@@ -47,10 +55,13 @@ impl SpoilboardSurfacingGenerator {
 
         gcode.push_str("; Home and set work coordinate system\n");
         gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-        gcode.push_str("G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset\n");
+        // Only X/Y are re-zeroed: the Z work offset (spoilboard surface) must be kept,
+        // otherwise Z0 would become the homed (top of travel) position and the cut depth
+        // would be measured from there.
+        gcode.push_str("G10 L2 P1 X0 Y0 ; Clear G54 X/Y offset\n");
         gcode.push_str("G54 ; Select work coordinate system 1\n");
         gcode.push_str("G0 X0.0 Y0.0 ; Move to work origin\n");
-        gcode.push_str("G10 L20 P1 X0 Y0 Z0 ; Set current position as work zero\n");
+        gcode.push_str("G10 L20 P1 X0 Y0 ; Set current X/Y position as work zero\n");
         gcode.push_str(&format!("G0 Z{:.3} F500 ; Move to safe height\n", p.safe_z));
 
         // Spindle start
@@ -62,8 +73,6 @@ impl SpoilboardSurfacingGenerator {
         // Plunge to Cut Depth
         let target_z = -p.cut_depth.abs();
         gcode.push_str(&format!("G1 Z{:.3} F{:.1}\n", target_z, p.feed_rate / 2.0));
-
-        let step_dist = p.tool_diameter * (p.stepover_percent / 100.0);
 
         let mut current_y = 0.0;
         let mut going_right = true;

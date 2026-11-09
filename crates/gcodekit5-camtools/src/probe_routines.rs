@@ -151,15 +151,7 @@ impl ProbeRoutineEngine {
         // If backoff is specified, do slow re-probe for accuracy
         if *backoff > 0.0 {
             gcode.push_str("; Backoff and slow re-probe\n");
-            gcode.push_str(&format!(
-                "G0 Z[PRB_Z+{:.3}] ; Back off by {:.2} mm\n",
-                backoff, backoff
-            ));
-            gcode.push_str(&format!(
-                "G38.2 Z[PRB_Z-{:.3}] F{:.1} ; Slow re-probe\n",
-                backoff + 0.5,
-                slow_feed
-            ));
+            gcode.push_str(&backoff_and_reprobe("Z", -1.0, *backoff, *slow_feed));
         }
 
         // Final retract
@@ -277,38 +269,12 @@ impl ProbeRoutineEngine {
         // Slow re-probe if backoff specified
         if *backoff > 0.0 {
             gcode.push_str("; Backoff and slow re-probe\n");
-            match axis {
-                Axis::X => gcode.push_str(&format!(
-                    "G0 X[PRB_X{}{:.3}]\n",
-                    if dir_multiplier > 0.0 { "-" } else { "+" },
-                    backoff
-                )),
-                Axis::Y => gcode.push_str(&format!(
-                    "G0 Y[PRB_Y{}{:.3}]\n",
-                    if dir_multiplier > 0.0 { "-" } else { "+" },
-                    backoff
-                )),
-                Axis::Z => gcode.push_str(&format!("G0 Z[PRB_Z+{:.3}]\n", backoff)),
-            }
-
-            match axis {
-                Axis::X => gcode.push_str(&format!(
-                    "G38.2 X[PRB_X{}{:.3}] F{:.1} ; Slow re-probe\n",
-                    if dir_multiplier > 0.0 { "+" } else { "-" },
-                    0.5,
-                    slow_feed
-                )),
-                Axis::Y => gcode.push_str(&format!(
-                    "G38.2 Y[PRB_Y{}{:.3}] F{:.1} ; Slow re-probe\n",
-                    if dir_multiplier > 0.0 { "+" } else { "-" },
-                    0.5,
-                    slow_feed
-                )),
-                Axis::Z => gcode.push_str(&format!(
-                    "G38.2 Z[PRB_Z-0.5] F{:.1} ; Slow re-probe\n",
-                    slow_feed
-                )),
-            }
+            gcode.push_str(&backoff_and_reprobe(
+                axis_name,
+                dir_multiplier,
+                *backoff,
+                *slow_feed,
+            ));
         }
 
         // Retract
@@ -402,25 +368,12 @@ impl ProbeRoutineEngine {
         ));
 
         if *backoff > 0.0 {
-            gcode.push_str(&format!(
-                "G0 X[PRB_X{}{:.3}]\n",
-                if x_dir > 0.0 { "-" } else { "+" },
-                backoff
-            ));
-            gcode.push_str(&format!(
-                "G38.2 X[PRB_X{}{:.3}] F{:.1}\n",
-                if x_dir > 0.0 { "+" } else { "-" },
-                0.5,
-                slow_feed
-            ));
+            gcode.push_str(&backoff_and_reprobe("X", x_dir, *backoff, *slow_feed));
         }
 
-        // Move to probe Y edge (retract first)
-        gcode.push_str(&format!("G0 Z{:.3} ; Retract\n", safe_height));
-        gcode.push_str(&format!(
-            "G0 Y{:.3} ; Move to Y probe position\n",
-            current_pos.y + (*probe_distance * y_dir) as f32
-        ));
+        // Return to the start X so the Y probe starts from the original position.
+        // (Moving to the Y probe target here would make the Y probe a zero-length move.)
+        gcode.push_str(&format!("G0 X{:.3} ; Return to start X\n", current_pos.x));
 
         // Probe Y edge
         gcode.push_str("; Probe Y edge\n");
@@ -431,17 +384,7 @@ impl ProbeRoutineEngine {
         ));
 
         if *backoff > 0.0 {
-            gcode.push_str(&format!(
-                "G0 Y[PRB_Y{}{:.3}]\n",
-                if y_dir > 0.0 { "-" } else { "+" },
-                backoff
-            ));
-            gcode.push_str(&format!(
-                "G38.2 Y[PRB_Y{}{:.3}] F{:.1}\n",
-                if y_dir > 0.0 { "+" } else { "-" },
-                0.5,
-                slow_feed
-            ));
+            gcode.push_str(&backoff_and_reprobe("Y", y_dir, *backoff, *slow_feed));
         }
 
         // Final retract
@@ -581,7 +524,7 @@ impl ProbeRoutineEngine {
             "; Approximate center: X{:.3} Y{:.3}\n",
             current_pos.x, current_pos.y
         ));
-        gcode.push_str("; Probing 4 points from outside: left, right, front, back\n");
+        gcode.push_str("; Probing 4 points from outside toward center: left, right, front, back\n");
         gcode.push('\n');
 
         // Move to safe height
@@ -606,24 +549,15 @@ impl ProbeRoutineEngine {
             ));
 
             if *name == "left" || *name == "right" {
-                let target_x = if *name == "left" {
-                    current_pos.x - probe_offset * 2.0
-                } else {
-                    current_pos.x + probe_offset * 2.0
-                };
+                // Start outside the boss and probe inward toward the approximate center.
                 gcode.push_str(&format!(
-                    "G38.2 X{:.3} F{:.1} ; Probe outward\n",
-                    target_x, fast_feed
+                    "G38.2 X{:.3} F{:.1} ; Probe toward center\n",
+                    current_pos.x, fast_feed
                 ));
             } else {
-                let target_y = if *name == "front" {
-                    current_pos.y - probe_offset * 2.0
-                } else {
-                    current_pos.y + probe_offset * 2.0
-                };
                 gcode.push_str(&format!(
-                    "G38.2 Y{:.3} F{:.1} ; Probe outward\n",
-                    target_y, fast_feed
+                    "G38.2 Y{:.3} F{:.1} ; Probe toward center\n",
+                    current_pos.y, fast_feed
                 ));
             }
         }
@@ -768,7 +702,7 @@ impl ProbeRoutineEngine {
         // With backoff: X fast, X slow, Y fast, Y slow (4 triggers)
         // Without backoff: X fast, Y fast (2 triggers)
 
-        let x_idx = if triggers.len() >= 2 { 1 } else { 0 }; // Last X probe (slow if available)
+        let x_idx = if triggers.len() >= 4 { 1 } else { 0 }; // Last X probe (slow if available)
         let y_idx = if triggers.len() >= 4 {
             3 // Last Y probe (slow)
         } else if triggers.len() >= 2 {
@@ -851,6 +785,39 @@ impl ProbeRoutineEngine {
             tool_length,
         ))
     }
+}
+
+/// Build a backoff + slow re-probe sequence using incremental (G91) moves.
+///
+/// GRBL does not support expressions or probe variables (e.g. `[PRB_Z+2]`), so the
+/// backoff is expressed relative to the position where the fast probe stopped.
+///
+/// # Arguments
+/// * `axis` - Axis letter ("X", "Y" or "Z")
+/// * `probe_dir` - Direction of the original probe (+1.0 or -1.0)
+/// * `backoff` - Distance to back off from the trigger point (mm)
+/// * `slow_feed` - Feed rate for the slow re-probe (mm/min)
+///
+/// # Returns
+/// G-code lines that back off, re-probe slowly, and restore absolute mode.
+fn backoff_and_reprobe(axis: &str, probe_dir: f64, backoff: f64, slow_feed: f64) -> String {
+    let dir = if probe_dir >= 0.0 { 1.0 } else { -1.0 };
+    let mut out = String::new();
+    out.push_str("G91 ; Incremental moves for backoff\n");
+    out.push_str(&format!(
+        "G0 {}{:.3} ; Back off by {:.2} mm\n",
+        axis,
+        -dir * backoff,
+        backoff
+    ));
+    out.push_str(&format!(
+        "G38.2 {}{:.3} F{:.1} ; Slow re-probe\n",
+        axis,
+        dir * (backoff + 0.5),
+        slow_feed
+    ));
+    out.push_str("G90 ; Restore absolute moves\n");
+    out
 }
 
 /// Default parameters for probe routines.

@@ -298,14 +298,20 @@ impl SpeedsFeedsCalculator {
             input.tool.diameter * input.operation.radial_engagement_percent() / 100.0
         });
 
-        let mrr = Self::calculate_mrr(feed_rate, radial_engagement, input.depth_of_cut);
-        let power_kw =
-            Self::estimate_power(input, feed_rate, radial_engagement, input.depth_of_cut);
-        let deflection = Self::estimate_deflection(input, power_kw);
-
         // 8. Apply Machine Limits and Generate Warnings
         let (final_rpm, final_feed_rate, clamped_rpm, clamped_feed) =
             Self::apply_machine_limits(adjusted_rpm, feed_rate, input, &mut warnings);
+
+        // Derived values are based on the speeds that will actually be used.
+        let mrr = Self::calculate_mrr(final_feed_rate, radial_engagement, input.depth_of_cut);
+        let power_kw = Self::estimate_power(
+            input,
+            final_rpm as f32,
+            final_feed_rate,
+            radial_engagement,
+            input.depth_of_cut,
+        );
+        let deflection = Self::estimate_deflection(input, final_rpm as f32, power_kw);
 
         // 9. Generate Sources String
         let source = source_parts.join(" + ");
@@ -443,13 +449,13 @@ impl SpeedsFeedsCalculator {
 
             // Priority 3: From feed rate range
             let avg_feed = (params.feed_rate_range.0 + params.feed_rate_range.1) / 2.0;
-            let load = avg_feed / (rpm * input.tool.flutes as f32);
+            let load = avg_feed / (rpm.max(1.0) * input.tool.flutes.max(1) as f32);
             return (load, "Estimated from Feed Range".to_string());
         }
 
         // Fallback: From tool defaults
-        let load =
-            input.tool.params.feed_rate / (input.tool.params.rpm as f32 * input.tool.flutes as f32);
+        let load = input.tool.params.feed_rate
+            / (input.tool.params.rpm.max(1) as f32 * input.tool.flutes.max(1) as f32);
         (load.max(0.01), "Tool Defaults".to_string())
     }
 
@@ -460,8 +466,11 @@ impl SpeedsFeedsCalculator {
         // Geometry adjustments
         adjusted *= GeometryAdjustments::helix_factor(&input.tool.geometry);
 
-        // Radial engagement adjustment (chip thinning)
-        let radial_pct = input.operation.radial_engagement_percent();
+        // Radial engagement adjustment (chip thinning), from the actual width of cut if given
+        let radial_pct = match input.width_of_cut {
+            Some(woc) if input.tool.diameter > 0.0 => woc / input.tool.diameter * 100.0,
+            _ => input.operation.radial_engagement_percent(),
+        };
         adjusted *= GeometryAdjustments::radial_engagement_factor(radial_pct);
 
         // Axial engagement adjustment
@@ -494,6 +503,7 @@ impl SpeedsFeedsCalculator {
     /// Estimate power requirement (kW)
     fn estimate_power(
         input: &CalculationInput,
+        rpm: f32,
         feed_rate: f32,
         width_of_cut: f32,
         depth_of_cut: f32,
@@ -520,15 +530,14 @@ impl SpeedsFeedsCalculator {
         // Chip cross-sectional area (mm²)
         // feed_per_tooth (mm) = feed_rate (mm/min) / (rpm × flutes)
         // chip_area = depth_of_cut × feed_per_tooth
-        let feed_per_tooth =
-            feed_rate / (input.tool.params.rpm.max(1) as f32 * input.tool.flutes as f32);
+        let feed_per_tooth = feed_rate / (rpm.max(1.0) * input.tool.flutes.max(1) as f32);
         let chip_area = depth_of_cut * feed_per_tooth;
 
         // Cutting force (Newtons) = Kc (MPa = N/mm²) × Area (mm²)
         let cutting_force = kc * chip_area * (width_of_cut / input.tool.diameter).max(0.1);
 
         // Cutting speed (m/min) = π × diameter(mm) × rpm / 1000
-        let cutting_speed = (PI * input.tool.diameter * input.tool.params.rpm as f32) / 1000.0;
+        let cutting_speed = (PI * input.tool.diameter * rpm) / 1000.0;
 
         // Power at tool tip (kW) = (Force(N) × Speed(m/min)) / 60000
         let power_at_tool = (cutting_force * cutting_speed) / 60000.0;
@@ -537,7 +546,7 @@ impl SpeedsFeedsCalculator {
         power_at_tool / 0.85 // Account for spindle efficiency
     }
     /// Estimate tool deflection (mm)
-    fn estimate_deflection(input: &CalculationInput, power_kw: f32) -> f32 {
+    fn estimate_deflection(input: &CalculationInput, rpm: f32, power_kw: f32) -> f32 {
         // Deflection formula: δ = (F * L³) / (3 * E * I)
         // Returns deflection in millimeters (mm)
         //
@@ -550,7 +559,7 @@ impl SpeedsFeedsCalculator {
         // Estimate cutting force from power and RPM
         // Power (W) = Torque (Nm) * Angular Velocity (rad/s)
         // Torque = Power / (2π * RPM / 60)
-        let rpm = input.tool.params.rpm.max(1) as f32;
+        let rpm = rpm.max(1.0);
         let torque_nm = (power_kw * 1000.0) / (2.0 * PI * rpm / 60.0);
 
         // Force at tool tip = Torque / Radius
@@ -641,6 +650,12 @@ impl SpeedsFeedsCalculator {
                 }
                 final_rpm = tool_max_rpm;
             }
+        }
+
+        // Keep the chip load constant when the spindle speed was changed by a limit:
+        // feed = rpm * chip_load * flutes, so the feed scales with the final RPM.
+        if rpm > 0.0 && (final_rpm as f32 - rpm).abs() >= 1.0 {
+            final_feed = feed_rate * (final_rpm as f32 / rpm);
         }
 
         // Feed rate limits
