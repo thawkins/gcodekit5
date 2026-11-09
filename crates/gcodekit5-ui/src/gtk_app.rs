@@ -34,6 +34,8 @@ use std::rc::Rc;
 use tracing::{debug, info};
 
 pub fn main() {
+    crate::glib_log_filter::install();
+
     let app = Application::builder()
         .application_id("com.gcodekit5.app")
         .build();
