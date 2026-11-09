@@ -4,6 +4,10 @@
 //! including connection management, command execution, and status polling.
 
 use crate::communication::{ConnectionParams, NoOpCommunicator};
+use crate::firmware::grbl::override_sequencer::{
+    is_valid_override_target, next_override_step, OverrideStepCodes, FEED_OVERRIDE_CODES,
+    MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+};
 use crate::firmware::grbl::status_parser::StatusParser;
 use crate::firmware::grbl::{GrblCommunicator, GrblCommunicatorConfig};
 use async_trait::async_trait;
@@ -17,6 +21,10 @@ const DEFAULT_PROBE_TIMEOUT_MS: u64 = 30_000;
 const PROBE_FAILSAFE_RETRACT_MM: f64 = 5.0;
 /// Distance used for a "continuous" jog; the move is stopped with jog-cancel (0x85).
 const CONTINUOUS_JOG_DISTANCE_MM: f64 = 1000.0;
+/// How long to wait for a status report to confirm one override step.
+const OVERRIDE_STEP_TIMEOUT: Duration = Duration::from_secs(2);
+/// Upper bound on override steps for one request (a reset plus 9 x 10% and 9 x 1% is 19).
+const MAX_OVERRIDE_STEPS: usize = 32;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
@@ -24,25 +32,6 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use uuid::Uuid;
-
-/// Build the GRBL real-time byte sequence that moves a feed/spindle override
-/// from 100% to `percentage`.
-///
-/// `codes` is `[reset_100, plus_10, minus_10, plus_1, minus_1]`.
-fn override_step_bytes(percentage: u16, codes: [u8; 5]) -> Vec<u8> {
-    let [reset, plus10, minus10, plus1, minus1] = codes;
-    let mut bytes = vec![reset];
-    let delta = i32::from(percentage) - 100;
-    let (step10, step1) = if delta >= 0 {
-        (plus10, plus1)
-    } else {
-        (minus10, minus1)
-    };
-    let magnitude = delta.unsigned_abs();
-    bytes.extend(std::iter::repeat_n(step10, (magnitude / 10) as usize));
-    bytes.extend(std::iter::repeat_n(step1, (magnitude % 10) as usize));
-    bytes
-}
 
 /// GRBL Controller state management
 #[derive(Debug, Clone)]
@@ -109,6 +98,57 @@ pub struct GrblController {
 }
 
 impl GrblController {
+    /// Moves a feed or spindle override to `target` one confirmed step at a time.
+    ///
+    /// GRBL records realtime override bytes as pending flags, so several identical
+    /// bytes sent back-to-back can collapse into a single adjustment. This method
+    /// sends one step, then waits until the controller's `Ov:` status report shows
+    /// the value has changed before choosing the next step from the reported value.
+    ///
+    /// # Arguments
+    /// * `name` - Override name used in error messages ("Feed" or "Spindle").
+    /// * `target` - Desired override percentage (10–200).
+    /// * `codes` - The realtime bytes for this override.
+    /// * `read` - Selects this override's reported value from the override state.
+    ///
+    /// # Errors
+    /// Returns an error if `target` is out of range, a byte cannot be sent, or the
+    /// controller does not report a change within `OVERRIDE_STEP_TIMEOUT`.
+    async fn sequence_override(
+        &mut self,
+        name: &str,
+        target: u16,
+        codes: OverrideStepCodes,
+        read: fn(&OverrideState) -> u16,
+    ) -> anyhow::Result<()> {
+        if !is_valid_override_target(target) {
+            return Err(anyhow::anyhow!(
+                "{name} override must be {MIN_OVERRIDE_PERCENT}-{MAX_OVERRIDE_PERCENT}%"
+            ));
+        }
+
+        for _ in 0..MAX_OVERRIDE_STEPS {
+            let current = read(&self.state.read().override_state);
+            let Some(byte) = next_override_step(current, target, codes) else {
+                return Ok(());
+            };
+            self.communicator.send_realtime_byte(byte)?;
+
+            let deadline = Instant::now() + OVERRIDE_STEP_TIMEOUT;
+            while read(&self.state.read().override_state) == current {
+                if Instant::now() >= deadline {
+                    return Err(anyhow::anyhow!(
+                        "{name} override: controller did not report a change from {current}% \
+                         within {OVERRIDE_STEP_TIMEOUT:?}"
+                    ));
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }
+
+        Err(anyhow::anyhow!("{name} override did not reach {target}%"))
+    }
+
     /// Create a new GRBL controller
     pub fn new(connection_params: ConnectionParams, name: Option<String>) -> anyhow::Result<Self> {
         let communicator = Arc::new(GrblCommunicator::new(
@@ -290,6 +330,16 @@ impl GrblController {
                                         state_guard.work_position.x = wpos.x as f32;
                                         state_guard.work_position.y = wpos.y as f32;
                                         state_guard.work_position.z = wpos.z as f32;
+                                    }
+
+                                    // The override state is only ever taken from the
+                                    // controller's own `Ov:` report, never from what was
+                                    // requested, so it reflects what GRBL actually applied.
+                                    if let Some(ov) = full_status.overrides {
+                                        let o = &mut state_guard.override_state;
+                                        o.feed_override = ov.feed;
+                                        o.rapid_override = u8::try_from(ov.rapid).unwrap_or(100);
+                                        o.spindle_override = ov.spindle;
                                     }
 
                                     if let Some(machine_state) = full_status.machine_state {
@@ -600,18 +650,8 @@ impl ControllerTrait for GrblController {
     }
 
     async fn set_feed_override(&mut self, percentage: u16) -> anyhow::Result<()> {
-        if percentage > 200 {
-            return Err(anyhow::anyhow!("Feed override must be 0-200%"));
-        }
-
-        // GRBL has no "set to N%" command: reset to 100% (0x90) then step with
-        // +10 (0x91) / -10 (0x92) / +1 (0x93) / -1 (0x94).
-        for byte in override_step_bytes(percentage, [0x90, 0x91, 0x92, 0x93, 0x94]) {
-            self.communicator.send_realtime_byte(byte)?;
-        }
-        self.state.write().override_state.feed_override = percentage;
-
-        Ok(())
+        self.sequence_override("Feed", percentage, FEED_OVERRIDE_CODES, |o| o.feed_override)
+            .await
     }
 
     async fn set_rapid_override(&mut self, percentage: u8) -> anyhow::Result<()> {
@@ -630,16 +670,10 @@ impl ControllerTrait for GrblController {
     }
 
     async fn set_spindle_override(&mut self, percentage: u16) -> anyhow::Result<()> {
-        if percentage > 200 {
-            return Err(anyhow::anyhow!("Spindle override must be 0-200%"));
-        }
-
-        // Reset to 100% (0x99) then step with +10 (0x9A) / -10 (0x9B) / +1 (0x9C) / -1 (0x9D).
-        for byte in override_step_bytes(percentage, [0x99, 0x9A, 0x9B, 0x9C, 0x9D]) {
-            self.communicator.send_realtime_byte(byte)?;
-        }
-        self.state.write().override_state.spindle_override = percentage;
-        Ok(())
+        self.sequence_override("Spindle", percentage, SPINDLE_OVERRIDE_CODES, |o| {
+            o.spindle_override
+        })
+        .await
     }
 
     async fn set_work_zero(&mut self) -> anyhow::Result<()> {

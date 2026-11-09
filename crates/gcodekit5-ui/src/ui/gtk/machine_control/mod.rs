@@ -20,7 +20,7 @@ use gtk4::prelude::*;
 use gtk4::{
     accessible::Property as AccessibleProperty, pango::EllipsizeMode, Align, Box, Button,
     CheckButton, ComboBoxText, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned,
-    PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, ToggleButton,
+    PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
 };
 use std::cell::Cell;
 
@@ -88,6 +88,10 @@ pub struct MachineControlView {
     pub feed_reset: Button,
     pub feed_inc1: Button,
     pub feed_inc10: Button,
+    /// Target feed override (%) applied by `feed_set`.
+    pub feed_target: SpinButton,
+    /// Sets the feed override to exactly `feed_target`, one confirmed step at a time.
+    pub feed_set: Button,
     pub spindle_value: Label,
     pub spindle_dec10: Button,
     pub spindle_dec1: Button,
@@ -95,6 +99,10 @@ pub struct MachineControlView {
     pub spindle_stop: Button,
     pub spindle_inc1: Button,
     pub spindle_inc10: Button,
+    /// Target spindle override (%) applied by `spindle_set`.
+    pub spindle_target: SpinButton,
+    /// Sets the spindle override to exactly `spindle_target`, one confirmed step at a time.
+    pub spindle_set: Button,
 
     pub x_dro: Label,
     pub y_dro: Label,
@@ -528,11 +536,18 @@ impl MachineControlView {
         let feed_inc10 = Button::with_label("+10");
         feed_inc10.set_tooltip_text(Some(&t!("Increase feed rate by 10%")));
 
+        let (feed_target, feed_set) = Self::override_target_widgets(
+            &t!("Target feed override (%)"),
+            &t!("Set the feed override to exactly the target percentage"),
+        );
+
         feed_controls.append(&feed_dec10);
         feed_controls.append(&feed_dec1);
         feed_controls.append(&feed_reset);
         feed_controls.append(&feed_inc1);
         feed_controls.append(&feed_inc10);
+        feed_controls.append(&feed_target);
+        feed_controls.append(&feed_set);
 
         feed_row.append(&feed_label);
         feed_row.append(&feed_value);
@@ -570,6 +585,13 @@ impl MachineControlView {
         spindle_controls.append(&spindle_stop);
         spindle_controls.append(&spindle_inc1);
         spindle_controls.append(&spindle_inc10);
+
+        let (spindle_target, spindle_set) = Self::override_target_widgets(
+            &t!("Target spindle override (%)"),
+            &t!("Set the spindle override to exactly the target percentage"),
+        );
+        spindle_controls.append(&spindle_target);
+        spindle_controls.append(&spindle_set);
 
         spindle_row.append(&spindle_label);
         spindle_row.append(&spindle_value);
@@ -1197,6 +1219,8 @@ impl MachineControlView {
             feed_reset,
             feed_inc1,
             feed_inc10,
+            feed_target,
+            feed_set,
             spindle_value,
             spindle_dec10,
             spindle_dec1,
@@ -1204,6 +1228,8 @@ impl MachineControlView {
             spindle_stop,
             spindle_inc1,
             spindle_inc10,
+            spindle_target,
+            spindle_set,
 
             x_dro,
             y_dro,

@@ -1093,8 +1093,9 @@ Available as real-time commands (executed immediately):
 #### 4.4.4 Overrides
 
 **Feed Rate Override**:
-- Range: 0-200% (configurable limits)
-- 10% increments via buttons
+- Range: 10-200% (GRBL limits)
+- ±10% and ±1% increments via buttons
+- Exact target: a percentage field and "Set %" button move the override one realtime step at a time, waiting for the controller's `Ov:` status report to confirm each step before sending the next (GRBL can merge identical realtime bytes sent back-to-back). Needs live status reports, so it is refused while a job is streaming; the ± buttons still work then.
 - Continuous via slider
 - Applied to non-rapid feed movements
 - Real-time without stopping
@@ -1106,8 +1107,9 @@ Available as real-time commands (executed immediately):
 - 100% is no override
 
 **Spindle Override**:
-- Range: 0-200% (configurable limits)
-- 10% increments via buttons
+- Range: 10-200% (GRBL limits)
+- ±10% and ±1% increments via buttons
+- Exact target: percentage field and "Set %" button, sequenced against `Ov:` reports as for feed
 - Continuous via slider
 - Real-time PWM/relay adjustment
 - May not work with all controller firmware
@@ -1524,6 +1526,7 @@ G54                ; Back to work coordinates
 - Increment buttons: -10%, -5%, +5%, +10%
 - Reset to 100% button
 - Current percentage display
+- Target percentage field with "Set %" button (confirmed step-by-step against `Ov:` reports)
 
 **Rapid Traverse Override**:
 - Preset buttons: 25%, 50%, 100% (125% optional)
@@ -1534,6 +1537,7 @@ G54                ; Back to work coordinates
 - Increment buttons: -10%, -5%, +5%, +10%
 - Reset to 100% button
 - Current percentage display
+- Target percentage field with "Set %" button (confirmed step-by-step against `Ov:` reports)
 
 #### 5.2.9 Coordinate System Panel
 **Work Coordinate System**:
