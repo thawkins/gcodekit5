@@ -12,22 +12,52 @@ mod gl_loader;
 
 use crate::t;
 use crate::ui::gtk::common::spacing;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_visualizer::visualizer::GCodeCommand;
 use gcodekit5_visualizer::{Camera3D, Visualizer};
 //use crate::ui::gtk::osd_format::format_zoom_center_cursor;
+use crate::ui::gtk::osd_format::format_length_with_unit;
 use crate::ui::gtk::shaders::StockRemovalShaderProgram;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::DesignerState;
 use gcodekit5_settings::controller::SettingsController;
 use gcodekit5_settings::manager::SettingsManager;
-use gcodekit5_visualizer::visualizer::{generate_surface_mesh, StockSimulator3D};
+use gcodekit5_visualizer::visualizer::{StockSimulator3D, StockZeroReference};
 use glam::Vec3;
 
 const STOCK_REMOVAL_RESOLUTION: f32 = 0.19; // Resolución cambiada de 0.25 a 0.19
+
+/// Colour (RGBA) of the Run-preview tool marker; the live machine marker is red.
+const PREVIEW_MARKER_COLOR: [f32; 4] = [0.0, 0.85, 1.0, 0.55];
+
+/// Quiet period after the last edit before the G-code is re-parsed.
+const GCODE_DEBOUNCE_MS: u64 = 300;
+
+/// What `set_gcode` does with the 3D view after parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewReset {
+    /// Keep the current view, camera and zoom (edits to the same program).
+    Keep,
+    /// Switch to the 3D view and fit the camera to the toolpath (a newly loaded program).
+    Fit,
+}
+
+/// Debounce state for `GcodeVisualizer::set_gcode`.
+#[derive(Default)]
+struct GcodeDebounce {
+    /// Text waiting to be parsed once the debounce period expires.
+    pending: Option<String>,
+    /// Pending debounce timer, if any.
+    source: Option<gtk4::glib::SourceId>,
+    /// The last text that was actually parsed and shown.
+    last_applied: String,
+    /// Whether the pending update must fit the view even if the text looks like an edit.
+    force_fit: bool,
+}
 
 #[derive(Clone)]
 pub(crate) struct StockRemovalVisualization;
@@ -42,7 +72,7 @@ pub enum RunPreviewResult {
 use crate::ui::gtk::nav_cube::NavCube;
 use crate::ui::gtk::renderer_3d::{
     generate_axis_data, generate_bounds_data, generate_grid_data, generate_tool_marker_data,
-    generate_vertex_data, RenderBuffers,
+    generate_tool_marker_data_with_color, generate_vertex_data, RenderBuffers,
 };
 use crate::ui::gtk::shaders::ShaderProgram;
 use glow::HasContext;
@@ -55,16 +85,16 @@ use gl_loader::load_gl_func;
 use gcodekit5_core::{shared, shared_none, thread_safe_none, Shared, SharedOption};
 use gtk4::prelude::{BoxExt, ButtonExt, CheckButtonExt, WidgetExt};
 use gtk4::{
-    accessible::Property as AccessibleProperty, Adjustment, Box, Button, CheckButton, ComboBoxText,
-    DrawingArea, Entry, EventControllerScroll, EventControllerScrollFlags, Expander, GLArea,
-    GestureDrag, Grid, Image, Label, ListBox, ListBoxRow, Orientation, Overlay, Paned, Revealer,
-    Scrollbar, SelectionMode, Spinner, Stack,
+    accessible::Property as AccessibleProperty, Adjustment, Box, Button, CheckButton, DrawingArea,
+    Entry, EventControllerScroll, EventControllerScrollFlags, Expander, GLArea, GestureDrag, Grid,
+    Image, Label, ListBox, ListBoxRow, Orientation, Overlay, Paned, Revealer, Scrollbar,
+    SelectionMode, Spinner, Stack,
 };
 use std::rc::Rc;
 use std::sync::Arc;
 
 // Render cache for expensive computations
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(crate) struct RenderCache {
     pub(crate) cutting_bounds: Option<(f32, f32, f32, f32, f32, f32)>,
     pub(crate) _rapid_lines: usize,
@@ -77,20 +107,14 @@ pub(crate) struct RendererState {
     grid_buffers: RenderBuffers,
     axis_buffers: RenderBuffers,
     tool_buffers: RenderBuffers,
+    /// Marker for the Run-preview position (distinct colour from the live tool).
+    preview_tool_buffers: Option<RenderBuffers>,
     bounds_buffers: RenderBuffers,
     stock_removal_shader: Option<StockRemovalShaderProgram>,
     stock_removal_buffers: Option<RenderBuffers>,
 }
 
-impl Default for RenderCache {
-    fn default() -> Self {
-        Self {
-            cutting_bounds: None,
-            _rapid_lines: 0,
-        }
-    }
-}
-
+#[derive(Clone)]
 pub struct GcodeVisualizer {
     pub widget: Paned,
     pub(crate) stack: Stack,
@@ -134,11 +158,23 @@ pub struct GcodeVisualizer {
     stock_width_entry: Entry,
     stock_height_entry: Entry,
     stock_thickness_entry: Entry,
+    /// "Stock Z0 at: Top / Bottom" selector for the stock simulation.
+    stock_zero_dropdown: gtk4::DropDown,
+    /// Selected stock Z0 convention used when simulating stock removal.
+    stock_zero_reference: Shared<StockZeroReference>,
+    /// The convention last picked by the user, restored for programs that record none.
+    stock_zero_user_choice: Shared<StockZeroReference>,
+    /// Set while the dropdown is changed programmatically (not a user choice).
+    stock_zero_programmatic: Rc<std::cell::Cell<bool>>,
     // Optional status bar reference for future OSD integration.
     #[allow(dead_code)]
     pub(crate) status_bar: Option<StatusBar>,
+    /// Live machine position (from the controller status reports).
     pub(crate) current_pos: Shared<(f32, f32, f32)>,
+    /// Run-preview position, `Some` while a preview trajectory is shown.
+    pub(crate) preview_pos: Shared<Option<(f32, f32, f32)>>,
     pub(crate) fit_btn_3d: Button,
+    gcode_debounce: Shared<GcodeDebounce>,
     run_preview_points: Shared<Vec<(f32, f32, f32)>>,
     run_preview_index: Shared<usize>,
     run_preview_token: Shared<u64>,
@@ -155,6 +191,9 @@ impl GcodeVisualizer {
         self.gl_area.queue_render();
     }
 
+    /// Update the live machine position marker (work coordinates, mm).
+    ///
+    /// This never touches the Run-preview marker, which has its own position.
     pub fn set_current_position(&self, x: f32, y: f32, z: f32) {
         *self.current_pos.borrow_mut() = (x, y, z);
         if self.show_laser.is_active() {
@@ -216,7 +255,7 @@ impl GcodeVisualizer {
             return RunPreviewResult::EmptyInput;
         }
 
-        self.set_gcode(gcode);
+        self.set_gcode_now(gcode, ViewReset::Fit);
         self.show_laser.set_active(true);
 
         let commands = {
@@ -251,7 +290,7 @@ impl GcodeVisualizer {
         let running_ref = self.run_preview_running.clone();
         let paused_ref = self.run_preview_paused.clone();
         let speed_ref = self.run_preview_speed.clone();
-        let current_pos_ref = self.current_pos.clone();
+        let preview_pos_ref = self.preview_pos.clone();
         let show_laser_ref = self.show_laser.clone();
         let drawing_area_ref = self.drawing_area.clone();
         let gl_area_ref = self.gl_area.clone();
@@ -278,7 +317,7 @@ impl GcodeVisualizer {
 
             let (x, y, z) = points[i];
             drop(points);
-            *current_pos_ref.borrow_mut() = (x, y, z);
+            *preview_pos_ref.borrow_mut() = Some((x, y, z));
             if show_laser_ref.is_active() {
                 drawing_area_ref.queue_draw();
                 gl_area_ref.queue_render();
@@ -304,12 +343,18 @@ impl GcodeVisualizer {
         }
     }
 
+    /// Stop the Run preview and remove its marker (the live machine marker stays).
     pub fn stop_run_preview(&self) {
         *self.run_preview_running.borrow_mut() = false;
         *self.run_preview_paused.borrow_mut() = false;
         *self.run_preview_index.borrow_mut() = 0;
-        let mut tk = self.run_preview_token.borrow_mut();
-        *tk = tk.wrapping_add(1);
+        {
+            let mut tk = self.run_preview_token.borrow_mut();
+            *tk = tk.wrapping_add(1);
+        }
+        if self.preview_pos.borrow_mut().take().is_some() {
+            self.gl_area.queue_render();
+        }
     }
 
     pub fn is_run_preview_running(&self) -> bool {
@@ -481,7 +526,7 @@ impl GcodeVisualizer {
         let grid_spacing_label = Label::new(Some(&t!("Grid spacing")));
         grid_spacing_label.add_css_class("caption");
 
-        let grid_spacing_combo = ComboBoxText::new();
+        let grid_spacing_combo = new_text_dropdown();
         grid_spacing_combo.set_tooltip_text(Some(&t!("Grid spacing")));
 
         let system = settings_controller
@@ -565,6 +610,36 @@ impl GcodeVisualizer {
             .placeholder_text(t!("Tool Diameter"))
             .editable(false)
             .build();
+        let stock_zero_reference = shared(StockZeroReference::default());
+        let stock_zero_user_choice = shared(StockZeroReference::default());
+        let stock_zero_programmatic = Rc::new(std::cell::Cell::new(false));
+        let stock_zero_dropdown = {
+            let top = t!("Top");
+            let bottom = t!("Bottom");
+            let model = gtk4::StringList::new(&[top.as_str(), bottom.as_str()]);
+            let dropdown = gtk4::DropDown::new(Some(model), None::<gtk4::Expression>);
+            dropdown.set_selected(StockZeroReference::default().index());
+            dropdown.set_hexpand(true);
+            dropdown.set_tooltip_text(Some(&t!(
+                "Which face of the stock the program's work Z0 is set on. Top: material is \
+                 -thickness to 0 (most CAM output). Bottom: material is 0 to thickness \
+                 (GCodeKit designer output)."
+            )));
+            dropdown
+        };
+        {
+            let stock_zero_reference = stock_zero_reference.clone();
+            let user_choice = stock_zero_user_choice.clone();
+            let programmatic = stock_zero_programmatic.clone();
+            stock_zero_dropdown.connect_selected_notify(move |dropdown| {
+                let reference = StockZeroReference::from_index(dropdown.selected());
+                *stock_zero_reference.borrow_mut() = reference;
+                if !programmatic.get() {
+                    *user_choice.borrow_mut() = reference;
+                }
+                tracing::debug!(?reference, "Stock Z0 reference changed");
+            });
+        }
 
         // Group toggles into sections
         let toolpath_box = Box::new(Orientation::Vertical, 6);
@@ -618,6 +693,14 @@ impl GcodeVisualizer {
         stock_box.append(&stock_height_entry);
         stock_box.append(&stock_thickness_entry);
         stock_box.append(&stock_tool_diameter_entry);
+        {
+            let row = Box::new(Orientation::Horizontal, 6);
+            let label = Label::new(Some(&t!("Stock Z0 at:")));
+            label.set_halign(gtk4::Align::Start);
+            row.append(&label);
+            row.append(&stock_zero_dropdown);
+            stock_box.append(&row);
+        }
 
         let stock_revealer = Revealer::new();
         stock_revealer.set_transition_type(gtk4::RevealerTransitionType::SlideDown);
@@ -835,8 +918,7 @@ impl GcodeVisualizer {
         });
 
         // Connect UNMAP - Clean up resources when hidden
-        gl_area.connect_unmap(|_area| {
-        });
+        gl_area.connect_unmap(|_area| {});
 
         // 3D Scrollbars
         let extent = core_constants::WORLD_EXTENT_MM;
@@ -868,6 +950,7 @@ impl GcodeVisualizer {
         // Initialize Visualizer logic
         let visualizer = shared(Visualizer::new());
         let current_pos = shared((0.0f32, 0.0f32, 0.0f32));
+        let preview_pos = shared(None::<(f32, f32, f32)>);
         let run_preview_points = shared(Vec::<(f32, f32, f32)>::new());
         let run_preview_index = shared(0usize);
         let run_preview_token = shared(0u64);
@@ -984,6 +1067,24 @@ impl GcodeVisualizer {
         floating_box.append(&nav_fit_device_btn);
         floating_box.append(&help_btn);
 
+        /*
+                // Status Panel (Bottom Left)
+                let status_box = Box::new(Orientation::Horizontal, 4);
+                status_box.add_css_class("visualizer-osd");
+                status_box.set_halign(gtk4::Align::Start);
+                status_box.set_valign(gtk4::Align::End);
+                status_box.set_margin_bottom(20);
+                status_box.set_margin_start(10);
+
+                let status_label = Label::builder().label(" ").build();
+                status_label.set_hexpand(true);
+
+                let units_badge = Label::new(Some(""));
+                units_badge.add_css_class("osd-units-badge");
+
+                status_box.append(&status_label);
+                status_box.append(&units_badge);
+        */
         // Run preview controls (Bottom Left)
         let run_controls_box = Box::new(Orientation::Horizontal, 6);
         run_controls_box.add_css_class("visualizer-osd");
@@ -993,7 +1094,7 @@ impl GcodeVisualizer {
         run_controls_box.set_margin_bottom(20);
 
         let run_speed_label = Label::new(Some(&t!("Speed")));
-        let run_speed_combo = ComboBoxText::new();
+        let run_speed_combo = new_text_dropdown();
         run_speed_combo.append(Some("slow"), &t!("Slow"));
         run_speed_combo.append(Some("normal"), &t!("Normal"));
         run_speed_combo.append(Some("fast"), &t!("Fast"));
@@ -1091,6 +1192,9 @@ impl GcodeVisualizer {
         }
 
         overlay.add_overlay(&floating_box);
+        //Eliminar barra de estado
+        //        overlay.add_overlay(&status_box);
+
         overlay.add_overlay(&run_controls_box);
         overlay.add_overlay(&sidebar_show_panel);
         overlay.add_overlay(&sim_panel);
@@ -1179,12 +1283,63 @@ impl GcodeVisualizer {
             //            let units_badge = units_badge.clone();
             let empty_box = empty_box.clone();
             let vis = visualizer.clone();
+            //            let cursor_pos = cursor_pos.clone();
+            //            let settings = settings_controller.clone();
             move || {
                 let v = vis.borrow();
+
+                /*
+                                let (cursor_x, cursor_y) = *cursor_pos.borrow();
+                                let system = settings.persistence.borrow().config().ui.measurement_system;
+
+
+                                // Visualizer offsets are negative of center, so we negate them to show center
+                                let center_x = -v.x_offset;
+                                let center_y = -v.y_offset;
+
+                                label.set_text(&format_zoom_center_cursor(
+                                    v.zoom_scale as f64,
+                                    center_x,
+                                    center_y,
+                                    cursor_x,
+                                    cursor_y,
+                                    system,
+                                ));
+
+                                units_badge.set_text(gcodekit5_core::units::get_unit_label(system));
+                */
+
                 empty_box.set_visible(v.commands().is_empty());
             }
         });
+        /*
+                // Track cursor position in world coordinates
+                let motion = EventControllerMotion::new();
+                let vis_motion = visualizer.clone();
+                let da_motion = drawing_area.clone();
+                let cursor_pos_motion = cursor_pos.clone();
+                motion.connect_motion(move |_, x, y| {
+                    let v = vis_motion.borrow();
+                    let width = da_motion.width() as f64;
+                    let height = da_motion.height() as f64;
+                    if width <= 0.0 || height <= 0.0 {
+                        return;
+                    }
 
+                    let center_x = width / 2.0;
+                    let center_y = height / 2.0;
+                    let s = v.zoom_scale as f64;
+                    if s == 0.0 {
+                        return;
+                    }
+
+                    let world_x = (x - center_x) / s - v.x_offset as f64;
+                    let world_y = -((y - center_y) / s) - v.y_offset as f64;
+                    *cursor_pos_motion.borrow_mut() = (world_x as f32, world_y as f32);
+                });
+
+                drawing_area.add_controller(motion);
+        */
         // connect_cliked for top_view_btn
         let cam_top = camera.clone();
         let gl_top = gl_area.clone();
@@ -1377,12 +1532,35 @@ impl GcodeVisualizer {
             drawing_area.add_controller(right_click);
         }
 
-        // Keep status text fresh while moving the mouse
+        // Keep status text fresh while the visualizer is visible. The timer only
+        // runs while the widget is mapped, so a hidden tab costs nothing.
         {
+            let status_timer: Rc<std::cell::RefCell<Option<gtk4::glib::SourceId>>> =
+                Rc::new(std::cell::RefCell::new(None));
+
+            let timer_map = status_timer.clone();
             let u = update_status_fn.clone();
-            gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            container.connect_map(move |_| {
+                let mut slot = timer_map.borrow_mut();
+                if slot.is_some() {
+                    return;
+                }
                 u();
-                gtk4::glib::ControlFlow::Continue
+                let u = u.clone();
+                *slot = Some(gtk4::glib::timeout_add_local(
+                    std::time::Duration::from_millis(100),
+                    move || {
+                        u();
+                        gtk4::glib::ControlFlow::Continue
+                    },
+                ));
+            });
+
+            let timer_unmap = status_timer;
+            container.connect_unmap(move |_| {
+                if let Some(id) = timer_unmap.borrow_mut().take() {
+                    id.remove();
+                }
             });
         }
 
@@ -1455,7 +1633,7 @@ impl GcodeVisualizer {
         let run_paused_play = run_preview_paused.clone();
         let run_token_play = run_preview_token.clone();
         let run_speed_play = run_preview_speed.clone();
-        let current_pos_play = current_pos.clone();
+        let preview_pos_play = preview_pos.clone();
         let show_laser_play = show_laser.clone();
         let drawing_area_play = drawing_area.clone();
         let gl_area_play = gl_area.clone();
@@ -1503,7 +1681,7 @@ impl GcodeVisualizer {
             let running_ref = run_running_play.clone();
             let paused_ref = run_paused_play.clone();
             let speed_ref = run_speed_play.clone();
-            let current_pos_ref = current_pos_play.clone();
+            let preview_pos_ref = preview_pos_play.clone();
             let show_laser_ref = show_laser_play.clone();
             let drawing_area_ref = drawing_area_play.clone();
             let gl_area_ref = gl_area_play.clone();
@@ -1531,7 +1709,7 @@ impl GcodeVisualizer {
                 let (x, y, z) = points[i];
                 drop(points);
 
-                *current_pos_ref.borrow_mut() = (x, y, z);
+                *preview_pos_ref.borrow_mut() = Some((x, y, z));
                 if show_laser_ref.is_active() {
                     drawing_area_ref.queue_draw();
                     gl_area_ref.queue_render();
@@ -1570,12 +1748,18 @@ impl GcodeVisualizer {
         let run_running_stop = run_preview_running.clone();
         let run_paused_stop = run_preview_paused.clone();
         let run_token_stop = run_preview_token.clone();
+        let preview_pos_stop = preview_pos.clone();
+        let gl_area_stop = gl_area.clone();
         run_stop_btn.connect_clicked(move |_| {
             *run_running_stop.borrow_mut() = false;
             *run_paused_stop.borrow_mut() = false;
             *run_index_stop.borrow_mut() = 0;
-            let mut tk = run_token_stop.borrow_mut();
-            *tk = tk.wrapping_add(1);
+            {
+                let mut tk = run_token_stop.borrow_mut();
+                *tk = tk.wrapping_add(1);
+            }
+            *preview_pos_stop.borrow_mut() = None;
+            gl_area_stop.queue_render();
         });
 
         let update_ui = {
@@ -1891,6 +2075,7 @@ impl GcodeVisualizer {
         let _simulation_visualization_stock = simulation_visualization.clone();
         let stock_material_stock = stock_material.clone();
         let tool_diameter_stock = tool_diameter.clone();
+        let stock_zero_reference_stock = stock_zero_reference.clone();
         let simulation_running_flag = simulation_running.clone();
         let stock_simulator_3d_stock = stock_simulator_3d.clone();
         let stock_simulation_3d_pending_toggle = stock_simulation_3d_pending.clone();
@@ -1938,6 +2123,7 @@ impl GcodeVisualizer {
                     // Run simulation in background thread
                     let stock_clone = stock.clone();
                     let tool_radius_value = *tool_diameter_stock.borrow() / 2.0;
+                    let stock_zero = *stock_zero_reference_stock.borrow();
                     let result_3d_ref = stock_simulator_3d_stock.clone();
                     let gl_ref = gl_update.clone();
 
@@ -2002,9 +2188,9 @@ impl GcodeVisualizer {
                     let cancel_thread = sim_cancel_flag.clone();
                     let progress_thread = sim_progress_flag.clone();
 
-                    // ===============================
-                    // Create a channel for progress
-                    // ===============================
+                    // ============================================================
+                    // CREAR CANAL PARA EL PROGRESO
+                    // ============================================================
                     let (progress_tx, progress_rx) = std::sync::mpsc::channel();
 
                     // ✅ USAR Arc<AtomicBool> - SIN importar Borrow
@@ -2023,13 +2209,17 @@ impl GcodeVisualizer {
                             resolution,
                         );
 
+                        // The stock origin is the user's "Stock Z0 at" setting
+                        // (defaulted from the program header when it records one);
+                        // it is never guessed from the toolpath's Z values.
                         let mut simulator = StockSimulator3D::new(
                             stock_clone.width,
                             stock_clone.height,
                             stock_clone.thickness,
                             resolution,
                             tool_radius_value,
-                        );
+                        )
+                        .with_stock_zero_reference(stock_zero);
 
                         let cancel = cancel_thread.clone();
                         let progress = progress_thread.clone();
@@ -2037,10 +2227,10 @@ impl GcodeVisualizer {
 
                         let _ =
                             simulator.simulate_toolpath_with_progress(&toolpath_segments_3d, |p| {
-                                // Send progress via the channel
+                                // Enviar progreso por el canal
                                 let _ = tx.send(p);
 
-                                // Update the atomic variable for compatibility.
+                                // Actualizar también la variable atómica para compatibilidad
                                 if p > 0.0 {
                                     progress.store(
                                         (p * 100.0).round() as usize,
@@ -2051,7 +2241,7 @@ impl GcodeVisualizer {
                             });
 
                         progress.store(100, std::sync::atomic::Ordering::Relaxed);
-                        // Send 100% at the end
+                        // Enviar 100% al final
                         let _ = progress_tx.send(1.0);
 
                         let result_sim = simulator;
@@ -2075,7 +2265,7 @@ impl GcodeVisualizer {
                     let render_ready_poll = render_ready.clone();
 
                     glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                        // Update progress from the channel
+                        // 1. Actualizar progreso desde el canal
                         while let Ok(p) = progress_rx.try_recv() {
                             let pct = (p * 100.0).round() as usize;
                             sim_progress_label_poll.set_text(&format!("{}%", pct));
@@ -2089,7 +2279,7 @@ impl GcodeVisualizer {
                             }
                         }
 
-                        // Verify cancellation
+                        // 2. Verificar cancelación
                         if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
                             *sim_running_poll.borrow_mut() = false;
                             sim_panel_toggle_poll.set_visible(false);
@@ -2100,7 +2290,8 @@ impl GcodeVisualizer {
                             return glib::ControlFlow::Break;
                         }
 
-                        // Check if the rendering is ready.
+                        // 3. Verificar si el renderizado está listo
+                        // ✅ Usar load en lugar de borrow
                         if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst) {
                             if let Some(mut guard) = result_arc_poll.try_lock() {
                                 if let Some(result_simulator) = guard.take() {
@@ -2116,22 +2307,22 @@ impl GcodeVisualizer {
                                         return glib::ControlFlow::Break;
                                     }
 
-                                    // Assign the simulator
+                                    // Asignar el simulador
                                     *result_3d_ref.borrow_mut() = Some(result_simulator);
                                     *pending_flag.borrow_mut() = true;
                                     *sim_running_poll.borrow_mut() = false;
 
-                                    // Hide progress panel
+                                    // Ocultar panel de progreso
                                     sim_panel_toggle_poll.set_visible(false);
                                     if let Some(sb) = sb_poll.as_ref() {
                                         sb.set_progress(0.0, "", "");
                                         sb.set_cancel_action(None);
                                     }
 
-                                    // Force rendering
+                                    // Forzar renderizado
                                     gl_ref.queue_render();
 
-                                    // Stop the poll NOW
+                                    // ✅ Detener el poller AHORA
                                     return glib::ControlFlow::Break;
                                 }
                             }
@@ -2243,6 +2434,7 @@ impl GcodeVisualizer {
         let visualizer_3d = visualizer.clone();
         let camera_3d = camera.clone();
         let current_pos_3d = current_pos.clone();
+        let preview_pos_3d = preview_pos.clone();
         let device_manager_3d = device_manager.clone();
         let stock_simulator_3d_render = stock_simulator_3d.clone();
         let _stock_material_3d = stock_material.clone();
@@ -2317,6 +2509,20 @@ impl GcodeVisualizer {
                         let tool_data = generate_tool_marker_data();
                         tool_buffers.update(&tool_data);
 
+                        let preview_tool_buffers =
+                            match RenderBuffers::new(gl.clone(), glow::TRIANGLES) {
+                                Ok(mut buffers) => {
+                                    buffers.update(&generate_tool_marker_data_with_color(
+                                        PREVIEW_MARKER_COLOR,
+                                    ));
+                                    Some(buffers)
+                                }
+                                Err(e) => {
+                                    tracing::error!(error = %e, "preview marker buffer init failed");
+                                    None
+                                }
+                            };
+
                         *state_ref = Some(RendererState {
                             shader,
                             rapid_buffers,
@@ -2324,6 +2530,7 @@ impl GcodeVisualizer {
                             grid_buffers,
                             axis_buffers,
                             tool_buffers,
+                            preview_tool_buffers,
                             bounds_buffers,
                             stock_removal_shader: None,
                             stock_removal_buffers: None,
@@ -2458,7 +2665,7 @@ impl GcodeVisualizer {
                         if state.stock_removal_buffers.is_none()
                             || *stock_simulation_3d_pending_render.borrow()
                         {
-                            let mesh_vertices = generate_surface_mesh(simulator.get_grid());
+                            let mesh_vertices = simulator.get_mesh();
                             match RenderBuffers::new(gl.clone(), glow::TRIANGLES) {
                                 Ok(mut buffers) => {
                                     buffers.update_mesh(&mesh_vertices);
@@ -2596,6 +2803,28 @@ impl GcodeVisualizer {
                         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
                     }
                     state.tool_buffers.draw();
+
+                    // Run-preview marker, drawn separately from the live machine marker.
+                    let preview = *preview_pos_3d.borrow();
+                    if let (Some(p), Some(preview_buffers)) =
+                        (preview, state.preview_tool_buffers.as_ref())
+                    {
+                        let model = glam::Mat4::from_translation(glam::Vec3::new(p.0, p.1, p.2));
+                        let mvp_preview = proj * view * model;
+                        if let Some(loc) =
+                            state.shader.get_uniform_location("uModelViewProjection")
+                        {
+                            // SAFETY: GL context is current; uploading uniform to valid location.
+                            unsafe {
+                                gl.uniform_matrix_4_f32_slice(
+                                    Some(&loc),
+                                    false,
+                                    &mvp_preview.to_cols_array(),
+                                );
+                            }
+                        }
+                        preview_buffers.draw();
+                    }
                     // SAFETY: GL context is current; restoring GL state after overlay draw.
                     unsafe {
                         gl.disable(glow::BLEND);
@@ -2781,9 +3010,15 @@ impl GcodeVisualizer {
             stock_width_entry,
             stock_height_entry,
             stock_thickness_entry,
+            stock_zero_dropdown,
+            stock_zero_reference,
+            stock_zero_user_choice,
+            stock_zero_programmatic,
             status_bar,
             current_pos,
+            preview_pos,
             fit_btn_3d,
+            gcode_debounce: shared(GcodeDebounce::default()),
             run_preview_points,
             run_preview_index,
             run_preview_token,
@@ -2794,10 +3029,97 @@ impl GcodeVisualizer {
         }
     }
 
+    /// Show new or edited G-code, debounced.
+    ///
+    /// This is the method to call on every editor change: the text is parsed
+    /// once the editor has been quiet for 300 ms, so typing in a large file
+    /// does not re-parse it on each keystroke. If the final text looks like an
+    /// edit of what is already shown, the camera, zoom and current view are left
+    /// alone; if it replaces the content (a newly opened or generated file, or
+    /// the first program shown), the 3D view is selected and fitted.
+    ///
+    /// # Arguments
+    /// * `gcode` - Full program text.
     pub fn set_gcode(&self, gcode: &str) {
+        self.queue_gcode(gcode, false);
+    }
+
+    /// Show newly loaded G-code, debounced, always fitting the 3D view to it.
+    ///
+    /// # Arguments
+    /// * `gcode` - Full program text.
+    pub fn load_gcode(&self, gcode: &str) {
+        self.queue_gcode(gcode, true);
+    }
+
+    /// Parse and show G-code immediately, cancelling any pending debounced update.
+    ///
+    /// # Arguments
+    /// * `gcode` - Full program text.
+    /// * `reset` - Whether to keep the current view or fit it to the toolpath.
+    pub fn set_gcode_now(&self, gcode: &str, reset: ViewReset) {
+        {
+            let mut debounce = self.gcode_debounce.borrow_mut();
+            if let Some(id) = debounce.source.take() {
+                id.remove();
+            }
+            debounce.pending = None;
+            debounce.force_fit = false;
+            debounce.last_applied.clear();
+            debounce.last_applied.push_str(gcode);
+        }
+        self.apply_gcode(gcode, reset);
+    }
+
+    /// Store `gcode` as pending and (re)start the debounce timer.
+    fn queue_gcode(&self, gcode: &str, force_fit: bool) {
+        let mut debounce = self.gcode_debounce.borrow_mut();
+        debounce.pending = Some(gcode.to_owned());
+        debounce.force_fit |= force_fit;
+        if let Some(id) = debounce.source.take() {
+            id.remove();
+        }
+        let this = self.clone();
+        debounce.source = Some(gtk4::glib::timeout_add_local_once(
+            std::time::Duration::from_millis(GCODE_DEBOUNCE_MS),
+            move || this.flush_pending_gcode(),
+        ));
+    }
+
+    /// Debounce timer callback: apply the latest pending text.
+    fn flush_pending_gcode(&self) {
+        let (gcode, reset) = {
+            let mut debounce = self.gcode_debounce.borrow_mut();
+            // The timer has fired, so its source id is no longer valid.
+            debounce.source = None;
+            let Some(gcode) = debounce.pending.take() else {
+                return;
+            };
+            let replaced = gcodekit5_visualizer::visualizer::is_content_replacement(
+                &debounce.last_applied,
+                &gcode,
+            );
+            let reset = if debounce.force_fit || replaced {
+                ViewReset::Fit
+            } else {
+                ViewReset::Keep
+            };
+            debounce.force_fit = false;
+            debounce.last_applied.clone_from(&gcode);
+            (gcode, reset)
+        };
+        self.apply_gcode(&gcode, reset);
+    }
+
+    /// Parse `gcode`, refresh the inspector labels and optionally fit the view.
+    fn apply_gcode(&self, gcode: &str, reset: ViewReset) {
         // Any G-code reload invalidates prior preview trajectory.
         self.stop_run_preview();
         self.run_preview_points.borrow_mut().clear();
+
+        if reset == ViewReset::Fit {
+            self.apply_recorded_stock_zero(gcode);
+        }
 
         let mut vis = self.visualizer.borrow_mut();
         vis.parse_gcode(gcode);
@@ -2812,8 +3134,17 @@ impl GcodeVisualizer {
         // ============================================================
         let is_2d = self.is_machine_2d();
 
-        // Show/hide the simulation checkbox
-        self.show_stock_removal.set_visible(!is_2d);
+        // Ocultar/mostrar el checkbox de simulación (respect the experimental gate:
+        // previously any 3D G-code load re-showed it even with the feature disabled).
+        let stock_removal_enabled = self
+            .settings_controller
+            .persistence
+            .borrow()
+            .config()
+            .ui
+            .enable_stock_removal_3d;
+        self.show_stock_removal
+            .set_visible(!is_2d && stock_removal_enabled);
         if is_2d {
             self.show_stock_removal.set_active(false);
         }
@@ -2831,10 +3162,10 @@ impl GcodeVisualizer {
             .config()
             .ui
             .measurement_system;
-        let min_x_str = gcodekit5_core::units::format_length(min_x, system);
-        let max_x_str = gcodekit5_core::units::format_length(max_x, system);
-        let min_y_str = gcodekit5_core::units::format_length(min_y, system);
-        let max_y_str = gcodekit5_core::units::format_length(max_y, system);
+        let min_x_str = format_length_with_unit(min_x, system);
+        let max_x_str = format_length_with_unit(max_x, system);
+        let min_y_str = format_length_with_unit(min_y, system);
+        let max_y_str = format_length_with_unit(max_y, system);
 
         self.bounds_x_value
             .set_text(&format!("{} {} {}", min_x_str, t!("to"), max_x_str));
@@ -2891,7 +3222,14 @@ impl GcodeVisualizer {
         // ★ Synchronize stock with designer ★
         self.sync_stock_from_designer();
 
-        // Force 3D top view and fit whenever G-code is loaded
+        if reset == ViewReset::Keep {
+            // An edit of the same program: keep the user's view, camera and zoom.
+            self.gl_area.queue_render();
+            self.drawing_area.queue_draw();
+            return;
+        }
+
+        // A newly loaded program: force 3D top view and fit
         self.stack.set_visible_child_name("3d");
         self.apply_top_3d_view(
             Vec3::new(min_x, min_y, min_z),
@@ -2914,9 +3252,49 @@ impl GcodeVisualizer {
             let mode = state.borrow().machine_mode();
             return mode == MachineMode::Laser2D;
         }
-        false // Assume 3D by default
+        false // Por defecto, asumir 3D
     }
 
+    /// Currently selected stock Z0 convention for the stock simulation.
+    pub fn stock_zero_reference(&self) -> StockZeroReference {
+        *self.stock_zero_reference.borrow()
+    }
+
+    /// Set the "Stock Z0 at" option used by the stock simulation.
+    ///
+    /// # Arguments
+    /// * `reference` - Which stock face the program's work Z0 is on.
+    ///
+    /// This counts as the user's choice: it is restored for later programs whose
+    /// header does not record the convention.
+    pub fn set_stock_zero_reference(&self, reference: StockZeroReference) {
+        // The dropdown's notify handler updates both shared values.
+        self.stock_zero_dropdown.set_selected(reference.index());
+        *self.stock_zero_reference.borrow_mut() = reference;
+        *self.stock_zero_user_choice.borrow_mut() = reference;
+    }
+
+    /// Default the "Stock Z0 at" option for a newly loaded program: the
+    /// convention recorded in its header if any, otherwise the user's last
+    /// choice (so a value read from one program's header does not stick to the
+    /// next program). The toolpath's Z values are never used to guess it.
+    fn apply_recorded_stock_zero(&self, gcode: &str) {
+        let recorded = gcodekit5_visualizer::visualizer::detect_stock_zero_reference(gcode);
+        let reference = recorded.unwrap_or_else(|| *self.stock_zero_user_choice.borrow());
+        if reference != self.stock_zero_reference() {
+            tracing::info!(
+                ?reference,
+                from_header = recorded.is_some(),
+                "Stock Z0 changed for new program"
+            );
+        }
+        self.stock_zero_programmatic.set(true);
+        self.stock_zero_dropdown.set_selected(reference.index());
+        self.stock_zero_programmatic.set(false);
+        *self.stock_zero_reference.borrow_mut() = reference;
+    }
+
+    /// Copy the designer's stock dimensions into the stock-simulation fields.
     pub fn sync_stock_from_designer(&self) {
         if let Some(state) = self.designer_state.as_ref() {
             if let Some(stock) = &state.borrow().stock_material {

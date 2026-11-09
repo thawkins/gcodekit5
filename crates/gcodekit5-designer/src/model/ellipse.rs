@@ -153,7 +153,7 @@ impl DesignerShape for DesignEllipse {
         // Rotate point to local coords
         let dx = p.x - self.center.x;
         let dy = p.y - self.center.y;
-        let angle = -self.rotation;
+        let angle = (-self.rotation).to_radians();
         let rx = dx * angle.cos() - dy * angle.sin();
         let ry = dx * angle.sin() + dy * angle.cos();
 

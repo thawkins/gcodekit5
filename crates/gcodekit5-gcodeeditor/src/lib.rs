@@ -81,6 +81,8 @@ pub struct EditorState {
     viewport: Viewport,
     /// Track if document has been modified
     modified: bool,
+    /// Cursor position (character index)
+    cursor: usize,
 }
 
 impl EditorState {
@@ -91,6 +93,7 @@ impl EditorState {
             undo_manager: UndoManager::new(),
             viewport: Viewport::new(viewport_height, line_height),
             modified: false,
+            cursor: 0,
         }
     }
 
@@ -101,6 +104,20 @@ impl EditorState {
         self.viewport.set_total_lines(self.buffer.len_lines());
         self.undo_manager.clear();
         self.modified = false;
+        self.cursor = 0;
+    }
+
+    /// Current cursor position (character index)
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// Move the cursor
+    ///
+    /// # Arguments
+    /// * `char_idx` - New cursor position; clamped to the document length.
+    pub fn set_cursor(&mut self, char_idx: usize) {
+        self.cursor = char_idx.min(self.buffer.len_chars());
     }
 
     /// Get the full text content
@@ -108,12 +125,38 @@ impl EditorState {
         self.buffer.slice(0, self.buffer.len_chars())
     }
 
-    /// Insert text at the given position
+    /// Insert text at the cursor and record it as one undo step
+    ///
+    /// The cursor moves to the end of the inserted text.
+    ///
+    /// # Arguments
+    /// * `text` - Text to insert.
     pub fn insert_text(&mut self, text: &str) {
-        let pos = self.buffer.len_chars();
+        if text.is_empty() {
+            return;
+        }
+        let pos = self.cursor.min(self.buffer.len_chars());
         self.buffer.insert(pos, text);
+        let new_cursor = pos + text.chars().count();
+        self.undo_manager.record(TextChange::new(
+            pos..pos,
+            String::new(),
+            text.to_string(),
+            pos,
+            new_cursor,
+        ));
+        self.cursor = new_cursor;
         self.viewport.set_total_lines(self.buffer.len_lines());
         self.modified = true;
+    }
+
+    /// Apply one change: replace `char_range` with `new_text`.
+    fn apply_change(&mut self, change: &TextChange) {
+        self.buffer.delete(change.char_range.clone());
+        if !change.new_text.is_empty() {
+            self.buffer
+                .insert(change.char_range.start, &change.new_text);
+        }
     }
 
     /// Check if undo is available
@@ -123,18 +166,21 @@ impl EditorState {
 
     /// Perform undo
     pub fn undo(&mut self) -> bool {
-        if let Some(change) = self.undo_manager.undo() {
-            // Apply inverse of the change
-            let inv = change.inverse();
-            self.buffer.delete(inv.char_range.clone());
-            if !inv.new_text.is_empty() {
-                self.buffer.insert(inv.char_range.start, &inv.new_text);
-            }
-            self.viewport.set_total_lines(self.buffer.len_lines());
-            true
-        } else {
-            false
+        // `UndoManager::undo` already returns the inverses of the recorded
+        // changes, in application order; inverting them again would re-apply
+        // the original edit.
+        let Some(inverses) = self.undo_manager.undo() else {
+            return false;
+        };
+        for inv in &inverses {
+            self.apply_change(inv);
         }
+        if let Some(last) = inverses.last() {
+            self.cursor = last.new_cursor.min(self.buffer.len_chars());
+        }
+        self.viewport.set_total_lines(self.buffer.len_lines());
+        self.modified = true;
+        true
     }
 
     /// Check if redo is available
@@ -144,17 +190,18 @@ impl EditorState {
 
     /// Perform redo
     pub fn redo(&mut self) -> bool {
-        if let Some(change) = self.undo_manager.redo() {
-            self.buffer.delete(change.char_range.clone());
-            if !change.new_text.is_empty() {
-                self.buffer
-                    .insert(change.char_range.start, &change.new_text);
-            }
-            self.viewport.set_total_lines(self.buffer.len_lines());
-            true
-        } else {
-            false
+        let Some(changes) = self.undo_manager.redo() else {
+            return false;
+        };
+        for change in &changes {
+            self.apply_change(change);
         }
+        if let Some(last) = changes.last() {
+            self.cursor = last.new_cursor.min(self.buffer.len_chars());
+        }
+        self.viewport.set_total_lines(self.buffer.len_lines());
+        self.modified = true;
+        true
     }
 
     /// Get the total number of lines

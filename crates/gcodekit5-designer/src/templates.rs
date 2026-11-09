@@ -286,11 +286,7 @@ impl DesignTemplateLibrary {
                     }
                 }
 
-                if favorites_only && !t.is_favorite {
-                    return false;
-                }
-
-                true
+                !(favorites_only && !t.is_favorite)
             })
             .collect()
     }

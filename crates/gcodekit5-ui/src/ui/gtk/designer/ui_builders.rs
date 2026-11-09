@@ -1,6 +1,7 @@
 //! UI builder methods for DesignerView
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_core::Shared;
 use gtk4::Image;
 
@@ -39,7 +40,7 @@ impl DesignerView {
             .measurement_system;
         let unit_label = gcodekit5_core::units::get_unit_label(system);
 
-        let grid_spacing_combo = gtk4::ComboBoxText::new();
+        let grid_spacing_combo = new_text_dropdown();
         grid_spacing_combo.set_hexpand(true);
         grid_spacing_combo.set_tooltip_text(Some(&t!("Grid spacing")));
 
@@ -495,7 +496,9 @@ impl DesignerView {
         status_box.add_css_class("visualizer-osd");
         status_box.set_halign(gtk4::Align::Start);
         status_box.set_valign(gtk4::Align::End);
-        status_box.set_margin_bottom(5); // Posición Vertical coordenadas puntero
+        // Flush with the canvas bottom edge. GTK rejects negative margins (it warns
+        // on every re-measure), so 0 is the lowest position available.
+        status_box.set_margin_bottom(0);
         status_box.set_margin_start(10); // Posición Horizontal coordenadas puntero
 
         let status_label_osd = Label::builder().label(" ").build();

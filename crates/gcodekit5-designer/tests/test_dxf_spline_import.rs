@@ -25,8 +25,8 @@ fn test_dxf_spline_linear_degree1() {
     match &file.entities[0] {
         DxfEntity::Polyline(p) => {
             assert!(p.vertices.len() >= 2, "expected sampled points for spline");
-            let first = p.vertices.first().unwrap();
-            let last = p.vertices.last().unwrap();
+            let first = p.vertices.first().expect("spline should have vertices");
+            let last = p.vertices.last().expect("spline should have vertices");
             assert!((first.x - 0.0).abs() < 1e-6);
             assert!((last.x - 10.0).abs() < 1e-6);
             for v in &p.vertices {
@@ -60,8 +60,8 @@ fn test_dxf_spline_cubic_is_sampled() {
                 "expected a densely sampled curve, got {} points",
                 p.vertices.len()
             );
-            let first = p.vertices.first().unwrap();
-            let last = p.vertices.last().unwrap();
+            let first = p.vertices.first().expect("spline should have vertices");
+            let last = p.vertices.last().expect("spline should have vertices");
             assert!((first.x - 0.0).abs() < 1e-6 && (first.y - 0.0).abs() < 1e-6);
             assert!((last.x - 10.0).abs() < 1e-6 && (last.y - 0.0).abs() < 1e-6);
         }

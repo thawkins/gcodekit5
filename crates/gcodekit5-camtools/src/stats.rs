@@ -1,8 +1,10 @@
 //! Statistics Calculator - Task 62
 //!
 //! Calculates G-code statistics including distance, time, and command counts.
+//!
+//! Lines are tokenized with [`crate::comment_processor::words`], so comments are ignored.
 
-use regex::Regex;
+use crate::comment_processor::{system_command, words};
 
 /// G-code statistics
 #[derive(Debug, Clone, Default)]
@@ -47,65 +49,73 @@ impl Stats {
 pub struct StatsCalculator;
 
 impl StatsCalculator {
-    /// Calculate statistics for a program
+    /// Calculate statistics for a program.
+    ///
+    /// Comments are ignored; only whole words count (`G0`/`G00` are rapids, `G38.2` is not
+    /// counted as a move). GRBL `$` system commands (including `$J=` jogs) are counted in
+    /// `total_commands` only; they add no moves and do not affect the bounds.
+    ///
+    /// # Arguments
+    /// * `lines` - Program lines.
+    ///
+    /// # Returns
+    /// Command counts and the coordinate bounds of all X/Y/Z words.
     pub fn calculate(lines: &[String]) -> Stats {
         let mut stats = Stats {
             min_x: f64::MAX,
             min_y: f64::MAX,
             min_z: f64::MAX,
+            max_x: f64::MIN,
+            max_y: f64::MIN,
+            max_z: f64::MIN,
             ..Default::default()
         };
 
-        let g_code_regex = Regex::new(r"[GgMm]\d+").expect("invalid regex pattern");
-        let coord_regex = Regex::new(r"([XYZFST])(-?\d+\.?\d*)").expect("invalid regex pattern");
-
         for line in lines {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with(';') {
+            // GRBL `$` commands (`$H`, `$X`, `$J=...`) count as commands but are not program
+            // motion: their letters are not G-code words and a jog does not belong in the
+            // program's bounds.
+            if system_command(line).is_some() {
+                stats.total_commands += 1;
+                continue;
+            }
+            let line_words = words(line);
+            if line_words.is_empty() {
                 continue;
             }
 
             stats.total_commands += 1;
 
-            // Count command types
-            for cap in g_code_regex.find_iter(trimmed) {
-                let code_str = cap.as_str();
-                if let Some(first_char) = code_str.chars().next() {
-                    if let Ok(num) = code_str[1..].parse::<u32>() {
-                        match first_char {
-                            'G' | 'g' => match num {
+            for word in line_words {
+                if word.value.is_nan() {
+                    continue;
+                }
+                match word.letter {
+                    'G' => {
+                        // Only integral G numbers are motion codes here (G38.2 is a probe).
+                        if word.value.fract() == 0.0 {
+                            match word.value as i64 {
                                 0 => stats.rapid_count += 1,
                                 1 => stats.linear_count += 1,
                                 2 | 3 => stats.arc_count += 1,
                                 4 => stats.dwell_count += 1,
                                 _ => {}
-                            },
-                            _ => {}
+                            }
                         }
                     }
-                }
-            }
-
-            // Extract coordinates
-            for cap in coord_regex.captures_iter(trimmed) {
-                if let (Some(axis), Some(value)) = (cap.get(1), cap.get(2)) {
-                    if let Ok(val) = value.as_str().parse::<f64>() {
-                        match axis.as_str() {
-                            "X" => {
-                                stats.min_x = stats.min_x.min(val);
-                                stats.max_x = stats.max_x.max(val);
-                            }
-                            "Y" => {
-                                stats.min_y = stats.min_y.min(val);
-                                stats.max_y = stats.max_y.max(val);
-                            }
-                            "Z" => {
-                                stats.min_z = stats.min_z.min(val);
-                                stats.max_z = stats.max_z.max(val);
-                            }
-                            _ => {}
-                        }
+                    'X' => {
+                        stats.min_x = stats.min_x.min(word.value);
+                        stats.max_x = stats.max_x.max(word.value);
                     }
+                    'Y' => {
+                        stats.min_y = stats.min_y.min(word.value);
+                        stats.max_y = stats.max_y.max(word.value);
+                    }
+                    'Z' => {
+                        stats.min_z = stats.min_z.min(word.value);
+                        stats.max_z = stats.max_z.max(word.value);
+                    }
+                    _ => {}
                 }
             }
         }

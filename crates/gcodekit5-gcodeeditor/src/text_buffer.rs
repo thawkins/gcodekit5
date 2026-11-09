@@ -1,6 +1,7 @@
 //! Text buffer implementation using rope data structure for efficient text manipulation
 
 use ropey::Rope;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
@@ -9,7 +10,9 @@ use std::ops::Range;
 #[derive(Clone)]
 pub struct TextBuffer {
     rope: Rope,
-    dirty_lines: Vec<usize>,
+    /// Lines changed since the last [`TextBuffer::take_dirty_lines`]; a set so
+    /// marking a line is O(log n) instead of a linear search.
+    dirty_lines: BTreeSet<usize>,
 }
 
 impl TextBuffer {
@@ -17,7 +20,7 @@ impl TextBuffer {
     pub fn new() -> Self {
         Self {
             rope: Rope::new(),
-            dirty_lines: Vec::new(),
+            dirty_lines: BTreeSet::new(),
         }
     }
 
@@ -123,15 +126,16 @@ impl TextBuffer {
     fn mark_dirty_at_char(&mut self, char_idx: usize) {
         if char_idx < self.len_chars() {
             let line_idx = self.rope.char_to_line(char_idx);
-            if !self.dirty_lines.contains(&line_idx) {
-                self.dirty_lines.push(line_idx);
-            }
+            self.dirty_lines.insert(line_idx);
         }
     }
 
     /// Get and clear dirty lines
+    ///
+    /// # Returns
+    /// The dirty line indices in ascending order, without duplicates.
     pub fn take_dirty_lines(&mut self) -> Vec<usize> {
-        std::mem::take(&mut self.dirty_lines)
+        std::mem::take(&mut self.dirty_lines).into_iter().collect()
     }
 
     /// Check if a line is dirty
@@ -150,7 +154,7 @@ impl From<&str> for TextBuffer {
     fn from(text: &str) -> Self {
         Self {
             rope: Rope::from_str(text),
-            dirty_lines: Vec::new(),
+            dirty_lines: BTreeSet::new(),
         }
     }
 }

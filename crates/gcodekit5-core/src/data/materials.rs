@@ -168,6 +168,21 @@ pub struct CuttingParameters {
     /// Recommended chip load in mm/tooth
     #[serde(default)]
     pub chip_load_mm: Option<f32>,
+    /// Surface speed range in SFM (Surface Feet per Minute) - min, max
+    #[serde(default)]
+    pub sfm_range: Option<(f32, f32)>,
+    /// Chip load range in mm/tooth - min, max
+    #[serde(default)]
+    pub chipload_range: Option<(f32, f32)>,
+    /// Power factor for cutting force calculations (multiplier)
+    #[serde(default)]
+    pub power_factor: Option<f32>,
+    /// Maximum ramp/plunge angle in degrees
+    #[serde(default)]
+    pub ramp_angle_max: Option<f32>,
+    /// Maximum stepover for adaptive/high-speed machining (% of diameter)
+    #[serde(default)]
+    pub adaptive_stepover_max: Option<f32>,
     /// Recommended coolant type
     pub coolant_type: CoolantType,
     /// Notes about parameters
@@ -184,6 +199,11 @@ impl Default for CuttingParameters {
             stepover_percent: (40.0, 60.0),
             surface_speed_m_min: None,
             chip_load_mm: None,
+            sfm_range: None,
+            chipload_range: None,
+            power_factor: None,
+            ramp_angle_max: None,
+            adaptive_stepover_max: None,
             coolant_type: CoolantType::None,
             notes: String::new(),
         }
@@ -230,6 +250,36 @@ impl CuttingParameters {
     /// Builder method to set chip load in mm/tooth.
     pub fn with_chip_load(mut self, load: f32) -> Self {
         self.chip_load_mm = Some(load);
+        self
+    }
+
+    /// Builder method to set SFM range.
+    pub fn with_sfm_range(mut self, min: f32, max: f32) -> Self {
+        self.sfm_range = Some((min, max));
+        self
+    }
+
+    /// Builder method to set chipload range.
+    pub fn with_chipload_range(mut self, min: f32, max: f32) -> Self {
+        self.chipload_range = Some((min, max));
+        self
+    }
+
+    /// Builder method to set power factor.
+    pub fn with_power_factor(mut self, factor: f32) -> Self {
+        self.power_factor = Some(factor);
+        self
+    }
+
+    /// Builder method to set max ramp angle.
+    pub fn with_ramp_angle_max(mut self, angle: f32) -> Self {
+        self.ramp_angle_max = Some(angle);
+        self
+    }
+
+    /// Builder method to set max adaptive stepover.
+    pub fn with_adaptive_stepover_max(mut self, stepover: f32) -> Self {
+        self.adaptive_stepover_max = Some(stepover);
         self
     }
 
@@ -302,7 +352,18 @@ pub struct Material {
     pub tensile_strength: Option<f32>,
     /// Melting point or glass transition temperature in °C (optional)
     pub melting_point: Option<f32>,
-
+    /// Brinell hardness (HB) - for SFM adjustment calculations
+    #[serde(default)]
+    pub brinell_hardness: Option<f32>,
+    /// Rockwell hardness C scale (HRC) - for hardened materials
+    #[serde(default)]
+    pub rockwell_hardness: Option<f32>,
+    /// Thermal conductivity in W/(m·K) - for heat dissipation calculations
+    #[serde(default)]
+    pub thermal_conductivity: Option<f32>,
+    /// Specific cutting force (Kc) in N/mm² - for power calculations
+    #[serde(default)]
+    pub specific_cutting_force: Option<f32>,
     // Machining characteristics
     /// Type of chips formed
     pub chip_type: ChipType,
@@ -352,6 +413,10 @@ impl Material {
             machinability_rating: 7,
             tensile_strength: None,
             melting_point: None,
+            brinell_hardness: None,
+            rockwell_hardness: None,
+            thermal_conductivity: None,
+            specific_cutting_force: None,
             chip_type: ChipType::Continuous,
             heat_sensitivity: HeatSensitivity::Low,
             abrasiveness: Abrasiveness::Low,
@@ -418,6 +483,29 @@ impl Material {
         self
     }
 
+    /// Builder method to set Brinell hardness (HB).
+    pub fn with_brinell_hardness(mut self, hardness: f32) -> Self {
+        self.brinell_hardness = Some(hardness);
+        self
+    }
+
+    /// Builder method to set Rockwell hardness C (HRC).
+    pub fn with_rockwell_hardness(mut self, hardness: f32) -> Self {
+        self.rockwell_hardness = Some(hardness);
+        self
+    }
+
+    /// Builder method to set thermal conductivity in W/(m·K).
+    pub fn with_thermal_conductivity(mut self, conductivity: f32) -> Self {
+        self.thermal_conductivity = Some(conductivity);
+        self
+    }
+
+    /// Builder method to set specific cutting force (Kc) in N/mm².
+    pub fn with_specific_cutting_force(mut self, kc: f32) -> Self {
+        self.specific_cutting_force = Some(kc);
+        self
+    }
     /// Builder method to set chip type.
     pub fn with_chip_type(mut self, chip_type: ChipType) -> Self {
         self.chip_type = chip_type;
@@ -652,6 +740,11 @@ pub fn init_standard_library() -> MaterialLibrary {
         stepover_percent: (35.0, 65.0),
         surface_speed_m_min: Some(300.0),
         chip_load_mm: Some(0.05),
+        sfm_range: None,
+        chipload_range: None,
+        power_factor: None,
+        ramp_angle_max: None,
+        adaptive_stepover_max: None,
         coolant_type: CoolantType::WaterSoluble,
         notes: "12k spindle baseline (assumes ~6mm, 2-flute carbide endmill); adjust by tool diameter using surface speed + chip load. Sources: https://www.machiningdoctor.com/mds/?matId=3850 ; https://www.harveytool.com/resources/general-machining-guidelines".to_string(),
     };

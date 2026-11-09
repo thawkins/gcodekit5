@@ -8,11 +8,12 @@
 mod operations;
 mod tabs;
 
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, Grid, Label, ListBox, ListBoxRow,
-    MessageDialog, MessageType, Orientation, Paned, PolicyType, ResponseType, ScrolledWindow,
-    SearchEntry, Stack, StackSwitcher,
+    Align, Box, Button, CheckButton, DropDown, Entry, Grid, Label, ListBox, ListBoxRow,
+    Orientation, Paned, PolicyType, ResponseType, ScrolledWindow, SearchEntry, Stack,
+    StackSwitcher,
 };
 use std::rc::Rc;
 use tracing::error;
@@ -43,11 +44,12 @@ pub struct DeviceManagerWindow {
     // Edit form widgets
     pub(crate) edit_name: Entry,
     pub(crate) edit_description: Entry,
-    pub(crate) edit_device_type: ComboBoxText,
-    pub(crate) edit_controller_type: ComboBoxText,
-    pub(crate) edit_connection_type: ComboBoxText,
+    pub(crate) edit_device_type: DropDown,
+    pub(crate) edit_controller_type: DropDown,
+    pub(crate) edit_connection_type: DropDown,
     pub(crate) edit_port: Entry,
-    pub(crate) edit_baud_rate: ComboBoxText,
+    pub(crate) edit_baud_rate: DropDown,
+    pub(crate) edit_tcp_host: Entry,
     pub(crate) edit_tcp_port: Entry,
     pub(crate) edit_timeout: Entry,
     pub(crate) edit_auto_reconnect: CheckButton,
@@ -210,6 +212,7 @@ impl DeviceManagerWindow {
             edit_connection_type,
             edit_port,
             edit_baud_rate,
+            edit_tcp_host,
             edit_tcp_port,
             edit_timeout,
             edit_auto_reconnect,
@@ -304,6 +307,7 @@ impl DeviceManagerWindow {
             edit_connection_type,
             edit_port,
             edit_baud_rate,
+            edit_tcp_host,
             edit_tcp_port,
             edit_timeout,
             edit_auto_reconnect,

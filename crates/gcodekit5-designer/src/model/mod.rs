@@ -296,9 +296,10 @@ pub trait DesignerShape {
     }
 
     fn rotate(&mut self, angle: f64, cx: f64, cy: f64) {
-        let t = Transform::translation(cx as f32, cy as f32)
+        // Move the pivot to the origin, rotate, then move it back.
+        let t = Transform::translation(-cx as f32, -cy as f32)
             .then_rotate(lyon::math::Angle::radians(angle as f32))
-            .then_translate(lyon::math::vector(-cx as f32, -cy as f32));
+            .then_translate(lyon::math::vector(cx as f32, cy as f32));
         self.transform(&t);
     }
 
@@ -540,4 +541,74 @@ pub fn rotate_point(p: Point, center: Point, angle_deg: f64) -> Point {
         x: center.x + dx * c - dy * s,
         y: center.y + dx * s + dy * c,
     }
+}
+
+/// Applies the linear part of `t` to a parametric shape whose rendered geometry is
+/// `R(rotation) · F · base` about its centre, where `F` is a reflection across the
+/// vertical axis when `mirrored` is set.
+///
+/// A rotation is folded into `rotation`; a reflection (negative determinant) toggles
+/// `mirrored` and adjusts `rotation` so the rendered geometry equals `t` applied to
+/// the old geometry, rather than approximating the mirror with a 180° turn.
+///
+/// # Arguments
+/// * `t` - The transform being applied.
+/// * `rotation` - Shape rotation in degrees, updated in place.
+/// * `mirrored` - Shape reflection flag, updated in place.
+///
+/// # Returns
+/// The uniform scale factor of `t`.
+pub(crate) fn apply_linear_transform_to_parametric(
+    t: &Transform,
+    rotation: &mut f64,
+    mirrored: &mut bool,
+) -> f64 {
+    let (m11, m12, m21, m22) = (t.m11 as f64, t.m12 as f64, t.m21 as f64, t.m22 as f64);
+    let det = m11 * m22 - m12 * m21;
+    if det < 0.0 {
+        // t = R(phi) · F, and F · R(rot) = R(-rot) · F, so the new rotation is
+        // phi - rot and the reflection toggles.
+        let phi = (-m12).atan2(-m11).to_degrees();
+        *rotation = normalize_degrees(phi - *rotation);
+        *mirrored = !*mirrored;
+    } else {
+        let phi = m12.atan2(m11).to_degrees();
+        *rotation = normalize_degrees(*rotation + phi);
+    }
+    (m11 * m11 + m12 * m12).sqrt()
+}
+
+/// Wraps an angle in degrees into `(-180, 180]`.
+fn normalize_degrees(angle: f64) -> f64 {
+    let mut a = angle % 360.0;
+    if a <= -180.0 {
+        a += 360.0;
+    } else if a > 180.0 {
+        a -= 360.0;
+    }
+    if a.abs() < 1e-9 {
+        0.0
+    } else {
+        a
+    }
+}
+
+/// Builds the render transform `R(rotation) · F` about `center` for a parametric
+/// shape, where `F` mirrors across the vertical axis through `center` when
+/// `mirrored` is set. Returns `None` when the transform is the identity.
+pub(crate) fn parametric_render_transform(
+    center: Point,
+    rotation: f64,
+    mirrored: bool,
+) -> Option<Transform> {
+    if rotation.abs() <= 1e-6 && !mirrored {
+        return None;
+    }
+    let sx = if mirrored { -1.0 } else { 1.0 };
+    Some(
+        Transform::translation(-center.x as f32, -center.y as f32)
+            .then_scale(sx, 1.0)
+            .then_rotate(lyon::math::Angle::radians(rotation.to_radians() as f32))
+            .then_translate(lyon::math::vector(center.x as f32, center.y as f32)),
+    )
 }

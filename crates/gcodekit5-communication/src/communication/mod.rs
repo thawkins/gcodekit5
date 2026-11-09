@@ -451,9 +451,9 @@ impl SerialCommunicator {
 
     /// Clears the flow control flags
     pub fn repetier_reset_flow_control(&mut self) {
-    self.repetier_flow_paused = false;
-    self.repetier_flow_stopped = false;
-}
+        self.repetier_flow_paused = false;
+        self.repetier_flow_stopped = false;
+    }
 
     /// Returns the current value of Repetier's line counter N
     pub fn repetier_line_counter(&self) -> u32 {
@@ -478,10 +478,7 @@ impl SerialCommunicator {
         if protocol == ControllerProtocol::Repetier {
             self.repetier_processor.activate();
         }
-        tracing::debug!(
-            "SerialCommunicator: protocolo configurado a {:?}",
-            protocol
-        );
+        tracing::debug!("SerialCommunicator: protocolo configurado a {:?}", protocol);
     }
 
     /// User-configured protocol. Source of truth
@@ -493,7 +490,6 @@ impl SerialCommunicator {
     pub fn detected_protocol(&self) -> ControllerProtocol {
         self.detected_protocol
     }
-
 }
 
 impl Default for SerialCommunicator {
@@ -502,14 +498,87 @@ impl Default for SerialCommunicator {
     }
 }
 
+/// Presents a TCP connection through the [`serial::SerialPort`] interface, so the
+/// byte-stream code built on [`SerialCommunicator`] works unchanged over the network
+/// (e.g. FluidNC or grblHAL controllers reached by Wi-Fi/Ethernet).
+struct TcpAsSerialPort {
+    inner: Box<dyn tcp::TcpPort>,
+    name: String,
+}
+
+impl serial::SerialPort for TcpAsSerialPort {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        self.inner.write(data)
+    }
+
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.inner.read(buf) {
+            // A zero-byte read on a TCP stream means the peer closed the connection;
+            // report it instead of returning "no data" forever.
+            Ok(0) if !buf.is_empty() => Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "connection closed by the controller",
+            )),
+            // `SerialCommunicator::receive` treats BrokenPipe as "no data" for the sake of
+            // serial-port cleanup. On a socket it means the peer is gone, so report it as
+            // a closed connection instead.
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                e,
+            )),
+            other => other,
+        }
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn close(&mut self) -> std::io::Result<()> {
+        self.inner.close()
+    }
+}
+
+/// Returns true for read errors that mean the connection itself is gone (as opposed to
+/// a timeout or a transient fault), so the port must be dropped.
+fn is_terminal_read_error(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::UnexpectedEof
+            | std::io::ErrorKind::NotConnected
+    )
+}
+
 impl Communicator for SerialCommunicator {
+    /// Opens the connection described by `params`.
+    ///
+    /// Serial ports are opened directly; TCP connections are opened with
+    /// [`tcp::RealTcpPort`] and carried through the same byte-stream interface.
+    /// WebSocket connections are not supported and return an error.
     fn connect(&mut self, params: &ConnectionParams) -> gcodekit5_core::Result<()> {
         params.validate()?;
-        if params.driver != ConnectionDriver::Serial {
-            return Err(gcodekit5_core::Error::other(
-                "SerialCommunicator requires Serial driver type",
-            ));
-        }
+        let opened: gcodekit5_core::Result<Box<dyn serial::SerialPort>> = match params.driver {
+            ConnectionDriver::Serial => serial::RealSerialPort::open(params)
+                .map(|p| Box::new(p) as Box<dyn serial::SerialPort>),
+            ConnectionDriver::Tcp => tcp::RealTcpPort::open(params).and_then(|p| {
+                // `open` applies `timeout_ms` to connect, read and write. Reads here are
+                // polled with the communicator lock held, so use the same short timeout
+                // as the serial port; `timeout_ms` still governs connecting and writes.
+                p.set_read_timeout(Some(serial::POLL_READ_TIMEOUT))
+                    .map_err(|e| {
+                        gcodekit5_core::Error::other(format!("Failed to set TCP read timeout: {e}"))
+                    })?;
+                Ok(Box::new(TcpAsSerialPort {
+                    inner: Box::new(p),
+                    name: format!("{}:{}", params.port, params.network_port),
+                }) as Box<dyn serial::SerialPort>)
+            }),
+            ConnectionDriver::WebSocket => Err(gcodekit5_core::Error::other(
+                "WebSocket connections are not supported yet",
+            )),
+        };
 
         // Reset emulation flags upon connection
         self.configured_protocol = ControllerProtocol::Unknown;
@@ -517,17 +586,19 @@ impl Communicator for SerialCommunicator {
         self.repetier_flow_paused = false;
         self.repetier_flow_stopped = false;
 
-        // Try to open the port
-        match serial::RealSerialPort::open(params) {
+        match opened {
             Ok(port) => {
-                self.port = Some(Box::new(port));
+                let name = port.name();
+                self.port = Some(port);
                 self.params = Some(params.clone());
-                self.notify_listeners(CommunicatorEvent::Connected, "Connected to serial port");
+                self.notify_listeners(
+                    CommunicatorEvent::Connected,
+                    &format!("Connected to {name}"),
+                );
                 Ok(())
             }
             Err(e) => {
                 let msg = format!("Failed to connect: {}", e);
-                // tracing::error!("{}", msg);
                 self.notify_listeners(CommunicatorEvent::Error, &msg);
                 Err(e)
             }
@@ -587,11 +658,11 @@ impl Communicator for SerialCommunicator {
                     return Ok(0);
                 }
                 // 0x18 = Ctrl-X (soft reset)
-                                // 0x18 = Ctrl-X (soft reset). Es un comando UNIVERSAL:
+                // 0x18 = Ctrl-X (soft reset). Es un comando UNIVERSAL:
                 // todos los firmwares lo entienden. Debe salir al puerto
                 // tal cual, sin pasar por el processor Repetier (que lo
                 // descartaría porque no encaja en su formato N<num>*ck).
-                if data == &[0x18u8] {
+                if data == [0x18u8] {
                     tracing::debug!("⏹️  [REPETIER] Reset universal (bypass processor).");
                     self.repetier_flow_stopped = true;
 
@@ -600,9 +671,7 @@ impl Communicator for SerialCommunicator {
                     while !bytes_to_send.is_empty() {
                         match port.write(bytes_to_send) {
                             Ok(0) => {
-                                return Err(gcodekit5_core::Error::other(
-                                    "Full port".to_string(),
-                                ))
+                                return Err(gcodekit5_core::Error::other("Full port".to_string()))
                             }
                             Ok(n) => bytes_to_send = &bytes_to_send[n..],
                             Err(e) => return Err(gcodekit5_core::Error::other(e.to_string())),
@@ -616,7 +685,10 @@ impl Communicator for SerialCommunicator {
                     // Formato: "📤 [TX] N<num> <gcode> *<checksum>"
                     for tx_line in translated_bytes.split(|&b| b == b'\n') {
                         if !tx_line.is_empty() {
-                            tracing::debug!("📤 [TX] {:?}", String::from_utf8_lossy(&translated_bytes));
+                            tracing::debug!(
+                                "📤 [TX] {:?}",
+                                String::from_utf8_lossy(&translated_bytes)
+                            );
                         }
                     }
 
@@ -624,9 +696,7 @@ impl Communicator for SerialCommunicator {
                     while !bytes_to_send.is_empty() {
                         match port.write(bytes_to_send) {
                             Ok(0) => {
-                                return Err(gcodekit5_core::Error::other(
-                                    "Full port".to_string(),
-                                ))
+                                return Err(gcodekit5_core::Error::other("Full port".to_string()))
                             }
                             Ok(n) => bytes_to_send = &bytes_to_send[n..],
                             Err(e) => return Err(gcodekit5_core::Error::other(e.to_string())),
@@ -679,7 +749,10 @@ impl Communicator for SerialCommunicator {
 
                     if !data.is_empty() {
                         let incoming_text = String::from_utf8_lossy(&data);
-                        tracing::debug!("📥 [RX] {}", incoming_text.trim_end().replace('\n', " | "));
+                        tracing::debug!(
+                            "📥 [RX] {}",
+                            incoming_text.trim_end().replace('\n', " | ")
+                        );
 
                         // ─── Auto-detection (informational only) ───
                         // Uses the PROTOCOLS table from protocol_registry to
@@ -694,10 +767,7 @@ impl Communicator for SerialCommunicator {
                             if let Some(detected) =
                                 crate::firmware::protocol_registry::detect_protocol(&incoming_text)
                             {
-                                tracing::debug!(
-                                    "🔒 Autodetección: {:?} capturado.",
-                                    detected
-                                );
+                                tracing::debug!("🔒 Autodetección: {:?} capturado.", detected);
                                 self.detected_protocol = detected;
                             }
                         }
@@ -733,7 +803,22 @@ impl Communicator for SerialCommunicator {
                     {
                         Ok(vec![])
                     } else if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        // BrokenPipe during receive often happens during serial cleanup or
+                        // disconnect. (The TCP adapter maps a socket BrokenPipe to
+                        // ConnectionAborted, so it is handled as terminal below.)
                         Ok(vec![])
+                    } else if is_terminal_read_error(e.kind()) {
+                        // The connection is gone: drop the port so is_connected() is false
+                        // and listeners (the UI) see the disconnect.
+                        if let Some(mut port) = self.port.take() {
+                            if let Err(close_err) = port.close() {
+                                tracing::debug!("Error closing dead port: {}", close_err);
+                            }
+                        }
+                        let msg = format!("Connection lost: {}", e);
+                        tracing::warn!("{}", msg);
+                        self.notify_listeners(CommunicatorEvent::Disconnected, &msg);
+                        Err(gcodekit5_core::Error::other(msg))
                     } else {
                         let msg = format!("Receive error: {}", e);
                         self.notify_listeners(CommunicatorEvent::Error, &msg);
@@ -868,16 +953,11 @@ impl Communicator for TcpCommunicator {
                     Ok(n)
                 }
                 Err(e) => {
-                    // Handle BrokenPipe more gracefully - it often occurs during cleanup
-                    if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        // Return success for BrokenPipe if data was likely sent
-                        Ok(0)
-                    } else {
-                        let msg = format!("Send error: {}", e);
-                        // tracing::error!("{}", msg);
-                        self.notify_listeners(CommunicatorEvent::Error, &msg);
-                        Err(gcodekit5_core::Error::other(msg))
-                    }
+                    // BrokenPipe means the peer is gone: the data was NOT sent, so it
+                    // must be reported rather than swallowed as a successful 0-byte write.
+                    let msg = format!("Send error: {}", e);
+                    self.notify_listeners(CommunicatorEvent::Error, &msg);
+                    Err(gcodekit5_core::Error::other(msg))
                 }
             }
         } else {
@@ -889,6 +969,14 @@ impl Communicator for TcpCommunicator {
         if let Some(port) = &mut self.port {
             let mut buf = [0u8; 4096];
             match port.read(&mut buf) {
+                Ok(0) => {
+                    // A 0-byte read on a TCP stream is EOF: the controller closed the
+                    // connection. Drop the port so is_connected() reflects reality.
+                    self.port = None;
+                    let msg = "TCP connection closed by peer";
+                    self.notify_listeners(CommunicatorEvent::Disconnected, msg);
+                    Err(gcodekit5_core::Error::other(msg))
+                }
                 Ok(n) => {
                     let data = buf[..n].to_vec();
                     if n > 0 {
@@ -939,4 +1027,3 @@ impl Communicator for TcpCommunicator {
         Ok(())
     }
 }
-

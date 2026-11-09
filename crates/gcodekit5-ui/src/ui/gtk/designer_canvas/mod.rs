@@ -13,21 +13,21 @@ mod rendering;
 mod toolpath_preview;
 
 use crate::t;
+use crate::ui::gtk::common::dialog_window::DialogWindow;
 use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
 use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
-use gcodekit5_designer::model::{DesignPath as PathShape, Point, Shape};
+use gcodekit5_designer::model::{Point, Shape};
 use gcodekit5_designer::toolpath::Toolpath;
 use gcodekit5_devicedb::DeviceManager;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::gdk::ModifierType;
 use gtk4::prelude::*;
 use gtk4::{
-    CheckButton, Dialog, DrawingArea, DropDown, Entry, EventControllerMotion, GestureClick,
-    GestureDrag,
+    CheckButton, DrawingArea, DropDown, Entry, EventControllerMotion, GestureClick, GestureDrag,
 };
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -102,6 +102,9 @@ pub struct DesignerCanvas {
     pub(crate) creation_current: SharedOption<(f64, f64)>,
     // Track last drag offset for incremental movement
     pub(crate) last_drag_offset: Shared<(f64, f64)>,
+    // Total movement actually applied to the selection during a move-drag (after any
+    // Shift axis constraint); used to record an exact undo command.
+    pub(crate) drag_applied_move: Shared<(f64, f64)>,
     // Track if a drag operation occurred
     pub(crate) did_drag: Shared<bool>,
     // Resize handle state
@@ -124,8 +127,14 @@ pub struct DesignerCanvas {
     pub preview_generating: Rc<std::cell::Cell<bool>>,
     pub(crate) preview_pending: Rc<std::cell::Cell<bool>>,
     pub preview_cancel: Arc<AtomicBool>,
-    pub(crate) text_tool_dialog:
-        SharedOption<(Dialog, Entry, DropDown, CheckButton, CheckButton, Entry)>,
+    pub(crate) text_tool_dialog: SharedOption<(
+        DialogWindow,
+        Entry,
+        DropDown,
+        CheckButton,
+        CheckButton,
+        Entry,
+    )>,
     pub(crate) text_tool_last_font_family: Shared<String>,
     pub(crate) text_tool_last_bold: Shared<bool>,
     pub(crate) text_tool_last_italic: Shared<bool>,
@@ -200,7 +209,7 @@ impl DesignerCanvas {
                 (2.0, 1.0)
             };
 
-            let style_context = drawing_area.style_context();
+            let fg_color = drawing_area.color();
 
             Self::draw(
                 cr,
@@ -215,7 +224,7 @@ impl DesignerCanvas {
                 &toolpaths,
                 pending_fast_shape,
                 bounds,
-                &style_context,
+                fg_color,
                 grid_major_width,
                 grid_minor_width,
             );
@@ -231,6 +240,7 @@ impl DesignerCanvas {
             creation_start: creation_start.clone(),
             creation_current: creation_current.clone(),
             last_drag_offset: last_drag_offset.clone(),
+            drag_applied_move: shared((0.0, 0.0)),
             did_drag: did_drag.clone(),
             active_resize_handle: shared_none(),
             resize_original_bounds: shared_none(),
@@ -514,13 +524,9 @@ impl DesignerCanvas {
 
         // Keyboard controller for Delete, Escape, etc.
         let key_controller = gtk4::EventControllerKey::new();
-        let state_key = state.clone();
-        let widget_key = widget.clone();
         let shift_pressed_key = canvas.shift_pressed.clone();
         let ctrl_pressed_key = canvas.ctrl_pressed.clone();
-        let polyline_points_key = canvas.polyline_points.clone();
-        let pending_fast_shape_key = canvas.pending_fast_shape.clone();
-        let layers_key = canvas.layers.clone();
+        let canvas_key = Rc::downgrade(&canvas);
 
         key_controller.connect_key_pressed(move |_controller, keyval, _keycode, _modifier| {
             if keyval == gtk4::gdk::Key::Shift_L || keyval == gtk4::gdk::Key::Shift_R {
@@ -531,82 +537,42 @@ impl DesignerCanvas {
                 *ctrl_pressed_key.borrow_mut() = true;
                 return glib::Propagation::Proceed;
             }
-
-            let mut designer_state = state_key.borrow_mut();
+            let Some(canvas) = canvas_key.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
 
             match keyval {
-                gtk4::gdk::Key::Delete | gtk4::gdk::Key::BackSpace
-                    // Delete selected shapes
-                    if designer_state
-                        .canvas
-                        .selection_manager
-                        .selected_id()
-                        .is_some()
-                    => {
-                        designer_state.delete_selected();
-                        drop(designer_state);
-
-                        // Refresh layers
-                        if let Some(layers) = layers_key.borrow().as_ref() {
-                            layers.refresh(&state_key);
-                        }
-
-                        widget_key.queue_draw();
+                gtk4::gdk::Key::Delete | gtk4::gdk::Key::BackSpace => {
+                    let has_selection = canvas.state.borrow().selected_count() > 0;
+                    if has_selection {
+                        canvas.delete_selected();
                         return glib::Propagation::Stop;
                     }
+                }
                 gtk4::gdk::Key::Escape => {
-                    if pending_fast_shape_key.borrow().is_some() {
-                        *pending_fast_shape_key.borrow_mut() = None;
-                        drop(designer_state);
-                        widget_key.queue_draw();
+                    if canvas.pending_fast_shape.borrow_mut().take().is_some() {
+                        canvas.widget.set_cursor(None);
+                        canvas.widget.queue_draw();
                         return glib::Propagation::Stop;
                     }
 
                     // Cancel polyline creation
-                    let mut points = polyline_points_key.borrow_mut();
-                    if !points.is_empty() {
-                        points.clear();
-                        drop(points);
-                        drop(designer_state);
-                        widget_key.queue_draw();
+                    if canvas.cancel_polyline() {
                         return glib::Propagation::Stop;
                     }
-                    drop(points);
 
                     // Deselect all
-                    designer_state.canvas.deselect_all();
-                    drop(designer_state);
-
-                    // Refresh layers
-                    if let Some(layers) = layers_key.borrow().as_ref() {
-                        layers.refresh(&state_key);
-                    }
-
-                    widget_key.queue_draw();
+                    canvas.state.borrow_mut().canvas.deselect_all();
+                    canvas.refresh_panels();
+                    canvas.widget.queue_draw();
                     return glib::Propagation::Stop;
                 }
-                gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                    // Finish polyline creation
-                    let mut points = polyline_points_key.borrow_mut();
-                    if !points.is_empty() {
-                        if points.len() >= 2 {
-                            // Create polyline
-                            let path_shape = PathShape::from_points(&points, false);
-                            let shape = Shape::Path(path_shape);
-
-                            designer_state.add_shape_with_undo(shape);
-
-                            // Refresh layers
-                            if let Some(layers) = layers_key.borrow().as_ref() {
-                                layers.refresh(&state_key);
-                            }
-                        }
-                        points.clear();
-                        drop(points);
-                        drop(designer_state);
-                        widget_key.queue_draw();
-                        return glib::Propagation::Stop;
-                    }
+                // Enter finishes the polyline as an OPEN path (double-click or
+                // right-click finish it closed).
+                gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter
+                    if canvas.finish_polyline(false) =>
+                {
+                    return glib::Propagation::Stop;
                 }
                 _ => {}
             }
@@ -642,10 +608,65 @@ impl DesignerCanvas {
             core_constants::VIEW_PADDING,
         );
     }
+    /// Refreshes the panels that mirror the model and selection (properties and
+    /// layers).
+    ///
+    /// Call this after any change to the selection or the shapes; the panels are not
+    /// polled. Must be called without holding a borrow of the designer state.
+    pub fn refresh_panels(&self) {
+        let props = self.properties.borrow().clone();
+        if let Some(props) = props {
+            props.update_from_selection();
+        }
+        let layers = self.layers.borrow().clone();
+        if let Some(layers) = layers {
+            layers.refresh(&self.state);
+        }
+    }
+
+    /// Refreshes everything that depends on the model after an edit: the side panels,
+    /// the toolpath preview (when shown) and the canvas itself.
+    ///
+    /// Must be called without holding a borrow of the designer state.
+    pub fn notify_model_changed(&self) {
+        self.refresh_panels();
+        let show_toolpaths = self.state.borrow().show_toolpaths;
+        if show_toolpaths {
+            self.generate_preview_toolpaths();
+        }
+        self.widget.queue_draw();
+    }
+
+    /// Hit-tolerance in screen pixels used when clicking shapes.
+    pub(crate) const HIT_TOLERANCE_PX: f64 = 6.0;
+
+    /// Converts [`Self::HIT_TOLERANCE_PX`] to world millimetres at `zoom` (px per mm).
+    pub(crate) fn hit_tolerance_mm(zoom: f64) -> f64 {
+        Self::HIT_TOLERANCE_PX / zoom.max(1e-6)
+    }
+
+    /// Returns the topmost shape (in draw order) containing `point` within `tolerance`.
+    ///
+    /// This is the same order `Canvas::select_at` uses, so clicks and selection agree.
+    pub(crate) fn topmost_shape_at(
+        state: &DesignerState,
+        point: &Point,
+        tolerance: f64,
+    ) -> Option<u64> {
+        let store = &state.canvas.shape_store;
+        store.draw_order_iter().rev().find(|id| {
+            store
+                .get(*id)
+                .is_some_and(|obj| obj.contains_point(point, tolerance))
+        })
+    }
+
+    /// Sets the panel used to edit the selected shapes' properties.
     pub fn set_properties_panel(&self, panel: Rc<PropertiesPanel>) {
         *self.properties.borrow_mut() = Some(panel);
     }
 
+    /// Sets the layers (objects) panel kept in sync with the canvas.
     pub fn set_layers_panel(&self, panel: Rc<LayersPanel>) {
         *self.layers.borrow_mut() = Some(panel);
     }
@@ -673,30 +694,11 @@ impl DesignerCanvas {
             return;
         }
 
-        use gtk4::FileChooserAction;
-        use gtk4::FileChooserDialog;
-        use gtk4::ResponseType;
+        use crate::ui::gtk::file_dialog::FileDialogHelpers;
 
-        // Almacenamos los strings en variables para que vivan lo suficiente en memoria
-        let title_str = t!("Import Image");
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Import Image"));
         let filter_name_str = t!("Image files");
-        let cancel_str = t!("Cancel");
-        let import_str = t!("Import");
-
-        let dialog = FileChooserDialog::builder()
-            .title(&title_str) // <-- Traducido
-            .action(FileChooserAction::Open)
-            .transient_for(
-                &self
-                    .widget
-                    .root()
-                    .and_then(|r| r.downcast::<gtk4::Window>().ok())
-                    .unwrap_or_else(|| {
-                        tracing::warn!("Failed to get parent window for dialog");
-                        gtk4::Window::new()
-                    }),
-            )
-            .build();
 
         let filter = gtk4::FileFilter::new();
         filter.add_mime_type("image/jpeg");
@@ -707,47 +709,27 @@ impl DesignerCanvas {
         filter.set_name(Some(&filter_name_str));
         dialog.add_filter(&filter);
 
-        // Usamos referencias del String generado por t! para que GTK lo acepte
-        dialog.add_buttons(&[
-            (&cancel_str, ResponseType::Cancel),
-            (&import_str, ResponseType::Accept),
-        ]);
-
-        let canvas = self.clone();
-        let settings_controller = self.settings_controller.clone();
-        // Apply last working directory from settings
-        super::file_dialog::set_last_working_directory(
+        crate::ui::gtk::file_dialog::set_last_working_directory(
             &dialog,
             self.settings_controller.as_deref(),
         );
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        // Persist last-used directory so subsequent dialogs default to it
-                        if let Some(controller) = settings_controller.as_ref() {
-                            if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
-                                persistence.config_mut().file_processing.output_directory =
-                                    path.clone();
-
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-                                let _ = persistence.save_to_file(&config_path);
-                            }
-                        }
-
-                        canvas.process_imported_image(path);
+        let canvas = self.clone();
+        let settings_controller = self.settings_controller.clone();
+        dialog.pick_open(parent.as_ref(), move |file| {
+            if let Some(path) = file.path() {
+                // Persist the last-used directory so later dialogs default to it.
+                if let Some(controller) = settings_controller.as_ref() {
+                    if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
+                        persistence.config_mut().file_processing.output_directory = path.clone();
+                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
+                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+                        let _ = persistence.save_to_file(&config_path);
                     }
                 }
+                canvas.process_imported_image(path);
             }
-            dialog.close();
         });
-
-        dialog.show();
     }
 
     /// Process the imported image and convert it to a toolpath
@@ -767,7 +749,7 @@ impl DesignerCanvas {
             match result {
                 Ok(shape) => {
                     state.borrow_mut().add_shape_with_undo(shape);
-                    canvas.widget.queue_draw();
+                    canvas.notify_model_changed();
 
                     if let Some(status_bar) = &status_bar {
                         status_bar.set_state(&t!("Image imported successfully"));

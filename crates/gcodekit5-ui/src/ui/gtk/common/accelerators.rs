@@ -8,7 +8,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use crate::ui::gtk::common::accelerators;
+//! use gcodekit5_ui::ui::gtk::common::accelerators;
 //!
 //! // Reference standard accelerators:
 //! let open_accel = accelerators::StandardShortcuts::FILE_OPEN;

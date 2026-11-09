@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 ropey = "1.6"
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [features]
 slint_legacy_tests = []

@@ -4,6 +4,7 @@
 //! selection tools, and design operation buttons.
 
 use crate::t;
+use crate::ui::gtk::common::dialog_window::DialogWindow;
 use crate::ui::gtk::fast_shape_gallery::FastShapeGallery;
 use gcodekit5_core::units::MeasurementSystem;
 use gcodekit5_core::{shared, thread_safe, Shared, SharedVec, ThreadSafe};
@@ -13,8 +14,8 @@ use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, Dialog, Entry, Frame, Grid, Image, Label, Orientation,
-    PolicyType, ResponseType, ScrolledWindow,
+    Align, Box, Button, CheckButton, Entry, Frame, Grid, Image, Label, Orientation, PolicyType,
+    ResponseType, ScrolledWindow,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -90,6 +91,29 @@ impl DesignerTool {
     }
 }
 
+impl DesignerTool {
+    /// Returns extra usage instructions for tools whose interaction is not obvious.
+    ///
+    /// Polyline: Enter finishes an open path, double-click or right-click finishes a
+    /// closed path, Escape cancels.
+    pub fn usage_hint(&self) -> Option<String> {
+        match self {
+            DesignerTool::Polyline => Some(t!(
+                "Click to add points. Enter finishes an open polyline; double-click or right-click finishes a closed shape. Esc cancels."
+            )),
+            _ => None,
+        }
+    }
+
+    /// Tooltip text including the usage hint, if any.
+    fn tooltip_with_hint(&self) -> String {
+        match self.usage_hint() {
+            Some(hint) => format!("{}\n{}", self.tooltip(), hint),
+            None => self.tooltip(),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum UnitsKind {
     Length,
@@ -113,6 +137,8 @@ pub struct DesignerToolbox {
     _current_units: ThreadSafe<MeasurementSystem>,
     /// Callbacks to refresh tool/stock setting UI widgets from state
     refresh_callbacks: SharedVec<Rc<dyn Fn()>>,
+    /// Called after a global tool setting is edited (see `set_on_tool_settings_changed`).
+    tool_settings_changed: Shared<Option<Rc<dyn Fn()>>>,
 }
 
 impl DesignerToolbox {
@@ -176,7 +202,7 @@ impl DesignerToolbox {
             let btn = Button::new();
             btn.set_size_request(40, 40);
             btn.set_halign(Align::Center);
-            let tooltip = tool.tooltip();
+            let tooltip = tool.tooltip_with_hint();
             btn.set_tooltip_text(Some(&tooltip));
 
             let icon_name = tool.icon();
@@ -210,6 +236,7 @@ impl DesignerToolbox {
             btn.connect_clicked(move |_| {
                 *current_tool_clone.borrow_mut() = tool;
                 active_tool_label.set_text(&format!("{} {}", t!("Active tool:"), tool.tooltip()));
+                active_tool_label.set_tooltip_text(tool.usage_hint().as_deref());
 
                 for (j, b) in buttons_clone.iter().enumerate() {
                     if tools_clone[j] == tool {
@@ -249,6 +276,8 @@ impl DesignerToolbox {
 
         #[allow(clippy::type_complexity)]
         let refresh_callbacks: SharedVec<Rc<dyn Fn()>> = shared(Vec::new());
+        #[allow(clippy::type_complexity)]
+        let tool_settings_changed: Shared<Option<Rc<dyn Fn()>>> = shared(None);
 
         // ===== ADD SELECTOR LASER/CNC =====
         // 1. Crear el Frame (contenedor con borde y título)
@@ -370,6 +399,7 @@ impl DesignerToolbox {
             let settings_controller_dialog = settings_controller.clone();
             let current_units_dialog = current_units.clone();
             let refresh_callbacks_dialog = refresh_callbacks.clone();
+            let tool_settings_changed_dialog = tool_settings_changed.clone();
             let btn = tool_settings_btn.clone();
 
             tool_settings_btn.connect_clicked(move |_| {
@@ -381,6 +411,7 @@ impl DesignerToolbox {
                             settings_controller_dialog.clone(),
                             current_units_dialog.clone(),
                             refresh_callbacks_dialog.clone(),
+                            tool_settings_changed_dialog.clone(),
                         );
                     }
                 }
@@ -473,7 +504,7 @@ impl DesignerToolbox {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
                     settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
+                        if key == "measurement_system" || key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
                             {
@@ -633,11 +664,7 @@ impl DesignerToolbox {
             update_stock_settings_btn();
         }
 
-        let stock_settings_dialog = Dialog::builder()
-            .title(t!("Stock Settings"))
-            .modal(true)
-            .resizable(true)
-            .build();
+        let stock_settings_dialog = DialogWindow::new(&t!("Stock Settings"), true);
         stock_settings_dialog.set_default_size(520, 520);
         stock_settings_dialog.add_button(&t!("Close"), ResponseType::Close);
         stock_settings_dialog.connect_response(|d, _| d.hide());
@@ -743,7 +770,17 @@ impl DesignerToolbox {
             _settings_controller: settings_controller,
             _current_units: current_units,
             refresh_callbacks,
+            tool_settings_changed,
         })
+    }
+
+    /// Registers a callback run after a global tool setting (feed, power, passes, ...)
+    /// is edited in the toolbox, so views that display global values can refresh.
+    ///
+    /// # Arguments
+    /// * `callback` - Called on the GTK main loop after the new value is stored.
+    pub fn set_on_tool_settings_changed(&self, callback: impl Fn() + 'static) {
+        *self.tool_settings_changed.borrow_mut() = Some(Rc::new(callback));
     }
 
     /// Crea el settings_box con los campos de herramienta (Feed, Speed, etc.)
@@ -753,6 +790,7 @@ impl DesignerToolbox {
         settings_controller: Rc<SettingsController>,
         current_units: ThreadSafe<MeasurementSystem>,
         refresh_callbacks: SharedVec<Rc<dyn Fn()>>,
+        tool_settings_changed: Shared<Option<Rc<dyn Fn()>>>,
     ) -> (Box, Grid) {
         let settings_box = Box::new(Orientation::Vertical, 8);
         settings_box.set_margin_start(8);
@@ -771,6 +809,7 @@ impl DesignerToolbox {
             let settings_grid = settings_grid.clone();
             let tool_row = tool_row.clone();
             let refresh_callbacks = refresh_callbacks.clone();
+            let tool_settings_changed = tool_settings_changed.clone();
             let state = state.clone();
 
             move |label_text: String,
@@ -854,6 +893,7 @@ impl DesignerToolbox {
                     let current_units = current_units.clone();
                     let setter = setter.clone();
                     let state = state.clone();
+                    let tool_settings_changed = tool_settings_changed.clone();
                     entry.connect_changed(move |e| {
                         if let Ok(val) = e.text().parse::<f64>() {
                             e.remove_css_class("entry-invalid");
@@ -863,6 +903,10 @@ impl DesignerToolbox {
                             let val_mm = match (units_kind, machine_mode) {
                                 (UnitsKind::Rpm, MachineMode::Laser2D) => val * 10.0,
                                 (UnitsKind::Rpm, MachineMode::Cnc3D) => val,
+                                // Must mirror update_display: in laser mode lengths (passes,
+                                // laser width) are shown unconverted. Converting here scaled
+                                // the value by 25.4 on every refresh in imperial mode.
+                                (UnitsKind::Length, MachineMode::Laser2D) => val,
                                 (UnitsKind::Length | UnitsKind::FeedRate, _) => match units {
                                     MeasurementSystem::Metric => val,
                                     MeasurementSystem::Imperial => val * 25.4,
@@ -870,6 +914,11 @@ impl DesignerToolbox {
                             };
 
                             setter(val_mm);
+                            // Let dependent views (e.g. laser fields showing global values) refresh.
+                            let cb = tool_settings_changed.borrow().clone();
+                            if let Some(cb) = cb {
+                                cb();
+                            }
                         } else {
                             e.add_css_class("entry-invalid");
                         }
@@ -880,7 +929,7 @@ impl DesignerToolbox {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
                     settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
+                        if key == "measurement_system" || key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
                             {
@@ -968,7 +1017,9 @@ impl DesignerToolbox {
             );
         }
 
-        if state.borrow().machine_mode() == MachineMode::Cnc3D {
+        // Continuous Z only applies to CNC multi-pass cutting. Always create it so it
+        // can appear when the user switches to CNC mode, and show/hide it with the mode.
+        {
             let row = tool_row.get();
             tool_row.set(row + 1);
 
@@ -990,6 +1041,35 @@ impl DesignerToolbox {
                     .borrow_mut()
                     .set_continuous_z_between_passes(c.is_active());
             });
+
+            // Weak references: the refresh callback list outlives this dialog content.
+            let label_weak = label.downgrade();
+            let check_weak = check.downgrade();
+            let state_mode = state.clone();
+            let update_continuous_z = Rc::new(move || {
+                let (Some(label), Some(check)) = (label_weak.upgrade(), check_weak.upgrade())
+                else {
+                    return;
+                };
+                // Read everything first; `set_active` emits `toggled`, which borrows the
+                // state mutably.
+                let (is_cnc, enabled) = {
+                    let state = state_mode.borrow();
+                    (
+                        state.machine_mode() == MachineMode::Cnc3D,
+                        state.tool_settings.continuous_z_between_passes,
+                    )
+                };
+                label.set_visible(is_cnc);
+                check.set_visible(is_cnc);
+                if check.is_active() != enabled {
+                    check.set_active(enabled);
+                }
+            });
+            refresh_callbacks
+                .borrow_mut()
+                .push(update_continuous_z.clone());
+            update_continuous_z();
         }
 
         (settings_box, settings_grid)
@@ -1002,6 +1082,7 @@ impl DesignerToolbox {
         settings_controller: Rc<SettingsController>,
         current_units: ThreadSafe<MeasurementSystem>,
         refresh_callbacks: SharedVec<Rc<dyn Fn()>>,
+        tool_settings_changed: Shared<Option<Rc<dyn Fn()>>>,
     ) {
         // Crear el settings_box con el modo actual
         let (settings_box, _) = Self::create_tool_settings_box(
@@ -1009,14 +1090,11 @@ impl DesignerToolbox {
             settings_controller.clone(),
             current_units.clone(),
             refresh_callbacks.clone(),
+            tool_settings_changed,
         );
 
-        let dialog = Dialog::builder()
-            .title(t!("Tool Settings"))
-            .modal(true)
-            .resizable(true)
-            .transient_for(parent)
-            .build();
+        let dialog = DialogWindow::new(&t!("Tool Settings"), true);
+        dialog.set_transient_for(Some(parent));
 
         dialog.set_default_size(520, 520);
         dialog.add_button(&t!("Close"), ResponseType::Close);
@@ -1069,6 +1147,8 @@ impl DesignerToolbox {
         *self.current_tool.borrow_mut() = tool;
         self.active_tool_label
             .set_text(&format!("{} {}", t!("Active tool:"), tool.tooltip()));
+        self.active_tool_label
+            .set_tooltip_text(tool.usage_hint().as_deref());
 
         for (i, btn) in self.buttons.iter().enumerate() {
             if self.tools[i] == tool {

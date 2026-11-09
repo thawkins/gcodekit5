@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Slint-based user interface for GCodeKit4"
+autotests = false
 
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
@@ -17,8 +18,8 @@ gcodekit5-gcodeeditor = { path = "../gcodekit5-gcodeeditor" }
 gcodekit5-visualizer = { path = "../gcodekit5-visualizer" }
 gcodekit5-settings = { path = "../gcodekit5-settings" }
 gcodekit5-devicedb = { path = "../gcodekit5-devicedb" }
-gtk4 = "0.9"
-libadwaita = "0.7"
+gtk4 = { version = "0.9", features = ["v4_14"] }
+libadwaita = { version = "0.7", features = ["v1_6"] }
 sourceview5 = "0.9"
 glib = "0.20"
 gio = "0.20"
@@ -34,7 +35,6 @@ anyhow = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6.0"
-arboard = "3.4"
 glam = "0.29"
 glow = "0.17"
 libloading = "0.8"
@@ -54,3 +54,7 @@ tempfile = "3.8"
 
 [features]
 slint_legacy_tests = []
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

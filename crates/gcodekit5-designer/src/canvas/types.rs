@@ -83,6 +83,21 @@ pub struct DrawingObject {
 }
 
 impl DrawingObject {
+    /// Returns the depth (mm, positive, below the pass start) a pocket on this
+    /// object is cut to.
+    ///
+    /// Every shape type uses the same rule so saved designs cut identically
+    /// regardless of shape: `pocket_depth` when it is greater than zero,
+    /// otherwise the magnitude of `start_depth`. A minimum of 0.1 mm is applied
+    /// to the fallback so an unset depth never yields an empty pocket.
+    pub fn effective_pocket_depth(&self) -> f64 {
+        if self.pocket_depth > 0.0 {
+            self.pocket_depth
+        } else {
+            self.start_depth.abs().max(0.1)
+        }
+    }
+
     pub fn get_effective_shape(&self) -> Shape {
         let mut shape = self.shape.clone();
         if self.offset != 0.0 {

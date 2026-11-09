@@ -3,9 +3,11 @@
 //! UI panel for application-level preferences including theme,
 //! default units, startup behavior, and file associations.
 
+use crate::ui::gtk::common::dialog_window::DialogWindow;
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Align, Box as GtkBox, Button, Dialog, Entry, Label, Notebook, Orientation, PolicyType,
+    glib, Align, Box as GtkBox, Button, Entry, Label, Notebook, Orientation, PolicyType,
     PositionType, ResponseType, ScrolledWindow, StringList, Switch,
 };
 use libadwaita::prelude::*;
@@ -21,7 +23,7 @@ use gcodekit5_settings::view_model::SettingsCategory;
 // Complex type due to GTK widget and settings controller fields.
 #[allow(clippy::type_complexity)]
 pub struct SettingsWindow {
-    dialog: Dialog,
+    dialog: DialogWindow,
     notebook: Notebook,
     controller: Rc<SettingsController>,
     // Save callback stored for deferred registration by parent window.
@@ -38,12 +40,8 @@ impl SettingsWindow {
         controller: Rc<SettingsController>,
         on_save: Option<Box<dyn Fn()>>,
     ) -> Self {
-        let dialog = Dialog::builder()
-            .title("Preferences")
-            .modal(true)
-            .default_width(800)
-            .default_height(600)
-            .build();
+        let dialog = DialogWindow::new("Preferences", true);
+        dialog.set_default_size(800, 600);
 
         dialog.add_button("Cancel", ResponseType::Cancel);
         dialog.add_button("Save", ResponseType::Accept);
@@ -66,7 +64,7 @@ impl SettingsWindow {
 
         {
             let controller = controller.clone();
-            dialog.connect_close_request(move |_| {
+            dialog.window().connect_close_request(move |_| {
                 controller.discard_changes();
                 glib::Propagation::Proceed
             });
@@ -106,6 +104,7 @@ impl SettingsWindow {
     fn setup_pages(&self) {
         self.add_page(SettingsCategory::General, &t!("General"));
         self.add_page(SettingsCategory::Controller, &t!("Controller"));
+        self.add_page(SettingsCategory::Machine, &t!("Machine"));
         self.add_page(SettingsCategory::UserInterface, &t!("User Interface"));
         self.add_page(SettingsCategory::FileProcessing, &t!("File Processing"));
         self.add_page(SettingsCategory::KeyboardShortcuts, &t!("Shortcuts"));
@@ -205,28 +204,19 @@ impl SettingsWindow {
                     .valign(Align::Center)
                     .build();
 
-                let parent_window = self.dialog.clone();
+                let parent_window = self.dialog.window().clone();
                 let entry_clone = entry.clone();
 
                 browse_btn.connect_clicked(move |_| {
-                    let file_chooser = super::file_dialog::folder_dialog(
-                        &t!("Select Directory"),
-                        Some(&parent_window),
-                    );
+                    let file_chooser =
+                        crate::ui::gtk::file_dialog::folder_dialog(&t!("Select Directory"));
 
                     let entry = entry_clone.clone();
-                    file_chooser.connect_response(move |dialog, response| {
-                        if response == ResponseType::Accept {
-                            if let Some(file) = dialog.file() {
-                                if let Some(path) = file.path() {
-                                    entry.set_text(&path.to_string_lossy());
-                                }
-                            }
+                    file_chooser.pick_folder(Some(&parent_window), move |file| {
+                        if let Some(path) = file.path() {
+                            entry.set_text(&path.to_string_lossy());
                         }
-                        dialog.destroy();
                     });
-
-                    file_chooser.show();
                 });
 
                 let id_clone = id.clone();

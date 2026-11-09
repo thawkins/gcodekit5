@@ -4,10 +4,12 @@
 //! Supported controllers:
 //! - GRBL: Open-source CNC control software
 //! - Repetier: 3D printer firmware with its own line processor and flow-control sender
-//! Supported via GRBL
+//!
+//! Supported via GRBL:
 //! - FluidNC: Powerful open-source CNC control
 //! - grblHAL: Enhanced GRBL with additional features
-//! Planned but not supported
+//!
+//! Planned but not supported:
 //! - TinyG: CNC control for 3D printers and engravers
 //! - g2core: Next generation of TinyG
 //! - Smoothieware: CNC control software
@@ -45,9 +47,9 @@ pub use protocol_registry::{
 
 pub use settings::{DefaultFirmwareSettings, FirmwareSetting, FirmwareSettingsTrait, SettingType};
 
+pub use sender::Sender;
 pub use smoothieware::{SmoothiewareCapabilities, SmoothiewareController, SmoothiewareVersion};
 pub use tinyg::{TinyGCapabilities, TinyGController, TinyGVersion as TinyGVer};
-pub use sender::Sender;
 
 /// Supported CNC controller types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -117,7 +119,6 @@ pub enum ControllerProtocol {
     // G2Core,
     // Smoothieware,
     // GrblHal,
-
     /// Unknown or not yet detected.
     #[default]
     Unknown,
@@ -138,7 +139,8 @@ impl ControllerProtocol {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    /// Parses a controller type name (as stored in device profiles).
+    pub fn from_name(s: &str) -> Self {
         match s {
             "GRBL" | "Grbl" => Self::Grbl,
             "Repetier" => Self::Repetier,

@@ -93,10 +93,18 @@ impl DesignerState {
 
     /// Creates a new designer state.
     pub fn new() -> Self {
+        let tool_settings = ToolSettings::default();
+        // Keep the generator in sync with the tool settings from the start;
+        // otherwise it would emit F0 / S0 until a setter is called.
+        let mut toolpath_generator = ToolpathGenerator::with_global_settings(
+            tool_settings.feed_rate,
+            tool_settings.spindle_speed,
+        );
+        toolpath_generator.set_tool_diameter(tool_settings.tool_diameter);
         Self {
             canvas: Canvas::with_size(800.0, 600.0),
-            toolpath_generator: ToolpathGenerator::new(),
-            tool_settings: ToolSettings::default(),
+            toolpath_generator,
+            tool_settings,
             generated_gcode: String::new(),
             gcode_generated: false,
             current_file_path: None,

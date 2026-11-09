@@ -16,8 +16,13 @@ use std::sync::Arc;
 pub trait GcodeStreamReader: Send + Sync {
     /// Read the next line from the stream
     ///
-    /// Returns `Some(line)` if a line is available, `None` if at end of stream
-    fn read_line(&mut self) -> Option<String>;
+    /// Returns `Ok(Some(line))` if a line is available and `Ok(None)` at the
+    /// end of the stream (or while a [`PausableStream`] is paused).
+    ///
+    /// # Errors
+    /// Returns the underlying I/O error if the source cannot be read; a read
+    /// error is never reported as end of stream.
+    fn read_line(&mut self) -> std::io::Result<Option<String>>;
 
     /// Get the current line number (0-indexed)
     fn current_line_number(&self) -> usize;
@@ -59,10 +64,15 @@ impl FileStreamReader {
         let file = File::open(&path)?;
         let reader = BufReader::new(file);
 
-        // Count total lines
+        // Count total lines (byte-based, so non-UTF-8 content is counted too).
+        // A failure here only makes the total unknown; the error itself is
+        // reported by `read_line` when the content is actually read.
         let file_for_count = File::open(&path)?;
         let count_reader = BufReader::new(file_for_count);
-        let total_lines = Some(count_reader.lines().count());
+        let total_lines = count_reader
+            .split(b'\n')
+            .try_fold(0usize, |n, line| line.map(|_| n + 1))
+            .ok();
 
         Ok(Self {
             reader,
@@ -93,24 +103,23 @@ impl FileStreamReader {
 }
 
 impl GcodeStreamReader for FileStreamReader {
-    fn read_line(&mut self) -> Option<String> {
+    fn read_line(&mut self) -> std::io::Result<Option<String>> {
         if self.is_eof {
-            return None;
+            return Ok(None);
         }
 
-        let mut line = String::new();
-        match self.reader.read_line(&mut line) {
-            Ok(0) => {
+        // Read raw bytes so that a non-UTF-8 byte (e.g. a Latin-1 comment) is
+        // decoded lossily instead of failing; genuine I/O errors propagate and
+        // leave the reader positioned where it was.
+        let mut buf = Vec::new();
+        match self.reader.read_until(b'\n', &mut buf)? {
+            0 => {
                 self.is_eof = true;
-                None
+                Ok(None)
             }
-            Ok(_) => {
+            _ => {
                 self.current_line += 1;
-                Some(line)
-            }
-            Err(_) => {
-                self.is_eof = true;
-                None
+                Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
             }
         }
     }
@@ -134,15 +143,16 @@ impl GcodeStreamReader for FileStreamReader {
     fn seek_to_line(&mut self, line_number: usize) -> std::io::Result<()> {
         self.reset()?;
         let mut current = 0;
-        let mut line = String::new();
+        let mut line = Vec::new();
 
-        while current < line_number && self.reader.read_line(&mut line)? > 0 {
+        while current < line_number && self.reader.read_until(b'\n', &mut line)? > 0 {
             current += 1;
             line.clear();
         }
 
         self.current_line = current;
-        self.is_eof = current >= line_number && line_number > 0;
+        // EOF only if the file ended before the requested line was reached
+        self.is_eof = current < line_number;
         Ok(())
     }
 
@@ -190,13 +200,13 @@ impl StringStreamReader {
 }
 
 impl GcodeStreamReader for StringStreamReader {
-    fn read_line(&mut self) -> Option<String> {
+    fn read_line(&mut self) -> std::io::Result<Option<String>> {
         if self.current_index < self.lines.len() {
             let line = self.lines[self.current_index].clone();
             self.current_index += 1;
-            Some(line)
+            Ok(Some(line))
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -292,10 +302,10 @@ impl PausableStream {
 }
 
 impl GcodeStreamReader for PausableStream {
-    fn read_line(&mut self) -> Option<String> {
+    fn read_line(&mut self) -> std::io::Result<Option<String>> {
         // Don't read while paused
         if self.is_paused.load(Ordering::SeqCst) == 1 {
-            return None;
+            return Ok(None);
         }
         self.inner.read_line()
     }

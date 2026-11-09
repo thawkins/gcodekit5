@@ -1,3 +1,69 @@
+## [Unreleased] - 2026-11-10 (merge master into devel)
+
+### Changed
+- **Machine control on devel's protocol registry**: the panel keeps the running job as `Rc<dyn Sender>`. GRBL jobs use master's character-counting `DirectSender` (now a `Sender` implementation); Repetier jobs use `RepetierSender`. Pause, resume, stop and unlock go through the trait, and GRBL-only realtime bytes (`!`, `~`, `0x18`, `?`, spindle-stop `0x9E`) are not sent to flow-control protocols
+- **Connecting**: the active machine's protocol is applied to the communicator and logged; the protocol profile's init commands replace the fixed `$I` / `$$` / `$10=47` sequence; a device that identifies as a different protocol is rejected; a lost connection is reported and the panel resets
+- Devel's removed GRBL modules (`controller`, `command_creator`, `communicator`, `constants`, `override_manager`, `response_parser`, `utils`) stay removed. Devel's `GrblSender` is removed (GRBL streaming is `DirectSender`). Master's `override_sequencer` is kept, and `parse_probe_report` moved to `grbl::status_parser`. Tests for the removed modules and for jigsaw G-code output (jigsaw now feeds the Designer) were dropped
+- Dead-key support on Wayland now sets GTK's `gtk-im-module` setting to `simple` instead of setting `GTK_IM_MODULE` with `unsafe`
+
+## [Unreleased] - 2026-11-10 (Vulkan log noise)
+
+### Fixed
+- **Console noise**: GTK's harmless `Gdk-WARNING ... VK_SUBOPTIMAL_KHR` swapchain message, printed whenever the window surface changes under the Vulkan renderer, is now filtered out by a GLib log writer (`glib_log_filter`); all other GLib/GTK messages are still printed
+
+## [Unreleased] - 2026-11-10 (agent instructions)
+
+### Changed
+- **Agent instructions**: `AGENTS.md` rewritten with the general working rules; Rust-specific guidance (formatting, build/test commands, test layout, code rules) moved to the new `AGENTS-LANGUAGE.md`, which `AGENTS.md` includes. The previous version is kept as `AGENTS-OLD.md`
+
+## [Unreleased] - 2026-11-09 (review follow-up to #62)
+
+### Fixed
+- **CAM homing safety**: with "home before job" on, every post-homing travel/retract in the jigsaw, tabbed box, spoilboard surfacing, spoilboard grid and drill press is a machine-coordinate move (`G53 G0 Z-1`), so a retained G54 Z offset can no longer send Z above the homed position. With homing off, output stays in work coordinates and no longer silently clears the X/Y work offset
+- **TCP connections**: reads poll with the same 10 ms timeout as serial instead of the 5 s connect timeout, so Pause/E-stop are no longer delayed; a closed TCP connection now disconnects
+- **CAM validator**: GRBL system commands (`$H`, `$X`, `$$`, ...) are accepted and `$J=` jog payloads are validated; stats/optimizer handle `$` lines
+- **Editor undo**: nested batches commit only when the outermost batch ends
+- **Quit**: File → Quit and its shortcut ask before discarding unsaved designer changes, and exit the whole app
+- **Designer units**: property fields switch units as soon as the measurement system changes; display and parsing share one unit source
+- **Stock simulation**: the stock origin is a "Stock Z0 at: Top/Bottom" option (default Top) instead of a guess from the lowest Z; designer CNC output records `; Stock Z0: bottom` in its header and is detected automatically
+- **Raster pocket ordering**: spans indexed by scanline, so large pockets order in linear time (60,000 spans: 3.9 s → 0.09 s)
+
+## [Unreleased] - 2026-11-09 (warnings and GTK 4.10 deprecations)
+
+### Changed
+- **GTK 4.10 migration**: `ComboBoxText` replaced by `DropDown` (new `common::text_dropdown` helper), `FileChooserDialog` by `FileDialog` (`file_dialog::FileDialogHelpers`), `MessageDialog` by `AlertDialog` (`common::dialog`), `Dialog` by a `Window`-based `common::dialog_window::DialogWindow`, and `StyleContext` colour lookups by libadwaita `StyleManager` values
+- File pickers now use the desktop's native picker through the XDG portal where available
+- Removed the `-A deprecated` rustflag from `.cargo/config.toml` so new deprecations are reported
+- Removed unused dependencies (`tokio`, `tracing-subscriber`, `rfd`, `arboard`, `image` from the workspace list; `cairo-rs`, `glow` from `gcodekit5-visualizer`)
+
+### Fixed
+- All clippy, rustc and rustdoc warnings across the workspace (about 1,150 including deprecations)
+- **Machine Control**: the G-code editor column no longer shrinks below the editor's search panel, and the middle controls are no longer clipped
+- **Dialogs**: message dialogs show both the message and the secondary text; reusable dialogs (Fast Shapes, Stock Settings, Add Text) survive being closed with the title-bar button
+- **Export Settings**: the suggested file name `grbl_settings.json` is now shown in the save dialog
+- **Stylesheet**: removed properties GTK does not support (`max-height`, `spacing`) that produced theme parser warnings; `dropdown` shares the `combobox` height rule
+- **Designer**: the coordinate OSD no longer uses a negative bottom margin, which made GTK print a "GtkBox adjusted size ... must not decrease" warning every 100 ms; it now sits flush on the canvas edge
+
+## [Unreleased] - 2026-11-09 (audit follow-up)
+
+### Fixed
+- **Streaming**: the job sender now uses GRBL character-counting flow control (≤127 bytes in flight) instead of 40 lines, parses replies line by line, and reports "Job stopped: <reason>" on alarm/error/reset/disconnect (an `error:` reply now stops the job)
+- **Live status during jobs**: the job sender polls `?` itself, so the DRO, machine state, Unlock button and `Ov:` overrides update while streaming; "Set %" override now works mid-job
+- **Machine Control**: rotary A/B/C rows, zero buttons and visibility wired; WCS buttons refuse during jobs; inch jog presets; invalid jog feed flagged; Connect no longer blocks the UI; Pause/Resume/Stop only enabled during a job; quick-probe failures handled without error dialogs; Device Config no longer rebuilt twice a second; machine type read from `$32`; Clear editor confirms; console capped at 5000 lines; more strings translated
+- **TCP controllers**: device profiles have a TCP host; connecting with a TCP profile opens a TCP connection (WebSocket reports "not supported")
+- **DeviceDB**: one bad profile no longer prevents loading the others, and the original file is backed up before it could be overwritten
+- **Settings**: listeners no longer panic by re-borrowing the settings dialog; grblHAL settings ≥256 parsed; `Config::merge` keeps UI settings
+- **Serial ports**: `/dev/ttyS*`, `/dev/ttyAMA*`, `/dev/rfcomm*` and similar UARTs are listed
+- **Validator**: G91/G20 modal tracking and words without spaces (`X10Y20`)
+- **GrblController**: `[PRB:]` probe results parsed, work offsets from `WCO`/`$#`, work zero via `G10 L20`; G2Core/TinyG report "not supported" instead of silently doing nothing
+- **Designer G-code**: one pocket-depth rule for every shape; ramped contours descend at most one step-down per lap; no false out-of-bounds warning for normal negative-Z cuts; laser power changes emitted per segment; raster pockets in rings need far fewer retracts
+- **Import**: SVG nested transforms (translate/scale/rotate/skew/matrix) on every element and viewBox→mm scaling; DXF `$INSUNITS` and mirrored (negative extrusion) entities
+- **Designer model**: gears/sprockets mirror correctly; path bounds match the drawn path; path `parametric_source` saved
+- **Designer UI**: property fields apply on Enter/focus-out with one undo step per edit; all position/size/image/laser edits undoable; undo restores z-order and previous groups; delete is one undo step; laser override applies to every selected shape; no more 100 ms selection polling or main-loop spinning; zoom-aware click tolerance; topmost shape picked consistently; partial circular arrays spaced correctly; repeated paste offsets each copy; unsaved-changes prompts on New/Open and when closing the window; toolpath preview matches generated G-code; laser fields showing global values refresh when the globals change
+- **CAM tools**: bitmap engraving maps dark pixels to more power by default (old preset files are converted); probe routines use relative moves, with probe depth, tip-radius and plate-thickness compensation; the probe tool's Probe and Apply to WCS buttons work; tool-length probing is relative; homing preamble optional and never raises Z above machine zero; spoilboard grid no longer changes `$32`; tabbed box/jigsaw use M4; Gerber drill depth, rubout origin and true rectangle/obround apertures; CAM presets stored in mm with errors reported; device polling timers released with their tool
+- **Probe offsets**: suggested `G92` now makes the probed point the work zero
+- **Visualizer**: editing no longer re-parses on every keystroke or resets the camera; status timer paused while hidden; preview and live tool markers separated; bounds show units; machine defaults to G0; shared arc maths in the 3D renderer; stock simulation removes material with a top-at-Z0 or bottom-zero stock; laser-off moves drawn as travel
+- **Editor**: Replace All uses the search options; batch undo is atomic; text inserted at the cursor is undoable; non-UTF-8 files load
 ### Recent Updates (1.2.0-beta.2a) Fixed an issue with moving multiple objects using grips and Fix Dead Keys on Wayland (2026-10-25)
   - When modifying the grips of a set of objects, they would lose their position. This issue has been fixed.
 ### Fixed
@@ -38,12 +104,33 @@
 
 ## [Unreleased] - 2026-09-03
 
+### Added
+- **6-axis support, touch probing and feeds & speeds** merged from the `tim1503` branch (developed as 0.55.0-alpha.1 to alpha.7; detailed entries below 1.0.0-alpha.1):
+  - 6-axis (A/B/C) machine control, settings, G-code validation, visualizer bounds and firmware capability flags (6AXISPLAN.md)
+  - Touch probe routines, GRBL probe parsing and WCS offset updates (PROBEPLAN.md)
+  - Feeds & speeds calculator integrated with the Tools and Materials databases (FEEDSSPEEDS.md)
+  - DeviceDB profile templates
+- Note: `GCodeSegmentType::Probe` (0.55.0-alpha.1) was dropped in the merge, because `gcodekit5-core::gcode_parser` was removed on master
+
 ### Fixed
 - **Laser stalls and stops on long image engravings**: The Machine Control status poller (50ms) and the DirectSender streaming thread were both reading the same serial port independently. Under load, the poller could "steal" the GRBL "ok" acknowledgments meant for the streaming job, desyncing its internal flow-control window. On short jobs this caused occasional stuttering; on long jobs it could eventually make the sender stop feeding new G-code entirely, starving the machine's buffer and bringing the laser to a complete stop.
   - `DirectSender` is now the sole reader/writer of the serial port while an image engraving job is running; the status poller yields the port for the duration of the job instead of competing for it.
   - Removed a 30-second "watchdog" recovery mechanism that, on inspection, was placed after the exact loop it was meant to rescue and could never actually trigger during a real stall — no longer needed now that the root cause is fixed.
   - Verified stable on real hardware with engravings of 216,604 and 158,923 G-code lines, completed with no stutter and no stops.
   - Trade-off: while an image engraving job is streaming, the live DRO/position and buffer-state readouts in Machine Control no longer update (the progress bar still does, via the engraving job itself), keeping the serial port free of contention for maximum reliability and speed.
+- **Pockets leave holes uncut**: path, gear, sprocket and text pockets now classify contours with the even-odd rule and pocket each region minus its holes, with tool-radius clearance from every boundary, for all three pocket strategies. Previously the outer pocket cut straight through a hole and the hole was pocketed again (e.g. the inside of a ring, or the counter of a letter O)
+- **Continuous (hold-to-jog) jogging**: a "Continuous" checkbox in Machine Control makes the jog buttons and numpad keys jog for as long as they are held. Following GRBL's recommended method the jog is streamed as short increments paced by `ok` replies and stopped with jog-cancel (0x85), so soft limits end the jog at the boundary instead of rejecting a single long move (error 15). `GrblController::jog_start`/`jog_stop` use the same scheme (replacing the fixed 1000 mm target) and purge unsent jog increments before the cancel
+- **Exact feed/spindle override control**: Machine Control's Feed and Spindle rows have a target percentage field and "Set %" button. GRBL records realtime override bytes as pending flags, so a burst of identical steps can collapse into one; the new control (and `GrblController::set_feed_override` / `set_spindle_override`) sends one step at a time and waits for the controller's `Ov:` report to confirm it before choosing the next. `GrblController` now takes its override state from `Ov:` reports instead of recording the requested value
+- **Removed `unwrap()` calls** flagged by the code-quality workflow: application code now handles the missing/invalid case explicitly (probe trigger lookup, NaN-safe tool sorting, zero-sized image pixmaps, polyline vertex access, help-browser heading tags, progress-receiver mutex removed); tests and benches use `expect()` with messages. The workflow's unwrap counter now counts lint diagnostics rather than every line mentioning `unwrap_used`
+- **Security: dependency updates** to clear RustSec advisories reported by `cargo deny`: `zip` 2.4 → 9.5 (RUSTSEC-2026-0367/0368/0369/0429, symlink/permission handling during extraction), `tokio` 1.53.1 → 1.54.1 (RUSTSEC-2026-0386), `zstd` 0.13.3 → 0.14.3 / `zstd-safe` → 8.2 / `zstd-sys` → 2.1.2 (RUSTSEC-2026-0391/0398/0403/0410)
+- **MSRV raised to Rust 1.90**: the locked `ordered-float` 5.5 dependency requires rustc 1.90, so 1.88 could no longer build the workspace
+- **Code audit fixes (2026-11-09)** — regression tests added under each crate's `tests/`:
+  - Machine control: Pause no longer queues `M5` (spindle stayed off after resume); feed-hold/resume sent once; jogs and manual commands blocked while streaming; jogs force `G21`; quick probes relative; E-stop stops the streaming thread; drill-press jobs no longer stall; Machine menu actions wired
+  - GRBL protocol: `connect()` no longer sends `$RST=*` (wiped machine settings); `S:` no longer matched inside `FS:`; `Bf:` parsed; realtime bytes no longer stall the ok-counter; valid `$J=` jog syntax; override byte values corrected; `G10 L20`/`L2 P1-P6`; `ALARM:n` recognised; serial/TCP `write_all`; TCP hostnames
+  - G-code parsing/visualizer: multiple G words per line, G90/G91, G20 inches, inline comments, I/J/R arcs incl. full circles and G18/G19, accurate bounds and time estimates; editor undo applied the inverse twice
+  - Designer: rotation pivot and degree/radian errors in render and hit-test; G01 restated after arcs; duplicate line numbers; F0 in CNC mode; duplicate final pass; new shapes overwrote loaded shapes; save/load moved shapes; SVG attribute matching (`id` matched `d`)
+  - CAM tools: Gerber 2.4/2.5 scaling and isolation offset direction; laser raster segment, reverse-pass and vertical-scan errors; GRBL-compatible probe backoff; tabbed box slot drift; jigsaw pass depths; speeds & feeds rescaling after RPM clamp
+  - UI: several RefCell double-borrow panics; imperial-unit conversion errors in properties, toolbox and CAM tools; undo history cleared on New/Open; editor Ctrl+S could overwrite a previously opened file
 
 ## [1.1.0-beta.1] - 2026-08-03
 
@@ -84,6 +171,213 @@
 
 ### Added
 - **individual laser parameters for each object**: In addition to the laser working parameters, it is now also possible to define the speed, power and passes properties individually for the desired objects while maintaining the global properties for the rest of the objects.
+
+## [0.55.0-alpha.1] - 2026-05-16
+
+### Added
+- **Milestone 8 — Settings & Configuration** (per 6AXISPLAN.md)
+  - **New `Machine` settings category** in `SettingsCategory` enum for axis configuration
+  - **Machine settings panel** with complete 6-axis configuration support:
+    - Jog settings: Linear step size, rotary step size, jog feed rate
+    - Axis limits: X, Y, Z limits (mm) and A, B, C limits (degrees)
+    - Steps per degree: Configuration for A, B, C rotary axes
+    - Direction inversion: Toggle for all 6 axes (X, Y, Z, A, B, C)
+    - Rotary calibration: Offset values for A, B, C axes
+  - **SettingsPersistence** extended with:
+    - `add_machine_settings()`: Populates dialog with 6-axis machine settings
+    - `update_machine_settings()`: Saves machine settings from dialog to config
+  - **UI Settings panel** updated to include Machine tab
+  - **SettingsController** updated with Machine category mapping
+  - **ProbeSettings** fixed with proper `Default` implementation for validation
+  - All 35 settings crate tests passing
+
+### Added
+- **Milestone 9 — Firmware Support** (per 6AXISPLAN.md)
+  - **New capability flags** in `capabilities.rs`: `Axis4Support`, `Axis5Support`, `Axis6Support`
+  - **GRBL 6-axis status report parsing**: Verified 3/4/6-axis position parsing in `MachinePosition`, `WorkPosition`, `WorkCoordinateOffset`
+  - **grblHAL 6-axis support**: Already has `axes: 6` with `supports_axis()` for A/B/C
+  - **FluidNC 6-axis support**: Already has `axes: 6` with full axis support
+  - **TinyG 6-axis JSON parsing**: JSON responses already support 6 axes
+  - **Smoothieware 6-axis support**: Already has axis support up to 5-6 axes
+  - **g2core 6-axis support**: Native 6-axis with rotational axes support
+  - **6-axis capability detection**: New `Capability` enum variants for axis support
+  - **Unit tests** in `grbl/test.rs` covering:
+    - 3/4/6-axis machine position parsing
+    - 6-axis work position parsing
+    - 6-axis work coordinate offset parsing
+    - GRBL capabilities max_axes verification
+
+### Changed
+- Updated `6AXISPLAN.md`: Milestone 9 marked as complete with all tasks done
+
+## [0.55.0-alpha.7] - 2026-05-08
+
+### Added
+- **Milestone 7 — Visualizer Enhancement** (per 6AXISPLAN.md)
+  - **6-Axis Bounds Tracking**: Extended `Bounds` struct in `viewport.rs` to track rotary axis ranges:
+    - Added `min_a`, `max_a`, `min_b`, `max_b`, `min_c`, `max_c` fields
+    - Added `has_rotary` flag to track if rotary axes are present
+    - Added `update_rotary()` method for A/B/C axis tracking
+    - Added `has_rotary_movement()` and `rotary_ranges()` helper methods
+    - Added `max_rotary_range()` for computing rotation magnitude
+  - **Visualizer 6-Axis State**: Extended `Visualizer` struct with rotary support:
+    - Added `min_a/max_a`, `min_b/max_b`, `min_c/max_c` bounds fields
+    - Added `current_rotary: RotaryPosition` for tracking A/B/C values
+    - Added `color_rotary_moves` flag for rotary-specific coloring
+    - Updated G-code parsing to extract and track rotary coordinates
+  - **Rotary Position Struct**: New `RotaryPosition` type for 6-axis support:
+    - Tracks A (4th), B (5th), C (6th) axis values
+    - `has_movement()` check for non-zero rotation
+    - `magnitude()` for computing total rotation amount
+  - **6-Axis Parameter Extraction**: Enhanced `ExtractedParams` to parse A/B/C coordinates
+  - **Rotary Bounds Integration**: Updated `parse_gcode()` to:
+    - Track rotary bounds during parsing via `bounds.update_rotary()`
+    - Store rotary ranges in visualizer state after parsing
+    - Log rotary bounds for debugging (A/B/C min/max degrees)
+  - **Backward Compatibility**: Maintained `update()` method as alias for `update_xyz()`
+
+### Changed
+- Updated visualizer to support full 6-axis coordinate tracking
+- Extended G-code parser to extract rotary axis coordinates (A, B, C)
+
+## [0.55.0-alpha.6] - 2026-05-08
+
+### Added
+- **Milestone 6 — G-Code Parser & Streaming** (per 6AXISPLAN.md)
+  - **6-Axis G-code parsing support in visualizer**: Extended `ExtractedParams` struct to parse A, B, C rotary axis coordinates
+    - Added `a`, `b`, `c` fields for rotary axis tracking
+    - Added `k` field for helical arc Z-offset support
+    - Updated `extract_all_params()` to recognize A/B/C/K parameters
+    - Enhanced `has_movement()` to include rotary axes
+    - Added `has_rotary_movement()` helper method
+  - **New `GcodeValidator` module** in `gcodekit5-core::gcode::validator`:
+    - Complete 6-axis G-code validation with `GcodeValidatorConfig`
+    - Axis count validation (3/4/5/6 axis machine compatibility)
+    - Axis limit checking for all 6 axes (X, Y, Z, A, B, C)
+    - Feed rate and spindle speed limit validation
+    - `ValidationReport` with line-by-line error/warning tracking
+    - 8 unit tests covering validation edge cases
+  - **5 Test G-code files** for 6-axis machines:
+    - `test_6axis_basic.nc`: Basic 6-axis movement patterns and simultaneous motion
+    - `test_6axis_helical.nc`: Helical interpolation with rotary axis coordination
+    - `test_4axis_rotary.nc`: 4-axis XYZA rotary table operations
+    - `test_5axis_simultaneous.nc`: Full 5-axis simultaneous machining patterns
+    - `test_6axis_validation.nc`: Edge cases and validation scenarios
+  - **Buffer calculation compatibility**: Existing character-counting streaming protocol already handles variable-length lines correctly
+  - **Arc command support**: G2/G3 arcs with rotary axis (helical arcs) parsing verified
+  - **Public API exports**: `GcodeValidator`, `GcodeValidatorConfig`, `ValidationReport`, `ValidationResult`, `AxisLimits`
+
+### Changed
+- Updated visualizer to support A/B/C parameter extraction in G-code parsing
+- Extended gcode module exports to include validator types
+
+## [0.55.0-alpha.5] - 2026-05-08
+
+### Added
+- **Milestone 5 — Machine Control Panel** (per 6AXISPLAN.md)
+  - **6-axis support in MachineControlView**: Added `axis_count` field with `Rc<Cell<u8>>` for dynamic visibility
+  - **Rotary axis DRO containers**: `a_dro_container`, `b_dro_container`, `c_dro_container` for visibility control
+  - **Rotary axis zero buttons**: `a_zero_btn`, `b_zero_btn`, `c_zero_btn` with full wiring
+  - **Machine limits display section**: New sidebar section showing axis limits for all 6 axes
+    - X, Y, Z limits: Shows min/max travel in millimeters
+    - A, B, C limits: Shows min/max rotation in degrees (0°-360°)
+    - Dynamic visibility: Rotary limits hidden until `axis_count >= 4/5/6`
+  - **`update_axis_visibility()` method**: Centralized control for showing/hiding rotary axis UI elements
+    - Shows A axis when `axis_count >= 4`
+    - Shows B axis when `axis_count >= 5`
+    - Shows C axis when `axis_count >= 6`
+  - **Enhanced `set_controls_enabled()`**: Extended to support rotary axis controls
+    - Now handles optional rotary jog buttons (A±, B±, C±)
+    - Now handles optional rotary zero buttons
+    - Backward compatible with basic 3-axis setups via `set_controls_enabled_basic()`
+  - **State management for 6 axes**: All rotary controls properly wired in connection/disconnection handlers
+
+## [0.55.0-alpha.4] - 2026-05-08
+
+### Added
+- **Milestone 4 — WCS & Offset Integration** (per PROBEPLAN.md)
+  - **New module** `gcodekit5-camtools::wcs_service` with complete WCS update functionality
+  - **`WcsUpdateService`** — Processes probe reports and generates G-code commands:
+    - G10 L2 P<n> commands for persistent WCS offsets (G54-G59)
+    - G92 commands for temporary offsets
+    - G43.1 commands for tool-length offsets
+  - **`WcsUpdateConfig`** — Configuration struct for WCS update behavior:
+    - `auto_update_wcs` — Toggle automatic WCS updates
+    - `target_wcs` — Target coordinate system (54-59 for G54-G59)
+    - `use_temporary_offset` — Use G92 instead of G10
+    - `apply_tool_length` — Enable G43.1 for tool length probes
+    - `preview_before_apply` — Show preview dialog before applying
+  - **`generate_preview()`** — Creates human-readable preview of proposed offset changes
+  - **Position computation** — All probe routine types supported:
+    - Z-touch: Sets Z surface position
+    - Edge-find: Sets edge position on single axis
+    - Corner-find: Sets corner intersection (X+Y)
+    - Bore-center: Computes center from 4-point chord intersection
+    - Boss-center: Computes center from 4-point external probe
+    - Tool-length: Calculates tool length from setter plate trigger
+  - **`PersistentProbeResults`** — Serializable storage for probe results per WCS
+  - **`PersistedProbeReport`** — Stores computed position, G-code commands, timestamp
+  - **`build_complete_gcode()`** — Generates full G-code snippet including setup
+  - **6 unit tests** for WCS service:
+    - Default configuration
+    - Z-touch report processing
+    - Preview generation
+    - Tool-length command generation
+    - G92 temporary offset
+    - Persistent results storage
+  - **`ProbeSettings`** struct in `gcodekit5-settings::config`:
+    - Default probe parameters (safe_height, feed rates, backoff)
+    - WCS auto-update preferences
+    - Setter plate position configuration
+    - Persistent results storage
+
+## [0.55.0-alpha.3] - 2026-05-08
+
+### Added
+- **Milestone 3 — Probe Routines (Core Logic)** (per PROBEPLAN.md)
+  - **New module** `gcodekit5-camtools::probe_routines` with `ProbeRoutineEngine`
+  - **Z-Touch routine** — Generates G38.2 probe sequence with optional slow re-probe for accuracy
+  - **Edge-Find routine** — Single-axis edge detection with backoff and re-probe
+  - **Corner-Find routine** — Two-axis corner location (X-min/Y-min, X-max/Y-max, etc.)
+  - **Bore-Center routine** — 4-point internal diameter probe with center calculation via chord intersection
+  - **Boss-Center routine** — 4-point external diameter probe (same math as bore-center)
+  - **Tool-Length routine** — Tool length measurement using a fixed setter plate
+  - **Result computation** — `compute_result()` calculates WCS offsets/center coordinates from trigger positions
+  - **Parameter defaults** module (`probe_routines::defaults`) with sensible defaults:
+    - Safe height: 5.0 mm
+    - Max probe depth: 20.0 mm
+    - Fast feed: 100.0 mm/min
+    - Slow feed: 25.0 mm/min
+    - Backoff: 2.0 mm
+    - Probe distance: 10.0 mm
+  - **Parameter validation** — Bounds checking with descriptive error messages
+  - **6 unit tests** covering:
+    - Z-touch G-code generation
+    - Edge-find G-code generation
+    - Bore-center computation (4-point chord intersection)
+    - Corner-find computation (2-edge intersection)
+    - Tool-length calculation
+    - Parameter validation
+
+## [0.55.0-alpha.1] - 2026-05-08
+
+### Added
+- **Milestone 1 — Touch Probe Foundation** (per PROBEPLAN.md)
+  - **Core probe types** (`gcodekit5-core::probe`): `ProbeType`, `ProbeRoutine`, `ProbeResult`, `ProbeReport`, `ProbePinState`
+  - **GRBL probe response parser** — parses `[PRB:x,y,z:flag]` into `GrblResponse::ProbeResult`
+  - **Real-time probe pin tracking** — detects `Pn:P` in GRBL status reports, emits `ProbePinChanged` event via event bus
+  - **Extended error types** — `ProbeTimeout`, `ProbeUnexpectedTrigger`, `ProbeStuck`, `ProbeNotSupported`
+  - **GCodeSegmentType::Probe** — new variant for toolpath visualizer support
+  - **`FullStatus.probe_pin`** field and `StatusParser::parse_probe_pin()` helper
+  - **Unit tests** for probe response parsing and status pin detection (7 new tests, all passing)
+
+### Changed
+- `GrblControllerState` now tracks `probe_pin: Option<bool>` for live pin-state monitoring
+
+## [0.54.0-alpha.2] - 2026-05-07
+
+### Changed
+- **Version bump**: Incremented patch version to alpha.2
 
 ## [0.54.0-alpha.1] - 2026-05-06
 

@@ -1,154 +1,131 @@
-//! Handlers for laser override configuration
+//! Handlers for the per-shape laser override (feed rate, power, passes).
+//!
+//! Changes apply to *all* selected shapes as a single undoable step. The entries
+//! apply on commit (Enter / focus-out) via [`super::connect_entry_commit`].
 
+use super::{change_selected_with_undo, connect_entry_commit};
 use crate::ui::gtk::designer_properties::PropertiesPanel;
-use gcodekit5_designer::designer_state::ToolSettings;
 use gcodekit5_designer::model::{LaserParams, Shape};
 use gtk4::prelude::*;
-use std::rc::Rc;
 
-/// Aplica un cambio a `laser_params` de TODOS los shapes seleccionados.
-fn apply_to_selected<F>(panel: &PropertiesPanel, mut f: F, set_use_global: Option<bool>)
-where
-    F: FnMut(&mut LaserParams),
-{
-    let mut state = panel.state.borrow_mut();
+/// Writes `params` into the shape-embedded laser parameters of `shape`.
+///
+/// Raster images have no embedded laser parameters and are left unchanged.
+fn set_shape_laser_params(shape: &mut Shape, params: LaserParams) {
+    match shape {
+        Shape::Rectangle(s) => s.laser_params = params,
+        Shape::Circle(s) => s.laser_params = params,
+        Shape::Ellipse(s) => s.laser_params = params,
+        Shape::Line(s) => s.laser_params = params,
+        Shape::Path(s) => s.laser_params = params,
+        Shape::Polygon(s) => s.laser_params = params,
+        Shape::Triangle(s) => s.laser_params = params,
+        Shape::Text(s) => s.laser_params = params,
+        Shape::Gear(s) => s.laser_params = params,
+        Shape::Sprocket(s) => s.laser_params = params,
+        Shape::RasterImage(_) => {}
+    }
+}
 
-    // Valores globales
-    let global: Option<ToolSettings> = if set_use_global == Some(true) {
-        Some(state.tool_settings.clone())
-    } else {
-        None
-    };
+/// Reads the override widgets and applies them to every selected shape (one undo step).
+fn apply_laser_override(panel: &PropertiesPanel) {
+    let use_global = panel.laser_use_global_check.is_active();
 
-    for shape in state.canvas.shapes_mut() {
-        if !shape.selected {
-            continue;
-        }
+    {
+        let mut designer_state = panel.state.borrow_mut();
 
-        // 1) Actualizar el LaserParams del DrawingObject
-        if let Some(true) = set_use_global {
-            if let Some(g) = &global {
-                shape.laser_params = LaserParams {
-                    feed_rate: g.feed_rate,
-                    power_percent: (g.spindle_speed as f64) / 10.0,
-                    passes: (g.step_down as u32).max(1),
-                    use_global: true,
-                };
+        let (feed_rate, power_percent, passes) = if use_global {
+            (
+                designer_state.tool_settings.feed_rate,
+                (designer_state.tool_settings.spindle_speed as f64) / 10.0,
+                (designer_state.tool_settings.step_down as u32).max(1),
+            )
+        } else {
+            let fr = panel
+                .laser_feed_rate_entry
+                .text()
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(1000.0);
+            let pw = panel
+                .laser_power_entry
+                .text()
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(100.0)
+                .clamp(0.0, 100.0);
+            let ps = panel
+                .laser_passes_entry
+                .text()
+                .trim()
+                .parse::<u32>()
+                .unwrap_or(1)
+                .max(1);
+            (fr, pw, ps)
+        };
+
+        let params = LaserParams {
+            feed_rate,
+            power_percent,
+            passes,
+            use_global,
+        };
+
+        change_selected_with_undo(&mut designer_state, "Change Laser Override", |obj| {
+            if matches!(obj.shape, Shape::RasterImage(_)) {
+                return false;
             }
-            shape.use_global_laser = true;
-        } else if let Some(false) = set_use_global {
-            shape.use_global_laser = false;
-        }
-
-        if set_use_global != Some(true) {
-            f(&mut shape.laser_params);
-        }
-        shape.laser_params.use_global = shape.use_global_laser;
-
-        // 2) Reflejar en el LaserParams embebido en la Shape concreta
-        let lp = shape.laser_params;
-        match &mut shape.shape {
-            Shape::Rectangle(r) => r.laser_params = lp,
-            Shape::Circle(c) => c.laser_params = lp,
-            Shape::Ellipse(e) => e.laser_params = lp,
-            Shape::Line(l) => l.laser_params = lp,
-            Shape::Path(p) => p.laser_params = lp,
-            Shape::Polygon(p) => p.laser_params = lp,
-            Shape::Triangle(t) => t.laser_params = lp,
-            Shape::Text(t) => t.laser_params = lp,
-            Shape::Gear(g) => g.laser_params = lp,
-            Shape::Sprocket(s) => s.laser_params = lp,
-            Shape::RasterImage(_) => {}
-        }
+            let old = obj.laser_params;
+            let changed = obj.use_global_laser != use_global
+                || old.use_global != use_global
+                || (old.feed_rate - feed_rate).abs() > f64::EPSILON
+                || (old.power_percent - power_percent).abs() > f64::EPSILON
+                || old.passes != passes;
+            // DrawingObject fields are what gets serialised; the shape-embedded copy is
+            // what 2D toolpath generation reads. Keep both in sync.
+            obj.use_global_laser = use_global;
+            obj.laser_params = params;
+            set_shape_laser_params(&mut obj.shape, params);
+            changed
+        });
     }
 
-    drop(state);
-
-    if let Some(cb) = &*panel.redraw_callback.borrow() {
+    let cb = panel.redraw_callback.borrow().clone();
+    if let Some(cb) = cb {
         cb();
     }
 }
 
+/// Connects the laser override checkbox and entries of `panel`.
 pub(crate) fn setup_laser_override_handlers(panel: &PropertiesPanel) {
-    let panel_rc = Rc::new(panel.clone());
-
-    // --- Checkbox "usar global" ---
+    // "Use global values" checkbox
     {
-        let panel_widget = panel_rc.clone();
-        let panel_move = panel_rc.clone();
-        panel_widget
-            .laser_use_global_check
-            .connect_toggled(move |check| {
-                let use_global = check.is_active();
+        let p = panel.clone();
+        panel.laser_use_global_check.connect_toggled(move |check| {
+            let use_global = check.is_active();
 
-                // Habilitar/deshabilitar inputs
-                panel_move
-                    .laser_feed_rate_entry
-                    .set_sensitive(!use_global);
-                panel_move
-                    .laser_power_entry
-                    .set_sensitive(!use_global);
-                panel_move
-                    .laser_passes_entry
-                    .set_sensitive(!use_global);
+            p.laser_feed_rate_entry.set_sensitive(!use_global);
+            p.laser_power_entry.set_sensitive(!use_global);
+            p.laser_passes_entry.set_sensitive(!use_global);
 
-                if *panel_move.updating.borrow() {
-                    return;
-                }
-
-                apply_to_selected(&panel_move, |_| {}, Some(use_global));
-            });
+            if !*p.updating.borrow() {
+                apply_laser_override(&p);
+            }
+        });
     }
 
-    // --- Feed rate ---
-    {
-        let panel_widget = panel_rc.clone();
-        let panel_move = panel_rc.clone();
-        panel_widget
-            .laser_feed_rate_entry
-            .connect_changed(move |entry| {
-                if *panel_move.updating.borrow() {
-                    return;
-                }
-                let Ok(v) = entry.text().parse::<f64>() else {
-                    return;
-                };
-                apply_to_selected(&panel_move, |lp| lp.feed_rate = v, Some(false));
-            });
-    }
-
-    // --- Power ---
-    {
-        let panel_widget = panel_rc.clone();
-        let panel_move = panel_rc.clone();
-        panel_widget
-            .laser_power_entry
-            .connect_changed(move |entry| {
-                if *panel_move.updating.borrow() {
-                    return;
-                }
-                let Ok(v) = entry.text().parse::<f64>() else {
-                    return;
-                };
-                apply_to_selected(&panel_move, |lp| lp.power_percent = v, Some(false));
-            });
-    }
-
-    // --- Passes ---
-    {
-        let panel_widget = panel_rc.clone();
-        let panel_move = panel_rc.clone();
-        panel_widget
-            .laser_passes_entry
-            .connect_changed(move |entry| {
-                if *panel_move.updating.borrow() {
-                    return;
-                }
-                let Ok(v) = entry.text().parse::<u32>() else {
-                    return;
-                };
-                apply_to_selected(&panel_move, |lp| lp.passes = v, Some(false));
-            });
+    for entry in [
+        &panel.laser_feed_rate_entry,
+        &panel.laser_power_entry,
+        &panel.laser_passes_entry,
+    ] {
+        let p = panel.clone();
+        connect_entry_commit(
+            entry,
+            panel.state.clone(),
+            panel.updating.clone(),
+            panel.has_focus.clone(),
+            move |_| apply_laser_override(&p),
+        );
     }
 }
-

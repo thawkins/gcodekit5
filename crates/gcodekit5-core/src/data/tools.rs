@@ -186,6 +186,60 @@ pub struct ToolCuttingParams {
     pub stepover_percent: f32,
     /// Default depth per pass in mm
     pub depth_per_pass: f32,
+    /// Minimum depth of cut for engagement in mm
+    #[serde(default)]
+    pub min_doc: f32,
+    /// Maximum depth of cut as percentage of diameter
+    #[serde(default)]
+    pub max_doc_percent: f32,
+}
+
+/// Extended tool geometry specifications.
+///
+/// Advanced geometry parameters for feeds and speeds calculations.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ToolGeometry {
+    /// Helix angle in degrees (30-45° typical, higher = better chip evacuation)
+    #[serde(default)]
+    pub helix_angle: Option<f32>,
+    /// Tool core diameter in mm (for deflection calculations)
+    #[serde(default)]
+    pub core_diameter: Option<f32>,
+    /// Rake angle in degrees (affects chip formation)
+    #[serde(default)]
+    pub rake_angle: Option<f32>,
+    /// Relief/clearance angle in degrees (affects cutting efficiency)
+    #[serde(default)]
+    pub relief_angle: Option<f32>,
+}
+
+/// Tool operating limits and ratings.
+///
+/// Manufacturer-specified limits for safe operation.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ToolLimits {
+    /// Maximum safe RPM rating from manufacturer
+    #[serde(default)]
+    pub max_rpm_rating: Option<u32>,
+    /// Maximum recommended stick-out length in mm
+    #[serde(default)]
+    pub stick_out_max: Option<f32>,
+    /// Maximum chip load per tooth in mm
+    #[serde(default)]
+    pub max_chip_load: Option<f32>,
+}
+
+/// Tool feature flags for advanced capabilities.
+///
+/// Boolean flags indicating special tool features.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ToolFeatures {
+    /// Tool has chip breaker geometry
+    #[serde(default)]
+    pub chip_breaker: bool,
+    /// Tool supports through-spindle coolant
+    #[serde(default)]
+    pub through_coolant: bool,
 }
 
 impl Default for ToolCuttingParams {
@@ -197,6 +251,8 @@ impl Default for ToolCuttingParams {
             plunge_rate: 750.0,
             stepover_percent: 50.0,
             depth_per_pass: 3.0,
+            min_doc: 0.1,
+            max_doc_percent: 100.0,
         }
     }
 }
@@ -235,6 +291,93 @@ impl ToolCuttingParams {
     /// Builder method to set depth per pass in mm.
     pub fn with_depth_per_pass(mut self, depth: f32) -> Self {
         self.depth_per_pass = depth;
+        self
+    }
+
+    /// Builder method to set minimum depth of cut in mm.
+    pub fn with_min_doc(mut self, min_doc: f32) -> Self {
+        self.min_doc = min_doc;
+        self
+    }
+
+    /// Builder method to set max depth of cut as percentage of diameter.
+    pub fn with_max_doc_percent(mut self, percent: f32) -> Self {
+        self.max_doc_percent = percent;
+        self
+    }
+}
+
+impl ToolGeometry {
+    /// Create new ToolGeometry with all None values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builder method to set helix angle in degrees.
+    pub fn with_helix_angle(mut self, angle: f32) -> Self {
+        self.helix_angle = Some(angle);
+        self
+    }
+
+    /// Builder method to set core diameter in mm.
+    pub fn with_core_diameter(mut self, diameter: f32) -> Self {
+        self.core_diameter = Some(diameter);
+        self
+    }
+
+    /// Builder method to set rake angle in degrees.
+    pub fn with_rake_angle(mut self, angle: f32) -> Self {
+        self.rake_angle = Some(angle);
+        self
+    }
+
+    /// Builder method to set relief/clearance angle in degrees.
+    pub fn with_relief_angle(mut self, angle: f32) -> Self {
+        self.relief_angle = Some(angle);
+        self
+    }
+}
+
+impl ToolLimits {
+    /// Create new ToolLimits with all None values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builder method to set max RPM rating.
+    pub fn with_max_rpm_rating(mut self, rpm: u32) -> Self {
+        self.max_rpm_rating = Some(rpm);
+        self
+    }
+
+    /// Builder method to set max stick-out length in mm.
+    pub fn with_stick_out_max(mut self, length: f32) -> Self {
+        self.stick_out_max = Some(length);
+        self
+    }
+
+    /// Builder method to set max chip load in mm/tooth.
+    pub fn with_max_chip_load(mut self, load: f32) -> Self {
+        self.max_chip_load = Some(load);
+        self
+    }
+}
+
+impl ToolFeatures {
+    /// Create new ToolFeatures with all false values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builder method to set chip breaker flag.
+    pub fn with_chip_breaker(mut self, enabled: bool) -> Self {
+        self.chip_breaker = enabled;
+        self
+    }
+
+    /// Builder method to set through-coolant flag.
+    pub fn with_through_coolant(mut self, enabled: bool) -> Self {
+        self.through_coolant = enabled;
         self
     }
 }
@@ -299,9 +442,17 @@ pub struct Tool {
     // Parameters
     /// Default cutting parameters
     pub params: ToolCuttingParams,
+    /// Extended geometry specifications for feeds/speeds calculations
+    #[serde(default)]
+    pub geometry: ToolGeometry,
+    /// Tool operating limits and ratings
+    #[serde(default)]
+    pub limits: ToolLimits,
+    /// Tool feature flags
+    #[serde(default)]
+    pub features: ToolFeatures,
 
-    // Metadata
-    /// Manufacturer name
+    // Metadata    /// Manufacturer name
     pub manufacturer: Option<String>,
     /// Manufacturer part number
     pub part_number: Option<String>,
@@ -340,6 +491,9 @@ impl Tool {
             coating: Some(ToolCoating::TiN),
             shank: ShankType::Collet,
             params: ToolCuttingParams::default(),
+            geometry: ToolGeometry::default(),
+            limits: ToolLimits::default(),
+            features: ToolFeatures::default(),
             manufacturer: None,
             part_number: None,
             cost: None,
@@ -452,8 +606,25 @@ impl Tool {
         self.custom = custom;
         self
     }
-}
 
+    /// Builder method to set extended geometry.
+    pub fn with_geometry(mut self, geometry: ToolGeometry) -> Self {
+        self.geometry = geometry;
+        self
+    }
+
+    /// Builder method to set tool limits.
+    pub fn with_limits(mut self, limits: ToolLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// Builder method to set tool features.
+    pub fn with_features(mut self, features: ToolFeatures) -> Self {
+        self.features = features;
+        self
+    }
+}
 /// Tool library — manages a collection of tools.
 ///
 /// Provides add, remove, search, and filter operations. Standard tools

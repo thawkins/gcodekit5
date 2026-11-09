@@ -25,6 +25,10 @@ pub struct DesignGear {
     pub rotation: f64,
     pub hole_radius: f64,
     pub laser_params: LaserParams,
+    /// Reflected across the vertical axis through `center` (applied before
+    /// `rotation`). Set by mirror operations so asymmetric profiles mirror exactly.
+    #[serde(default)]
+    pub mirrored: bool,
 }
 
 impl DesignGear {
@@ -37,6 +41,7 @@ impl DesignGear {
             rotation: 0.0,
             hole_radius: 0.0,
             laser_params: LaserParams::default(),
+            mirrored: false,
         }
     }
 }
@@ -53,16 +58,10 @@ impl DesignerShape for DesignGear {
             self.hole_radius,
         );
 
-        if self.rotation.abs() > 1e-6 {
-            let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
-                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
-                .then_translate(lyon::math::vector(
-                    -self.center.x as f32,
-                    -self.center.y as f32,
-                ));
-            return path.transformed(&transform);
+        match super::parametric_render_transform(self.center, self.rotation, self.mirrored) {
+            Some(transform) => path.transformed(&transform),
+            None => path,
         }
-        path
     }
 
     fn as_csg(&self) -> csgrs::sketch::Sketch<()> {
@@ -85,10 +84,8 @@ impl DesignerShape for DesignGear {
         let p = t.transform_point(point(self.center.x as f32, self.center.y as f32));
         self.center = Point::new(p.x as f64, p.y as f64);
 
-        let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
-        self.rotation += angle_deg;
-
-        let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
+        let sx =
+            super::apply_linear_transform_to_parametric(t, &mut self.rotation, &mut self.mirrored);
         self.module *= sx;
         self.hole_radius *= sx;
         // pressure_angle_deg NO se escala (es un ángulo)

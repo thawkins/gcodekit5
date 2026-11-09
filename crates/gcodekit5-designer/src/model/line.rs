@@ -202,26 +202,11 @@ impl DesignLine {
 
 impl DesignerShape for DesignLine {
     fn render(&self) -> Path {
-        // Apply stored rotation about midpoint for rendering so lines respect rotation field.
-        let cx = (self.start.x + self.end.x) / 2.0;
-        let cy = (self.start.y + self.end.y) / 2.0;
-
-        let angle_rad = self.rotation.to_radians();
-        let cos_a = angle_rad.cos();
-        let sin_a = angle_rad.sin();
-
-        let rotate_point = |p: &Point| -> Point {
-            let dx = p.x - cx;
-            let dy = p.y - cy;
-            Point::new(dx * cos_a - dy * sin_a + cx, dx * sin_a + dy * cos_a + cy)
-        };
-
-        let a = rotate_point(&self.start);
-        let b = rotate_point(&self.end);
-
+        // `start`/`end` are absolute geometry; `rotation` is derived from them
+        // (see `current_angle_degrees`), so it must not be applied again here.
         let mut builder = Path::builder();
-        builder.begin(point(a.x as f32, a.y as f32));
-        builder.line_to(point(b.x as f32, b.y as f32));
+        builder.begin(point(self.start.x as f32, self.start.y as f32));
+        builder.line_to(point(self.end.x as f32, self.end.y as f32));
         builder.end(false);
         builder.build()
     }
@@ -309,35 +294,8 @@ impl DesignerShape for DesignLine {
     }
 
     fn contains_point(&self, p: Point, tolerance: f64) -> bool {
-        // Usar las coordenadas originales sin rotación para la detección de colisión
-        let cx = (self.start.x + self.end.x) / 2.0;
-        let cy = (self.start.y + self.end.y) / 2.0;
-
-        let angle_rad = self.rotation.to_radians();
-        let cos_a = angle_rad.cos();
-        let sin_a = angle_rad.sin();
-
-        // Aplicar rotación inversa al punto de prueba para comparar con la línea sin rotar
-        let dx = p.x - cx;
-        let dy = p.y - cy;
-        let rotated_x = dx * cos_a + dy * sin_a + cx;
-        let rotated_y = -dx * sin_a + dy * cos_a + cy;
-        let rotated_p = Point::new(rotated_x, rotated_y);
-
-        // Calcular distancia usando la versión sin rotación
-        let l2 = (self.end.x - self.start.x).powi(2) + (self.end.y - self.start.y).powi(2);
-        if l2 == 0.0 {
-            return (rotated_p.x - self.start.x).powi(2) + (rotated_p.y - self.start.y).powi(2)
-                <= tolerance * tolerance;
-        }
-        let t = ((rotated_p.x - self.start.x) * (self.end.x - self.start.x)
-            + (rotated_p.y - self.start.y) * (self.end.y - self.start.y))
-            / l2;
-        let t = t.clamp(0.0, 1.0);
-        let proj_x = self.start.x + t * (self.end.x - self.start.x);
-        let proj_y = self.start.y + t * (self.end.y - self.start.y);
-        let dist_sq = (rotated_p.x - proj_x).powi(2) + (rotated_p.y - proj_y).powi(2);
-        dist_sq <= tolerance * tolerance
+        // Endpoints are absolute geometry, so test against the segment directly.
+        self.distance_to_point(&p) <= tolerance
     }
 
     fn resize(&mut self, handle: usize, dx: f64, dy: f64) {

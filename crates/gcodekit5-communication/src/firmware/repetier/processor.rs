@@ -27,6 +27,12 @@ pub struct RepetierProcessor {
     pub is_waiting_for_hardware: bool,
 }
 
+impl Default for RepetierProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RepetierProcessor {
     pub fn new() -> Self {
         Self {
@@ -169,7 +175,8 @@ impl RepetierProcessor {
                 translated_payload.push_str(&format!("{}*{}\n", cmd, ck));
                 tracing::debug!(
                     "📡 [PROCESSOR-REPETIER] Transmutado {} → {}",
-                    cleaned_upper, g92
+                    cleaned_upper,
+                    g92
                 );
                 return Some(translated_payload.into_bytes());
             }

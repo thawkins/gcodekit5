@@ -1,17 +1,15 @@
 //! Jigsaw Puzzle Generator Tool
 
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
-use gtk4::{
-    Align, Box, Button, Entry, FileChooserAction, FileChooserDialog, Label, Orientation, Paned,
-    ResponseType, ScrolledWindow, Stack,
-};
+use gtk4::{Align, Box, Button, Entry, Label, Orientation, Paned, ScrolledWindow, Stack};
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
 use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
+use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use super::CamToolsView;
 use crate::t;
 use crate::ui::gtk::help_browser;
@@ -192,7 +190,6 @@ impl JigsawTool {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_unit = width_unit.clone();
             let height_unit = height_unit.clone();
@@ -202,14 +199,13 @@ impl JigsawTool {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -269,7 +265,7 @@ impl JigsawTool {
             vbox.append(&button_box);
 
             progress_window.set_child(Some(&vbox));
-            progress_window.show();
+            progress_window.present();
 
             let progress_window_clone = progress_window.clone();
             let progress_bar_clone = progress_bar.clone();
@@ -279,9 +275,23 @@ impl JigsawTool {
             let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
 
             let cancel_tx_clone = cancel_tx.clone();
-            cancel_button.connect_clicked(move |_| {
-                let _ = cancel_tx_clone.send(());
-            });
+            // Cancelling (button or window close) discards the result; the worker
+            // thread cannot be interrupted mid-generation, so its output is ignored.
+            let cancelled = Rc::new(Cell::new(false));
+            {
+                let cancelled = cancelled.clone();
+                progress_window.connect_close_request(move |_| {
+                    cancelled.set(true);
+                    glib::Propagation::Proceed
+                });
+            }
+            {
+                let progress_window = progress_window.clone();
+                cancel_button.connect_clicked(move |_| {
+                    let _ = cancel_tx_clone.send(());
+                    progress_window.close();
+                });
+            }
 
             // Spawn background thread
             let _designer_view_thread = designer_view_clone_for_new.clone();
@@ -305,8 +315,12 @@ impl JigsawTool {
             // Simulate progress since JigsawPuzzleMaker doesn't have progress callback yet
             let mut progress = 0.0;
             let designer_view_clone = designer_view_clone_for_new.clone();
+            let cancelled_poll = cancelled.clone();
 
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                if cancelled_poll.get() {
+                    return glib::ControlFlow::Break;
+                }
                 // Check for result
                 if let Ok(result) = result_rx.try_recv() {
                     progress_window_clone.close();
@@ -342,8 +356,7 @@ impl JigsawTool {
                                 }
 
                                 // Refresh UI
-                                designer_rc.layers.refresh(&designer_rc.canvas.state);
-                                designer_rc.canvas.widget.queue_draw();
+                                designer_rc.canvas.notify_model_changed();
 
                                 // Switch to Designer tab so user can edit imported paths
                                 if let Some(parent) = designer_rc.widget.parent() {
@@ -437,66 +450,50 @@ impl JigsawTool {
     }
 
     fn save_params(params: &PuzzleParameters) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Puzzle Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Puzzle Parameters");
 
-        dialog.set_current_name("puzzle_params.json");
+        dialog.set_initial_name(Some("puzzle_params.json"));
 
         let params_clone = params.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(json) = serde_json::to_string_pretty(&params_clone) {
-                            let _ = fs::write(path, json);
-                        }
-                    }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                match serde_json::to_string_pretty(&params_clone) {
+                    Ok(json) => write_preset_file(&path, &json),
+                    Err(e) => CamToolsView::show_error_dialog(&t!("Save Error"), &format!("{}", e)),
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &Rc<JigsawWidgets>, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Puzzle Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Puzzle Parameters");
 
         let w_clone = w.clone();
         let settings_clone = settings.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) = serde_json::from_str::<PuzzleParameters>(&content) {
-                                Self::apply_params(&w_clone, &params, &settings_clone);
-                            }
-                        }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let loaded = fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|content| {
+                        serde_json::from_str::<PuzzleParameters>(&content)
+                            .map_err(|e| e.to_string())
+                    });
+                match loaded {
+                    Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to load parameters"
+                        );
+                        CamToolsView::show_error_dialog(
+                            &t!("Load Error"),
+                            &format!("{}: {}", path.display(), e),
+                        );
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn apply_params(w: &JigsawWidgets, p: &PuzzleParameters, settings: &Rc<SettingsController>) {

@@ -10,6 +10,7 @@ mod handlers;
 mod update;
 
 use crate::t;
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gcodekit5_core::units;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
 use gcodekit5_designer::designer_state::DesignerState;
@@ -19,12 +20,18 @@ use gcodekit5_designer::pocket_operations::PocketStrategy;
 use gcodekit5_designer::shapes::OperationType;
 use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
-use gtk4::ComboBoxText;
 use gtk4::{
     Box, CheckButton, DropDown, Entry, EventControllerFocus, Expression, Frame, Label, Orientation,
     ScrolledWindow, StringList,
 };
+use std::cell::Cell;
 use std::rc::Rc;
+
+/// Measurement system shared by the properties panel and its entry handlers.
+///
+/// It is the single source used both to format lengths for display and to parse
+/// them back, so the two can never disagree.
+pub(crate) type SharedMeasurementSystem = Rc<Cell<units::MeasurementSystem>>;
 
 const MM_PER_PT: f64 = 25.4 / 72.0;
 
@@ -42,7 +49,8 @@ fn format_font_points(mm: f64) -> String {
 pub struct PropertiesPanel {
     pub widget: ScrolledWindow,
     pub(crate) state: Shared<DesignerState>,
-    pub(crate) settings: Shared<SettingsPersistence>,
+    /// Measurement system used to display and parse lengths.
+    pub(crate) measurement_system: SharedMeasurementSystem,
     pub(crate) preview_shapes: SharedVec<Shape>,
     pub(crate) _content: Box,
     pub(crate) header: Label,
@@ -146,7 +154,7 @@ pub struct PropertiesPanel {
     pub(crate) image_min_power_entry: Entry,
     pub(crate) image_max_power_entry: Entry,
     pub(crate) image_ppi_entry: Entry,
-    pub(crate) image_scan_direction_combo: ComboBoxText,
+    pub(crate) image_scan_direction_combo: DropDown,
     pub(crate) image_bidirectional_check: CheckButton,
     pub(crate) image_invert_check: CheckButton,
     //    pub(crate) image_dithering_combo: ComboBoxText,
@@ -161,11 +169,19 @@ pub struct PropertiesPanel {
 
 impl PropertiesPanel {
     /// Create a new properties panel.
+    ///
+    /// # Arguments
+    /// * `state` - Designer state whose selection the panel edits.
+    /// * `settings` - Saved settings; only read for the initial measurement system.
+    ///   Later changes must be passed in with [`PropertiesPanel::set_measurement_system`].
+    /// * `preview_shapes` - Shapes the canvas draws as a live effect preview.
     pub fn new(
         state: Shared<DesignerState>,
         settings: Shared<SettingsPersistence>,
         preview_shapes: SharedVec<Shape>,
     ) -> Rc<Self> {
+        let measurement_system: SharedMeasurementSystem =
+            Rc::new(Cell::new(settings.borrow().config().ui.measurement_system));
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
@@ -319,7 +335,7 @@ impl PropertiesPanel {
         let panel = Rc::new(Self {
             widget: scrolled,
             state: state.clone(),
-            settings: settings.clone(),
+            measurement_system,
             preview_shapes: preview_shapes.clone(),
             _content: content,
             pos_frame,
@@ -427,97 +443,24 @@ impl PropertiesPanel {
 
     /// Setup all property change handlers using modular handler functions.
     fn setup_handlers(&self) {
-        // Dimension handlers
-        handlers::dimensions::setup_position_x_handler(
-            &self.pos_x_entry,
-            &self.pos_y_entry,
-            &self.width_entry,
-            &self.height_entry,
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::dimensions::setup_position_y_handler(
-            &self.pos_y_entry,
-            &self.pos_x_entry,
-            &self.width_entry,
-            &self.height_entry,
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::dimensions::setup_position_z_handler(
-            &self.pos_z_entry,
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::dimensions::setup_width_activate_handler(
-            &self.width_entry,
-            &self.height_entry,
-            &self.pos_x_entry,
-            &self.pos_y_entry,
-            &self.lock_aspect_ratio,
-            self.aspect_ratio.clone(),
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::dimensions::setup_height_activate_handler(
-            &self.height_entry,
-            &self.width_entry,
-            &self.pos_x_entry,
-            &self.pos_y_entry,
-            &self.lock_aspect_ratio,
-            self.aspect_ratio.clone(),
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::dimensions::setup_lock_aspect_handler(
-            &self.lock_aspect_ratio,
-            &self.width_entry,
-            &self.height_entry,
-            self.aspect_ratio.clone(),
-            self.state.clone(),
-            self.settings.clone(),
-        );
-
-        handlers::dimensions::setup_width_focus_out_handler(
-            &self.width_entry,
-            &self.height_entry,
-            &self.pos_x_entry,
-            &self.pos_y_entry,
-            &self.lock_aspect_ratio,
-            self.aspect_ratio.clone(),
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
-
-        handlers::dimensions::setup_height_focus_out_handler(
-            &self.height_entry,
-            &self.width_entry,
-            &self.pos_x_entry,
-            &self.pos_y_entry,
-            &self.lock_aspect_ratio,
-            self.aspect_ratio.clone(),
-            self.state.clone(),
-            self.settings.clone(),
-            self.redraw_callback.clone(),
-            self.updating.clone(),
-        );
+        // Dimension handlers (all apply on Enter / focus-out)
+        let dims = handlers::dimensions::DimensionContext {
+            pos_x: self.pos_x_entry.clone(),
+            pos_y: self.pos_y_entry.clone(),
+            width: self.width_entry.clone(),
+            height: self.height_entry.clone(),
+            lock_aspect: self.lock_aspect_ratio.clone(),
+            aspect_ratio: self.aspect_ratio.clone(),
+            state: self.state.clone(),
+            measurement_system: self.measurement_system.clone(),
+            redraw_callback: self.redraw_callback.clone(),
+            updating: self.updating.clone(),
+            has_focus: self.has_focus.clone(),
+        };
+        handlers::dimensions::setup_position_handlers(&dims);
+        handlers::dimensions::setup_position_z_handler(&self.pos_z_entry, &dims);
+        handlers::dimensions::setup_size_handlers(&dims);
+        handlers::dimensions::setup_lock_aspect_handler(&dims);
 
         // Geometry handlers
         handlers::geometry::setup_rotation_handler(
@@ -525,14 +468,16 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::geometry::setup_corner_radius_handler(
             &self.corner_radius_entry,
             self.state.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::geometry::setup_is_slot_handler(
@@ -547,6 +492,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
         handlers::geometry::setup_path_closed_handler(
             &self.path_closed_check,
@@ -561,6 +507,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::text::setup_font_size_handler(
@@ -568,6 +515,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::text::setup_font_family_handler(
@@ -613,27 +561,35 @@ impl PropertiesPanel {
         handlers::cam::setup_step_down_handler(
             &self.step_down_entry,
             self.state.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
+            self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::cam::setup_step_in_handler(
             &self.step_in_entry,
             self.state.clone(),
-            self.settings.clone(),
+            self.measurement_system.clone(),
+            self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::cam::setup_raster_fill_handler(
             &self.raster_fill_entry,
             self.state.clone(),
+            self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::cam::setup_ramp_angle_handler(
             &self.ramp_angle_entry,
             self.state.clone(),
+            self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::cam::setup_strategy_handler(
@@ -648,6 +604,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_gear_teeth_handler(
@@ -655,6 +612,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_gear_pressure_angle_handler(
@@ -662,6 +620,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_sprocket_pitch_handler(
@@ -670,6 +629,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_sprocket_teeth_handler(
@@ -677,6 +637,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_sprocket_roller_diameter_handler(
@@ -684,6 +645,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_timing_pulley_pitch_handler(
@@ -691,6 +653,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_timing_pulley_teeth_handler(
@@ -698,6 +661,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_timing_pulley_belt_width_handler(
@@ -705,6 +669,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::gear_sprocket::setup_timing_pulley_hole_radius_handler(
@@ -712,6 +677,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         // Effects handlers
@@ -720,6 +686,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
+            self.measurement_system.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );
@@ -729,6 +696,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
+            self.measurement_system.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );
@@ -739,6 +707,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::image::setup_travel_rate_handler(
@@ -746,6 +715,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::image::setup_min_power_handler(
@@ -753,6 +723,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::image::setup_max_power_handler(
@@ -760,6 +731,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::image::setup_ppi_handler(
@@ -767,6 +739,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
+            self.has_focus.clone(),
         );
 
         handlers::image::setup_scan_direction_handler(

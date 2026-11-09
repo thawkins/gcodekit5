@@ -3,6 +3,16 @@
 //! Simulates material removal from the stock block as the toolpath
 //! is executed. Uses a heightmap or voxel approach to visualize
 //! the workpiece after cutting operations.
+//!
+//! ## Coordinate convention
+//! [`StockSimulator3D`] takes toolpaths in G-code work coordinates (mm). The
+//! top face of the stock is at `stock_top_z` (Z0 by default, as most CAM
+//! output assumes; see [`StockZeroReference`] for programs zeroed on the stock
+//! bottom), so the material occupies `stock_top_z - thickness ..=
+//! stock_top_z`, and material is removed only where the tool tip is below the
+//! stock top (`tip.z < stock_top_z`). The [`VoxelGrid`] itself is indexed from
+//! the stock bottom (grid Z 0 = bottom face); [`StockSimulator3D::get_mesh`]
+//! translates the mesh back into work coordinates.
 
 use glam::Vec3;
 
@@ -302,17 +312,178 @@ pub fn generate_surface_mesh(grid: &VoxelGrid) -> Vec<f32> {
 }
 // ---
 
+/// Which face of the stock block the program's work Z0 is set on.
+///
+/// Most CAM output zeroes Z on the top of the stock, so the material occupies
+/// `-thickness ..= 0` and cuts go below Z0. GCodeKit's own designer (CNC mode)
+/// zeroes Z on the bottom of the stock, so the material occupies
+/// `0 ..= thickness`. The convention cannot be told reliably from the toolpath
+/// itself (a top-zeroed program that only feeds at Z0, or air-cuts above the
+/// stock, looks like a bottom-zeroed one), so it is a user setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StockZeroReference {
+    /// Work Z0 is the top face of the stock (default; most CAM output).
+    #[default]
+    Top,
+    /// Work Z0 is the bottom face of the stock (machine bed / spoilboard).
+    Bottom,
+}
+
+impl StockZeroReference {
+    /// Work Z (mm) of the stock top face for this convention.
+    ///
+    /// # Arguments
+    /// * `thickness` - Stock thickness in mm.
+    ///
+    /// # Returns
+    /// `0.0` for [`StockZeroReference::Top`], `thickness` for
+    /// [`StockZeroReference::Bottom`].
+    pub fn stock_top_z(self, thickness: f32) -> f32 {
+        match self {
+            Self::Top => 0.0,
+            Self::Bottom => thickness,
+        }
+    }
+
+    /// Stable index of this variant, for UI selectors (`Top` = 0, `Bottom` = 1).
+    pub fn index(self) -> u32 {
+        match self {
+            Self::Top => 0,
+            Self::Bottom => 1,
+        }
+    }
+
+    /// Variant for a UI selector index; anything other than 1 maps to `Top`.
+    ///
+    /// # Arguments
+    /// * `index` - Selector index as returned by [`StockZeroReference::index`].
+    pub fn from_index(index: u32) -> Self {
+        if index == 1 {
+            Self::Bottom
+        } else {
+            Self::Top
+        }
+    }
+}
+
+/// Header comment emitted by the designer for CNC (non-laser) programs, which
+/// are always zeroed on the stock bottom.
+const DESIGNER_CNC_HEADER: &str = "Generated G-code from Designer tool";
+
+/// Prefix of an explicit stock-origin marker comment, e.g. `; Stock Z0: top`.
+const STOCK_Z0_MARKER: &str = "stock z0:";
+
+/// Read the stock Z0 convention recorded in a program's leading comments.
+///
+/// Only the header (the comment and blank lines before the first command) is
+/// examined, and only explicit records are trusted; the toolpath's Z values are
+/// never used. Recognised records:
+/// * `; Stock Z0: top` / `; Stock Z0: bottom` (also in `( ... )` comments).
+/// * The designer's CNC header `; Generated G-code from Designer tool`, whose
+///   programs are zeroed on the stock bottom. This is only a fallback: an
+///   explicit `Stock Z0` marker anywhere in the header takes precedence.
+///
+/// # Arguments
+/// * `gcode` - Full program text.
+///
+/// # Returns
+/// The recorded convention, or `None` when the program does not record one
+/// (the caller should then keep the user's setting).
+pub fn detect_stock_zero_reference(gcode: &str) -> Option<StockZeroReference> {
+    // An explicit `Stock Z0` marker anywhere in the header wins; the designer's
+    // title line is only a fallback, so an edited or re-zeroed program that
+    // records its own origin is honoured.
+    let mut designer_fallback = None;
+    for line in gcode.lines() {
+        let line = line.trim();
+        if line.is_empty() || line == "%" {
+            continue;
+        }
+        let comment = if let Some(rest) = line.strip_prefix(';') {
+            rest
+        } else if let Some(rest) = line.strip_prefix('(') {
+            rest.strip_suffix(')').unwrap_or(rest)
+        } else {
+            // A non-comment line is the first command: the header is over.
+            break;
+        };
+        let comment = comment.trim();
+        if comment.contains(DESIGNER_CNC_HEADER) {
+            designer_fallback = Some(StockZeroReference::Bottom);
+            continue;
+        }
+        let lower = comment.to_ascii_lowercase();
+        if let Some(value) = lower.strip_prefix(STOCK_Z0_MARKER) {
+            match value.trim() {
+                "top" => return Some(StockZeroReference::Top),
+                "bottom" => return Some(StockZeroReference::Bottom),
+                other => {
+                    tracing::warn!(value = other, "Unrecognised stock Z0 marker value");
+                }
+            }
+        }
+    }
+    designer_fallback
+}
+
+/// Material-removal simulator for a rectangular stock block.
+///
+/// See the module docs for the coordinate convention.
 pub struct StockSimulator3D {
     grid: VoxelGrid,
     tool_radius: f32,
+    /// Work Z (mm) of the top face of the stock.
+    stock_top_z: f32,
+    /// Stock thickness (mm).
+    thickness: f32,
 }
 
 impl StockSimulator3D {
+    /// Create a simulator whose stock top face is at work Z0.
+    ///
+    /// # Arguments
+    /// * `width`, `height`, `depth` - Stock size in mm (X, Y, thickness).
+    /// * `resolution` - Voxel edge length in mm.
+    /// * `tool_radius` - Flat end mill radius in mm.
     pub fn new(width: f32, height: f32, depth: f32, resolution: f32, tool_radius: f32) -> Self {
         Self {
             grid: VoxelGrid::new(width, height, depth, resolution),
             tool_radius,
+            stock_top_z: 0.0,
+            thickness: depth,
         }
+    }
+
+    /// Set the work Z (mm) of the top face of the stock (default 0).
+    ///
+    /// # Arguments
+    /// * `stock_top_z` - Work Z of the stock top; use `thickness` for programs
+    ///   that zero on the machine bed / bottom of the stock.
+    ///
+    /// # Returns
+    /// The simulator, for chaining.
+    pub fn with_stock_top_z(mut self, stock_top_z: f32) -> Self {
+        if stock_top_z.is_finite() {
+            self.stock_top_z = stock_top_z;
+        }
+        self
+    }
+
+    /// Place the stock for a program zeroed on the given stock face.
+    ///
+    /// # Arguments
+    /// * `reference` - Which stock face is work Z0.
+    ///
+    /// # Returns
+    /// The simulator, for chaining.
+    pub fn with_stock_zero_reference(self, reference: StockZeroReference) -> Self {
+        let top = reference.stock_top_z(self.thickness);
+        self.with_stock_top_z(top)
+    }
+
+    /// Work Z (mm) of the top face of the stock.
+    pub fn stock_top_z(&self) -> f32 {
+        self.stock_top_z
     }
 
     pub fn get_grid(&self) -> &VoxelGrid {
@@ -323,13 +494,18 @@ impl StockSimulator3D {
         let _ = self.simulate_toolpath_with_progress(toolpath, |_| true);
     }
 
-    /// Remove stock using a flat-end cylindrical cutter where `tip.z` is the
-    /// circular base plane of the cutter.
+    /// Remove stock using a flat-end cylindrical cutter whose tip (the
+    /// circular base plane of the cutter) is at `tip` in work coordinates.
+    ///
+    /// Nothing is removed while the tip is at or above the stock top.
     fn remove_at_tool_tip(&mut self, tip: Vec3) {
-        if tip.z <= 0.0 {
+        if tip.z.is_nan() || tip.z >= self.stock_top_z {
             return;
         }
-        self.grid.remove_cylinder_from_base(tip, self.tool_radius);
+        let stock_bottom_z = self.stock_top_z - self.thickness;
+        let grid_tip = Vec3::new(tip.x, tip.y, tip.z - stock_bottom_z);
+        self.grid
+            .remove_cylinder_from_base(grid_tip, self.tool_radius);
     }
 
     /// Calculate the total distance of all segments in the toolpath
@@ -488,6 +664,7 @@ impl StockSimulator3D {
     }
 
     /// Remove material along a linear path with distance-based progress tracking
+    #[allow(clippy::too_many_arguments)]
     fn remove_linear_with_progress<F>(
         &mut self,
         start: Vec3,
@@ -503,7 +680,7 @@ impl StockSimulator3D {
     {
         let steps = steps.max(1);
         let block_size = 8; // Bloques más pequeños para progreso más suave
-        let num_blocks = ((steps + block_size - 1) / block_size).max(1);
+        let num_blocks = steps.div_ceil(block_size).max(1);
 
         for block in 0..num_blocks {
             let block_start = block * block_size;
@@ -534,6 +711,7 @@ impl StockSimulator3D {
     }
 
     /// Remove material along an arc path with distance-based progress tracking
+    #[allow(clippy::too_many_arguments)]
     fn remove_arc_with_progress<F>(
         &mut self,
         start: Vec3,
@@ -574,7 +752,7 @@ impl StockSimulator3D {
 
         let steps = steps.max(1);
         let block_size = 8; // Bloques más pequeños para progreso más suave
-        let num_blocks = ((steps + block_size - 1) / block_size).max(1);
+        let num_blocks = steps.div_ceil(block_size).max(1);
 
         for block in 0..num_blocks {
             let block_start = block * block_size;
@@ -715,7 +893,18 @@ impl StockSimulator3D {
             true
         }
     */
+    /// Surface mesh of the remaining stock in work coordinates.
+    ///
+    /// Same layout as [`generate_surface_mesh`] (position, normal, colour; 10
+    /// floats per vertex) with Z shifted so the stock top is at `stock_top_z`.
     pub fn get_mesh(&self) -> Vec<f32> {
-        generate_surface_mesh(&self.grid)
+        let mut mesh = generate_surface_mesh(&self.grid);
+        let z_offset = self.stock_top_z - self.thickness;
+        if z_offset != 0.0 {
+            for vertex in mesh.as_chunks_mut::<10>().0 {
+                vertex[2] += z_offset;
+            }
+        }
+        mesh
     }
 }

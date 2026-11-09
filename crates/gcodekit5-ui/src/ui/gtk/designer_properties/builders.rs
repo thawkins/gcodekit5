@@ -1,6 +1,7 @@
 //! UI section builder methods for the properties panel.
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
 use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
@@ -602,16 +603,14 @@ impl PropertiesPanel {
 
     pub(crate) fn build_image_engraving_section() -> (
         Frame,
-        Entry,        // feed_rate
-        Entry,        // travel_rate
-        Entry,        // min_power
-        Entry,        // max_power
-        Entry,        // ppi
-        ComboBoxText, // scan_direction
-        CheckButton,  // bidirectional
-        CheckButton,  // invert
-                      //        ComboBoxText, // dithering
-                      //        Entry,        // halftone_threshold
+        Entry,       // feed_rate
+        Entry,       // travel_rate
+        Entry,       // min_power
+        Entry,       // max_power
+        Entry,       // ppi
+        DropDown,    // scan_direction
+        CheckButton, // bidirectional
+        CheckButton, // invert
     ) {
         let frame = Self::create_section(&t!("Laser Engraving"));
         let grid = gtk4::Grid::builder()
@@ -666,7 +665,7 @@ impl PropertiesPanel {
         // Scan Direction
         let scan_label = Label::new(Some(&t!("Scan:")));
         scan_label.set_halign(gtk4::Align::Start);
-        let scan_combo = ComboBoxText::new();
+        let scan_combo = new_text_dropdown();
         scan_combo.append(Some("horizontal"), &t!("Horizontal"));
         scan_combo.append(Some("vertical"), &t!("Vertical"));
         scan_combo.set_active_id(Some(&RasterImage::default().scan_direction));

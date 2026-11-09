@@ -261,11 +261,14 @@ impl ArcAngles {
         let angle_start = start_dir.y.atan2(start_dir.x);
         let angle_end = end_dir.y.atan2(end_dir.x);
 
+        // Coincident start/end points denote a full circle (G-code semantics),
+        // so a zero difference must become a full turn in the arc direction.
+        const FULL_CIRCLE_EPSILON: f32 = 1e-6;
         let clockwise = movement_type == MovementType::ArcClockwise;
         let mut angle_diff = angle_end - angle_start;
-        if clockwise && angle_diff > 0.0 {
+        if clockwise && angle_diff >= -FULL_CIRCLE_EPSILON {
             angle_diff -= std::f32::consts::TAU;
-        } else if !clockwise && angle_diff < 0.0 {
+        } else if !clockwise && angle_diff <= FULL_CIRCLE_EPSILON {
             angle_diff += std::f32::consts::TAU;
         }
 

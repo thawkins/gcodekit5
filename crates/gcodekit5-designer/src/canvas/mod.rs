@@ -236,67 +236,67 @@ impl Canvas {
         }
     }
 
-/// Calcula el nuevo orden si se mueven los seleccionados al principio.
-/// Devuelve `None` si no hay selección, si no cambia nada, o si partiría un grupo.
-pub fn move_selected_to_top(&self) -> Option<Vec<u64>> {
-    let ids = self.shape_store.selected_ids();
-    if ids.is_empty() {
-        return None;
+    /// Calcula el nuevo orden si se mueven los seleccionados al principio.
+    /// Devuelve `None` si no hay selección, si no cambia nada, o si partiría un grupo.
+    pub fn move_selected_to_top(&self) -> Option<Vec<u64>> {
+        let ids = self.shape_store.selected_ids();
+        if ids.is_empty() {
+            return None;
+        }
+        let new_order = Self::compute_order_move_ids_to_top(self.shape_store.draw_order(), &ids);
+        if new_order == *self.shape_store.draw_order() {
+            return None;
+        }
+        if self.shape_store.would_split_group_with_order(&new_order) {
+            return None;
+        }
+        Some(new_order)
     }
-    let new_order = Self::compute_order_move_ids_to_top(self.shape_store.draw_order(), &ids);
-    if new_order == *self.shape_store.draw_order() {
-        return None;
-    }
-    if self.shape_store.would_split_group_with_order(&new_order) {
-        return None;
-    }
-    Some(new_order)
-}
 
-pub fn move_selected_to_bottom(&self) -> Option<Vec<u64>> {
-    let ids = self.shape_store.selected_ids();
-    if ids.is_empty() {
-        return None;
+    pub fn move_selected_to_bottom(&self) -> Option<Vec<u64>> {
+        let ids = self.shape_store.selected_ids();
+        if ids.is_empty() {
+            return None;
+        }
+        let new_order = Self::compute_order_move_ids_to_bottom(self.shape_store.draw_order(), &ids);
+        if new_order == *self.shape_store.draw_order() {
+            return None;
+        }
+        if self.shape_store.would_split_group_with_order(&new_order) {
+            return None;
+        }
+        Some(new_order)
     }
-    let new_order = Self::compute_order_move_ids_to_bottom(self.shape_store.draw_order(), &ids);
-    if new_order == *self.shape_store.draw_order() {
-        return None;
-    }
-    if self.shape_store.would_split_group_with_order(&new_order) {
-        return None;
-    }
-    Some(new_order)
-}
 
-pub fn move_selected_up(&self) -> Option<Vec<u64>> {
-    let ids = self.shape_store.selected_ids();
-    if ids.is_empty() {
-        return None;
+    pub fn move_selected_up(&self) -> Option<Vec<u64>> {
+        let ids = self.shape_store.selected_ids();
+        if ids.is_empty() {
+            return None;
+        }
+        let new_order = Self::compute_order_move_ids_up(self.shape_store.draw_order(), &ids);
+        if new_order == *self.shape_store.draw_order() {
+            return None;
+        }
+        if self.shape_store.would_split_group_with_order(&new_order) {
+            return None;
+        }
+        Some(new_order)
     }
-    let new_order = Self::compute_order_move_ids_up(self.shape_store.draw_order(), &ids);
-    if new_order == *self.shape_store.draw_order() {
-        return None;
-    }
-    if self.shape_store.would_split_group_with_order(&new_order) {
-        return None;
-    }
-    Some(new_order)
-}
 
-pub fn move_selected_down(&self) -> Option<Vec<u64>> {
-    let ids = self.shape_store.selected_ids();
-    if ids.is_empty() {
-        return None;
+    pub fn move_selected_down(&self) -> Option<Vec<u64>> {
+        let ids = self.shape_store.selected_ids();
+        if ids.is_empty() {
+            return None;
+        }
+        let new_order = Self::compute_order_move_ids_down(self.shape_store.draw_order(), &ids);
+        if new_order == *self.shape_store.draw_order() {
+            return None;
+        }
+        if self.shape_store.would_split_group_with_order(&new_order) {
+            return None;
+        }
+        Some(new_order)
     }
-    let new_order = Self::compute_order_move_ids_down(self.shape_store.draw_order(), &ids);
-    if new_order == *self.shape_store.draw_order() {
-        return None;
-    }
-    if self.shape_store.would_split_group_with_order(&new_order) {
-        return None;
-    }
-    Some(new_order)
-}
 
     fn compute_order_move_ids_to_top(order: &[u64], ids: &[u64]) -> Vec<u64> {
         let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
@@ -660,7 +660,6 @@ pub fn move_selected_down(&self) -> Option<Vec<u64>> {
         self.select_shape(first_id, false);
         Some(first_id)
     }
-
 }
 
 impl Default for Canvas {

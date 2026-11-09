@@ -53,6 +53,8 @@ pub enum SettingsCategory {
     FileProcessing,
     /// Keyboard shortcuts
     KeyboardShortcuts,
+    /// Machine and axis configuration
+    Machine,
     /// Advanced options
     Advanced,
 }
@@ -65,6 +67,7 @@ impl std::fmt::Display for SettingsCategory {
             Self::UserInterface => write!(f, "User Interface"),
             Self::FileProcessing => write!(f, "File Processing"),
             Self::KeyboardShortcuts => write!(f, "Keyboard Shortcuts"),
+            Self::Machine => write!(f, "Machine"),
             Self::Advanced => write!(f, "Advanced"),
         }
     }
@@ -281,11 +284,19 @@ impl SettingsDialog {
             if let Some(setting) = self.settings.get_mut(&key) {
                 let new_value = match &setting.value {
                     SettingValue::String(_) => SettingValue::String(value),
-                    SettingValue::Integer(_) => SettingValue::Integer(value.parse().unwrap_or(0)),
-                    SettingValue::Float(_) => SettingValue::Float(value.parse().unwrap_or(0.0)),
-                    SettingValue::Boolean(_) => {
-                        SettingValue::Boolean(value.parse().unwrap_or(false))
-                    }
+                    // Skip unparseable values instead of silently importing 0/false.
+                    SettingValue::Integer(_) => match value.parse() {
+                        Ok(v) => SettingValue::Integer(v),
+                        Err(_) => continue,
+                    },
+                    SettingValue::Float(_) => match value.parse() {
+                        Ok(v) => SettingValue::Float(v),
+                        Err(_) => continue,
+                    },
+                    SettingValue::Boolean(_) => match value.parse() {
+                        Ok(v) => SettingValue::Boolean(v),
+                        Err(_) => continue,
+                    },
                     SettingValue::Path(_) => SettingValue::Path(value),
                     SettingValue::Enum(_, ref options) => {
                         if options.contains(&value) {
