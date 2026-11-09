@@ -296,8 +296,10 @@ pub fn render_canvas(
                         let data = rgba.as_raw();
 
                         use tiny_skia::IntSize;
-                        let size = IntSize::from_wh(img_w, img_h).unwrap();
-                        match tiny_skia::Pixmap::from_vec(data.clone(), size) {
+                        // `from_wh` returns None for a zero-sized image.
+                        match IntSize::from_wh(img_w, img_h)
+                            .and_then(|size| tiny_skia::Pixmap::from_vec(data.clone(), size))
+                        {
                             Some(img_pixmap) => {
                                 let (x1, y1, _, _) = raster.bounds();
                                 let scale_x = target_w / img_w as f32;
@@ -314,12 +316,12 @@ pub fn render_canvas(
                                     transform,
                                     None,
                                 );
-                                eprintln!("Image drawn");
+                                tracing::trace!("Image drawn");
                             }
-                            None => eprintln!("Failed to create pixmap from data"),
+                            None => tracing::warn!("Failed to create pixmap from image data"),
                         }
                     }
-                    Err(e) => eprintln!("Failed to load image from memory: {}", e),
+                    Err(e) => tracing::warn!("Failed to load image from memory: {}", e),
                 }
 
                 // Draw the border around the image

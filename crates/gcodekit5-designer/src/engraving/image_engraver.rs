@@ -528,11 +528,15 @@ impl ImageEngraver {
                 current_power = points[i].1;
             }
         }
-        merged.push((seg_start_x, points.last().unwrap().0, current_power));
+        if let Some(&(last_x, _)) = points.last() {
+            merged.push((seg_start_x, last_x, current_power));
+        }
 
         let overscan_dist = OVERSCAN_MM;
-        let first_x = merged[0].0;
-        let last_x = merged.last().unwrap().1;
+        let (Some(&(first_x, _, _)), Some(&(_, last_x, _))) = (merged.first(), merged.last())
+        else {
+            return;
+        };
 
         let (entry_x, exit_x) = if left_to_right {
             (first_x - overscan_dist, last_x + overscan_dist)
@@ -679,11 +683,15 @@ impl ImageEngraver {
                 current_power = points[i].1;
             }
         }
-        merged.push((seg_start_y, points.last().unwrap().0, current_power));
+        if let Some(&(last_y, _)) = points.last() {
+            merged.push((seg_start_y, last_y, current_power));
+        }
 
         let overscan_dist = OVERSCAN_MM;
-        let first_y = merged[0].0;
-        let last_y = merged.last().unwrap().1;
+        let (Some(&(first_y, _, _)), Some(&(_, last_y, _))) = (merged.first(), merged.last())
+        else {
+            return;
+        };
 
         let (entry_y, exit_y) = if top_to_bottom {
             (first_y + overscan_dist, last_y - overscan_dist)

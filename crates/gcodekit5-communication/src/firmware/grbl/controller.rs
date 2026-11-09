@@ -779,7 +779,8 @@ mod tests {
     #[tokio::test]
     async fn test_register_unregister_listener() {
         let mut controller =
-            GrblController::new(ConnectionParams::default(), Some("test".to_string())).unwrap();
+            GrblController::new(ConnectionParams::default(), Some("test".to_string()))
+                .expect("controller should construct");
         let listener = Arc::new(TestListener::new());
         let handle = controller.register_listener(listener.clone());
         assert_eq!(controller.listener_count(), 1);
@@ -790,7 +791,8 @@ mod tests {
     #[tokio::test]
     async fn test_listener_receives_status_change() {
         let mut controller =
-            GrblController::new(ConnectionParams::default(), Some("test".to_string())).unwrap();
+            GrblController::new(ConnectionParams::default(), Some("test".to_string()))
+                .expect("controller should construct");
         let listener = Arc::new(TestListener::new());
         let calls = listener.calls.clone();
         let _handle = controller.register_listener(listener.clone());

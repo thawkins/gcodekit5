@@ -44,14 +44,16 @@ jobs:
             2>&1 | tee clippy_output.txt
           
           # Count unwrap warnings
-          UNWRAP_COUNT=$(grep -c "unwrap_used" clippy_output.txt || echo "0")
+          # Count the lint diagnostics themselves; a plain "unwrap_used" match also counts
+          # clippy's "run `cargo clippy --fix ... -W clippy::unwrap_used`" hint lines.
+          UNWRAP_COUNT=$(grep -c 'used `unwrap()` on ' clippy_output.txt || true)
           echo "Found $UNWRAP_COUNT unwrap() usages"
           
           if [ "$UNWRAP_COUNT" -gt 0 ]; then
             echo "::error::Found $UNWRAP_COUNT unwrap() calls. Please replace with proper error handling."
             echo ""
             echo "Unwrap locations:"
-            grep "unwrap_used" clippy_output.txt
+            grep -A1 'used `unwrap()` on ' clippy_output.txt
             exit 1
           fi
           

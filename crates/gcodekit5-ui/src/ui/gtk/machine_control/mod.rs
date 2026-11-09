@@ -1722,12 +1722,9 @@ impl MachineControlView {
                 let view_timeout = view_clone.clone();
                 let is_streaming_timeout = view_clone.is_streaming.clone();
 
-                let receiver = std::sync::Mutex::new(receiver);
-
                 // Timeout para leer progreso
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                    let receiver_guard = receiver.lock().unwrap();
-                    while let Ok(message) = receiver_guard.try_recv() {
+                    while let Ok(message) = receiver.try_recv() {
                         // println!("🔍 Mensaje recibido: '{}'", message);
 
                         if message.starts_with('>') {

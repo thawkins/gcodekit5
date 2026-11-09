@@ -535,9 +535,10 @@ fn interpolate_polyline_arcs(pline: &Polyline, tolerance: f64) -> Vec<[f64; 2]> 
 
     // Iteramos explícitamente por los índices para controlar el inicio y el fin del bucle cerrado
     for i in 0..count {
-        let v_start = pline.get(i).unwrap();
         // Si está cerrado, el siguiente del último es el primero (0)
-        let v_end = pline.get((i + 1) % count).unwrap();
+        let (Some(v_start), Some(v_end)) = (pline.get(i), pline.get((i + 1) % count)) else {
+            continue;
+        };
 
         // Añadimos siempre el inicio del segmento actual
         points.push([v_start.x, v_start.y]);

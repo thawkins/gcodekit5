@@ -261,22 +261,27 @@ fn create_link_tag(buffer: &gtk4::TextBuffer, topic_id: &str) -> gtk4::TextTag {
     tag
 }
 
+/// Returns the bold heading tag `name` with the given scale, reusing it if the buffer's tag
+/// table already has one (`create_tag` returns `None` for an existing name).
+fn heading_tag(buffer: &gtk4::TextBuffer, name: &str, scale: f64) -> gtk4::TextTag {
+    if let Some(existing) = buffer.tag_table().lookup(name) {
+        return existing;
+    }
+    let tag = gtk4::TextTag::new(Some(name));
+    tag.set_weight(700); // Bold
+    tag.set_scale(scale);
+    buffer.tag_table().add(&tag);
+    tag
+}
+
 fn render_markdown(view: &TextView, md: &str, stack: &Stack) {
     let buffer = view.buffer();
     buffer.set_text("");
 
     // Crear tags con la sintaxis correcta
-    let h1_tag = buffer.create_tag(Some("h1"), &[]).unwrap();
-    h1_tag.set_weight(700); // Bold
-    h1_tag.set_scale(1.6);
-
-    let h2_tag = buffer.create_tag(Some("h2"), &[]).unwrap();
-    h2_tag.set_weight(700); // Bold
-    h2_tag.set_scale(1.4);
-
-    let h3_tag = buffer.create_tag(Some("h3"), &[]).unwrap();
-    h3_tag.set_weight(700); // Bold
-    h3_tag.set_scale(1.2);
+    let h1_tag = heading_tag(&buffer, "h1", 1.6);
+    let h2_tag = heading_tag(&buffer, "h2", 1.4);
+    let h3_tag = heading_tag(&buffer, "h3", 1.2);
 
     // Conectar eventos de mouse para links
     setup_link_navigation(view, stack);

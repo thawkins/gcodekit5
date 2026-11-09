@@ -1201,7 +1201,7 @@ fn transform_svg_path_to_svg_coords(d: &str, min_y: f64, max_y: f64) -> String {
     let mut i = 0;
     while i < tokens.len() {
         let token = &tokens[i];
-        if token.len() == 1 && token.chars().next().unwrap().is_alphabetic() {
+        if token.len() == 1 && token.chars().next().is_some_and(char::is_alphabetic) {
             // Es un comando, lo agregamos tal cual
             result.push_str(&format!("{} ", token));
             i += 1;

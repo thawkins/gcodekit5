@@ -681,7 +681,9 @@ impl ProbeRoutineEngine {
         }
 
         // Use last trigger (slow re-probe if available)
-        let trigger = triggers.last().unwrap();
+        let Some(trigger) = triggers.last() else {
+            return Err(anyhow!("No trigger results available"));
+        };
         if !trigger.success {
             return Err(anyhow!("Probe did not trigger successfully"));
         }
@@ -853,7 +855,9 @@ mod tests {
 
         let engine = ProbeRoutineEngine::new(routine);
         let current_pos = Position::new(10.0, 20.0, 5.0);
-        let output = engine.generate(current_pos).unwrap();
+        let output = engine
+            .generate(current_pos)
+            .expect("probe test setup should succeed");
 
         assert!(output.gcode.contains("G38.2"));
         assert!(output.gcode.contains("Z"));
@@ -874,7 +878,9 @@ mod tests {
 
         let engine = ProbeRoutineEngine::new(routine);
         let current_pos = Position::new(10.0, 20.0, 5.0);
-        let output = engine.generate(current_pos).unwrap();
+        let output = engine
+            .generate(current_pos)
+            .expect("probe test setup should succeed");
 
         assert!(output.gcode.contains("G38.2"));
         assert!(output.gcode.contains("X"));
@@ -917,7 +923,8 @@ mod tests {
             Units::MM,
         ));
 
-        let center = ProbeRoutineEngine::compute_result(&report).unwrap();
+        let center =
+            ProbeRoutineEngine::compute_result(&report).expect("probe test setup should succeed");
 
         assert!((center.x - 50.0).abs() < 0.001);
         assert!((center.y - 50.0).abs() < 0.001);
@@ -960,7 +967,8 @@ mod tests {
             Units::MM,
         )); // backoff re-probe
 
-        let corner = ProbeRoutineEngine::compute_result(&report).unwrap();
+        let corner =
+            ProbeRoutineEngine::compute_result(&report).expect("probe test setup should succeed");
 
         assert!((corner.x - 10.0).abs() < 0.001);
         assert!((corner.y - 20.0).abs() < 0.001);
@@ -985,7 +993,8 @@ mod tests {
             Units::MM,
         ));
 
-        let result = ProbeRoutineEngine::compute_result(&report).unwrap();
+        let result =
+            ProbeRoutineEngine::compute_result(&report).expect("probe test setup should succeed");
 
         // Tool length = trigger_z - plate_z = -65 - (-50) = -15
         // But we store as positive value

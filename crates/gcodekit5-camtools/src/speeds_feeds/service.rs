@@ -144,7 +144,7 @@ impl SpeedsFeedsToolService {
         tools.sort_by(|a, b| {
             let score_a = self.tool_score(a, material, roughing);
             let score_b = self.tool_score(b, material, roughing);
-            score_b.partial_cmp(&score_a).unwrap() // Higher score first
+            score_b.total_cmp(&score_a) // Higher score first (NaN-safe total order)
         });
 
         tools

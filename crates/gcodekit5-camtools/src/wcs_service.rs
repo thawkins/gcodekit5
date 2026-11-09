@@ -322,7 +322,9 @@ impl WcsUpdateService {
             }
             ProbeRoutine::EdgeFind { .. } => {
                 // Use last trigger (slow re-probe if available)
-                let trigger = triggers.last().unwrap();
+                let Some(trigger) = triggers.last() else {
+                    return Err(anyhow!("No trigger results in probe report"));
+                };
                 if !trigger.success {
                     return Err(anyhow!("Probe did not trigger successfully"));
                 }
@@ -618,7 +620,9 @@ mod tests {
             Units::MM,
         )); // Slow re-probe
 
-        let result = service.process_probe_report(&report).unwrap();
+        let result = service
+            .process_probe_report(&report)
+            .expect("WCS test setup should succeed");
 
         assert!(!result.applied); // Not auto-applied
         assert!(result.command.contains("G10"));
@@ -647,7 +651,9 @@ mod tests {
             Units::MM,
         ));
 
-        let preview = service.generate_preview(&report).unwrap();
+        let preview = service
+            .generate_preview(&report)
+            .expect("WCS test setup should succeed");
         // Z-touch routine sets Z to 0 at the trigger position
         // The actual trigger was at Z=-12.345, but computed position has Z=0
         assert!(preview.contains("Z surface"));
@@ -680,7 +686,7 @@ mod tests {
 
         let (command, _description) = service
             .build_command(&report, Position::new(100.0, 100.0, -15.0))
-            .unwrap();
+            .expect("WCS test setup should succeed");
         assert!(command.contains("G43.1"));
         assert!(command.contains("Z-15"));
     }
@@ -716,7 +722,7 @@ mod tests {
 
         let (command, _) = service
             .build_command(&report, Position::new(10.0, 20.0, -5.0))
-            .unwrap();
+            .expect("WCS test setup should succeed");
         assert!(command.contains("G92"));
         assert!(!command.contains("G10"));
     }
@@ -737,7 +743,9 @@ mod tests {
 
         persistent.store_report(54, &report);
 
-        let stored = persistent.get_report(54).unwrap();
+        let stored = persistent
+            .get_report(54)
+            .expect("WCS test setup should succeed");
         assert_eq!(stored.computed_x, 50.0);
         assert_eq!(stored.computed_y, 50.0);
     }
