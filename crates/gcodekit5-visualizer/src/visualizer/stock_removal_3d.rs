@@ -380,7 +380,8 @@ const STOCK_Z0_MARKER: &str = "stock z0:";
 /// never used. Recognised records:
 /// * `; Stock Z0: top` / `; Stock Z0: bottom` (also in `( ... )` comments).
 /// * The designer's CNC header `; Generated G-code from Designer tool`, whose
-///   programs are zeroed on the stock bottom.
+///   programs are zeroed on the stock bottom. This is only a fallback: an
+///   explicit `Stock Z0` marker anywhere in the header takes precedence.
 ///
 /// # Arguments
 /// * `gcode` - Full program text.
@@ -389,6 +390,10 @@ const STOCK_Z0_MARKER: &str = "stock z0:";
 /// The recorded convention, or `None` when the program does not record one
 /// (the caller should then keep the user's setting).
 pub fn detect_stock_zero_reference(gcode: &str) -> Option<StockZeroReference> {
+    // An explicit `Stock Z0` marker anywhere in the header wins; the designer's
+    // title line is only a fallback, so an edited or re-zeroed program that
+    // records its own origin is honoured.
+    let mut designer_fallback = None;
     for line in gcode.lines() {
         let line = line.trim();
         if line.is_empty() || line == "%" {
@@ -396,14 +401,16 @@ pub fn detect_stock_zero_reference(gcode: &str) -> Option<StockZeroReference> {
         }
         let comment = if let Some(rest) = line.strip_prefix(';') {
             rest
+        } else if let Some(rest) = line.strip_prefix('(') {
+            rest.strip_suffix(')').unwrap_or(rest)
         } else {
             // A non-comment line is the first command: the header is over.
-            let rest = line.strip_prefix('(')?;
-            rest.strip_suffix(')').unwrap_or(rest)
+            break;
         };
         let comment = comment.trim();
         if comment.contains(DESIGNER_CNC_HEADER) {
-            return Some(StockZeroReference::Bottom);
+            designer_fallback = Some(StockZeroReference::Bottom);
+            continue;
         }
         let lower = comment.to_ascii_lowercase();
         if let Some(value) = lower.strip_prefix(STOCK_Z0_MARKER) {
@@ -416,7 +423,7 @@ pub fn detect_stock_zero_reference(gcode: &str) -> Option<StockZeroReference> {
             }
         }
     }
-    None
+    designer_fallback
 }
 
 /// Material-removal simulator for a rectangular stock block.

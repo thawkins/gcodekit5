@@ -432,3 +432,89 @@ fn test_phase7_timestamps_are_utc() {
     let _: chrono::DateTime<chrono::Utc> = report.timestamp;
     assert!(report.format_report().contains(" UTC"));
 }
+
+#[test]
+fn test_stock_origin_explicit_marker_overrides_designer_header() {
+    // An edited/re-zeroed designer program that records its own origin must keep it.
+    let gcode = "; Generated G-code from Designer tool\n; Stock Z0: top\nG21\nG1 Z-1 F100\n";
+    assert_eq!(
+        detect_stock_zero_reference(gcode),
+        Some(StockZeroReference::Top)
+    );
+    // Without a marker the designer title still means bottom-zero.
+    let gcode = "; Generated G-code from Designer tool\nG21\n";
+    assert_eq!(
+        detect_stock_zero_reference(gcode),
+        Some(StockZeroReference::Bottom)
+    );
+}
+
+/// Lowest Z (mm) of any parsed move end point.
+fn min_move_z(vis: &Visualizer) -> f32 {
+    vis.commands()
+        .iter()
+        .filter_map(|c| match c {
+            GCodeCommand::Move { to, .. } => Some(to.z),
+            _ => None,
+        })
+        .fold(f32::INFINITY, f32::min)
+}
+
+#[test]
+fn test_visualizer_g53_retract_is_not_plotted_at_work_z() {
+    use gcodekit5_camtools::spoilboard_surfacing::{
+        SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters,
+    };
+
+    // A homed surfacing program retracts with `G53 G0 Z-1` (machine coordinates)
+    // and cuts at work Z-0.5. The retract must not be drawn (or simulated) at work
+    // Z-1, which would show a false cut 0.5 mm below the programmed depth.
+    let gcode = SpoilboardSurfacingGenerator::new(SpoilboardSurfacingParameters {
+        width: 60.0,
+        height: 40.0,
+        tool_diameter: 20.0,
+        feed_rate: 1000.0,
+        spindle_speed: 10000.0,
+        cut_depth: 0.5,
+        stepover_percent: 50.0,
+        safe_z: 5.0,
+        home_before_job: true,
+    })
+    .generate()
+    .expect("surfacing program");
+    assert!(
+        gcode.contains("G53"),
+        "homed program should use G53:\n{gcode}"
+    );
+
+    let vis = parse(&gcode);
+    let min_z = min_move_z(&vis);
+    assert!(
+        (min_z - -0.5).abs() < 1e-3,
+        "lowest plotted Z should be the cut depth -0.5, got {min_z}"
+    );
+
+    // G53 moves are drawn as travel, never as cuts.
+    let vis = parse("G0 Z5\nG1 Z-2 F100\nG53 G0 Z-1\nG0 X10\n");
+    let g53_move = vis
+        .commands()
+        .iter()
+        .filter_map(|c| match c {
+            GCodeCommand::Move {
+                to,
+                rapid,
+                intensity,
+                ..
+            } => Some((*to, *rapid, *intensity)),
+            _ => None,
+        })
+        .nth(2)
+        .expect("third move is the G53 retract");
+    assert!(g53_move.1, "G53 move should be rapid");
+    assert!(g53_move.2.is_none(), "G53 move should carry no intensity");
+    assert!(
+        (g53_move.0.z - 5.0).abs() < 1e-3,
+        "G53 retract should rise to the highest work Z seen (5), got {}",
+        g53_move.0.z
+    );
+}
