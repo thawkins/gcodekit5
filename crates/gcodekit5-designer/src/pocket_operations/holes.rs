@@ -271,6 +271,96 @@ fn order_loops(levels: &[Loops]) -> Vec<Vec<Point>> {
     ordered
 }
 
+/// Orders raster spans so that each connected part of the region is finished before
+/// moving to the next.
+///
+/// Scanlines that cross a hole split into several spans. Cutting them line by line
+/// would jump across the hole (and retract) on every such line. Instead, from the
+/// current position the next span is chosen on an adjacent scanline whose entry can
+/// be reached by a straight link inside `allowed` (so no retract is needed); only when
+/// no such span exists does the order jump to the nearest remaining span. With
+/// `bidirectional` a span may be cut in either direction (whichever entry is closer);
+/// otherwise every span keeps its original direction.
+///
+/// # Arguments
+/// * `lines` - Spans per scanline, in scan order.
+/// * `allowed` - Tool-centre region loops used to validate links.
+/// * `bidirectional` - Whether spans may be reversed.
+///
+/// # Returns
+/// Every span exactly once, as `(start, end)` in cutting order.
+fn order_raster_spans(
+    lines: &[Vec<(Point, Point)>],
+    allowed: &[Vec<Point>],
+    bidirectional: bool,
+) -> Vec<(Point, Point)> {
+    let mut remaining: Vec<(usize, Point, Point)> = lines
+        .iter()
+        .enumerate()
+        .flat_map(|(li, spans)| spans.iter().map(move |&(a, b)| (li, a, b)))
+        .collect();
+    let mut ordered = Vec::with_capacity(remaining.len());
+    if remaining.is_empty() {
+        return ordered;
+    }
+
+    // Entry options for a span: (distance, reversed).
+    let entries = |pos: &Point, a: &Point, b: &Point| -> Vec<(f64, bool)> {
+        let mut e = vec![(pos.distance_to(a), false)];
+        if bidirectional {
+            e.push((pos.distance_to(b), true));
+        }
+        e
+    };
+
+    let (first_line, first_a, first_b) = remaining.remove(0);
+    ordered.push((first_a, first_b));
+    let mut pos = first_b;
+    let mut line = first_line;
+
+    while !remaining.is_empty() {
+        // Best linkable span on an adjacent scanline.
+        let mut best: Option<(usize, bool, f64)> = None;
+        for (idx, (li, a, b)) in remaining.iter().enumerate() {
+            if li.abs_diff(line) != 1 {
+                continue;
+            }
+            for (d, rev) in entries(&pos, a, b) {
+                if best.is_some_and(|(_, _, bd)| bd <= d) {
+                    continue;
+                }
+                let entry = if rev { b } else { a };
+                if segment_stays_inside(&pos, entry, allowed) {
+                    best = Some((idx, rev, d));
+                }
+            }
+        }
+
+        // Otherwise, the nearest remaining span anywhere (this may need a retract).
+        let (idx, rev) = match best {
+            Some((idx, rev, _)) => (idx, rev),
+            None => {
+                let mut nearest = (0usize, false, f64::MAX);
+                for (idx, (_, a, b)) in remaining.iter().enumerate() {
+                    for (d, rev) in entries(&pos, a, b) {
+                        if d < nearest.2 {
+                            nearest = (idx, rev, d);
+                        }
+                    }
+                }
+                (nearest.0, nearest.1)
+            }
+        };
+
+        let (li, a, b) = remaining.remove(idx);
+        let (start, end) = if rev { (b, a) } else { (a, b) };
+        ordered.push((start, end));
+        pos = end;
+        line = li;
+    }
+    ordered
+}
+
 /// Per-Z-pass bookkeeping shared by the hole-aware strategies.
 struct PassState {
     /// Z of the previous pass (or the start depth) used for ramp entries.
@@ -583,6 +673,8 @@ impl PocketGenerator {
             forward = !forward;
         }
 
+        let ordered = order_raster_spans(&lines, &allowed, bidirectional);
+
         let mut toolpaths = Vec::new();
         let mut state = PassState {
             prev_z: self.operation.start_depth,
@@ -593,7 +685,7 @@ impl PocketGenerator {
         for current_z in self.z_levels(step_down) {
             state.current_z = current_z;
             let mut toolpath = Toolpath::new(self.operation.tool_diameter, current_z);
-            for (start, end) in lines.iter().flatten() {
+            for (start, end) in &ordered {
                 self.link_or_enter(&mut toolpath, *start, &allowed, &state);
                 toolpath.add_segment(ToolpathSegment::new(
                     ToolpathSegmentType::LinearMove,

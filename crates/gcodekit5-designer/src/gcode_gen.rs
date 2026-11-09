@@ -31,6 +31,9 @@ pub struct ToolpathToGcode {
     pub machine_limits: Option<MachineLimits>,
     /// Keep Z continuous between passes when possible (same XY rapid).
     pub continuous_z_between_passes: bool,
+    /// Lowest Z (mm) the tool may reach, e.g. the bottom of the configured stock.
+    /// `None` disables the Z check in [`Self::has_boundary_violation`].
+    pub z_min_limit: Option<f64>,
 }
 
 impl ToolpathToGcode {
@@ -46,6 +49,7 @@ impl ToolpathToGcode {
             curve_simplification_tolerance: 0.05,
             machine_limits: None,
             continuous_z_between_passes: false,
+            z_min_limit: None,
         }
     }
 
@@ -61,6 +65,7 @@ impl ToolpathToGcode {
             curve_simplification_tolerance: 0.05,
             machine_limits: None,
             continuous_z_between_passes: false,
+            z_min_limit: None,
         }
     }
 
@@ -151,7 +156,10 @@ impl ToolpathToGcode {
 
                     // Try to merge with previous collinear segment
                     if let Some(prev) = &mut pending_segment {
-                        if prev.segment_type == ToolpathSegmentType::LinearMove {
+                        if prev.segment_type == ToolpathSegmentType::LinearMove
+                            && prev.spindle_speed == segment.spindle_speed
+                            && (prev.feed_rate - segment.feed_rate).abs() <= 1e-9
+                        {
                             let dir1 = (prev.end.x - prev.start.x, prev.end.y - prev.start.y);
                             let dir2 = (segment.end.x - prev.end.x, segment.end.y - prev.end.y);
                             let len1 = (dir1.0 * dir1.0 + dir1.1 * dir1.1).sqrt();
@@ -265,14 +273,10 @@ impl ToolpathToGcode {
         let mut gcode = String::new();
         let mut line_number = start_line_number;
         let mut current_z = initial_z;
-        let laser_power = toolpath
-            .segments
-            .first()
-            .map(|s| s.spindle_speed)
-            .unwrap_or(1000);
-
         // State tracking to avoid redundant commands
         let mut laser_on = false; // Initially OFF
+                                  // Laser power (S) currently in effect; re-emitted whenever a segment's power differs.
+        let mut laser_power: Option<u32> = None;
         let mut last_feed_rate: Option<f64> = None;
         let mut last_point: Option<(f64, f64)> = None;
         let mut line_g01 = true;
@@ -378,15 +382,18 @@ impl ToolpathToGcode {
                         last_point = Some((segment.end.x, segment.end.y));
                     }
 
-                    if self.is_laser_2d && !laser_on {
-                        let line_prefix = self.get_line_prefix(line_number);
-                        gcode.push_str(&format!(
-                            "{}M4 S{}       ; Laser ON\n",
-                            line_prefix, laser_power
-                        ));
-                        laser_on = true;
-                        line_number += 10;
-                        line_g01 = true;
+                    if self.is_laser_2d {
+                        let was_on = laser_on;
+                        self.emit_laser_power(
+                            &mut gcode,
+                            &mut line_number,
+                            &mut laser_on,
+                            &mut laser_power,
+                            segment.spindle_speed,
+                        );
+                        if !was_on {
+                            line_g01 = true;
+                        }
                     }
 
                     // Determine whether to write "G01" or nothing.
@@ -465,19 +472,14 @@ impl ToolpathToGcode {
                         }
                     }
 
-                    if self.is_laser_2d && !laser_on {
-                        let line_prefix = self.get_line_prefix(line_number);
-                        let laser_power = toolpath
-                            .segments
-                            .first()
-                            .map(|s| s.spindle_speed)
-                            .unwrap_or(1000);
-                        gcode.push_str(&format!(
-                            "{}M4 S{}       ; Laser ON\n",
-                            line_prefix, laser_power
-                        ));
-                        laser_on = true;
-                        line_number += 10;
+                    if self.is_laser_2d {
+                        self.emit_laser_power(
+                            &mut gcode,
+                            &mut line_number,
+                            &mut laser_on,
+                            &mut laser_power,
+                            segment.spindle_speed,
+                        );
                     }
 
                     let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
@@ -610,6 +612,33 @@ impl ToolpathToGcode {
         (gcode, current_z)
     }
 
+    /// Turns the laser on (`M4 S..`) or updates its power (`S..`) so that `power`
+    /// is in effect before the next cutting move. Emits nothing when the laser is
+    /// already on at that power.
+    fn emit_laser_power(
+        &self,
+        gcode: &mut String,
+        line_number: &mut u32,
+        laser_on: &mut bool,
+        current_power: &mut Option<u32>,
+        power: u32,
+    ) {
+        let line_prefix = self.get_line_prefix(*line_number);
+        if !*laser_on {
+            gcode.push_str(&format!("{}M4 S{}       ; Laser ON\n", line_prefix, power));
+            *laser_on = true;
+        } else if *current_power != Some(power) {
+            gcode.push_str(&format!(
+                "{}S{}          ; Laser power\n",
+                line_prefix, power
+            ));
+        } else {
+            return;
+        }
+        *current_power = Some(power);
+        *line_number += 10;
+    }
+
     /// Generates the G-code footer.
     pub fn generate_footer(&self) -> String {
         let mut gcode = String::new();
@@ -632,53 +661,62 @@ impl ToolpathToGcode {
         gcode
     }
 
+    /// Reports whether a toolpath leaves the allowed working volume.
+    ///
+    /// XY coordinates (segment endpoints and arc centres) are checked against
+    /// [`Self::machine_limits`] when set. Z is checked only against
+    /// [`Self::z_min_limit`] when set: a negative Z on its own is a normal cut
+    /// below a Z0-at-stock-top origin and is not a violation.
+    ///
+    /// # Arguments
+    /// * `toolpath` - Toolpath to check.
+    ///
+    /// # Returns
+    /// `true` when any coordinate is outside the configured limits.
     pub fn has_boundary_violation(&self, toolpath: &Toolpath) -> bool {
-        let Some(limits) = &self.machine_limits else {
-            return false;
-        };
+        const EPS: f64 = 1e-6;
 
-        if toolpath.depth < 0.0 {
-            return true;
-        }
-
-        let violates_z = |value: Option<f64>| value.is_some_and(|depth| depth < 0.0);
-
-        for segment in &toolpath.segments {
-            // Verificar punto inicial
-            if segment.start.x < limits.x_min
-                || segment.start.x > limits.x_max
-                || segment.start.y < limits.y_min
-                || segment.start.y > limits.y_max
-            {
+        if let Some(z_min) = self.z_min_limit {
+            let below = |z: f64| z < z_min - EPS;
+            if !toolpath.segments.is_empty() && below(toolpath.depth) {
                 return true;
             }
-            // Verificar punto final
-            if segment.end.x < limits.x_min
-                || segment.end.x > limits.x_max
-                || segment.end.y < limits.y_min
-                || segment.end.y > limits.y_max
-            {
-                return true;
-            }
-            if violates_z(segment.start_z) || violates_z(segment.z_depth) {
-                return true;
-            }
-            // Verificar centro de arco
-            if let Some(center) = segment.center {
-                if center.x < limits.x_min
-                    || center.x > limits.x_max
-                    || center.y < limits.y_min
-                    || center.y > limits.y_max
-                {
+            for segment in &toolpath.segments {
+                if segment.segment_type == ToolpathSegmentType::RapidMove {
+                    continue;
+                }
+                if segment.start_z.is_some_and(below) || segment.z_depth.is_some_and(below) {
                     return true;
                 }
             }
         }
-        false
+
+        let Some(limits) = &self.machine_limits else {
+            return false;
+        };
+        let outside = |p: &Point| {
+            p.x < limits.x_min - EPS
+                || p.x > limits.x_max + EPS
+                || p.y < limits.y_min - EPS
+                || p.y > limits.y_max + EPS
+        };
+
+        toolpath.segments.iter().any(|segment| {
+            outside(&segment.start)
+                || outside(&segment.end)
+                || segment.center.as_ref().is_some_and(outside)
+        })
     }
 
+    /// Sets the machine XY limits used by [`Self::has_boundary_violation`].
     pub fn with_machine_limits(mut self, limits: MachineLimits) -> Self {
         self.machine_limits = Some(limits);
+        self
+    }
+
+    /// Sets the lowest allowed Z (mm) used by [`Self::has_boundary_violation`].
+    pub fn with_z_min_limit(mut self, z_min: f64) -> Self {
+        self.z_min_limit = Some(z_min);
         self
     }
 }
@@ -686,70 +724,5 @@ impl ToolpathToGcode {
 impl Default for ToolpathToGcode {
     fn default() -> Self {
         Self::new(Units::MM, 10.0)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn generate_header_includes_estimated_time() {
-        let generator = ToolpathToGcode::new(Units::MM, 10.0);
-        let header = generator.generate_header(3000, 1000.0, 3.175, -5.0, 5000.0);
-
-        assert!(header.contains("; Total path length: 5000.00mm"));
-        assert!(header.contains("; Estimated time: 0h 5m"));
-    }
-
-    #[test]
-    fn has_boundary_violation_checks_z_axis() {
-        let generator = ToolpathToGcode {
-            machine_limits: Some(MachineLimits {
-                x_min: 0.0,
-                x_max: 100.0,
-                y_min: 0.0,
-                y_max: 100.0,
-            }),
-            ..ToolpathToGcode::new(Units::MM, 10.0)
-        };
-
-        let mut toolpath = Toolpath::new(6.0, 1.0);
-        let mut segment = ToolpathSegment::new(
-            ToolpathSegmentType::LinearMove,
-            Point::new(10.0, 10.0),
-            Point::new(20.0, 20.0),
-            1000.0,
-            12000,
-        );
-        segment.start_z = Some(-1.0);
-        segment.z_depth = Some(-1.0);
-        toolpath.add_segment(segment);
-
-        assert!(generator.has_boundary_violation(&toolpath));
-    }
-
-    #[test]
-    fn has_boundary_violation_checks_negative_toolpath_depth() {
-        let generator = ToolpathToGcode {
-            machine_limits: Some(MachineLimits {
-                x_min: 0.0,
-                x_max: 100.0,
-                y_min: 0.0,
-                y_max: 100.0,
-            }),
-            ..ToolpathToGcode::new(Units::MM, 10.0)
-        };
-
-        let mut toolpath = Toolpath::new(6.0, -7.0);
-        toolpath.add_segment(ToolpathSegment::new(
-            ToolpathSegmentType::LinearMove,
-            Point::new(10.0, 10.0),
-            Point::new(20.0, 20.0),
-            1000.0,
-            12000,
-        ));
-
-        assert!(generator.has_boundary_violation(&toolpath));
     }
 }

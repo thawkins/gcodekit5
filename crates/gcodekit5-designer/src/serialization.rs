@@ -106,6 +106,10 @@ pub struct ShapeData {
     pub font_italic: bool,
     #[serde(default)]
     pub path_data: String,
+    /// Parametric generator a path was built from (e.g. a timing pulley), so it
+    /// stays editable after a save/load round-trip. Absent in older files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parametric_source: Option<ParametricPathSource>,
     #[serde(default)]
     pub group_id: Option<u64>,
     #[serde(default)]
@@ -134,6 +138,9 @@ pub struct ShapeData {
     pub roller_diameter: f64,
     #[serde(default)]
     pub hole_radius: f64,
+    /// Gear/sprocket reflection flag (see `DesignGear::mirrored`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mirrored: bool,
     #[serde(default)]
     pub thickness: f64,
     #[serde(default)]
@@ -468,10 +475,13 @@ impl DesignFile {
                 (String::new(), 0.0, String::new(), false, false)
             };
 
-        let path_data = if let Shape::Path(path_shape) = &obj.shape {
-            path_shape.to_svg_path()
+        let (path_data, parametric_source) = if let Shape::Path(path_shape) = &obj.shape {
+            (
+                path_shape.to_svg_path(),
+                path_shape.parametric_source.clone(),
+            )
         } else {
-            String::new()
+            (String::new(), None)
         };
 
         let (corner_radius, is_slot) = if let Shape::Rectangle(r) = &obj.shape {
@@ -492,15 +502,18 @@ impl DesignFile {
         let mut pitch = 0.0;
         let mut roller_diameter = 0.0;
         let mut hole_radius = 0.0;
+        let mut mirrored = false;
 
         match &obj.shape {
             Shape::Gear(g) => {
+                mirrored = g.mirrored;
                 teeth = g.teeth;
                 module = g.module;
                 pressure_angle = g.pressure_angle_deg;
                 hole_radius = g.hole_radius;
             }
             Shape::Sprocket(s) => {
+                mirrored = s.mirrored;
                 teeth = s.teeth;
                 pitch = s.pitch;
                 roller_diameter = s.roller_diameter;
@@ -592,6 +605,7 @@ impl DesignFile {
             font_bold,
             font_italic,
             path_data,
+            parametric_source,
             group_id: obj.group_id,
             corner_radius,
             is_slot,
@@ -606,6 +620,7 @@ impl DesignFile {
             pitch,
             roller_diameter,
             hole_radius,
+            mirrored,
             thickness: 0.0,
             depth: obj.pocket_depth,
             tab_size: 0.0,
@@ -721,6 +736,7 @@ impl DesignFile {
             "path" => {
                 if let Some(mut path_shape) = PathShape::from_svg_path(&data.path_data) {
                     path_shape.laser_params = laser_params;
+                    path_shape.parametric_source = data.parametric_source.clone();
                     Shape::Path(path_shape)
                 } else {
                     // Fallback...
@@ -736,6 +752,7 @@ impl DesignFile {
                 let mut gear = DesignGear::new(center, data.module, data.teeth);
                 gear.pressure_angle_deg = data.pressure_angle;
                 gear.hole_radius = data.hole_radius;
+                gear.mirrored = data.mirrored;
                 gear.laser_params = laser_params;
                 Shape::Gear(gear)
             }
@@ -744,6 +761,7 @@ impl DesignFile {
                 let mut sprocket = DesignSprocket::new(center, data.pitch, data.teeth);
                 sprocket.roller_diameter = data.roller_diameter;
                 sprocket.hole_radius = data.hole_radius;
+                sprocket.mirrored = data.mirrored;
                 sprocket.laser_params = laser_params;
                 Shape::Sprocket(sprocket)
             }
@@ -760,12 +778,12 @@ impl DesignFile {
                         ) {
                             Ok((data, w, h)) => (data, w, h),
                             Err(e) => {
-                                eprintln!("Warning: Could not load image {:?}: {}", path, e);
+                                tracing::warn!(path = ?path, error = %e, "Could not load raster image");
                                 (Vec::new(), data.width, data.height)
                             }
                         }
                     } else {
-                        eprintln!("Warning: Image file not found: {:?}", path);
+                        tracing::warn!(path = ?path, "Raster image file not found");
                         (Vec::new(), data.width, data.height)
                     }
                 } else {

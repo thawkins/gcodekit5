@@ -58,6 +58,18 @@ pub enum DxfUnit {
     Meters,
     /// Kilometers
     Kilometers,
+    /// Miles
+    Miles,
+    /// Microinches
+    Microinches,
+    /// Mils (thousandths of an inch)
+    Mils,
+    /// Yards
+    Yards,
+    /// Decimeters
+    Decimeters,
+    /// Micrometers (microns)
+    Micrometers,
 }
 
 impl DxfUnit {
@@ -71,8 +83,60 @@ impl DxfUnit {
             DxfUnit::Centimeters => 10.0,
             DxfUnit::Meters => 1000.0,
             DxfUnit::Kilometers => 1_000_000.0,
+            DxfUnit::Miles => 1_609_344.0,
+            DxfUnit::Microinches => 25.4e-6,
+            DxfUnit::Mils => 0.0254,
+            DxfUnit::Yards => 914.4,
+            DxfUnit::Decimeters => 100.0,
+            DxfUnit::Micrometers => 0.001,
         }
     }
+
+    /// Maps a `$INSUNITS` header value to a unit.
+    ///
+    /// # Arguments
+    /// * `code` - The `$INSUNITS` value (0 = unitless, 1 = inches, 2 = feet,
+    ///   3 = miles, 4 = mm, 5 = cm, 6 = m, 7 = km, 8 = microinches, 9 = mils,
+    ///   10 = yards, 13 = micrometers, 14 = decimeters).
+    ///
+    /// # Returns
+    /// The unit, or `None` for codes with no supported length conversion
+    /// (e.g. astronomical units, light years, parsecs).
+    pub fn from_insunits(code: i32) -> Option<Self> {
+        Some(match code {
+            0 => DxfUnit::Unitless,
+            1 => DxfUnit::Inches,
+            2 => DxfUnit::Feet,
+            3 => DxfUnit::Miles,
+            4 => DxfUnit::Millimeters,
+            5 => DxfUnit::Centimeters,
+            6 => DxfUnit::Meters,
+            7 => DxfUnit::Kilometers,
+            8 => DxfUnit::Microinches,
+            9 => DxfUnit::Mils,
+            10 => DxfUnit::Yards,
+            13 => DxfUnit::Micrometers,
+            14 => DxfUnit::Decimeters,
+            _ => return None,
+        })
+    }
+}
+
+/// Returns true when an entity's extrusion direction (group code 230, the Z of
+/// its OCS normal) points down the world Z axis. By the DXF arbitrary-axis
+/// algorithm an OCS with normal (0, 0, -1) has its X axis along world -X and its
+/// Y axis along world +Y, so OCS geometry is mirrored in X.
+fn extrusion_is_negative_z(extrusion_z: f64) -> bool {
+    extrusion_z < 0.0
+}
+
+/// Mirrors an arc's start/end angles (degrees) for a negative-Z extrusion: the
+/// OCS point at angle `a` lies at world angle `180 - a`, and the sweep direction
+/// reverses, so the world arc runs counter-clockwise from `180 - end` to
+/// `180 - start`.
+fn mirror_arc_angles(start: f64, end: f64) -> (f64, f64) {
+    let wrap = |a: f64| a.rem_euclid(360.0);
+    (wrap(180.0 - end), wrap(180.0 - start))
 }
 
 /// Represents a DXF line entity
@@ -440,6 +504,26 @@ impl DxfParser {
         while i < lines.len() {
             let line = lines[i].trim();
 
+            // Drawing units from the HEADER section: `9 / $INSUNITS / 70 / <code>`.
+            if !in_entities
+                && line == "$INSUNITS"
+                && lines.get(i + 1).map(|c| c.trim()) == Some("70")
+            {
+                let code = lines
+                    .get(i + 2)
+                    .and_then(|v| v.trim().parse::<i32>().ok())
+                    .unwrap_or(0);
+                match DxfUnit::from_insunits(code) {
+                    Some(unit) => file.header.unit = unit,
+                    None => tracing::warn!(
+                        insunits = code,
+                        "Unsupported DXF $INSUNITS value; assuming millimetres"
+                    ),
+                }
+                i += 3;
+                continue;
+            }
+
             // Look for ENTITIES section
             if line == "ENTITIES" {
                 in_entities = true;
@@ -587,6 +671,7 @@ impl DxfParser {
         let mut color = 256u16;
         let mut elevation = 0.0;
         let mut thickness = 0.0;
+        let mut extrusion_z = 1.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -611,10 +696,16 @@ impl DxfParser {
                 "40" => radius = value.parse().unwrap_or(0.0),
                 "30" => elevation = value.parse().unwrap_or(0.0),
                 "39" => thickness = value.parse().unwrap_or(0.0),
+                "230" => extrusion_z = value.parse().unwrap_or(1.0),
                 _ => {}
             }
 
             *index += 1;
+        }
+
+        if extrusion_is_negative_z(extrusion_z) {
+            center.x = -center.x;
+            elevation = -elevation;
         }
 
         Ok(DxfCircle {
@@ -637,6 +728,7 @@ impl DxfParser {
         let mut color = 256u16;
         let mut elevation = 0.0;
         let mut thickness = 0.0;
+        let mut extrusion_z = 1.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -663,10 +755,17 @@ impl DxfParser {
                 "51" => end_angle = value.parse().unwrap_or(0.0),
                 "30" => elevation = value.parse().unwrap_or(0.0),
                 "39" => thickness = value.parse().unwrap_or(0.0),
+                "230" => extrusion_z = value.parse().unwrap_or(1.0),
                 _ => {}
             }
 
             *index += 1;
+        }
+
+        if extrusion_is_negative_z(extrusion_z) {
+            center.x = -center.x;
+            elevation = -elevation;
+            (start_angle, end_angle) = mirror_arc_angles(start_angle, end_angle);
         }
 
         Ok(DxfArc {
@@ -690,6 +789,7 @@ impl DxfParser {
         let mut current_x: Option<f64> = None;
         let mut elevation = 0.0;
         let mut thickness = 0.0;
+        let mut extrusion_z = 1.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -725,10 +825,22 @@ impl DxfParser {
                 }
                 "38" => elevation = value.parse().unwrap_or(0.0),
                 "39" => thickness = value.parse().unwrap_or(0.0),
+                "230" => extrusion_z = value.parse().unwrap_or(1.0),
                 "90" => { /* Optional: You could use it to do Vec::with_capacity(n) */ }
                 _ => {}
             }
             *index += 2;
+        }
+
+        if extrusion_is_negative_z(extrusion_z) {
+            // Mirroring reverses the turning direction of every bulge arc.
+            for v in &mut vertices {
+                v.x = -v.x;
+            }
+            for b in &mut bulges {
+                *b = -*b;
+            }
+            elevation = -elevation;
         }
 
         Ok(DxfPolyline {
@@ -751,6 +863,7 @@ impl DxfParser {
         let mut thickness = 0.0;
         let mut elevation: Option<f64> = None;
         let mut header_flags: i32 = 0;
+        let mut extrusion_z = 1.0;
 
         // Parse POLYLINE header
         while *index < lines.len() {
@@ -776,6 +889,7 @@ impl DxfParser {
                     closed = (header_flags & 1) != 0;
                 }
                 "39" => thickness = value.parse().unwrap_or(0.0),
+                "230" => extrusion_z = value.parse().unwrap_or(1.0),
                 // Ignore 10, 20, 30 in POLYLINE header
                 _ => {}
             }
@@ -861,7 +975,7 @@ impl DxfParser {
         // 8, "AcDbSplineVertex"). Rendering the control frame produces zig-zag artifacts,
         // so only the curve-fit vertices are kept for these polylines.
         let is_spline_fit = header_flags & 4 != 0;
-        let vertices: Vec<Point> = if is_spline_fit {
+        let mut vertices: Vec<Point> = if is_spline_fit {
             let curve_vertices: Vec<Point> = raw_vertices
                 .iter()
                 .filter(|(_, flags)| flags & 8 != 0)
@@ -876,13 +990,24 @@ impl DxfParser {
             raw_vertices.into_iter().map(|(p, _)| p).collect()
         };
 
+        // 3D polylines (flag 8) and polyface meshes (flag 64) use world coordinates;
+        // 2D polylines are in the OCS.
+        let is_ocs = header_flags & (8 | 16 | 64) == 0;
+        let mut elevation = elevation.unwrap_or(0.0);
+        if is_ocs && extrusion_is_negative_z(extrusion_z) {
+            for v in &mut vertices {
+                v.x = -v.x;
+            }
+            elevation = -elevation;
+        }
+
         Ok(DxfPolyline {
             vertices,
             bulges: vec![],
             closed,
             layer,
             color,
-            elevation: elevation.unwrap_or(0.0),
+            elevation,
             thickness,
         })
     }
@@ -895,6 +1020,7 @@ impl DxfParser {
         let mut rotation = 0.0;
         let mut layer = "0".to_string();
         let mut color = 256u16;
+        let mut extrusion_z = 1.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -919,10 +1045,15 @@ impl DxfParser {
                 "20" => position.y = value.parse().unwrap_or(0.0),
                 "40" => height = value.parse().unwrap_or(2.5),
                 "50" => rotation = value.parse().unwrap_or(0.0),
+                "230" => extrusion_z = value.parse().unwrap_or(1.0),
                 _ => {}
             }
 
             *index += 1;
+        }
+
+        if extrusion_is_negative_z(extrusion_z) {
+            position.x = -position.x;
         }
 
         Ok(DxfText {
@@ -945,6 +1076,7 @@ impl DxfParser {
         let mut color = 256u16;
         let mut elevation = 0.0;
         let mut thickness = 0.0;
+        let mut extrusion_z = 1.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -973,10 +1105,18 @@ impl DxfParser {
                 "42" => end_angle = value.parse().unwrap_or(2.0 * std::f64::consts::PI),
                 "30" => elevation = value.parse().unwrap_or(0.0),
                 "39" => thickness = value.parse().unwrap_or(0.0),
+                "230" => extrusion_z = value.parse().unwrap_or(1.0),
                 _ => {}
             }
 
             *index += 1;
+        }
+
+        // ELLIPSE centre and major axis are in world coordinates, but the minor axis is
+        // normal x major, so with a -Z normal the curve runs clockwise: the point at
+        // parameter t equals the +Z-normal point at -t.
+        if extrusion_is_negative_z(extrusion_z) {
+            (start_angle, end_angle) = (-end_angle, -start_angle);
         }
 
         Ok(DxfEllipse {
