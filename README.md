@@ -579,6 +579,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history and [GitHub Issues
 - **[SPEC.md](SPEC.md)** - Complete technical specification
 - **[PLAN.md](PLAN.md)** - Implementation roadmap
 - **[AGENTS.md](AGENTS.md)** - Development guidelines
+- **[AGENTS-LANGUAGE.md](AGENTS-LANGUAGE.md)** - Rust-specific development guidelines
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[STATS.md](STATS.md)** - Project statistics
 - **[docs/](docs/)** - Additional documentation and guides
