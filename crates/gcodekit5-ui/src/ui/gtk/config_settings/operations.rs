@@ -16,6 +16,7 @@ use gtk4::{
 use super::ConfigSettingRow;
 use super::ConfigSettingsView;
 use crate::device_status;
+use crate::t;
 
 impl ConfigSettingsView {
     pub(crate) fn has_settings(&self) -> bool {
@@ -87,11 +88,11 @@ impl ConfigSettingsView {
             if comm_lock.is_connected() {
                 // Send $$ command to get all settings
                 self.status_label
-                    .set_text("Retrieving settings from device...");
+                    .set_text(&t!("Retrieving settings from device..."));
 
                 if let Err(e) = comm_lock.send_command("$$") {
                     self.status_label
-                        .set_text(&format!("Error sending $$: {}", e));
+                        .set_text(&format!("{} {}", t!("Error sending $$:"), e));
                     return;
                 }
                 drop(comm_lock); // Release lock
@@ -108,38 +109,38 @@ impl ConfigSettingsView {
                 let device_console_clone = self.device_console.clone();
                 let communicator_clone = self.communicator.clone();
 
-                let start_log_length = if let Some(ref console) = *self.device_console.borrow() {
-                    console.get_log_text().len()
+                // Position in the console log (stable while old lines are trimmed).
+                let start_log_pos = if let Some(ref console) = *self.device_console.borrow() {
+                    console.log_position()
                 } else {
                     0
                 };
 
                 let attempt_count = shared(0);
-                let last_log_length = shared(start_log_length);
+                let last_log_pos = shared(start_log_pos);
 
                 glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                     *attempt_count.borrow_mut() += 1;
 
-                    // Get console log
-                    let console_text = if let Some(ref console) = *device_console_clone.borrow() {
-                        console.get_log_text()
-                    } else {
-                        String::new()
-                    };
-
                     // Only look at output that arrived after `$$` was sent; older `$n=`
                     // lines (previous reads, another device) would otherwise be parsed as
-                    // current values. If the log was cleared meanwhile, use all of it.
-                    let new_text = console_text
-                        .get(start_log_length..)
-                        .unwrap_or(&console_text);
+                    // current values.
+                    let (new_text, log_pos) =
+                        if let Some(ref console) = *device_console_clone.borrow() {
+                            (
+                                console.log_text_since(start_log_pos),
+                                console.log_position(),
+                            )
+                        } else {
+                            (String::new(), 0)
+                        };
+                    let new_text = new_text.as_str();
 
                     // `$$` output streams in over several polls: wait until settings lines
                     // were seen *and* the log stopped growing, so we don't parse a partial
                     // list (the first `$0=` line alone used to end the wait).
-                    let log_len = console_text.len();
-                    let settled = log_len == *last_log_length.borrow();
-                    *last_log_length.borrow_mut() = log_len;
+                    let settled = log_pos == *last_log_pos.borrow();
+                    *last_log_pos.borrow_mut() = log_pos;
                     let has_settings_response =
                         (new_text.contains("$0=") || new_text.contains("$100=")) && settled;
 
@@ -174,7 +175,7 @@ impl ConfigSettingsView {
 
                         let search_text = search_entry_clone.text().to_string().to_lowercase();
                         let category = category_filter_clone
-                            .active_text()
+                            .active_id()
                             .map(|s| s.to_string())
                             .unwrap_or_else(|| "All".to_string());
 
@@ -216,12 +217,19 @@ impl ConfigSettingsView {
                             .last_child()
                             .and_then(|w| w.last_child().and_downcast::<Label>())
                         {
-                            count_label
-                                .set_text(&format!("{} / {} settings", displayed_count, total));
+                            count_label.set_text(&format!(
+                                "{} / {} {}",
+                                displayed_count,
+                                total,
+                                t!("settings")
+                            ));
                         }
 
-                        status_label_clone
-                            .set_text(&format!("Retrieved {} settings from device", count));
+                        status_label_clone.set_text(&format!(
+                            "{} {}",
+                            t!("Settings retrieved from device:"),
+                            count
+                        ));
                         save_btn_clone.set_sensitive(true);
                         restore_btn_clone.set_sensitive(true);
 
@@ -237,7 +245,7 @@ impl ConfigSettingsView {
         // Fallback if not connected
         self.refresh_display();
         self.status_label
-            .set_text("Not connected - showing defaults");
+            .set_text(&t!("Not connected - showing defaults"));
         self.save_btn.set_sensitive(true);
         self.restore_btn.set_sensitive(false);
     }
@@ -253,11 +261,7 @@ impl ConfigSettingsView {
         }
 
         let search_text = self.search_entry.text().to_string().to_lowercase();
-        let category = self
-            .category_filter
-            .active_text()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "All".to_string());
+        let category = self.selected_category();
 
         let manager = self.settings_manager.borrow();
         let mut settings: Vec<ConfigSettingRow> = manager
@@ -295,7 +299,7 @@ impl ConfigSettingsView {
             .last_child()
             .and_then(|w| w.last_child().and_downcast::<Label>());
         if let Some(label) = count_label {
-            label.set_text(&format!("{} / {} settings", count, total));
+            label.set_text(&format!("{} / {} {}", count, total, t!("settings")));
         }
     }
 
@@ -340,7 +344,7 @@ impl ConfigSettingsView {
         unit_lbl.add_css_class("dim-label");
         hbox.append(&unit_lbl);
 
-        let cat_lbl = Label::new(Some(&setting.category));
+        let cat_lbl = Label::new(Some(&t!(setting.category.as_str())));
         cat_lbl.set_width_request(150);
         cat_lbl.set_xalign(0.0);
         cat_lbl.add_css_class("dim-label");
@@ -383,12 +387,12 @@ impl ConfigSettingsView {
         };
 
         let dialog = Dialog::with_buttons(
-            Some(&format!("Edit Setting ${}", setting.number)),
+            Some(&format!("{} ${}", t!("Edit Setting"), setting.number)),
             Some(&window),
             DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
             &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
+                (t!("Cancel").as_str(), ResponseType::Cancel),
+                (t!("Save").as_str(), ResponseType::Accept),
             ],
         );
 
@@ -403,7 +407,7 @@ impl ConfigSettingsView {
         grid.set_row_spacing(10);
         grid.set_column_spacing(10);
 
-        let name_label = Label::new(Some("Name:"));
+        let name_label = Label::new(Some(&t!("Name:")));
         name_label.set_xalign(0.0);
         name_label.add_css_class("heading");
         grid.attach(&name_label, 0, 0, 1, 1);
@@ -412,7 +416,7 @@ impl ConfigSettingsView {
         name_value.set_xalign(0.0);
         grid.attach(&name_value, 1, 0, 2, 1);
 
-        let desc_label = Label::new(Some("Description:"));
+        let desc_label = Label::new(Some(&t!("Description:")));
         desc_label.set_xalign(0.0);
         desc_label.set_valign(Align::Start);
         desc_label.add_css_class("heading");
@@ -425,7 +429,7 @@ impl ConfigSettingsView {
         desc_value.add_css_class("dim-label");
         grid.attach(&desc_value, 1, 1, 2, 1);
 
-        let value_label = Label::new(Some("Value:"));
+        let value_label = Label::new(Some(&t!("Value:")));
         value_label.set_xalign(0.0);
         value_label.add_css_class("heading");
         grid.attach(&value_label, 0, 2, 1, 1);
@@ -484,12 +488,12 @@ impl ConfigSettingsView {
         };
 
         let dialog = gtk4::FileChooserDialog::new(
-            Some("Export Settings"),
+            Some(&t!("Export Settings")),
             Some(&window),
             gtk4::FileChooserAction::Save,
             &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
+                (t!("Cancel").as_str(), ResponseType::Cancel),
+                (t!("Save").as_str(), ResponseType::Accept),
             ],
         );
 
@@ -500,8 +504,12 @@ impl ConfigSettingsView {
                 if let Some(path) = dialog.file().and_then(|f| f.path()) {
                     let res = manager.borrow().export_to_file(&path);
                     match res {
-                        Ok(_) => status_label.set_text(&format!("Exported settings to {:?}", path)),
-                        Err(e) => status_label.set_text(&format!("Export failed: {}", e)),
+                        Ok(_) => status_label.set_text(&format!(
+                            "{} {}",
+                            t!("Exported settings to"),
+                            path.display()
+                        )),
+                        Err(e) => status_label.set_text(&format!("{} {}", t!("Export failed:"), e)),
                     }
                 }
             }
@@ -519,12 +527,12 @@ impl ConfigSettingsView {
         };
 
         let dialog = gtk4::FileChooserDialog::new(
-            Some("Import Settings"),
+            Some(&t!("Import Settings")),
             Some(&window),
             gtk4::FileChooserAction::Open,
             &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
+                (t!("Cancel").as_str(), ResponseType::Cancel),
+                (t!("Open").as_str(), ResponseType::Accept),
             ],
         );
 
@@ -537,9 +545,13 @@ impl ConfigSettingsView {
                     let res = manager.borrow_mut().import_from_file(&path);
                     match res {
                         Ok(_) => {
-                            status_label.set_text(&format!("Imported settings from {:?}", path));
+                            status_label.set_text(&format!(
+                                "{} {}",
+                                t!("Imported settings from"),
+                                path.display()
+                            ));
                         }
-                        Err(e) => status_label.set_text(&format!("Import failed: {}", e)),
+                        Err(e) => status_label.set_text(&format!("{} {}", t!("Import failed:"), e)),
                     }
                 }
             }
@@ -551,7 +563,7 @@ impl ConfigSettingsView {
 
     pub(crate) fn restore_to_device(&self) {
         self.status_label
-            .set_text("Restoring settings to device...");
+            .set_text(&t!("Restoring settings to device..."));
         // This would send settings to device via communicator
     }
 }

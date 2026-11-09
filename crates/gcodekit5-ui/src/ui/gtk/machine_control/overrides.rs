@@ -252,15 +252,16 @@ impl MachineControlView {
 
     /// Wires a "Set" button to move one override to its target percentage.
     ///
-    /// Each step is a single realtime byte; the next step is only chosen once the
-    /// status poller has stored a new `Ov:` value that differs from the one before
-    /// the step. This needs live status reports, so it is refused while a job is
-    /// being streamed by the direct sender (which suspends status polling).
+    /// Each step is a single realtime byte; the next step is only chosen once a status
+    /// report has stored a new `Ov:` value that differs from the one before the step.
+    /// Reports come from the status poller when idle and from the DirectSender worker
+    /// (which polls `?` every 200 ms) while a job streams, so this also works mid-job.
+    /// GRBL reports `Ov:` right after an override changes; a step that is not
+    /// confirmed within the timeout ends the sequence.
     fn setup_override_set(view: &Self, kind: OverrideKind, target: &SpinButton, set: &Button) {
         let communicator = view.communicator.clone();
         let console = view.device_console.clone();
         let last_overrides = view.last_overrides.clone();
-        let direct_sender = view.direct_sender.clone();
         let target = target.clone();
 
         set.connect_clicked(move |set_btn| {
@@ -277,26 +278,12 @@ impl MachineControlView {
                 log(&format!("! {} override: not connected", kind.name()));
                 return;
             }
-            let streaming = direct_sender
-                .lock()
-                .as_ref()
-                .is_some_and(|sender| sender.is_running());
-            if streaming {
-                log(&format!(
-                    "! {} override: exact values need live status reports, which are paused \
-                     while a job streams; use the +/- buttons",
-                    kind.name()
-                ));
-                return;
-            }
-
             let goal = target.value().round() as u16;
             log(&format!("> {} override: set to {goal}%", kind.name()));
             set_btn.set_sensitive(false);
 
             let communicator = communicator.clone();
             let last_overrides = last_overrides.clone();
-            let direct_sender = direct_sender.clone();
             let set_btn = set_btn.clone();
             // (value before the step, deadline for the controller to report a change)
             let mut awaiting: Option<(u16, Instant)> = None;
@@ -314,17 +301,6 @@ impl MachineControlView {
                 if !communicator.lock().is_connected() {
                     return finish(Some(format!("! {} override: disconnected", kind.name())));
                 }
-                if direct_sender
-                    .lock()
-                    .as_ref()
-                    .is_some_and(|sender| sender.is_running())
-                {
-                    return finish(Some(format!(
-                        "! {} override: stopped, a job started streaming",
-                        kind.name()
-                    )));
-                }
-
                 let current = kind.reported(&last_overrides.lock());
                 if let Some((before, deadline)) = awaiting {
                     if current == before {

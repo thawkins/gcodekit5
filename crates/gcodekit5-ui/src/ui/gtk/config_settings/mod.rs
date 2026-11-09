@@ -67,11 +67,35 @@ impl From<&Setting> for ConfigSettingRow {
     }
 }
 
+use crate::t;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::device_info::DeviceInfoView;
 use crate::ui::gtk::help_browser;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption, ThreadSafe};
+
+/// Setting categories offered by the category filter (also the filter ids).
+pub(crate) const SETTING_CATEGORIES: &[&str] = &[
+    "All",
+    "System",
+    "Motion",
+    "Steps Per Unit",
+    "Max Rate",
+    "Acceleration",
+    "Max Travel",
+    "Homing",
+    "Spindle",
+    "Network",
+    "Drivers",
+    "Tool",
+    "I/O",
+    "Startup",
+    "Plasma",
+    "Encoder",
+    "Modbus",
+    "RS485",
+    "Other",
+];
 
 pub struct ConfigSettingsView {
     pub container: Box,
@@ -96,6 +120,10 @@ pub struct ConfigSettingsView {
 }
 
 impl ConfigSettingsView {
+    /// Builds the Device Config page (device info panel plus GRBL settings list).
+    ///
+    /// # Arguments
+    /// * `settings_controller` - Application settings.
     pub fn new(settings_controller: Rc<SettingsController>) -> Rc<Self> {
         // Outer container splits into left (Device Info) and right (Config Settings)
         let outer = Box::new(Orientation::Horizontal, spacing::MEDIUM);
@@ -133,21 +161,21 @@ impl ConfigSettingsView {
         // Toolbar
         let toolbar = Box::new(Orientation::Horizontal, spacing::MEDIUM);
 
-        let reload_btn = Button::with_label("Retrieve");
-        reload_btn.set_tooltip_text(Some("Retrieve Settings from Device ($$)"));
+        let reload_btn = Button::with_label(&t!("Retrieve"));
+        reload_btn.set_tooltip_text(Some(&t!("Retrieve Settings from Device ($$)")));
         toolbar.append(&reload_btn);
 
-        let save_btn = Button::with_label("Save");
-        save_btn.set_tooltip_text(Some("Save Settings to File"));
+        let save_btn = Button::with_label(&t!("Save"));
+        save_btn.set_tooltip_text(Some(&t!("Save Settings to File")));
         save_btn.set_sensitive(false);
         toolbar.append(&save_btn);
 
-        let load_btn = Button::with_label("Load");
-        load_btn.set_tooltip_text(Some("Load Settings from File"));
+        let load_btn = Button::with_label(&t!("Load"));
+        load_btn.set_tooltip_text(Some(&t!("Load Settings from File")));
         toolbar.append(&load_btn);
 
-        let restore_btn = Button::with_label("Restore");
-        restore_btn.set_tooltip_text(Some("Restore Settings to Device"));
+        let restore_btn = Button::with_label(&t!("Restore"));
+        restore_btn.set_tooltip_text(Some(&t!("Restore Settings to Device")));
         restore_btn.set_sensitive(false);
         toolbar.append(&restore_btn);
 
@@ -161,38 +189,23 @@ impl ConfigSettingsView {
         // Filter bar (right panel)
         let filter_bar = Box::new(Orientation::Horizontal, 10);
 
-        let filter_label = Label::new(Some("Filter:"));
+        let filter_label = Label::new(Some(&t!("Filter:")));
         filter_bar.append(&filter_label);
 
         let search_entry = SearchEntry::new();
-        search_entry.set_placeholder_text(Some("Search settings..."));
+        search_entry.set_placeholder_text(Some(&t!("Search settings...")));
         search_entry.set_hexpand(true);
         filter_bar.append(&search_entry);
 
-        let category_label = Label::new(Some("Category:"));
+        let category_label = Label::new(Some(&t!("Category:")));
         filter_bar.append(&category_label);
 
         let category_filter = ComboBoxText::new();
-        category_filter.append_text("All");
-        category_filter.append_text("System");
-        category_filter.append_text("Motion");
-        category_filter.append_text("Steps Per Unit");
-        category_filter.append_text("Max Rate");
-        category_filter.append_text("Acceleration");
-        category_filter.append_text("Max Travel");
-        category_filter.append_text("Homing");
-        category_filter.append_text("Spindle");
-        category_filter.append_text("Network");
-        category_filter.append_text("Drivers");
-        category_filter.append_text("Tool");
-        category_filter.append_text("I/O");
-        category_filter.append_text("Startup");
-        category_filter.append_text("Plasma");
-        category_filter.append_text("Encoder");
-        category_filter.append_text("Modbus");
-        category_filter.append_text("RS485");
-        category_filter.append_text("Other");
-        category_filter.set_active(Some(0));
+        // Ids stay in English (they match `ConfigSettingRow::category`); labels are translated.
+        for category in SETTING_CATEGORIES {
+            category_filter.append(Some(category), &t!(*category));
+        }
+        category_filter.set_active_id(Some("All"));
         filter_bar.append(&category_filter);
 
         container.append(&filter_bar);
@@ -203,37 +216,37 @@ impl ConfigSettingsView {
         header.set_margin_start(spacing::SMALL);
         header.set_margin_end(spacing::SMALL);
 
-        let id_lbl = Label::new(Some("ID"));
+        let id_lbl = Label::new(Some(&t!("ID")));
         id_lbl.set_width_request(50);
         id_lbl.set_xalign(0.0);
         id_lbl.add_css_class("heading");
         header.append(&id_lbl);
 
-        let name_lbl = Label::new(Some("Name"));
+        let name_lbl = Label::new(Some(&t!("Name")));
         name_lbl.set_width_request(200);
         name_lbl.set_xalign(0.0);
         name_lbl.add_css_class("heading");
         header.append(&name_lbl);
 
-        let value_lbl = Label::new(Some("Value"));
+        let value_lbl = Label::new(Some(&t!("Value")));
         value_lbl.set_width_request(100);
         value_lbl.set_xalign(0.0);
         value_lbl.add_css_class("heading");
         header.append(&value_lbl);
 
-        let unit_lbl = Label::new(Some("Unit"));
+        let unit_lbl = Label::new(Some(&t!("Unit")));
         unit_lbl.set_width_request(80);
         unit_lbl.set_xalign(0.0);
         unit_lbl.add_css_class("heading");
         header.append(&unit_lbl);
 
-        let cat_lbl = Label::new(Some("Category"));
+        let cat_lbl = Label::new(Some(&t!("Category")));
         cat_lbl.set_width_request(150);
         cat_lbl.set_xalign(0.0);
         cat_lbl.add_css_class("heading");
         header.append(&cat_lbl);
 
-        let desc_lbl = Label::new(Some("Description"));
+        let desc_lbl = Label::new(Some(&t!("Description")));
         desc_lbl.set_hexpand(true);
         desc_lbl.set_xalign(0.0);
         desc_lbl.add_css_class("heading");
@@ -258,7 +271,7 @@ impl ConfigSettingsView {
         status_bar.set_margin_start(spacing::SMALL);
         status_bar.set_margin_end(spacing::SMALL);
 
-        let status_label = Label::new(Some("Not connected"));
+        let status_label = Label::new(Some(&t!("Not connected")));
         status_label.set_xalign(0.0);
         status_bar.append(&status_label);
 
@@ -266,7 +279,7 @@ impl ConfigSettingsView {
         spacer.set_hexpand(true);
         status_bar.append(&spacer);
 
-        let count_label = Label::new(Some("0 / 0 settings"));
+        let count_label = Label::new(Some(&format!("0 / 0 {}", t!("settings"))));
         count_label.add_css_class("dim-label");
         status_bar.append(&count_label);
 
@@ -357,11 +370,7 @@ impl ConfigSettingsView {
 
                 // Apply same filtering as display
                 let search_text = view_clone.search_entry.text().to_string().to_lowercase();
-                let category = view_clone
-                    .category_filter
-                    .active_text()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "All".to_string());
+                let category = view_clone.selected_category();
 
                 let filtered_settings: Vec<ConfigSettingRow> = all_settings
                     .into_iter()
@@ -405,6 +414,7 @@ impl ConfigSettingsView {
         view
     }
 
+    /// Sets the serial connection used to read and write settings.
     pub fn set_communicator(&self, communicator: ThreadSafe<SerialCommunicator>) {
         *self.communicator.borrow_mut() = Some(communicator.clone());
 
@@ -412,14 +422,23 @@ impl ConfigSettingsView {
         self.device_info_view.set_communicator(communicator);
     }
 
+    /// Sets the device console whose log receives `$$` output.
     pub fn set_device_console(&self, console: Rc<DeviceConsoleView>) {
         *self.device_console.borrow_mut() = Some(console);
     }
 
+    /// Sets the device profile manager used to persist reported settings.
     pub fn set_device_manager(&self, manager: std::sync::Arc<gcodekit5_devicedb::DeviceManager>) {
         *self.device_manager.borrow_mut() = Some(manager);
     }
 
+    /// Updates the view for a new connection state.
+    ///
+    /// Call this only when the connection state changes; it resets status messages.
+    /// New settings reported by the controller are picked up by `sync_device_settings`.
+    ///
+    /// # Arguments
+    /// * `connected` - True when a controller is connected.
     pub fn set_connected(&self, connected: bool) {
         self.reload_btn.set_sensitive(connected);
         self.restore_btn
@@ -435,18 +454,47 @@ impl ConfigSettingsView {
             self.sync_settings_from_connected_device();
 
             if self.last_synced_settings_count.get() > 0 {
-                self.status_label.set_text("Connected - settings loaded");
+                self.status_label
+                    .set_text(&t!("Connected - settings loaded"));
             } else {
                 self.status_label
-                    .set_text("Connected - loading settings...");
+                    .set_text(&t!("Connected - loading settings..."));
             }
         } else {
-            self.status_label.set_text("Not connected");
+            self.status_label.set_text(&t!("Not connected"));
             self.last_synced_settings_count.set(0);
             self.last_persisted_settings_count.set(0);
         }
     }
 
+    /// Applies settings the controller reported since the last call (from `$$`).
+    ///
+    /// Cheap when nothing changed, so it can be called periodically. Only the first
+    /// successful load changes the status message.
+    pub fn sync_device_settings(&self) {
+        let before = self.last_synced_settings_count.get();
+        self.sync_settings_from_connected_device();
+        if before == 0 && self.last_synced_settings_count.get() > 0 {
+            self.status_label
+                .set_text(&t!("Connected - settings loaded"));
+        }
+    }
+
+    /// Returns the category filter's selected id ("All" when nothing is selected).
+    pub(crate) fn selected_category(&self) -> String {
+        self.category_filter
+            .active_id()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "All".to_string())
+    }
+
+    /// Updates the embedded Device Info panel.
+    ///
+    /// # Arguments
+    /// * `connected` - True when a controller is connected.
+    /// * `device_name` - Name shown for the device.
+    /// * `firmware` - Firmware type.
+    /// * `version` - Firmware version.
     pub fn set_device_info(
         &self,
         connected: bool,

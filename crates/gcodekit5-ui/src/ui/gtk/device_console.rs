@@ -9,11 +9,16 @@ use gtk4::{
     gdk, Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow,
     TextView, WrapMode,
 };
+use std::cell::Cell;
 use std::{borrow::Cow, rc::Rc};
 
+use crate::t;
 use crate::ui::gtk::command_history::CommandHistory;
 use crate::ui::gtk::common::spacing;
 use gcodekit5_core::{shared, Shared};
+
+/// Maximum number of lines kept in the console log; older lines are discarded.
+pub const MAX_CONSOLE_LINES: i32 = 5000;
 
 #[derive(Clone)]
 pub struct DeviceConsoleView {
@@ -22,9 +27,13 @@ pub struct DeviceConsoleView {
     pub command_entry: Entry,
     pub send_btn: Button,
     history: Shared<CommandHistory>,
+    /// Bytes of log text discarded so far (trimmed or cleared), so log positions stay
+    /// valid while old lines are dropped.
+    discarded_bytes: Rc<Cell<usize>>,
 }
 
 impl DeviceConsoleView {
+    /// Builds the console view (log, command entry and history navigation).
     pub fn new() -> Rc<Self> {
         let widget = Paned::new(Orientation::Horizontal);
         widget.set_hexpand(true);
@@ -70,12 +79,12 @@ impl DeviceConsoleView {
         input_box.append(&prompt_label);
 
         let command_entry = Entry::new();
-        command_entry.set_placeholder_text(Some("Enter G-code command..."));
+        command_entry.set_placeholder_text(Some(&t!("Enter G-code command...")));
         command_entry.set_hexpand(true);
         input_box.append(&command_entry);
 
         let send_btn = Button::from_icon_name("mail-send-symbolic"); // or document-send-symbolic
-        send_btn.set_tooltip_text(Some("Send Command"));
+        send_btn.set_tooltip_text(Some(&t!("Send Command")));
         input_box.append(&send_btn);
 
         main_area.append(&input_box);
@@ -93,6 +102,7 @@ impl DeviceConsoleView {
             command_entry: command_entry.clone(),
             send_btn,
             history: history.clone(),
+            discarded_bytes: Rc::new(Cell::new(0)),
         });
 
         // Setup key event controller for command history navigation
@@ -126,6 +136,11 @@ impl DeviceConsoleView {
         view
     }
 
+    /// Appends text to the log, keeps at most [`MAX_CONSOLE_LINES`] lines and scrolls to
+    /// the end.
+    ///
+    /// # Arguments
+    /// * `message` - Text to append (normally ending with a newline).
     pub fn append_log(&self, message: &str) {
         let buffer = self.console_text.buffer();
         // GTK/glib strings must not contain NUL bytes.
@@ -138,7 +153,7 @@ impl DeviceConsoleView {
         // Append to bottom and auto-scroll
         let mut iter = buffer.end_iter();
         buffer.insert(&mut iter, msg.as_ref());
-        //        println!("🔍 Mensaje recibido: '{}'", message);
+        self.trim_to_max_lines();
 
         // Auto-scroll to bottom after inserting
         let mark = buffer.create_mark(None, &buffer.end_iter(), false);
@@ -146,6 +161,50 @@ impl DeviceConsoleView {
         buffer.delete_mark(&mark);
     }
 
+    /// Drops the oldest lines so at most [`MAX_CONSOLE_LINES`] remain.
+    fn trim_to_max_lines(&self) {
+        let buffer = self.console_text.buffer();
+        // A trailing newline leaves an empty last line, which is not counted.
+        let lines = buffer.line_count() - i32::from(buffer.end_iter().starts_line());
+        let excess = lines - MAX_CONSOLE_LINES;
+        if excess <= 0 {
+            return;
+        }
+        let mut start = buffer.start_iter();
+        let Some(mut cut) = buffer.iter_at_line(excess) else {
+            return;
+        };
+        let removed = buffer.text(&start, &cut, true).len();
+        buffer.delete(&mut start, &mut cut);
+        self.discarded_bytes
+            .set(self.discarded_bytes.get().saturating_add(removed));
+    }
+
+    /// Returns a position marking the current end of the log.
+    ///
+    /// Positions count every byte ever appended, so they stay valid while old lines are
+    /// trimmed. Pass one to [`Self::log_text_since`] to read what arrived afterwards.
+    pub fn log_position(&self) -> usize {
+        self.discarded_bytes.get() + self.get_log_text().len()
+    }
+
+    /// Returns the log text appended after `position` (from [`Self::log_position`]).
+    ///
+    /// If part of that text was already trimmed or cleared, the whole remaining log is
+    /// returned.
+    ///
+    /// # Arguments
+    /// * `position` - A value previously returned by `log_position`.
+    pub fn log_text_since(&self, position: usize) -> String {
+        let text = self.get_log_text();
+        let discarded = self.discarded_bytes.get();
+        match position.checked_sub(discarded) {
+            Some(offset) => text.get(offset..).map(str::to_string).unwrap_or_default(),
+            None => text,
+        }
+    }
+
+    /// Returns the whole log text.
     pub fn get_log_text(&self) -> String {
         let buffer = self.console_text.buffer();
         let start = buffer.start_iter();
@@ -153,10 +212,14 @@ impl DeviceConsoleView {
         buffer.text(&start, &end, true).to_string()
     }
 
+    /// Clears the log.
     pub fn clear_log(&self) {
         let buffer = self.console_text.buffer();
         let start = buffer.start_iter();
         let end = buffer.end_iter();
+        let removed = buffer.text(&start, &end, true).len();
+        self.discarded_bytes
+            .set(self.discarded_bytes.get().saturating_add(removed));
         buffer.delete(&mut start.clone(), &mut end.clone());
 
         // Auto-scroll to bottom
@@ -165,11 +228,13 @@ impl DeviceConsoleView {
         buffer.delete_mark(&mark);
     }
 
+    /// Adds a command to the persistent command history.
     pub fn add_to_history(&self, command: String) {
         self.history.borrow_mut().add(command);
         self.history.borrow().save();
     }
 
+    /// Resets Up/Down history navigation to the newest entry.
     pub fn reset_history_navigation(&self) {
         self.history.borrow_mut().reset_navigation();
     }
