@@ -71,9 +71,10 @@ jobs:
           import json
           with open('target/coverage/tarpaulin-report.json') as f:
               data = json.load(f)
-          # tarpaulin JSON: list of file entries with covered/coverable
-          covered = sum(f.get('covered', 0) for f in data)
-          coverable = sum(f.get('coverable', 0) for f in data)
+          # tarpaulin JSON: an object whose 'files' list has covered/coverable per file
+          files = data.get('files', []) if isinstance(data, dict) else data
+          covered = sum(f.get('covered', 0) for f in files)
+          coverable = sum(f.get('coverable', 0) for f in files)
           pct = (covered / coverable * 100) if coverable > 0 else 0
           print(f'{pct:.1f}')
           ")
