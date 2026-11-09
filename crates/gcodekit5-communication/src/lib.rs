@@ -20,4 +20,4 @@ pub use communication::{
     TcpCommunicator,
 };
 
-pub use firmware::{CapabilityManager, CapabilityState, ControllerType, FirmwareDetector};
+pub use firmware::ControllerType;

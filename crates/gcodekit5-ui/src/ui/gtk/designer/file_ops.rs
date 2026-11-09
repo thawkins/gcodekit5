@@ -118,13 +118,13 @@ impl DesignerView {
                                 }
 
                                 state.canvas.set_next_id(max_id + 1);
-                                state.tool_settings.feed_rate =     design.toolpath_params.feed_rate;
+                                state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
                                 state.tool_settings.spindle_speed =
-                                design.toolpath_params.spindle_speed as u32;
+                                    design.toolpath_params.spindle_speed as u32;
                                 state.tool_settings.tool_diameter =
-                                design.toolpath_params.tool_diameter;
-                                state.tool_settings.cut_depth =                        design.toolpath_params.cut_depth;
-                                state.tool_settings.step_down =                         design.toolpath_params.step_down;
+                                    design.toolpath_params.tool_diameter;
+                                state.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+                                state.tool_settings.step_down = design.toolpath_params.step_down;
                                 state.tool_settings.continuous_z_between_passes =
                                     design.toolpath_params.continuous_z_between_passes;
 
@@ -905,44 +905,44 @@ impl DesignerView {
         dialog.show();
     }
 
-pub fn export_svg(&self) {
-    let export_label = t!("Export");
-    let cancel_label = t!("Cancel");
+    pub fn export_svg(&self) {
+        let export_label = t!("Export");
+        let cancel_label = t!("Cancel");
 
-    let dialog = gtk4::FileChooserDialog::new(
-        Some(t!("Export SVG")),
-        None::<&gtk4::Window>,
-        gtk4::FileChooserAction::Save,
-        &[
-            (&*export_label, gtk4::ResponseType::Accept),
-            (&*cancel_label, gtk4::ResponseType::Cancel),
-        ],
-    );
+        let dialog = gtk4::FileChooserDialog::new(
+            Some(t!("Export SVG")),
+            None::<&gtk4::Window>,
+            gtk4::FileChooserAction::Save,
+            &[
+                (&*export_label, gtk4::ResponseType::Accept),
+                (&*cancel_label, gtk4::ResponseType::Cancel),
+            ],
+        );
 
-    let filter = gtk4::FileFilter::new();
-    filter.set_name(Some("SVG Files"));
-    filter.add_pattern("*.svg");
-    dialog.add_filter(&filter);
+        let filter = gtk4::FileFilter::new();
+        filter.set_name(Some("SVG Files"));
+        filter.add_pattern("*.svg");
+        dialog.add_filter(&filter);
 
-    if let Some(ref settings) = self.settings_persistence {
-        if let Ok(settings_ref) = settings.try_borrow() {
-            let last_path = &settings_ref.config().file_processing.output_directory;
-            if last_path.exists() {
-                let folder_path = if last_path.is_file() {
-                    last_path.parent().unwrap_or(last_path).to_path_buf()
-                } else {
-                    last_path.clone()
-                };
-                let file = gtk4::gio::File::for_path(folder_path);
-                let _ = dialog.set_current_folder(Some(&file));
+        if let Some(ref settings) = self.settings_persistence {
+            if let Ok(settings_ref) = settings.try_borrow() {
+                let last_path = &settings_ref.config().file_processing.output_directory;
+                if last_path.exists() {
+                    let folder_path = if last_path.is_file() {
+                        last_path.parent().unwrap_or(last_path).to_path_buf()
+                    } else {
+                        last_path.clone()
+                    };
+                    let file = gtk4::gio::File::for_path(folder_path);
+                    let _ = dialog.set_current_folder(Some(&file));
+                }
             }
         }
-    }
 
-    let canvas = self.canvas.clone();
-    let status_label = self.status_label.clone();
+        let canvas = self.canvas.clone();
+        let status_label = self.status_label.clone();
 
-    dialog.connect_response(move |dialog, response| {
+        dialog.connect_response(move |dialog, response| {
         if response == ResponseType::Accept {
             if let Some(file) = dialog.file() {
                 if let Some(mut path) = file.path() {
@@ -1133,20 +1133,20 @@ pub fn export_svg(&self) {
         }
         dialog.destroy();
     });
-    // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-    let current_file_borrow = self.current_file.borrow();
-    let default_name = if let Some(path) = current_file_borrow.as_ref() {
-        path.file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| format!("{}.svg", s))
-            .unwrap_or_else(|| "output.svg".to_string())
-    } else {
-        "untitled_design.svg".to_string()
-    };
+        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
+        let current_file_borrow = self.current_file.borrow();
+        let default_name = if let Some(path) = current_file_borrow.as_ref() {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| format!("{}.svg", s))
+                .unwrap_or_else(|| "output.svg".to_string())
+        } else {
+            "untitled_design.svg".to_string()
+        };
 
-    dialog.set_current_name(&default_name);
-    dialog.show();
-}
+        dialog.set_current_name(&default_name);
+        dialog.show();
+    }
 
     // TODO(#17): File operations - Implement once shape structures are aligned
     // Phase 8 infrastructure is in place but needs shape struct updates

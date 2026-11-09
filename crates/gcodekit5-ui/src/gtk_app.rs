@@ -1,3 +1,4 @@
+//! gcodekit5-ui/src/gtk_app.rs
 //! # GTK Application Entry Point
 //!
 //! Initializes and runs the main GTK4 application window.
@@ -9,11 +10,11 @@ use crate::ui::gtk::config_settings::ConfigSettingsView;
 use crate::ui::gtk::designer::DesignerView;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 // DeviceInfoView is now embedded in the Device Config panel; standalone import removed.
-use crate::device_status;
 use crate::i18n;
 use crate::t;
 use crate::ui::gtk::device_manager::DeviceManagerWindow;
 use crate::ui::gtk::editor::GcodeEditor;
+use crate::ui::gtk::help_browser;
 use crate::ui::gtk::machine_control::MachineControlView;
 use crate::ui::gtk::materials_manager::MaterialsManagerView;
 use crate::ui::gtk::settings::SettingsWindow;
@@ -21,7 +22,7 @@ use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::tools_manager::ToolsManagerView;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
 use gcodekit5_communication::Communicator;
-use gcodekit5_settings::config::{Theme, StartupTab};
+use gcodekit5_settings::config::{StartupTab, Theme};
 use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{
@@ -31,9 +32,28 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::{debug, info};
-use crate::ui::gtk::help_browser;
 
 pub fn main() {
+
+    // GTK 4.20+ on Wayland no longer internally handles dead keys or
+    // composition sequences. Without an active input method (IBus, Fcitx5),
+    // typing '´' + 'a' does not produce 'á'—only the 'a' is entered.
+    // We force the use of GTK's "simple" module, which restores the
+    // classic behavior without requiring the user to install or
+    // activate an input method. We only set this if the user has not
+    // already configured a different value (e.g., GTK_IM_MODULE=ibus
+    // for Japanese/Chinese).
+    //
+    // SAFETY: This runs before GTK is initialized and before any threads
+    // are created, so there are no race conditions when reading
+    // environment variables.
+    if std::env::var_os("GTK_IM_MODULE").is_none() {
+        unsafe {
+            std::env::set_var("GTK_IM_MODULE", "simple");
+        }
+    }
+    // end
+
     let app = Application::builder()
         .application_id("com.gcodekit5.app")
         .build();
@@ -165,6 +185,7 @@ pub fn main() {
         let content_box = GtkBox::new(Orientation::Vertical, 0);
         content_box.set_vexpand(true);
         let stack_switcher = StackSwitcher::new();
+        stack_switcher.add_css_class("custom-stack-switcher"); // New style
         let stack = Stack::new();
         stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
 
@@ -183,20 +204,31 @@ pub fn main() {
         let device_manager_clone = device_manager.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
             status_bar_clone.refresh_device_info(&device_manager_clone);
-            glib::ControlFlow::Continue
-        });
+
+        if let Some(profile) = device_manager_clone.get_active_profile() {
+            crate::device_status::set_active_controller_type(
+                Some(profile.controller_type.as_str().to_string())
+            );
+        } else {
+            crate::device_status::set_active_controller_type(None);
+        }
+                    glib::ControlFlow::Continue
+                });
 
         // Sync active device num_axes to global state
         if let Some(profile) = device_manager.get_active_profile() {
             crate::device_status::set_active_num_axes(profile.num_axes);
 
-            // Convert ControllerType to &str
-            let controller_type = format!("{:?}", profile.controller_type);
+            // Usamos as_str() (== Display) para coherencia con el combo y el registry.
+            let controller_type = profile.controller_type.as_str().to_string();
             let device_name = &profile.name;
             let device_type = format!("{:?}", profile.device_type);
 
+            // Publicar el ControllerType de la activa en el estado global
+            crate::device_status::set_active_controller_type(Some(controller_type.clone()));
+
             status_bar.set_device_info(device_name, &controller_type, &device_type);
-        }
+}
 
         let device_controller = Rc::new(gcodekit5_devicedb::DeviceUiController::new(
             device_manager.clone(),
@@ -253,7 +285,11 @@ pub fn main() {
             glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
                 let title = if let Some(name) = stack_for_title.visible_child_name() {
                     if name.as_str() == "designer" {
-                        format!("{} - {}", t!("GCodeKit5"), designer_for_title.window_title_suffix())
+                        format!(
+                            "{} - {}",
+                            t!("GCodeKit5"),
+                            designer_for_title.window_title_suffix()
+                        )
                     } else {
                         t!("GCodeKit5")
                     }
@@ -276,7 +312,7 @@ pub fn main() {
         glib::timeout_add_local(std::time::Duration::from_millis(1500), move || {
             designer_fit.canvas.fit_to_device_area();
             designer_fit.canvas.widget.queue_draw();
-        //    println!("fit_to_device_area aplicado al designer");
+
             glib::ControlFlow::Break
         });
 
@@ -301,7 +337,7 @@ pub fn main() {
             Some(machine_control.clone()),
             move |gcode| {
                 editor_for_cam.set_text(&gcode);
-                stack_for_cam.set_visible_child_name("editor");
+                stack_for_cam.set_visible_child_name("visualizer");
                 editor_for_cam.grab_focus();
             },
             Some(designer.clone()),
@@ -432,43 +468,9 @@ pub fn main() {
         let stack_clone_gen = stack.clone();
         designer.set_on_gcode_generated(move |gcode| {
             editor_clone_gen.set_text(&gcode);
-//            stack_clone_gen.set_visible_child_name("machine");
+            //            stack_clone_gen.set_visible_child_name("machine");
             stack_clone_gen.set_visible_child_name("visualizer");
             editor_clone_gen.grab_focus();
-        });
-
-        // Connect device info and config to machine control connection state
-        let config_settings_clone = config_settings.clone();
-        let communicator_for_device = machine_control.communicator.clone();
-
-        // Update device info when connection changes
-        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-            let comm = communicator_for_device.lock();
-            let connected = comm.is_connected();
-
-            if connected {
-                // Get firmware info from device status
-                let status = device_status::get_status();
-                let firmware_type = status.firmware_type.as_deref().unwrap_or("GRBL");
-                let firmware_version = status.firmware_version.as_deref().unwrap_or("Unknown");
-                let device_name = status
-                    .device_name
-                    .as_deref()
-                    .unwrap_or_else(|| status.port_name.as_deref().unwrap_or("CNC Device"));
-
-                config_settings_clone.set_connected(true);
-                config_settings_clone.set_device_info(
-                    true,
-                    device_name,
-                    firmware_type,
-                    firmware_version,
-                );
-            } else {
-                config_settings_clone.set_connected(false);
-                config_settings_clone.set_device_info(false, "", "", "");
-            }
-
-            glib::ControlFlow::Continue
         });
 
         main_box.append(&content_box);
@@ -621,10 +623,10 @@ pub fn main() {
                 // 3. Insert into the editor
                 editor_frame.set_text(&gcode);
                 // 4. Jump to the editor tab to view the code
-//                stack_frame.set_visible_child_name("machine");
+                //                stack_frame.set_visible_child_name("machine");
                 stack_frame.set_visible_child_name("visualizer");
             } else {
-                tracing::info!("Frame requested but canvas is empty - nothing to frame");
+                tracing::debug!("Frame requested but canvas is empty - nothing to frame");
             }
         });
 
@@ -780,7 +782,9 @@ pub fn main() {
                 .comments(t!("GCode Toolkit for CNC/Laser Machines"))
                 .website("https://github.com/feveal/gcodekit5-design")
                 .license_type(gtk4::License::MitX11)
-                .authors(vec![t!("Tim Hawkins and GCodeKit Contributors: \n (feveal)")])
+                .authors(vec![t!(
+                    "Tim Hawkins and GCodeKit Contributors: \n (feveal)"
+                )])
                 .build();
 
             about_dialog.set_logo_icon_name(None);
@@ -857,6 +861,7 @@ pub fn main() {
                 }
             }
         });
+
         app.add_action(&redo_action);
 
         let stack_clone = stack.clone();
@@ -873,6 +878,7 @@ pub fn main() {
                 }
             }
         });
+
         app.add_action(&cut_action);
 
         let stack_clone = stack.clone();
@@ -1021,11 +1027,11 @@ pub fn main() {
         let initial_tab = match startup_tab {
             StartupTab::Designer => "designer",
             StartupTab::Visualizer => "visualizer",
-            StartupTab::Machine => "machine",  // Editor está dentro de machine
+            StartupTab::Machine => "machine", // Editor está dentro de machine
             StartupTab::Editor => "machine",
-            StartupTab::Console => "machine",  // Console está dentro de machine
+            StartupTab::Console => "machine", // Console está dentro de machine
             StartupTab::CamTools => "cam_tools",
-            StartupTab::DeviceInfo => "config",   // Device Info está en config
+            StartupTab::DeviceInfo => "config", // Device Info está en config
             StartupTab::Config => "config",
             StartupTab::Devices => "devices",
             StartupTab::Tools => "tools",
@@ -1033,7 +1039,7 @@ pub fn main() {
         };
         stack.set_visible_child_name(initial_tab);
 
-//        window.maximize();
+        //        window.maximize();
         window.present();
 
         // Forzar actualización del editor después de que la ventana esté visible
@@ -1061,7 +1067,9 @@ pub fn main() {
                     .comments(t!("GCode Toolkit for CNC/Laser Machines"))
                     .website("https://github.com/feveal/gcodekit5-design")
                     .license_type(gtk4::License::MitX11)
-                    .authors(vec![t!("Tim Hawkins and GCodeKit Contributors: \n (feveal)")])
+                    .authors(vec![t!(
+                        "Tim Hawkins and GCodeKit Contributors: \n (feveal)"
+                    )])
                     .build();
 
                 about_dialog.set_logo_icon_name(None);
@@ -1158,5 +1166,3 @@ fn apply_theme(theme: Theme) {
         Theme::Dark => manager.set_color_scheme(libadwaita::ColorScheme::ForceDark),
     }
 }
-
-

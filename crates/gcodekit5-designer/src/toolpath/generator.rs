@@ -513,7 +513,7 @@ impl ToolpathGenerator {
         } else {
             (
                 polygon.laser_params.feed_rate,
-                (polygon.laser_params.power_percent *10.0) as u32,
+                (polygon.laser_params.power_percent * 10.0) as u32,
             )
         };
 
@@ -893,112 +893,112 @@ impl ToolpathGenerator {
         toolpaths
     }
 
-fn build_text_outline_segments_with_params(
-    &self,
-    text_shape: &TextShape,
-    feed_rate: f64,
-    spindle_speed: u32,
-) -> Vec<ToolpathSegment> {
-    let mut all_segments = Vec::new();
+    fn build_text_outline_segments_with_params(
+        &self,
+        text_shape: &TextShape,
+        feed_rate: f64,
+        spindle_speed: u32,
+    ) -> Vec<ToolpathSegment> {
+        let mut all_segments = Vec::new();
 
-    let font =
-        font_manager::get_font_for(&text_shape.font_family, text_shape.bold, text_shape.italic);
-    let scale = Scale::uniform(text_shape.font_size as f32);
-    let v_metrics = font.v_metrics(scale);
-    let line_height = v_metrics.ascent - v_metrics.descent - v_metrics.line_gap;
+        let font =
+            font_manager::get_font_for(&text_shape.font_family, text_shape.bold, text_shape.italic);
+        let scale = Scale::uniform(text_shape.font_size as f32);
+        let v_metrics = font.v_metrics(scale);
+        let line_height = v_metrics.ascent - v_metrics.descent - v_metrics.line_gap;
 
-    let (left, bottom, right, top) = text_shape.bounds();
-    let baseline_y0 = bottom as f32 + v_metrics.line_gap;
-    let rotation_center = Point::new((left + right) / 2.0, (bottom + top) / 2.0);
+        let (left, bottom, right, top) = text_shape.bounds();
+        let baseline_y0 = bottom as f32 + v_metrics.line_gap;
+        let rotation_center = Point::new((left + right) / 2.0, (bottom + top) / 2.0);
 
-    let mut caret_x = left as f32;
-    let mut baseline_y = baseline_y0;
-    let mut prev: Option<GlyphId> = None;
-    let mut last_position = Point::new(0.0, 0.0);
-    let mut is_first = true;
+        let mut caret_x = left as f32;
+        let mut baseline_y = baseline_y0;
+        let mut prev: Option<GlyphId> = None;
+        let mut last_position = Point::new(0.0, 0.0);
+        let mut is_first = true;
 
-    for ch in text_shape.text.chars() {
-        if ch == '\n' {
-            caret_x = left as f32;
-            baseline_y -= line_height;
-            prev = None;
-            is_first = true;
-            continue;
-        }
+        for ch in text_shape.text.chars() {
+            if ch == '\n' {
+                caret_x = left as f32;
+                baseline_y -= line_height;
+                prev = None;
+                is_first = true;
+                continue;
+            }
 
-        if ch == ' ' {
-            let base = font.glyph(' ');
+            if ch == ' ' {
+                let base = font.glyph(' ');
+                let scaled = base.scaled(scale);
+                let advance = scaled.h_metrics().advance_width;
+                caret_x += advance;
+                continue;
+            }
+
+            let base = font.glyph(ch);
+            let base_id = base.id();
+
+            if let Some(prev_id) = prev {
+                caret_x += font.pair_kerning(scale, prev_id, base_id);
+            }
+
             let scaled = base.scaled(scale);
             let advance = scaled.h_metrics().advance_width;
-            caret_x += advance;
-            continue;
-        }
 
-        let base = font.glyph(ch);
-        let base_id = base.id();
+            // Posición de inicio para esta letra
+            let start_pos = Point::new(caret_x as f64, baseline_y as f64);
 
-        if let Some(prev_id) = prev {
-            caret_x += font.pair_kerning(scale, prev_id, base_id);
-        }
-
-        let scaled = base.scaled(scale);
-        let advance = scaled.h_metrics().advance_width;
-
-        // Posición de inicio para esta letra
-        let start_pos = Point::new(caret_x as f64, baseline_y as f64);
-
-        // Si no es la primera letra, mover a la nueva posición
-        if !is_first {
-            all_segments.push(ToolpathSegment::new(
-                ToolpathSegmentType::RapidMove,
-                last_position,
-                start_pos,
-                feed_rate,
-                spindle_speed,
-            ));
-        }
-
-        // Crear builder para esta letra
-        let mut builder = ToolpathBuilder::new(
-            feed_rate,
-            spindle_speed,
-            start_pos,  // Punto inicial
-            start_pos,  // Offset
-            rotation_center,
-            text_shape.rotation,
-        );
-
-        // Construir el outline de la letra
-        scaled.build_outline(&mut builder);
-
-        // Tomar los segmentos de la letra
-        let letter_segments = builder.take_segments();
-        all_segments.extend(letter_segments);
-
-        // Guardar la última posición
-        last_position = builder.current_point;
-
-        // Cerrar el contorno si es necesario
-        if let Some(first_point) = builder.start_point_opt() {
-            if last_position.distance_to(&first_point) > 0.001 {
+            // Si no es la primera letra, mover a la nueva posición
+            if !is_first {
                 all_segments.push(ToolpathSegment::new(
-                    ToolpathSegmentType::LinearMove,
+                    ToolpathSegmentType::RapidMove,
                     last_position,
-                    first_point,
+                    start_pos,
                     feed_rate,
                     spindle_speed,
                 ));
-                last_position = first_point;
             }
+
+            // Crear builder para esta letra
+            let mut builder = ToolpathBuilder::new(
+                feed_rate,
+                spindle_speed,
+                start_pos, // Punto inicial
+                start_pos, // Offset
+                rotation_center,
+                text_shape.rotation,
+            );
+
+            // Construir el outline de la letra
+            scaled.build_outline(&mut builder);
+
+            // Tomar los segmentos de la letra
+            let letter_segments = builder.take_segments();
+            all_segments.extend(letter_segments);
+
+            // Guardar la última posición
+            last_position = builder.current_point;
+
+            // Cerrar el contorno si es necesario
+            if let Some(first_point) = builder.start_point_opt() {
+                if last_position.distance_to(&first_point) > 0.001 {
+                    all_segments.push(ToolpathSegment::new(
+                        ToolpathSegmentType::LinearMove,
+                        last_position,
+                        first_point,
+                        feed_rate,
+                        spindle_speed,
+                    ));
+                    last_position = first_point;
+                }
+            }
+
+            caret_x += advance;
+            prev = Some(base_id);
+            is_first = false;
         }
 
-        caret_x += advance;
-        prev = Some(base_id);
-        is_first = false;
+        all_segments
     }
-
-    all_segments
-}
 
     // ==================== POCKET METHODS (sin cambios) ====================
 
@@ -1120,30 +1120,30 @@ fn build_text_outline_segments_with_params(
         gen.generate_circular_pocket(circle, step_down)
     }
 
-pub fn generate_polyline_pocket(
-    &self,
-    vertices: &[Point],
-    pocket_depth: f64,
-    step_down: f64,
-    step_in: f64,
-) -> Vec<Toolpath> {
-    let op = PocketOperation::new(
-        "polyline_pocket".to_string(),
-        pocket_depth,
-        self.tool_diameter,
-    );
-    let mut gen = PocketGenerator::new(op);
-    gen.operation.set_start_depth(self.start_depth);
-    gen.operation.set_ramp_angle(self.ramp_angle);
-    let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-    gen.operation
-        .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
-    gen.operation.set_strategy(self.pocket_strategy);
-    gen.operation.raster_fill_ratio = self.raster_fill_ratio;
+    pub fn generate_polyline_pocket(
+        &self,
+        vertices: &[Point],
+        pocket_depth: f64,
+        step_down: f64,
+        step_in: f64,
+    ) -> Vec<Toolpath> {
+        let op = PocketOperation::new(
+            "polyline_pocket".to_string(),
+            pocket_depth,
+            self.tool_diameter,
+        );
+        let mut gen = PocketGenerator::new(op);
+        gen.operation.set_start_depth(self.start_depth);
+        gen.operation.set_ramp_angle(self.ramp_angle);
+        let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
+        gen.operation
+            .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
+        gen.operation.set_strategy(self.pocket_strategy);
+        gen.operation.raster_fill_ratio = self.raster_fill_ratio;
 
-    // Generar toolpaths (el raster cleanup ya está desactivado en pocket_operations.rs)
-    gen.generate_polygon_pocket(vertices, step_down)
-}
+        // Generar toolpaths (el raster cleanup ya está desactivado en pocket_operations.rs)
+        gen.generate_polygon_pocket(vertices, step_down)
+    }
 
     pub fn generate_triangle_pocket(
         &self,
@@ -1282,16 +1282,13 @@ pub fn generate_polyline_pocket(
         } else {
             (
                 text_shape.laser_params.feed_rate,
-             (text_shape.laser_params.power_percent * 10.0) as u32,
+                (text_shape.laser_params.power_percent * 10.0) as u32,
             )
         };
 
         // Generar segmentos de contorno para cada letra
-        let outline_segments = self.build_text_outline_segments_with_params(
-            text_shape,
-            feed_rate,
-            spindle_speed,
-        );
+        let outline_segments =
+            self.build_text_outline_segments_with_params(text_shape, feed_rate, spindle_speed);
 
         if outline_segments.is_empty() {
             return Vec::new();
@@ -1339,14 +1336,14 @@ pub fn generate_polyline_pocket(
             // Generar pocket para esta letra
             let op = PocketOperation::new(
                 format!("text_pocket_{}", i),
-                    pocket_depth,
-                    self.tool_diameter,
+                pocket_depth,
+                self.tool_diameter,
             );
             let mut gen = PocketGenerator::new(op);
             gen.operation.set_start_depth(self.start_depth);
             gen.operation.set_ramp_angle(self.ramp_angle);
             gen.operation
-            .set_parameters(stepover, feed_rate, spindle_speed);
+                .set_parameters(stepover, feed_rate, spindle_speed);
             gen.operation.set_strategy(self.pocket_strategy);
             gen.operation.raster_fill_ratio = self.raster_fill_ratio;
 
@@ -1406,7 +1403,7 @@ pub fn generate_polyline_pocket(
                         let t = i as f64 / steps as f64;
                         let p = Point::new(
                             seg.start.x + t * (seg.end.x - seg.start.x),
-                                           seg.start.y + t * (seg.end.y - seg.start.y),
+                            seg.start.y + t * (seg.end.y - seg.start.y),
                         );
                         if let Some(last) = current.last() {
                             if last.distance_to(&p) > 0.001 {
@@ -1432,7 +1429,6 @@ pub fn generate_polyline_pocket(
 
         contours
     }
-
 
     /// Calcula el área de un polígono
     fn polygon_area(&self, polygon: &[Point]) -> f64 {

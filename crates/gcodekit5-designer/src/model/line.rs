@@ -105,8 +105,13 @@ impl DesignLine {
         let diagonal = (width * width + height * height).sqrt();
 
         // Mantener la longitud de la línea o usar la diagonal del rectángulo
-        let current_length = ((self.end.x - self.start.x).powi(2) + (self.end.y - self.start.y).powi(2)).sqrt();
-        let length = if current_length > 0.0 { current_length } else { diagonal.max(0.1) };
+        let current_length =
+            ((self.end.x - self.start.x).powi(2) + (self.end.y - self.start.y).powi(2)).sqrt();
+        let length = if current_length > 0.0 {
+            current_length
+        } else {
+            diagonal.max(0.1)
+        };
 
         // Calcular el centro del rectángulo
         let center_x = x + width / 2.0;
@@ -133,18 +138,27 @@ impl DesignLine {
         let cy = (self.start.y + self.end.y) / 2.0;
 
         // Calcular la longitud actual
-        let current_length = ((self.end.x - self.start.x).powi(2) + (self.end.y - self.start.y).powi(2)).sqrt();
+        let current_length =
+            ((self.end.x - self.start.x).powi(2) + (self.end.y - self.start.y).powi(2)).sqrt();
 
         // Calcular la nueva longitud (usando el nuevo ancho y alto)
         let new_diagonal = (new_width * new_width + new_height * new_height).sqrt();
-        let new_length = if new_diagonal > 0.0 { new_diagonal } else { current_length };
+        let new_length = if new_diagonal > 0.0 {
+            new_diagonal
+        } else {
+            current_length
+        };
 
         // Calcular el nuevo centro (esquina + mitad del ancho/alto)
         let new_cx = new_x + new_width / 2.0;
         let new_cy = new_y + new_height / 2.0;
 
         // Aplicar escala manteniendo el centro y el ángulo
-        let scale = if current_length > 0.0 { new_length / current_length } else { 1.0 };
+        let scale = if current_length > 0.0 {
+            new_length / current_length
+        } else {
+            1.0
+        };
 
         if scale != 1.0 {
             // Escalar desde el centro actual
@@ -328,27 +342,32 @@ impl DesignerShape for DesignLine {
 
     fn resize(&mut self, handle: usize, dx: f64, dy: f64) {
         match handle {
-            0 => { // Esquina superior izquierda - mover inicio
+            0 => {
+                // Esquina superior izquierda - mover inicio
                 self.start.x += dx;
                 self.start.y += dy;
                 self.rotation = self.current_angle_degrees();
             }
-            1 => { // Esquina inferior derecha - mover fin
+            1 => {
+                // Esquina inferior derecha - mover fin
                 self.end.x += dx;
                 self.end.y += dy;
                 self.rotation = self.current_angle_degrees();
             }
-            2 => { // Esquina superior derecha - mover inicio
+            2 => {
+                // Esquina superior derecha - mover inicio
                 self.start.x += dx;
                 self.start.y += dy;
                 self.rotation = self.current_angle_degrees();
             }
-            3 => { // Esquina inferior izquierda - mover fin
+            3 => {
+                // Esquina inferior izquierda - mover fin
                 self.end.x += dx;
                 self.end.y += dy;
                 self.rotation = self.current_angle_degrees();
             }
-            4 => { // Centro - mover toda la línea
+            4 => {
+                // Centro - mover toda la línea
                 self.translate(dx, dy);
             }
             _ => {}

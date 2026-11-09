@@ -1,3 +1,4 @@
+//! gcodekit5-ui/src/device_status.rs
 //! Global device status shared across the application
 
 use gcodekit5_communication::firmware::grbl::status_parser::{
@@ -79,6 +80,24 @@ pub fn get_active_num_axes() -> u8 {
 /// Sets the number of axes for the active device.
 pub fn set_active_num_axes(n: u8) {
     ACTIVE_NUM_AXES.store(n, Ordering::Relaxed);
+}
+
+/// Controller type of the currently active device profile, as a debug string
+/// (e.g., "Repetier", "Grbl", "Marlin"). None means no device is active.
+///
+/// We store it as a String to avoid adding a dependency on `gcodekit5-devicedb`
+/// from this low-level module. Consumers can parse it if they need the enum.
+static ACTIVE_CONTROLLER_TYPE: Lazy<ThreadSafeRw<Option<String>>> =
+    Lazy::new(|| thread_safe_rw(None));
+
+/// Returns the controller type of the active device (e.g., "Repetier", "Grbl").
+pub fn get_active_controller_type() -> Option<String> {
+    ACTIVE_CONTROLLER_TYPE.read().clone()
+}
+
+/// Sets the controller type of the active device.
+pub fn set_active_controller_type(ct: Option<String>) {
+    *ACTIVE_CONTROLLER_TYPE.write() = ct;
 }
 
 /// Update the machine state

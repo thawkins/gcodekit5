@@ -5,12 +5,12 @@
 //! wrappers that use `FileChooserDialog` instead, matching the pattern already
 //! used by the CAM-tools panels.
 
+use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
     ButtonsType, FileChooserAction, FileChooserDialog, MessageDialog, MessageType, ResponseType,
     Widget,
 };
-use gcodekit5_settings::controller::SettingsController;
 
 /// Create a `FileChooserDialog` for **opening** a file.
 ///

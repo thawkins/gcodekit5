@@ -473,51 +473,35 @@ impl DesignerCanvas {
         self.delete_selected();
     }
 
-    pub fn paste(&self) {
+    /// Pega el portapapeles centrado en las coordenadas world `(target_x, target_y)`.
+    pub fn paste_at(&self, target_x: f64, target_y: f64) {
         let mut state = self.state.borrow_mut();
         if state.clipboard.is_empty() {
             return;
         }
-
-        // Clone clipboard before using it
-        let clipboard = state.clipboard.clone();
-
-        // Deselect all current shapes
-        for obj in state.canvas.shapes_mut() {
-            obj.selected = false;
-        }
-
-        // Create copies with offset
-        let offset = 10.0;
-        let mut new_objects = Vec::new();
-        for obj in &clipboard {
-            let mut new_obj = obj.clone();
-            new_obj.id = state.canvas.generate_id();
-            new_obj.shape.translate(offset, offset);
-            new_obj.selected = true;
-            new_objects.push(new_obj);
-        }
-
-        let cmd = DesignerCommand::PasteShapes(PasteShapes {
-            ids: new_objects.iter().map(|o| o.id).collect(),
-            objects: new_objects.into_iter().map(Some).collect(),
-        });
-        state.push_command(cmd);
-
+        state.paste_at_location(target_x, target_y);
         drop(state);
 
-        // Refresh layers panel
         if let Some(layers_panel) = self.layers.borrow().as_ref() {
             layers_panel.refresh(&self.state);
         }
 
-        // Update toolpaths if enabled
         let show_toolpaths = self.state.borrow().show_toolpaths;
         if show_toolpaths {
             self.generate_preview_toolpaths();
         }
 
+        if let Some(ref props) = *self.properties.borrow() {
+            props.update_from_selection();
+        }
+
         self.widget.queue_draw();
+    }
+
+    /// Pega el portapapeles en la posición actual del cursor del canvas.
+    pub fn paste(&self) {
+        let (x, y) = *self.mouse_pos.borrow();
+        self.paste_at(x, y);
     }
 
     pub fn undo(&self) {

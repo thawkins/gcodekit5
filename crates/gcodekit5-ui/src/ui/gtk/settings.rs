@@ -13,10 +13,10 @@ use libadwaita::{ActionRow, ComboRow, PreferencesGroup, PreferencesPage, Prefere
 use std::rc::Rc;
 use tracing::error;
 
+use crate::t;
 use gcodekit5_core::{shared, SharedOption};
 use gcodekit5_settings::controller::{SettingUiModel, SettingsController};
 use gcodekit5_settings::view_model::SettingsCategory;
-use crate::t;
 
 // Complex type due to GTK widget and settings controller fields.
 #[allow(clippy::type_complexity)]
@@ -209,8 +209,10 @@ impl SettingsWindow {
                 let entry_clone = entry.clone();
 
                 browse_btn.connect_clicked(move |_| {
-                    let file_chooser =
-                        super::file_dialog::folder_dialog(&t!("Select Directory"), Some(&parent_window));
+                    let file_chooser = super::file_dialog::folder_dialog(
+                        &t!("Select Directory"),
+                        Some(&parent_window),
+                    );
 
                     let entry = entry_clone.clone();
                     file_chooser.connect_response(move |dialog, response| {

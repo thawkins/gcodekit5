@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-camtools"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-communication"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1447,7 +1447,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-core"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1465,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-design"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-designer"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "cavalier_contours",
@@ -1514,7 +1514,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-devicedb"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "gcodekit5-core",
@@ -1527,7 +1527,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-gcodeeditor"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "ropey",
  "thiserror",
@@ -1535,7 +1535,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-settings"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "dirs",
  "gcodekit5-core",
@@ -1548,7 +1548,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-ui"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1588,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "gcodekit5-visualizer"
-version = "1.1.0-beta.1"
+version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "bytemuck",

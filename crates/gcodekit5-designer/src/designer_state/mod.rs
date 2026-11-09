@@ -21,7 +21,7 @@ mod transforms;
 mod viewport;
 
 use crate::commands::DesignerCommand;
-use crate::stock_removal::{StockMaterial};
+use crate::stock_removal::StockMaterial;
 use crate::{Canvas, ToolpathGenerator};
 
 /// Tool settings for the designer
@@ -106,7 +106,7 @@ impl DesignerState {
             grid_spacing_mm: 50.0,
             show_toolpaths: false,
             snap_enabled: true,
-            snap_threshold_mm: 0.5,
+            snap_threshold_mm: 1.0,
             clipboard: Vec::new(),
             default_properties_shape: crate::canvas::DrawingObject::new(
                 0,
@@ -201,7 +201,11 @@ impl DesignerState {
             step.round().clamp(1.0, 10.0)
         } else {
             // En modo CNC: profundidad de pasada en mm
-            if step <= 0.0 { 0.1 } else { step }
+            if step <= 0.0 {
+                0.1
+            } else {
+                step
+            }
         };
         debug_assert!(
             step.is_finite() && step > 0.0,

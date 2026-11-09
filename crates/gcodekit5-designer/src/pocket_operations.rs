@@ -270,156 +270,156 @@ impl PocketGenerator {
         }
     }
 
-/* // GENERA ZIG-ZAG QUE SE SALE DEL CONTORNO
-    fn generate_raster_cleanup(
-        &self,
-        vertices: &[Point],
-        depth: f64,
-        angle: f64,
-    ) -> Option<Toolpath> {
-        if vertices.is_empty() {
-            return None;
-        }
-
-        let tool_radius = self.operation.tool_diameter / 2.0;
-        let step = (self.operation.stepover).max(0.1);
-        let inset = step * 0.25; // 25% inset of stroke width on each side to stay off walls
-
-        // Rotate vertices to align with X axis for scanlines.
-        let cos_a = (-angle).to_radians().cos();
-        let sin_a = (-angle).to_radians().sin();
-
-        let rotate = |p: Point| -> Point {
-            Point::new(p.x * cos_a - p.y * sin_a, p.x * sin_a + p.y * cos_a)
-        };
-
-        let inv_rotate = |p: Point| -> Point {
-            let cos_inv = angle.to_radians().cos();
-            let sin_inv = angle.to_radians().sin();
-            Point::new(p.x * cos_inv - p.y * sin_inv, p.x * sin_inv + p.y * cos_inv)
-        };
-
-        let rotated: Vec<Point> = vertices.iter().map(|&p| rotate(p)).collect();
-        if rotated.len() < 3 {
-            return None;
-        }
-
-        let mut min_x = rotated[0].x;
-        let mut min_y = rotated[0].y;
-        let mut max_x = rotated[0].x;
-        let mut max_y = rotated[0].y;
-        for v in &rotated {
-            min_x = min_x.min(v.x);
-            min_y = min_y.min(v.y);
-            max_x = max_x.max(v.x);
-            max_y = max_y.max(v.y);
-        }
-
-        let mut toolpath = Toolpath::new(self.operation.tool_diameter, depth);
-        let mut current_y = min_y + tool_radius + inset;
-        let limit_y = max_y - tool_radius - inset;
-        if current_y > limit_y {
-            return None;
-        }
-        let mut forward = true;
-
-        while current_y <= limit_y {
-            let mut intersections = Vec::new();
-            for i in 0..rotated.len() {
-                let p1 = rotated[i];
-                let p2 = rotated[(i + 1) % rotated.len()];
-                if (p1.y <= current_y && p2.y > current_y)
-                    || (p2.y <= current_y && p1.y > current_y)
-                {
-                    let denom = (p2.y - p1.y).abs();
-                    if denom > 1e-9 {
-                        let x = p1.x + (current_y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
-                        intersections.push(x);
-                    }
-                }
+    /* // GENERA ZIG-ZAG QUE SE SALE DEL CONTORNO
+        fn generate_raster_cleanup(
+            &self,
+            vertices: &[Point],
+            depth: f64,
+            angle: f64,
+        ) -> Option<Toolpath> {
+            if vertices.is_empty() {
+                return None;
             }
-            intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-            let mut segments = Vec::new();
-            for i in (0..intersections.len()).step_by(2) {
-                if i + 1 < intersections.len() {
-                    let x_start = intersections[i] + tool_radius;
-                    let x_end = intersections[i + 1] - tool_radius;
-                    if x_start < x_end {
-                        let span = x_end - x_start;
-                        // Skip raster fill entirely if ratio is 0
-                        if self.operation.raster_fill_ratio <= 0.0 {
-                            continue;
-                        }
-                        let trim = span * (1.0 - self.operation.raster_fill_ratio) / 2.0;
-                        let adj_start = x_start + trim;
-                        let adj_end = x_end - trim;
-                        if adj_start < adj_end {
-                            segments.push((adj_start, adj_end));
+            let tool_radius = self.operation.tool_diameter / 2.0;
+            let step = (self.operation.stepover).max(0.1);
+            let inset = step * 0.25; // 25% inset of stroke width on each side to stay off walls
+
+            // Rotate vertices to align with X axis for scanlines.
+            let cos_a = (-angle).to_radians().cos();
+            let sin_a = (-angle).to_radians().sin();
+
+            let rotate = |p: Point| -> Point {
+                Point::new(p.x * cos_a - p.y * sin_a, p.x * sin_a + p.y * cos_a)
+            };
+
+            let inv_rotate = |p: Point| -> Point {
+                let cos_inv = angle.to_radians().cos();
+                let sin_inv = angle.to_radians().sin();
+                Point::new(p.x * cos_inv - p.y * sin_inv, p.x * sin_inv + p.y * cos_inv)
+            };
+
+            let rotated: Vec<Point> = vertices.iter().map(|&p| rotate(p)).collect();
+            if rotated.len() < 3 {
+                return None;
+            }
+
+            let mut min_x = rotated[0].x;
+            let mut min_y = rotated[0].y;
+            let mut max_x = rotated[0].x;
+            let mut max_y = rotated[0].y;
+            for v in &rotated {
+                min_x = min_x.min(v.x);
+                min_y = min_y.min(v.y);
+                max_x = max_x.max(v.x);
+                max_y = max_y.max(v.y);
+            }
+
+            let mut toolpath = Toolpath::new(self.operation.tool_diameter, depth);
+            let mut current_y = min_y + tool_radius + inset;
+            let limit_y = max_y - tool_radius - inset;
+            if current_y > limit_y {
+                return None;
+            }
+            let mut forward = true;
+
+            while current_y <= limit_y {
+                let mut intersections = Vec::new();
+                for i in 0..rotated.len() {
+                    let p1 = rotated[i];
+                    let p2 = rotated[(i + 1) % rotated.len()];
+                    if (p1.y <= current_y && p2.y > current_y)
+                        || (p2.y <= current_y && p1.y > current_y)
+                    {
+                        let denom = (p2.y - p1.y).abs();
+                        if denom > 1e-9 {
+                            let x = p1.x + (current_y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+                            intersections.push(x);
                         }
                     }
                 }
-            }
+                intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-            if !forward {
-                segments.reverse();
-            }
-
-            for (start_x, end_x) in segments {
-                let start_rot = Point::new(start_x, current_y);
-                let end_rot = Point::new(end_x, current_y);
-                let start_pt = inv_rotate(start_rot);
-                let end_pt = inv_rotate(end_rot);
-
-                // Skip if outside original polygon (safety check for concave cases)
-                if !point_in_polygon(vertices, start_pt) && !point_in_polygon(vertices, end_pt) {
-                    continue;
+                let mut segments = Vec::new();
+                for i in (0..intersections.len()).step_by(2) {
+                    if i + 1 < intersections.len() {
+                        let x_start = intersections[i] + tool_radius;
+                        let x_end = intersections[i + 1] - tool_radius;
+                        if x_start < x_end {
+                            let span = x_end - x_start;
+                            // Skip raster fill entirely if ratio is 0
+                            if self.operation.raster_fill_ratio <= 0.0 {
+                                continue;
+                            }
+                            let trim = span * (1.0 - self.operation.raster_fill_ratio) / 2.0;
+                            let adj_start = x_start + trim;
+                            let adj_end = x_end - trim;
+                            if adj_start < adj_end {
+                                segments.push((adj_start, adj_end));
+                            }
+                        }
+                    }
                 }
 
-                // Check if we need to traverse to the next segment
-                let needs_traverse = toolpath
-                    .segments
-                    .last()
-                    .map(|s| s.end.distance_to(&start_pt) > 0.1)
-                    .unwrap_or(true);
+                if !forward {
+                    segments.reverse();
+                }
 
-                if needs_traverse {
-                    // Use LinearMove at cutting depth instead of RapidMove (which retracts to safe_z)
-                    let mut traverse = ToolpathSegment::new(
+                for (start_x, end_x) in segments {
+                    let start_rot = Point::new(start_x, current_y);
+                    let end_rot = Point::new(end_x, current_y);
+                    let start_pt = inv_rotate(start_rot);
+                    let end_pt = inv_rotate(end_rot);
+
+                    // Skip if outside original polygon (safety check for concave cases)
+                    if !point_in_polygon(vertices, start_pt) && !point_in_polygon(vertices, end_pt) {
+                        continue;
+                    }
+
+                    // Check if we need to traverse to the next segment
+                    let needs_traverse = toolpath
+                        .segments
+                        .last()
+                        .map(|s| s.end.distance_to(&start_pt) > 0.1)
+                        .unwrap_or(true);
+
+                    if needs_traverse {
+                        // Use LinearMove at cutting depth instead of RapidMove (which retracts to safe_z)
+                        let mut traverse = ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            toolpath.segments.last().map(|s| s.end).unwrap_or(start_pt),
+                            start_pt,
+                            self.operation.feed_rate,
+                            self.operation.spindle_speed,
+                        );
+                        traverse.start_z = Some(depth);
+                        traverse.z_depth = Some(depth);
+                        toolpath.add_segment(traverse);
+                    }
+
+                    let mut cut = ToolpathSegment::new(
                         ToolpathSegmentType::LinearMove,
-                        toolpath.segments.last().map(|s| s.end).unwrap_or(start_pt),
                         start_pt,
+                        end_pt,
                         self.operation.feed_rate,
                         self.operation.spindle_speed,
                     );
-                    traverse.start_z = Some(depth);
-                    traverse.z_depth = Some(depth);
-                    toolpath.add_segment(traverse);
+                    cut.start_z = Some(depth);
+                    cut.z_depth = Some(depth);
+                    toolpath.add_segment(cut);
                 }
 
-                let mut cut = ToolpathSegment::new(
-                    ToolpathSegmentType::LinearMove,
-                    start_pt,
-                    end_pt,
-                    self.operation.feed_rate,
-                    self.operation.spindle_speed,
-                );
-                cut.start_z = Some(depth);
-                cut.z_depth = Some(depth);
-                toolpath.add_segment(cut);
+                current_y += step;
+                forward = !forward;
             }
 
-            current_y += step;
-            forward = !forward;
+            if toolpath.segments.is_empty() {
+                None
+            } else {
+                Some(toolpath)
+            }
         }
-
-        if toolpath.segments.is_empty() {
-            None
-        } else {
-            Some(toolpath)
-        }
-    }
-*/
+    */
     /// Adds an island to the pocket.
     pub fn add_island(&mut self, island: Island) {
         self.islands.push(island);
@@ -968,12 +968,12 @@ impl PocketGenerator {
             // Push main contour toolpath first, then raster cleanup
             toolpaths.push(toolpath);
 
-/* // NO HABILIZAR ESTAS LÍNEAS, GENERAN UN ZIG-ZAG ERRONEO QUE SE SALE DE LOS CONTORNOS
-            // Sweep a raster cleanup over the whole polygon to catch any voids
-            if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
-                toolpaths.push(raster);
-            }
-*/
+            /* // NO HABILIZAR ESTAS LÍNEAS, GENERAN UN ZIG-ZAG ERRONEO QUE SE SALE DE LOS CONTORNOS
+                        // Sweep a raster cleanup over the whole polygon to catch any voids
+                        if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
+                            toolpaths.push(raster);
+                        }
+            */
             prev_z = current_z;
             is_first_z_pass = false;
         }
@@ -1150,11 +1150,11 @@ impl PocketGenerator {
             // Push main adaptive toolpath first, then raster cleanup
             toolpaths.push(toolpath);
 
-/* // NO HABILIZAR ESTAS LÍNEAS, GENERAN UN ZIG-ZAG ERRONEO QUE SE SALE DE LOS CONTORNOS (ADAPTATIVE)
-            if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
-                toolpaths.push(raster);
-            }
-*/
+            /* // NO HABILIZAR ESTAS LÍNEAS, GENERAN UN ZIG-ZAG ERRONEO QUE SE SALE DE LOS CONTORNOS (ADAPTATIVE)
+                        if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
+                            toolpaths.push(raster);
+                        }
+            */
             prev_z = current_z;
             is_first_z_pass = false;
         }

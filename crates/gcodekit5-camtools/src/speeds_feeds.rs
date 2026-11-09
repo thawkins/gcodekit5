@@ -37,6 +37,7 @@ pub struct SpeedsFeedsCalculator;
 
 impl SpeedsFeedsCalculator {
     /// Calculate speeds and feeds for a given material, tool, and device
+
     pub fn calculate(
         material: &Material,
         tool: &Tool,
@@ -46,12 +47,6 @@ impl SpeedsFeedsCalculator {
         let mut source = String::new();
         let mut unclamped_rpm = None;
         let mut unclamped_feed_rate = None;
-
-        // 1. Determine Surface Speed (SFM equivalent in m/min)
-        // Priority:
-        // 1. Material property (surface_speed_m_min)
-        // 2. Material cutting params for this tool type (implied from RPM range?)
-        // 3. Tool default params
 
         let tool_type_key = match tool.tool_type {
             gcodekit5_core::data::tools::ToolType::EndMillFlat => "endmill_flat",
@@ -63,68 +58,49 @@ impl SpeedsFeedsCalculator {
 
         let material_params = material.get_cutting_params(tool_type_key);
 
-        let surface_speed = if let Some(params) = material_params {
+        // 1 y 2. Determinar RPM directamente para evitar cancelaciones matemáticas
+        let mut rpm = if let Some(params) = material_params {
             if let Some(speed) = params.surface_speed_m_min {
                 source.push_str("Material Surface Speed");
-                speed
+                (speed * 1000.0) / (std::f32::consts::PI * tool.diameter)
             } else {
-                // Fallback: Estimate from Material RPM range if available
-                let avg_rpm = (params.rpm_range.0 + params.rpm_range.1) as f32 / 2.0;
-                // SFM = (RPM * pi * Dia) / 1000
-                let speed = (avg_rpm * std::f32::consts::PI * tool.diameter) / 1000.0;
-                source.push_str("Estimated from Material RPM");
-                speed
+                source.push_str("Material RPM Range");
+                // Usamos directamente el promedio del rango de RPM del material
+                (params.rpm_range.0 + params.rpm_range.1) as f32 / 2.0
             }
         } else {
-            // Fallback: Estimate from Tool default RPM
-            let rpm = tool.params.rpm as f32;
-            let speed = (rpm * std::f32::consts::PI * tool.diameter) / 1000.0;
-            source.push_str("Estimated from Tool Defaults");
-            speed
+            source.push_str("Tool Defaults");
+            tool.params.rpm as f32
         };
 
-        // 2. Calculate RPM
-        // RPM = (Surface Speed * 1000) / (π * Diameter)
-        let mut rpm = (surface_speed * 1000.0) / (std::f32::consts::PI * tool.diameter);
+        // Calcular la velocidad de superficie real resultante para el struct final
+        let surface_speed = (rpm * std::f32::consts::PI * tool.diameter) / 1000.0;
 
-        // 3. Determine Chip Load
-        // Priority:
-        // 1. Material property (chip_load_mm)
-        // 2. Derived from Material Feed Rate range
-        // 3. Derived from Tool default Feed Rate
-
+        // 3. Determinar Chip Load (Avance por diente)
         let chip_load = if let Some(params) = material_params {
             if let Some(load) = params.chip_load_mm {
-                if !source.contains("Material") {
-                    source.push_str(" + Material Chip Load");
-                }
+                source.push_str(" + Material Chip Load");
                 load
             } else {
+                source.push_str(" + Material Feed Range");
                 let avg_feed = (params.feed_rate_range.0 + params.feed_rate_range.1) / 2.0;
                 let avg_rpm = (params.rpm_range.0 + params.rpm_range.1) as f32 / 2.0;
-                // Chip Load = Feed / (RPM * Flutes)
-                let load = avg_feed / (avg_rpm * tool.flutes as f32);
-                if !source.contains("Material") {
-                    source.push_str(" + Material Feed");
+                if avg_rpm > 0.0 {
+                    avg_feed / (avg_rpm * tool.flutes as f32)
+                } else {
+                    0.0
                 }
-                load
             }
         } else {
-            let load = tool.params.feed_rate / (tool.params.rpm as f32 * tool.flutes as f32);
-            if !source.contains("Tool") {
-                source.push_str(" + Tool Defaults");
-            }
-            load
+            source.push_str(" + Tool Defaults");
+            tool.params.feed_rate / (tool.params.rpm as f32 * tool.flutes as f32)
         };
 
-        // 4. Calculate Feed Rate
-        // Feed = RPM * Chip Load * Flutes
+        // 4. Calcular Feed Rate (Avance total)
         let mut feed_rate = rpm * chip_load * tool.flutes as f32;
 
-        // 5. Apply Device Limits
-
-        // Check Max RPM
-        let max_rpm = 24000.0; // Common default
+        // 5. Aplicar Límites del Dispositivo (Se mantiene igual)
+        let max_rpm = 24000.0;
         if rpm > max_rpm {
             warnings.push(format!(
                 "Calculated RPM ({:.0}) exceeds standard max ({:.0}). Clamped.",
@@ -132,12 +108,9 @@ impl SpeedsFeedsCalculator {
             ));
             unclamped_rpm = Some(rpm as u32);
             rpm = max_rpm;
-            // Recalculate feed rate to maintain chip load?
-            // Usually yes, to protect tool.
             feed_rate = rpm * chip_load * tool.flutes as f32;
         }
 
-        // Check Max Feed Rate
         if feed_rate > device.max_feed_rate as f32 {
             warnings.push(format!(
                 "Calculated Feed ({:.0}) exceeds device max ({:.0}). Clamped.",
@@ -145,10 +118,8 @@ impl SpeedsFeedsCalculator {
             ));
             unclamped_feed_rate = Some(feed_rate);
             feed_rate = device.max_feed_rate as f32;
-            // If we clamp feed, chip load decreases.
         }
 
-        // Check Min RPM (Spindle usually has a min speed)
         let min_rpm = 1000.0;
         if rpm < min_rpm {
             warnings.push(format!(

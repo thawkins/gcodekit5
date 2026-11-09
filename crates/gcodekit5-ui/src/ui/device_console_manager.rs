@@ -8,7 +8,7 @@ use crate::device_status;
 use crate::ui::console_panel::{ConsolePanel, MessageLevel};
 use gcodekit5_communication::CommunicatorListener;
 use gcodekit5_core::{
-    thread_safe, thread_safe_vec, DataCallback, ThreadSafe, ThreadSafeOption, ThreadSafeVec,
+    thread_safe, thread_safe_vec, DataCallback, ThreadSafe, ThreadSafeVec,
 };
 use std::sync::Arc;
 
@@ -267,9 +267,7 @@ pub struct ConsoleListener {
     console_manager: Arc<DeviceConsoleManager>,
     /// Buffer for accumulating multi-line responses (like $I)
     _response_buffer: ThreadSafe<String>,
-    /// Shared firmware detection result (optional)
-    detected_firmware:
-        Option<ThreadSafeOption<gcodekit5_communication::firmware::FirmwareDetectionResult>>,
+
 }
 
 impl ConsoleListener {
@@ -278,21 +276,17 @@ impl ConsoleListener {
         Arc::new(Self {
             console_manager,
             _response_buffer: thread_safe(String::new()),
-            detected_firmware: None,
         })
     }
 
     /// Create with firmware detection state sharing
     pub fn new_with_firmware_state(
         console_manager: Arc<DeviceConsoleManager>,
-        detected_firmware: ThreadSafeOption<
-            gcodekit5_communication::firmware::FirmwareDetectionResult,
-        >,
+
     ) -> Arc<Self> {
         Arc::new(Self {
             console_manager,
             _response_buffer: thread_safe(String::new()),
-            detected_firmware: Some(detected_firmware),
         })
     }
 }
@@ -324,96 +318,6 @@ impl CommunicatorListener for ConsoleListener {
             {
                 // Status response - don't log to console
                 return;
-            }
-
-            // Check for startup message (single line, immediate detection)
-            if (trimmed.contains("Grbl") || trimmed.contains("grbl")) && trimmed.contains("help") {
-                use gcodekit5_communication::FirmwareDetector;
-                match FirmwareDetector::parse_grbl_startup(trimmed) {
-                    Ok(detection) => {
-                        // Store in shared state if available
-                        if let Some(ref fw_state) = self.detected_firmware {
-                            {
-                                let mut guard = fw_state.lock();
-                                *guard = Some(detection.clone());
-                            }
-                        }
-
-                        // Update global device status (so UI doesn't stay "Unknown")
-                        device_status::update_firmware_info(
-                            format!("{:?}", detection.firmware_type),
-                            detection.version_string.clone(),
-                            None,
-                        );
-
-                        self.console_manager.add_message(
-                            DeviceMessageType::Success,
-                            format!(
-                                "Detected firmware: {} {}",
-                                detection.firmware_type, detection.version_string
-                            ),
-                        );
-
-                        // Keep the raw startup banner visible in the console.
-                        self.console_manager
-                            .add_message(DeviceMessageType::Output, trimmed);
-                        return;
-                    }
-                    Err(_) => {
-                        // Ignore parsing errors, just treat as normal output
-                    }
-                }
-            }
-
-            // Handle multi-line $I response which may come as one chunk
-            // Format: [VER:...]\n[OPT:...]\nok
-            if trimmed.contains("[VER:") && trimmed.contains("[OPT:") && trimmed.contains("ok") {
-                // Complete $I response in one chunk
-
-                use gcodekit5_communication::FirmwareDetector;
-                match FirmwareDetector::parse_grbl_version_info(trimmed) {
-                    Ok(detection) => {
-                        // Store in shared state if available
-                        if let Some(ref fw_state) = self.detected_firmware {
-                            {
-                                let mut guard = fw_state.lock();
-                                *guard = Some(detection.clone());
-                            }
-                        }
-
-                        // Update global device status (so UI doesn't stay "Unknown")
-                        device_status::update_firmware_info(
-                            format!("{:?}", detection.firmware_type),
-                            detection.version_string.clone(),
-                            None,
-                        );
-
-                        self.console_manager.add_message(
-                            DeviceMessageType::Success,
-                            format!(
-                                "Detected firmware: {} {} (build: {})",
-                                detection.firmware_type,
-                                detection.version_string,
-                                detection.build_date.as_deref().unwrap_or("unknown")
-                            ),
-                        );
-                        // Show just the firmware info lines without the status pollution
-                        if let Some(ver_line) = trimmed.lines().find(|l| l.starts_with("[VER:")) {
-                            self.console_manager
-                                .add_message(DeviceMessageType::Output, ver_line);
-                        }
-                        if let Some(opt_line) = trimmed.lines().find(|l| l.starts_with("[OPT:")) {
-                            self.console_manager
-                                .add_message(DeviceMessageType::Output, opt_line);
-                        }
-                        self.console_manager
-                            .add_message(DeviceMessageType::Output, "ok");
-                        return; // Don't show the whole chunk
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse $I response: {}", e);
-                    }
-                }
             }
 
             // Suppress raw "ok" messages as they are now handled by the machine callback
@@ -469,53 +373,6 @@ impl CommunicatorListener for ConsoleListener {
             if trimmed == "?" {
                 // Status query - don't log to console
             }
-
-            // Suppress streamed G-code commands here as they are logged by the machine callback
-            // when the response is received (Command => Result format).
-            // We only want to log manual commands or commands not tracked by the send state.
-            // However, since we can't easily distinguish here, we'll rely on the fact that
-            // the machine callback logs the "Command => Result" pair.
-            // But wait, if we suppress here, manual commands might not show up until acknowledged?
-            // Actually, manual commands (via buttons) are also sent via the same mechanism now.
-            // The issue is that `on_data_sent` logs immediately, while `machine.rs` logs on ack.
-            // If we want to avoid duplicates for streamed commands, we should suppress here if it's part of a stream.
-            // But `ConsoleListener` doesn't know about `GcodeSendState`.
-
-            // For now, let's just suppress all sent data logging here, and rely on:
-            // 1. `machine.rs` logging `Command => Result` for everything sent via `send_command` or the stream.
-            // 2. `main.rs` logging `>>> Command` for manual commands sent via the console input.
-
-            // Actually, `machine.rs` only logs if it finds the command in `sent_lines`.
-            // Manual commands sent via `send_command` in `main.rs` are NOT added to `sent_lines` currently?
-            // Let's check `main.rs`.
-
-            // In `main.rs`:
-            // main_window.on_send_command(move |command: slint::SharedString| {
-            //     ...
-            //     console_manager_clone.add_message(DeviceMessageType::Command, format!(">>> {}", cmd));
-            //     ...
-            // });
-
-            // So manual console commands are logged with `>>>`.
-
-            // Jog commands in `machine.rs` are now added to `sent_lines`.
-
-            // Streamed commands in `machine.rs` are added to `sent_lines`.
-
-            // So `on_data_sent` here is likely redundant and causing double logging or noise.
-            // Let's disable it or make it very selective.
-
-            // If we disable it, we lose logging for anything sent that ISN'T tracked elsewhere.
-            // But most things are tracked.
-
-            // Let's just return for now to reduce noise as requested.
-
-            /*
-            if !trimmed.is_empty() {
-                self.console_manager
-                    .add_message(DeviceMessageType::Command, trimmed);
-            }
-            */
         }
     }
 

@@ -495,7 +495,7 @@ impl DesignerView {
         status_box.add_css_class("visualizer-osd");
         status_box.set_halign(gtk4::Align::Start);
         status_box.set_valign(gtk4::Align::End);
-        status_box.set_margin_bottom(-10); // Posición Vertical coordenadas puntero
+        status_box.set_margin_bottom(5); // Posición Vertical coordenadas puntero
         status_box.set_margin_start(10); // Posición Horizontal coordenadas puntero
 
         let status_label_osd = Label::builder().label(" ").build();

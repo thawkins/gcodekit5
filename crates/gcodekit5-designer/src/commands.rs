@@ -9,6 +9,21 @@ use crate::model::DesignerShape;
 use crate::model::Shape;
 use crate::spatial_index::Bounds;
 
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub enum DesignerCommand {
+    AddShape(AddShape),
+    RemoveShape(RemoveShape),
+    MoveShapes(MoveShapes),
+    ResizeShape(ResizeShape),
+    ChangeProperty(ChangeProperty),
+    GroupShapes(GroupShapes),
+    UngroupShapes(UngroupShapes),
+    PasteShapes(PasteShapes),
+    Reorder(Reorder),
+    CompositeCommand(CompositeCommand),
+}
+
 /// A command that can be executed and undone on the canvas.
 pub trait Command {
     /// Executes the command.
@@ -30,6 +45,13 @@ pub trait Command {
 pub struct AddShapeCommand {
     id: u64,
     shape: Option<DrawingObject>, // Stored here when undone
+}
+
+#[derive(Debug, Clone)]
+pub struct Reorder {
+    pub before: Vec<u64>,
+    pub after: Vec<u64>,
+    pub name: String,
 }
 
 impl AddShapeCommand {
@@ -68,25 +90,6 @@ impl Command for AddShapeCommand {
     fn name(&self) -> &str {
         "Add Shape"
     }
-}
-
-// We need a way to wrap these commands.
-// Since we have different structs, we can use an enum or Box<dyn Command>.
-// Enum is usually better for performance and serialization.
-
-#[derive(Debug, Clone)]
-// Variant size disparity is acceptable — commands are short-lived and not stored in bulk.
-#[allow(clippy::large_enum_variant)]
-pub enum DesignerCommand {
-    AddShape(AddShape),
-    RemoveShape(RemoveShape),
-    MoveShapes(MoveShapes),
-    ResizeShape(ResizeShape),
-    ChangeProperty(ChangeProperty),
-    GroupShapes(GroupShapes),
-    UngroupShapes(UngroupShapes),
-    PasteShapes(PasteShapes),
-    CompositeCommand(CompositeCommand),
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +246,9 @@ impl DesignerCommand {
                     sub_cmd.apply(canvas);
                 }
             }
+            DesignerCommand::Reorder(cmd) => {
+                canvas.shape_store.apply_order(cmd.after.clone());
+            }
         }
     }
 
@@ -333,6 +339,9 @@ impl DesignerCommand {
                 for sub_cmd in cmd.commands.iter_mut().rev() {
                     sub_cmd.undo(canvas);
                 }
+            }
+            DesignerCommand::Reorder(cmd) => {
+                canvas.shape_store.apply_order(cmd.before.clone());
             }
         }
     }

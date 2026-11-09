@@ -149,7 +149,6 @@ impl DesignTriangle {
 }
 
 impl DesignerShape for DesignTriangle {
-
     fn render(&self) -> Path {
         let mut builder = Path::builder();
 
@@ -181,11 +180,7 @@ impl DesignerShape for DesignTriangle {
         // Obtener los vértices del triángulo en espacio local (sin rotación ni traslación)
         let [p1, p2, p3] = self.get_local_vertices_f64(); // Usar get_local_vertices_f64
 
-        let points = vec![
-            [p1.x, p1.y],
-            [p2.x, p2.y],
-            [p3.x, p3.y],
-        ];
+        let points = vec![[p1.x, p1.y], [p2.x, p2.y], [p3.x, p3.y]];
 
         // Crear el sketch con los vértices locales
         let mut sketch: Sketch<()> = Sketch::polygon(&points, None);
@@ -219,12 +214,7 @@ impl DesignerShape for DesignTriangle {
         let min_y = y_coords.iter().fold(f32::INFINITY, |a, &b| a.min(b));
         let max_y = y_coords.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
 
-        (
-            min_x as f64,
-            min_y as f64,
-            max_x as f64,
-            max_y as f64,
-        )
+        (min_x as f64, min_y as f64, max_x as f64, max_y as f64)
     }
 
     fn transform(&mut self, t: &Transform) {
@@ -243,7 +233,12 @@ impl DesignerShape for DesignTriangle {
     }
 
     fn properties(&self) -> Vec<Property> {
-        let corner_names = ["Inferior-Izquierda", "Inferior-Derecha", "Superior-Izquierda", "Superior-Derecha"];
+        let corner_names = [
+            "Inferior-Izquierda",
+            "Inferior-Derecha",
+            "Superior-Izquierda",
+            "Superior-Derecha",
+        ];
         vec![
             Property {
                 name: "Width".to_string(),
@@ -267,7 +262,9 @@ impl DesignerShape for DesignTriangle {
             },
             Property {
                 name: "Right Angle Corner".to_string(),
-                value: PropertyValue::String(corner_names[self.right_angle_corner as usize].to_string()),
+                value: PropertyValue::String(
+                    corner_names[self.right_angle_corner as usize].to_string(),
+                ),
             },
         ]
     }

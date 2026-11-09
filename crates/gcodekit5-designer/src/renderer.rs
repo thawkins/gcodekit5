@@ -314,12 +314,11 @@ pub fn render_canvas(
                                     transform,
                                     None,
                                 );
-                                eprintln!("Image drawn");
                             }
-                            None => eprintln!("Failed to create pixmap from data"),
+                            None => tracing::error!("Failed to create pixmap from data"),
                         }
                     }
-                    Err(e) => eprintln!("Failed to load image from memory: {}", e),
+                    Err(e) => tracing::error!("Failed to load image from memory: {}", e),
                 }
 
                 // Draw the border around the image

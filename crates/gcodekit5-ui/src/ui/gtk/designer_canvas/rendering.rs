@@ -597,6 +597,8 @@ impl DesignerCanvas {
     }
 
     fn draw_shape_geometry(cr: &gtk4::cairo::Context, shape: &Shape) {
+        cr.new_path();
+
         match shape {
             Shape::RasterImage(raster) => {
                 // Load the image from the data
@@ -821,21 +823,24 @@ impl DesignerCanvas {
                 };
 
                 let _ = cr.save();
-
                 cr.translate(text.x, text.y);
-
                 if text.rotation.abs() > 1e-6 {
                     cr.rotate(text.rotation.to_radians());
                 }
-
                 cr.scale(1.0, -1.0);
 
-                let x_offset = -extents.width() / 2.0;
-                let y_offset = -text.font_size / 2.0 + extents.height();
+                // text_extents devuelve (x_bearing, y_bearing, width, height) en coords
+                // locales Y-down de Cairo. Queremos que el CENTRO del AABB de los glifos
+                // quede en (0,0) local (= text.x, text.y tras el translate + flip).
+                //   AABB local: x ∈ [x_bearing, x_bearing + width]
+                //              y ∈ [y_bearing, y_bearing + height]
+                //   Centro AABB: (x_bearing + width/2, y_bearing + height/2)
+                //   Para moverlo a (0,0), desplazamos por -centro:
+                let x_offset = -(extents.x_bearing() + extents.width() / 2.0);
+                let y_offset = -(extents.y_bearing() + extents.height() / 2.0);
 
                 cr.move_to(x_offset, y_offset);
                 let _ = cr.show_text(&text.text);
-
                 let _ = cr.restore();
             }
 
@@ -1104,6 +1109,21 @@ impl DesignerCanvas {
             ResizeHandle::BottomRight => (orig_x, orig_y + orig_height),
         };
 
+        // AABB originales de los paths seleccionados, capturados del snapshot,
+        // para recolocarlos correctamente tras escalar (ver más abajo).
+        let path_orig_bounds: std::collections::HashMap<u64, (f64, f64, f64, f64)> =
+            if let Some(originals) = self.resize_original_shapes.borrow().as_ref() {
+                originals
+                    .iter()
+                    .filter_map(|(id, shape)| match shape {
+                        Shape::Path(p) => Some((*id, p.bounds())),
+                        _ => None,
+                    })
+                    .collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+
         // Update the shape
         let mut state = self.state.borrow_mut();
 
@@ -1155,6 +1175,15 @@ impl DesignerCanvas {
                 }
                 Shape::Path(path_shape) => {
                     path_shape.scale(sx, sy, anchor);
+
+                    if path_shape.rotation.abs() <= 1e-9 {
+                        if let Some((ox1, oy1, _ox2, _oy2)) = path_orig_bounds.get(&obj.id).copied() {
+                            let expected_x1 = anchor.x + (ox1 - anchor.x) * sx;
+                            let expected_y1 = anchor.y + (oy1 - anchor.y) * sy;
+                            let (px1, py1, _, _) = path_shape.bounds();
+                            path_shape.translate(expected_x1 - px1, expected_y1 - py1);
+                        }
+                    }
                 }
                 Shape::Text(text) => {
                     text.scale(sx, sy, anchor);

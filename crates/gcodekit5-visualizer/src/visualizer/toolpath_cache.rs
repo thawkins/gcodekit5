@@ -44,7 +44,6 @@ impl ToolpathCache {
     }
 
     fn rebuild_paths(&mut self) {
-
         self.cached_path.clear();
         self.cached_rapid_path.clear();
         self.cached_g1_path.clear();

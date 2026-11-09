@@ -284,6 +284,7 @@ pub fn setup_invert_handler(
     });
 }
 
+/*
 /// Setup handler for image dithering combo box
 pub fn setup_dithering_handler(
     combo: &ComboBoxText,
@@ -315,6 +316,7 @@ pub fn setup_dithering_handler(
         }
     });
 }
+
 
 // Handler for halftone_threshold
 pub fn setup_halftone_threshold_handler(
@@ -376,3 +378,4 @@ pub fn setup_halftone_threshold_handler(
         }
     });
 }
+*/

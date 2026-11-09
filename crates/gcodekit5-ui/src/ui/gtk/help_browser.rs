@@ -2,6 +2,7 @@
 //!
 //! Markdown files are loaded from GResources and displayed with inline images.
 
+use crate::t;
 use anyhow::{anyhow, Result};
 use gio::prelude::*;
 use gtk4::gdk_pixbuf::PixbufLoader;
@@ -10,7 +11,6 @@ use gtk4::{
     Align, Application, Box, Button, HeaderBar, Label, Orientation, ScrolledWindow, Stack,
     StackSidebar, TextView, Window, WrapMode,
 };
-use crate::t;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -22,7 +22,6 @@ fn help_topics() -> Vec<(&'static str, String)> {
     vec![
         ("index", t!("🏠 Index")),
         ("settings", t!("🛠️ Preferences")),
-
         ("designer", t!("✏️ Designer")),
         ("visualizer", t!("👁️ Visualizer")),
         ("machine_control", t!("⚙️ Machine Control")),
@@ -32,7 +31,10 @@ fn help_topics() -> Vec<(&'static str, String)> {
         ("tabbed_box_maker", t!("      •📦 Tabbed Box Maker")),
         ("jigsaw_puzzle", t!("      •🧩 Jigsaw Puzzle Generator")),
         ("laser_image_engraver", t!("      •🖼️ Laser Image Engraver")),
-        ("speeds_feeds_calculator", t!("      •🖩 Speed and Feeds Calculator")),
+        (
+            "speeds_feeds_calculator",
+            t!("      •🖩 Speed and Feeds Calculator"),
+        ),
         ("spoilboard_surfacing", t!("      •🔧 Spoilboard Surfacing")),
         ("spoilboard_grid", t!("      •📏 Create Spoilboard Grid")),
         ("gerber", t!("      •📠 Gerber To G-code")),
@@ -50,18 +52,18 @@ fn help_topics() -> Vec<(&'static str, String)> {
 
 fn running_app() -> Result<Application> {
     gio::Application::default()
-    .and_then(|a| a.downcast::<Application>().ok())
-    .ok_or_else(|| anyhow!("No running GtkApplication"))
+        .and_then(|a| a.downcast::<Application>().ok())
+        .ok_or_else(|| anyhow!("No running GtkApplication"))
 }
 
 fn get_current_language() -> String {
     let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-    .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
+        .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
 
     let language = if config_path.exists() {
         gcodekit5_settings::SettingsPersistence::load_from_file(&config_path)
-        .map(|p| p.config().ui.language.clone())
-        .unwrap_or_else(|_| "system".to_string())
+            .map(|p| p.config().ui.language.clone())
+            .unwrap_or_else(|_| "system".to_string())
     } else {
         "system".to_string()
     };
@@ -89,17 +91,18 @@ fn load_topic_markdown(topic: &str) -> Result<String> {
     match gio::resources_lookup_data(&path, gio::ResourceLookupFlags::NONE) {
         Ok(bytes) => {
             let s = std::str::from_utf8(bytes.as_ref())
-            .map_err(|e| anyhow!("Invalid UTF-8 in {}: {}", path, e))?;
+                .map_err(|e| anyhow!("Invalid UTF-8 in {}: {}", path, e))?;
             Ok(s.to_string())
         }
         Err(_) => {
             if preferred_lang != "en" {
                 let fallback_path = topic_resource_path(topic, "en");
-                if let Ok(bytes) = gio::resources_lookup_data(&fallback_path, gio::ResourceLookupFlags::NONE)
+                if let Ok(bytes) =
+                    gio::resources_lookup_data(&fallback_path, gio::ResourceLookupFlags::NONE)
                 {
                     let s = std::str::from_utf8(bytes.as_ref())
-                    .map_err(|e| anyhow!("Invalid UTF-8 in {}: {}", fallback_path, e))?;
-                    tracing::info!("Using English fallback for topic '{}'", topic);
+                        .map_err(|e| anyhow!("Invalid UTF-8 in {}: {}", fallback_path, e))?;
+                    println!("Using English fallback for topic '{}'", topic);
                     return Ok(s.to_string());
                 }
             }
@@ -154,7 +157,6 @@ fn insert_inline_image(
     image_path: &str,
     max_width: i32,
 ) {
-
     // Normalizar ruta y asegurar extensión .png
     let resource_path = if image_path.starts_with("resource://") {
         let path = image_path.strip_prefix("resource://").unwrap_or(image_path);
@@ -204,7 +206,11 @@ fn insert_inline_image(
                     1.0
                 };
                 let new_height = (pixbuf.height() as f64 * scale) as i32;
-                let scaled = pixbuf.scale_simple(max_width, new_height, gtk4::gdk_pixbuf::InterpType::Bilinear);
+                let scaled = pixbuf.scale_simple(
+                    max_width,
+                    new_height,
+                    gtk4::gdk_pixbuf::InterpType::Bilinear,
+                );
 
                 if let Some(pixbuf) = scaled {
                     // Crear la imagen
@@ -241,7 +247,7 @@ fn insert_inline_image(
 fn create_link_tag(buffer: &gtk4::TextBuffer, topic_id: &str) -> gtk4::TextTag {
     let tag_name = format!("link-{}", topic_id);
     let tag = buffer.create_tag(Some(&tag_name), &[]).unwrap();
-    
+
     // Aplicar color azul y subrayado
     let color = gtk4::gdk::RGBA::new(0.0, 0.4, 0.8, 1.0);
     tag.set_foreground_rgba(Some(&color));
@@ -265,7 +271,7 @@ fn render_markdown(view: &TextView, md: &str, stack: &Stack) {
     let h3_tag = buffer.create_tag(Some("h3"), &[]).unwrap();
     h3_tag.set_weight(700); // Bold
     h3_tag.set_scale(1.2);
-    
+
     // Conectar eventos de mouse para links
     setup_link_navigation(view, stack);
 
@@ -367,7 +373,12 @@ fn render_markdown(view: &TextView, md: &str, stack: &Stack) {
 }
 
 // Procesar una línea que contiene links con GtkTextTag
-fn process_line_with_links(buffer: &gtk4::TextBuffer, _view: &TextView, line: &str, _stack: &Stack) {
+fn process_line_with_links(
+    buffer: &gtk4::TextBuffer,
+    _view: &TextView,
+    line: &str,
+    _stack: &Stack,
+) {
     let mut pos = 0;
 
     while let Some(bracket_start) = line[pos..].find('[') {
@@ -382,8 +393,9 @@ fn process_line_with_links(buffer: &gtk4::TextBuffer, _view: &TextView, line: &s
             let abs_bracket_end = abs_bracket + 1 + bracket_end;
             let link_text = &line[abs_bracket + 1..abs_bracket_end];
 
-            if abs_bracket_end + 1 < line.len() && &line[abs_bracket_end + 1..abs_bracket_end + 2] == "(" {
-
+            if abs_bracket_end + 1 < line.len()
+                && &line[abs_bracket_end + 1..abs_bracket_end + 2] == "("
+            {
                 if let Some(paren_end) = line[abs_bracket_end + 2..].find(')') {
                     let abs_paren_end = abs_bracket_end + 2 + paren_end;
 
@@ -420,16 +432,17 @@ fn process_line_with_links(buffer: &gtk4::TextBuffer, _view: &TextView, line: &s
 fn setup_link_navigation(view: &TextView, stack: &Stack) {
     let stack_clone = stack.clone();
     let view_clone = view.clone();
-    
+
     // Crear gesture para detectar clics
     let gesture = gtk4::GestureClick::new();
     gesture.set_button(1); // Click izquierdo
-    
+
     gesture.connect_pressed(move |gesture, _n_press, x, y| {
         let view = &view_clone;
-        
+
         // Obtener la posición en el buffer desde las coordenadas
-        let (bx, by) = view.window_to_buffer_coords(gtk4::TextWindowType::Widget, x as i32, y as i32);
+        let (bx, by) =
+            view.window_to_buffer_coords(gtk4::TextWindowType::Widget, x as i32, y as i32);
         if let Some(iter) = view.iter_at_location(bx, by) {
             // Obtener todos los tags en esta posición
             let tags = iter.tags();
@@ -448,7 +461,7 @@ fn setup_link_navigation(view: &TextView, stack: &Stack) {
         }
         gesture.set_state(gtk4::EventSequenceState::Denied);
     });
-    
+
     view.add_controller(gesture);
 }
 
@@ -504,11 +517,8 @@ fn create_help_page(topic_id: &str, _title: &str, stack: &Stack) -> (String, Scr
         let mut is_over_link = false;
 
         // Convertir píxeles de la ventana a coordenadas internas del texto
-        let (buffer_x, buffer_y) = view_clone.window_to_buffer_coords(
-            gtk4::TextWindowType::Widget,
-            x as i32,
-            y as i32,
-        );
+        let (buffer_x, buffer_y) =
+            view_clone.window_to_buffer_coords(gtk4::TextWindowType::Widget, x as i32, y as i32);
 
         // Obtener la posición del texto bajo el puntero
         if let Some(iter) = view_clone.iter_at_location(buffer_x, buffer_y) {
@@ -543,15 +553,15 @@ fn create_help_page(topic_id: &str, _title: &str, stack: &Stack) -> (String, Scr
         }
         Err(e) => {
             text_view
-            .buffer()
-            .set_text(&format!("Error loading help topic '{}':\n{}", topic_id, e));
+                .buffer()
+                .set_text(&format!("Error loading help topic '{}':\n{}", topic_id, e));
         }
     }
 
     let scroller = ScrolledWindow::builder()
-    .child(&text_view)
-    .hscrollbar_policy(gtk4::PolicyType::Never)
-    .build();
+        .child(&text_view)
+        .hscrollbar_policy(gtk4::PolicyType::Never)
+        .build();
 
     (topic_id.to_string(), scroller)
 }
@@ -576,11 +586,11 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
     };
 
     let window = Window::builder()
-    .application(&app)
-    .title(&t!("GCodeKit5 Help"))
-    .default_width(1000)
-    .default_height(700)
-    .build();
+        .application(&app)
+        .title(&t!("GCodeKit5 Help"))
+        .default_width(1000)
+        .default_height(700)
+        .build();
 
     if let Some(parent) = parent {
         window.set_transient_for(Some(parent));
@@ -760,7 +770,10 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
                 // Comprobamos si la página nueva coincide con la que tocaría por historial
                 // (Si coincide, significa que el cambio viene de los botones, no del usuario pulsando un link)
                 let es_boton_atras = hist.back_stack.last().map_or(false, |p| p == &new_page_str);
-                let es_boton_adelante = hist.forward_stack.last().map_or(false, |p| p == &new_page_str);
+                let es_boton_adelante = hist
+                    .forward_stack
+                    .last()
+                    .map_or(false, |p| p == &new_page_str);
 
                 if !es_boton_atras && !es_boton_adelante {
                     // El usuario ha pinchado un link o el sidebar: guardamos historial manual
@@ -776,8 +789,6 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
             }
         }
     });
-
-
 
     // Seleccionar página inicial
     if let Some(child) = stack.child_by_name(initial_topic) {
@@ -813,7 +824,7 @@ pub fn make_help_button(topic: &'static str) -> Button {
 fn clean_html_tags(text: &str) -> String {
     let mut result = String::new();
     let mut in_tag = false;
-    let mut in_ul = false;  // Quita el underscore
+    let mut in_ul = false; // Quita el underscore
     let mut skip_content = false;
     let mut chars = text.chars().peekable();
 
@@ -878,10 +889,10 @@ fn clean_html_tags(text: &str) -> String {
 
     // Limpiar espacios múltiples y líneas vacías excesivas
     let cleaned = result
-    .lines()
-    .filter(|line| !line.trim().is_empty())
-    .collect::<Vec<_>>()
-    .join("\n");
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     cleaned
 }
@@ -891,19 +902,20 @@ fn process_line_for_display(line: &str) -> String {
     let line = line.trim();
 
     // Saltar líneas que son parte de una tabla
-    if line.contains("<table") || line.contains("</table>") ||
-        line.contains("<tr") || line.contains("</tr>") ||
-        line.contains("<td") || line.contains("</td>") {
-            return String::new();
-        }
-        // Si no contiene HTML, devolver el texto limpio de links
-        if !line.contains('<') {
-            return strip_markdown_links(line);
-        }
+    if line.contains("<table")
+        || line.contains("</table>")
+        || line.contains("<tr")
+        || line.contains("</tr>")
+        || line.contains("<td")
+        || line.contains("</td>")
+    {
+        return String::new();
+    }
+    // Si no contiene HTML, devolver el texto limpio de links
+    if !line.contains('<') {
+        return strip_markdown_links(line);
+    }
 
-        // Limpiar HTML y convertirlo a texto
-        clean_html_tags(line)
+    // Limpiar HTML y convertirlo a texto
+    clean_html_tags(line)
 }
-
-
-

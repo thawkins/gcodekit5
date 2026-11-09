@@ -3,6 +3,7 @@
 //! GTK4 text editor widget for G-code files with syntax highlighting,
 //! line numbers, and integration with the editor backend bridge.
 
+use crate::t;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
 use gcodekit5_settings::controller::SettingsController;
@@ -11,6 +12,7 @@ use gtk4::prelude::*;
 use gtk4::{
     Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ResponseType, ScrolledWindow,
 };
+use libadwaita::StyleManager;
 use sourceview5::prelude::*;
 use sourceview5::{
     Buffer, LanguageManager, SearchContext, SearchSettings, StyleSchemeManager, View,
@@ -21,8 +23,6 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 use tracing::error;
-use crate::t;
-use libadwaita::StyleManager;
 
 pub struct GcodeEditor {
     pub widget: Overlay,
@@ -37,7 +37,10 @@ pub struct GcodeEditor {
 }
 
 impl GcodeEditor {
-    pub fn new(status_bar: Option<StatusBar>, settings_controller: Option<Rc<SettingsController>>) -> Self {
+    pub fn new(
+        status_bar: Option<StatusBar>,
+        settings_controller: Option<Rc<SettingsController>>,
+    ) -> Self {
         let buffer = Buffer::new(None);
         let view = View::with_buffer(&buffer);
 
@@ -209,7 +212,7 @@ impl GcodeEditor {
             .build();
         let replace_all_btn = Button::builder()
             .icon_name("mail-send-receive-symbolic")
-             .tooltip_text(t!("Replace All"))
+            .tooltip_text(t!("Replace All"))
             .build();
 
         replace_row.append(&replace_entry);
@@ -635,8 +638,15 @@ impl GcodeEditor {
         all_filter.add_pattern("*");
         dialog.add_filter(&all_filter);
 
+        // Use saved last working directory if available
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
+
         let buffer = self.buffer.clone();
         let current_file = self.current_file.clone();
+        let settings_controller = self.settings_controller.clone();
 
         dialog.connect_response(move |dialog, response| {
             if response == ResponseType::Accept {
@@ -645,17 +655,39 @@ impl GcodeEditor {
                         match fs::read_to_string(&path) {
                             Ok(content) => {
                                 buffer.set_text(&content);
-                                *current_file.borrow_mut() = Some(path);
+                                *current_file.borrow_mut() = Some(path.clone());
                                 // Move cursor to start
                                 let start_iter = buffer.start_iter();
                                 buffer.place_cursor(&start_iter);
+                                // Save last-used directory to settings so other dialogs default to it
+                                if let Some(controller) = settings_controller.as_ref() {
+                                    if let Ok(mut persistence) =
+                                        controller.persistence.try_borrow_mut()
+                                    {
+                                        persistence.config_mut().file_processing.output_directory =
+                                            path.clone();
+
+                                        // Persist config to disk
+                                        let config_path =
+                                            gcodekit5_settings::SettingsManager::config_file_path()
+                                                .unwrap_or_else(|_| {
+                                                    std::path::PathBuf::from("config.json")
+                                                });
+                                        let _ = persistence.save_to_file(&config_path);
+                                    }
+                                }
                             }
                             Err(e) => {
                                 error!("Error reading file {}: {}", path.display(), e);
                                 let parent = super::file_dialog::parent_window(dialog);
                                 super::file_dialog::show_error_dialog(
                                     &t!("Error Reading File"),
-                                    &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
+                                    &format!(
+                                        "{} '{}'.\n\n{}",
+                                        t!("Could not open"),
+                                        path.display(),
+                                        e
+                                    ),
                                     parent.as_ref(),
                                 );
                             }
@@ -694,7 +726,10 @@ impl GcodeEditor {
     pub fn save_as_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
         let dialog = super::file_dialog::save_dialog(&t!("Save G-Code File"), parent.as_ref());
-        super::file_dialog::set_last_working_directory(&dialog, self.settings_controller.as_deref());
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -729,7 +764,12 @@ impl GcodeEditor {
                                 let parent = super::file_dialog::parent_window(dialog);
                                 super::file_dialog::show_error_dialog(
                                     &t!("Error Saving File"),
-                                    &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
+                                    &format!(
+                                        "{} '{}'.\n\n{}",
+                                        t!("Could not save"),
+                                        path.display(),
+                                        e
+                                    ),
                                     parent.as_ref(),
                                 );
                             }

@@ -1,3 +1,4 @@
+//! gcodekit5-ui/src/ui/gtk/device_manager/tabs.rs
 //! Tab creation methods for the device manager window.
 
 use super::*;
@@ -54,12 +55,16 @@ impl DeviceManagerWindow {
         let ctrl_label = Label::new(Some("Controller:"));
         ctrl_label.set_halign(Align::Start);
         let edit_controller_type = ComboBoxText::new();
+
         edit_controller_type.append(Some("GRBL"), "GRBL");
-        edit_controller_type.append(Some("TinyG"), "TinyG");
-        edit_controller_type.append(Some("g2core"), "g2core");
-        edit_controller_type.append(Some("Smoothieware"), "Smoothieware");
-        edit_controller_type.append(Some("FluidNC"), "FluidNC");
-        edit_controller_type.append(Some("Marlin"), "Marlin");
+        edit_controller_type.append(Some("Repetier"), "Repetier");
+        edit_controller_type.append(Some("FluidNC"), "FluidNC (supported via GRBL)");
+        edit_controller_type.append(Some("grblHAL"), "grblHAL (supported via GRBL)");
+        edit_controller_type.append(Some("TinyG"), "TinyG (not supported)");
+        edit_controller_type.append(Some("g2core"), "g2core (not supported)");
+        edit_controller_type.append(Some("Smoothieware"), "Smoothieware (not supported)");
+        edit_controller_type.append(Some("Marlin"), "Marlin (not supported)");
+
         edit_controller_type.set_active_id(Some("GRBL"));
         grid.attach(&ctrl_label, 0, row, 1, 1);
         grid.attach(&edit_controller_type, 1, row, 1, 1);

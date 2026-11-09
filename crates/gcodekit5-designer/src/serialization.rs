@@ -501,39 +501,49 @@ impl DesignFile {
         };
 
         // ========== EXTRAER PARÁMETROS LÁSER ==========
-        let (feed_rate, travel_rate, min_power, max_power, ppi, bidirectional, invert, scan_direction, dithering, halftone_threshold) =
-            if let Shape::RasterImage(raster) = &obj.shape {
-                (
-                    raster.feed_rate,
-                    raster.travel_rate,
-                    raster.min_power,
-                    raster.max_power,
-                    raster.ppi,
-                    raster.bidirectional,
-                    raster.invert,
-                    raster.scan_direction.clone(),
-                    raster.dithering.clone(),
-                    raster.halftone_threshold,
-                )
-            } else {
-                (
-                    default_feed_rate(),
-                    default_travel_rate(),
-                    default_min_power(),
-                    default_max_power(),
-                    default_ppi(),
-                    default_bidirectional(),
-                    default_invert(),
-                    default_scan_direction(),
-                    default_dithering(),
-                    default_halftone_threshold(),
-                )
-            };
+        let (
+            feed_rate,
+            travel_rate,
+            min_power,
+            max_power,
+            ppi,
+            bidirectional,
+            invert,
+            scan_direction,
+            dithering,
+            halftone_threshold,
+        ) = if let Shape::RasterImage(raster) = &obj.shape {
+            (
+                raster.feed_rate,
+                raster.travel_rate,
+                raster.min_power,
+                raster.max_power,
+                raster.ppi,
+                raster.bidirectional,
+                raster.invert,
+                raster.scan_direction.clone(),
+                raster.dithering.clone(),
+                raster.halftone_threshold,
+            )
+        } else {
+            (
+                default_feed_rate(),
+                default_travel_rate(),
+                default_min_power(),
+                default_max_power(),
+                default_ppi(),
+                default_bidirectional(),
+                default_invert(),
+                default_scan_direction(),
+                default_dithering(),
+                default_halftone_threshold(),
+            )
+        };
 
         let right_angle_corner = if let Shape::Triangle(t) = &obj.shape {
             t.right_angle_corner
         } else {
-                0
+            0
         };
 
         let laser_params = obj.laser_params;
@@ -650,7 +660,7 @@ impl DesignFile {
                     center,
                     data.width,
                     data.height,
-                    data.right_angle_corner
+                    data.right_angle_corner,
                 );
                 triangle.rotation = data.rotation;
                 triangle.laser_params = laser_params;
@@ -679,7 +689,8 @@ impl DesignFile {
                 Shape::Path(path)
             }
             "text" => {
-                let mut s = TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
+                let mut s =
+                    TextShape::new(data.text_content.clone(), data.x, data.y, data.font_size);
                 if !data.font_family.is_empty() {
                     s.font_family = data.font_family.clone();
                 }

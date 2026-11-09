@@ -100,4 +100,3 @@ impl StockMaterial {
             && z <= self.origin.2 + self.thickness
     }
 }
-

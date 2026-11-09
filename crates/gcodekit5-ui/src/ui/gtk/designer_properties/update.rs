@@ -3,6 +3,77 @@
 use super::*;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::model::ParametricPathSource;
+/// Resumen de los parámetros láser de N shapes seleccionados.
+/// Cada campo es `Some(v)` si todos coinciden en `v`, `None` si difieren.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LaserSummary {
+    /// true si TODOS los seleccionados tienen `use_global = true`.
+    pub all_use_global: bool,
+    /// true si ALGUNO tiene `use_global = false` (override).
+    pub any_override: bool,
+    /// Valores resueltos (aplicando el global a los que lo usan).
+    pub feed_rate: Option<f64>,
+    pub power_percent: Option<f64>,
+    pub passes: Option<u32>,
+}
+
+pub(crate) enum LaserSelection {
+    Single(gcodekit5_designer::model::LaserParams),
+    Summary(LaserSummary),
+}
+
+impl LaserSummary {
+    pub fn from_slice(
+        params: &[gcodekit5_designer::model::LaserParams],
+        global: &gcodekit5_designer::designer_state::ToolSettings,
+    ) -> Self {
+        let resolved: Vec<(bool, f64, f64, u32)> = params
+        .iter()
+        .map(|p| {
+            let (feed, power, passes) = if p.use_global {
+                (
+                    global.feed_rate,
+                 (global.spindle_speed as f64) / 10.0,
+                 (global.step_down as u32).max(1),
+                )
+            } else {
+                (p.feed_rate, p.power_percent, p.passes)
+            };
+            (p.use_global, feed, power, passes)
+        })
+        .collect();
+
+        let all_use_global = resolved.iter().all(|(u, _, _, _)| *u);
+        let any_override = resolved.iter().any(|(u, _, _, _)| !*u);
+
+        let common_f64 = |f: &dyn Fn(&(bool, f64, f64, u32)) -> f64| -> Option<f64> {
+            let mut it = resolved.iter();
+            let first = f(it.next()?);
+            if it.all(|x| (f(x) - first).abs() < 1e-9) {
+                Some(first)
+            } else {
+                None
+            }
+        };
+        let common_u32 = |f: &dyn Fn(&(bool, f64, f64, u32)) -> u32| -> Option<u32> {
+            let mut it = resolved.iter();
+            let first = f(it.next()?);
+            if it.all(|x| f(x) == first) {
+                Some(first)
+            } else {
+                None
+            }
+        };
+
+        Self {
+            all_use_global,
+            any_override,
+            feed_rate: common_f64(&|x| x.1),
+            power_percent: common_f64(&|x| x.2),
+            passes: common_u32(&|x| x.3),
+        }
+    }
+}
 
 impl PropertiesPanel {
     pub(crate) fn set_entry_text_if_changed(
@@ -46,15 +117,14 @@ impl PropertiesPanel {
         self.chamfer_unit_label.set_text(unit_label);
 
         // Extract data first to avoid holding the borrow while updating widgets
-        // Extract data first to avoid holding the borrow while updating widgets
         let selection_data = {
             let designer_state = self.state.borrow();
 
             let selected: Vec<_> = designer_state
-                .canvas
-                .shapes()
-                .filter(|s| s.selected)
-                .collect();
+            .canvas
+            .shapes()
+            .filter(|s| s.selected)
+            .collect();
 
             let data = if selected.is_empty() {
                 None
@@ -79,41 +149,71 @@ impl PropertiesPanel {
                 Some((
                     vec![obj.id],
                     Some(obj.shape.clone()),
-                    obj.use_custom_values,
-                    obj.operation_type,
-                    obj.start_depth,
-                    obj.step_down,
-                    obj.step_in,
-                    obj.ramp_angle,
-                    obj.pocket_strategy,
-                    obj.raster_fill_ratio,
-                    obj.offset,
-                    obj.fillet,
-                    obj.chamfer,
-                    any_not_text,
-                    obj.lock_aspect_ratio,
-                    laser_params_opt,
+                      obj.use_custom_values,
+                      obj.operation_type,
+                      obj.start_depth,
+                      obj.step_down,
+                      obj.step_in,
+                      obj.ramp_angle,
+                      obj.pocket_strategy,
+                      obj.raster_fill_ratio,
+                      obj.offset,
+                      obj.fillet,
+                      obj.chamfer,
+                      any_not_text,
+                      obj.lock_aspect_ratio,
+                      laser_params_opt.map(LaserSelection::Single),
                 ))
             } else {
                 let obj = &selected[0];
                 let any_not_text = selected.iter().any(|s| !matches!(s.shape, Shape::Text(_)));
+
+                // --- NUEVO: calcular resumen láser ---
+                let any_raster = selected
+                .iter()
+                .any(|s| matches!(s.shape, Shape::RasterImage(_)));
+
+                let all_laser: Vec<gcodekit5_designer::model::LaserParams> = selected
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    Shape::Rectangle(r) => Some(r.laser_params),
+                            Shape::Circle(c) => Some(c.laser_params),
+                            Shape::Ellipse(e) => Some(e.laser_params),
+                            Shape::Line(l) => Some(l.laser_params),
+                            Shape::Path(p) => Some(p.laser_params),
+                            Shape::Polygon(p) => Some(p.laser_params),
+                            Shape::Triangle(t) => Some(t.laser_params),
+                            Shape::Text(t) => Some(t.laser_params),
+                            Shape::Gear(g) => Some(g.laser_params),
+                            Shape::Sprocket(s) => Some(s.laser_params),
+                            Shape::RasterImage(_) => None,
+                })
+                .collect();
+
+                let laser_summary = if all_laser.is_empty() || any_raster {
+                    None
+                } else {
+                    let global = self.state.borrow().tool_settings.clone();
+                    Some(LaserSummary::from_slice(&all_laser, &global))
+                };
+
                 Some((
                     selected.iter().map(|s| s.id).collect(),
-                    None,
-                    obj.use_custom_values,
-                    obj.operation_type,
-                    obj.start_depth,
-                    obj.step_down,
-                    obj.step_in,
-                    obj.ramp_angle,
-                    obj.pocket_strategy,
-                    obj.raster_fill_ratio,
-                    obj.offset,
-                    obj.fillet,
-                    obj.chamfer,
-                    any_not_text,
-                    false,
-                    None,
+                      None,
+                      obj.use_custom_values,
+                      obj.operation_type,
+                      obj.start_depth,
+                      obj.step_down,
+                      obj.step_in,
+                      obj.ramp_angle,
+                      obj.pocket_strategy,
+                      obj.raster_fill_ratio,
+                      obj.offset,
+                      obj.fillet,
+                      obj.chamfer,
+                      any_not_text,
+                      false,
+                      laser_summary.map(LaserSelection::Summary),
                 ))
             };
             data
@@ -160,99 +260,131 @@ impl PropertiesPanel {
             // Set flag to prevent feedback loop during updates
             *self.updating.borrow_mut() = true;
 
-            if let Some(params) = laser_params_opt {
-                // Leer en tiempo real el estado global de la máquina
-                let global_settings = self.state.borrow().tool_settings.clone();
+            match laser_params_opt {
+                Some(LaserSelection::Single(params)) => {
+                    // Leer en tiempo real el estado global de la máquina
+                    let global_settings = self.state.borrow().tool_settings.clone();
 
-                // Calcular los valores a mostrar
-                let display_feed = if params.use_global {
-                    global_settings.feed_rate
-                } else {
-                    params.feed_rate
-                };
+                    // Calcular los valores a mostrar
+                    let display_feed = if params.use_global {
+                        global_settings.feed_rate
+                    } else {
+                        params.feed_rate
+                    };
 
-                let display_power = if params.use_global {
-                    (global_settings.spindle_speed as f64) / 10.0
-                } else {
-                    params.power_percent
-                };
+                    let display_power = if params.use_global {
+                        (global_settings.spindle_speed as f64) / 10.0
+                    } else {
+                        params.power_percent
+                    };
 
-                let display_passes = if params.use_global {
-                    (global_settings.step_down as u32).max(1)
-                } else {
-                    params.passes
-                };
+                    let display_passes = if params.use_global {
+                        (global_settings.step_down as u32).max(1)
+                    } else {
+                        params.passes
+                    };
 
-                // Solo actualizar si el valor ha cambiado y NO hay foco
-                if !*self.has_focus.borrow() {
-                    self.laser_feed_rate_entry.set_text(&display_feed.to_string());
+                    // Solo actualizar si el valor ha cambiado y NO hay foco
+                    if !*self.has_focus.borrow() {
+                        self.laser_feed_rate_entry
+                        .set_text(&display_feed.to_string());
+                        self.laser_power_entry.set_text(&display_power.to_string());
+                        self.laser_passes_entry
+                        .set_text(&display_passes.to_string());
+                        self.laser_use_global_check.set_active(params.use_global);
+
+                        self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                        self.laser_power_entry.set_sensitive(!params.use_global);
+                        self.laser_passes_entry.set_sensitive(!params.use_global);
+                    }
+
+                    self.laser_feed_rate_entry
+                    .set_text(&display_feed.to_string());
                     self.laser_power_entry.set_text(&display_power.to_string());
-                    self.laser_passes_entry.set_text(&display_passes.to_string());
+                    self.laser_passes_entry
+                    .set_text(&display_passes.to_string());
                     self.laser_use_global_check.set_active(params.use_global);
 
+                    // Deshabilitar campos si es global
+                    self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                    self.laser_power_entry.set_sensitive(!params.use_global);
+                    self.laser_passes_entry.set_sensitive(!params.use_global);
+
+                    let display_passes = if params.use_global {
+                        (global_settings.step_down as u32).max(1)
+                    } else {
+                        params.passes
+                    };
+
+                    // Asignar feed_rate a la caja de texto
+                    if let Ok(current) = self.laser_feed_rate_entry.text().parse::<f64>() {
+                        if (current - display_feed).abs() > 1e-6 {
+                            self.laser_feed_rate_entry
+                            .set_text(&display_feed.to_string());
+                        }
+                    } else {
+                        self.laser_feed_rate_entry
+                        .set_text(&display_feed.to_string());
+                    }
+
+                    // Asignar power a la caja de texto
+                    if let Ok(current) = self.laser_power_entry.text().parse::<f64>() {
+                        if (current - display_power).abs() > 1e-6 {
+                            self.laser_power_entry.set_text(&display_power.to_string());
+                        }
+                    } else {
+                        self.laser_power_entry.set_text(&display_power.to_string());
+                    }
+
+                    // Asignar passes a la caja de texto
+                    if let Ok(current) = self.laser_passes_entry.text().parse::<u32>() {
+                        if current != display_passes {
+                            self.laser_passes_entry
+                            .set_text(&display_passes.to_string());
+                        }
+                    } else {
+                        self.laser_passes_entry
+                        .set_text(&display_passes.to_string());
+                    }
+
+                    // Forzar al Checkbox visual a ponerse en su sitio
+                    if self.laser_use_global_check.is_active() != params.use_global {
+                        self.laser_use_global_check.set_active(params.use_global);
+                    }
+
+                    // Deshabilitar los campos si es global
                     self.laser_feed_rate_entry.set_sensitive(!params.use_global);
                     self.laser_power_entry.set_sensitive(!params.use_global);
                     self.laser_passes_entry.set_sensitive(!params.use_global);
                 }
+                Some(LaserSelection::Summary(sum)) => {
+                    let enabled = sum.any_override;
+                    self.laser_feed_rate_entry.set_sensitive(enabled);
+                    self.laser_power_entry.set_sensitive(enabled);
+                    self.laser_passes_entry.set_sensitive(enabled);
 
-                self.laser_feed_rate_entry.set_text(&display_feed.to_string());
-                self.laser_power_entry.set_text(&display_power.to_string());
-                self.laser_passes_entry.set_text(&display_passes.to_string());
-                self.laser_use_global_check.set_active(params.use_global);
+                    self.laser_use_global_check.set_active(sum.all_use_global);
 
-                // Deshabilitar campos si es global
-                self.laser_feed_rate_entry.set_sensitive(!params.use_global);
-                self.laser_power_entry.set_sensitive(!params.use_global);
-                self.laser_passes_entry.set_sensitive(!params.use_global);
-
-                let display_passes = if params.use_global {
-                    (global_settings.step_down as u32).max(1)
-                } else {
-                    params.passes
-                };
-
-                // Asignar feed_rate a la caja de texto
-                if let Ok(current) = self.laser_feed_rate_entry.text().parse::<f64>() {
-                    if (current - display_feed).abs() > 1e-6 {
-                        self.laser_feed_rate_entry.set_text(&display_feed.to_string());
+                    match sum.feed_rate {
+                        Some(v) => self.laser_feed_rate_entry.set_text(&v.to_string()),
+                        None => self.laser_feed_rate_entry.set_text("---"),
                     }
-                } else {
-                    self.laser_feed_rate_entry.set_text(&display_feed.to_string());
-                }
-
-                // Asignar power a la caja de texto
-                if let Ok(current) = self.laser_power_entry.text().parse::<f64>() {
-                    if (current - display_power).abs() > 1e-6 {
-                        self.laser_power_entry.set_text(&display_power.to_string());
+                    match sum.power_percent {
+                        Some(v) => self.laser_power_entry.set_text(&v.to_string()),
+                        None => self.laser_power_entry.set_text("---"),
                     }
-                } else {
-                    self.laser_power_entry.set_text(&display_power.to_string());
-                }
-
-                // Asignar passes a la caja de texto
-                if let Ok(current) = self.laser_passes_entry.text().parse::<u32>() {
-                    if current != display_passes {
-                        self.laser_passes_entry.set_text(&display_passes.to_string());
+                    match sum.passes {
+                        Some(v) => self.laser_passes_entry.set_text(&v.to_string()),
+                        None => self.laser_passes_entry.set_text("---"),
                     }
-                } else {
-                    self.laser_passes_entry.set_text(&display_passes.to_string());
                 }
-
-                // Forzar al Checkbox visual a ponerse en su sitio
-                if self.laser_use_global_check.is_active() != params.use_global {
-                    self.laser_use_global_check.set_active(params.use_global);
-                }
-
-                // Deshabilitar los campos si es global
-                self.laser_feed_rate_entry.set_sensitive(!params.use_global);
-                self.laser_power_entry.set_sensitive(!params.use_global);
-                self.laser_passes_entry.set_sensitive(!params.use_global);
+                None => {}
             }
 
             // Update header with shape ID(s)
             if ids.len() == 1 {
                 self.header
-                    .set_text(&format!("{} [{}]", t!("Properties"), ids[0]));
+                .set_text(&format!("{} [{}]", t!("Properties"), ids[0]));
             } else {
                 self.header.set_text(&format!(
                     "{} [{} {}]",
@@ -280,7 +412,7 @@ impl PropertiesPanel {
 
             // El panel de propiedades láser solo se muestra en modo láser
             self.laser_override_frame
-                .set_visible(is_laser && !is_raster);
+            .set_visible(is_laser && !is_raster);
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
@@ -321,24 +453,24 @@ impl PropertiesPanel {
                         self.image_engraving_frame.set_visible(true);
 
                         self.image_feed_rate_entry
-                            .set_text(&r.feed_rate.to_string());
+                        .set_text(&r.feed_rate.to_string());
                         self.image_travel_rate_entry
-                            .set_text(&r.travel_rate.to_string());
+                        .set_text(&r.travel_rate.to_string());
                         self.image_min_power_entry
-                            .set_text(&r.min_power.to_string());
+                        .set_text(&r.min_power.to_string());
                         self.image_max_power_entry
-                            .set_text(&r.max_power.to_string());
+                        .set_text(&r.max_power.to_string());
                         self.image_ppi_entry.set_text(&r.ppi.to_string());
                         self.image_scan_direction_combo
-                            .set_active_id(Some(&r.scan_direction));
+                        .set_active_id(Some(&r.scan_direction));
                         self.image_bidirectional_check.set_active(r.bidirectional);
                         self.image_invert_check.set_active(r.invert);
-                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
+                        //                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
                         //Force lock aspect ratio and disable the button so it cannot be changed
-                        if !*self.has_focus.borrow() {
-                            self.image_halftone_threshold_entry
-                                .set_text(&r.halftone_threshold.to_string());
-                        }
+                        //                        if !*self.has_focus.borrow() {
+                        //                            self.image_halftone_threshold_entry
+                        //                                .set_text(&r.halftone_threshold.to_string());
+                        //                        }
                         self.lock_aspect_ratio.set_active(true);
                         self.lock_aspect_ratio.set_sensitive(false);
                         // No rotation
@@ -474,13 +606,13 @@ impl PropertiesPanel {
                         self.path_frame.set_visible(false);
                         self.text_entry.set_text(&text_shape.text);
                         self.font_size_entry
-                            .set_text(&format_font_points(text_shape.font_size));
+                        .set_text(&format_font_points(text_shape.font_size));
                         self.font_bold_check.set_active(text_shape.bold);
                         self.font_italic_check.set_active(text_shape.italic);
 
                         // Set font family in dropdown
                         let Some(model) =
-                            self.font_family_combo.model().and_downcast::<StringList>()
+                        self.font_family_combo.model().and_downcast::<StringList>()
                         else {
                             return;
                         };
@@ -563,7 +695,7 @@ impl PropertiesPanel {
                         self.gear_teeth_entry.set_text(&g.teeth.to_string());
                         // Ahora pressure_angle_deg ya está en grados
                         self.gear_pressure_angle_entry
-                            .set_text(&format!("{:.1}", g.pressure_angle_deg));
+                        .set_text(&format!("{:.1}", g.pressure_angle_deg));
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false);
 
@@ -593,10 +725,10 @@ impl PropertiesPanel {
                         self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.sprocket_pitch_entry
-                            .set_text(&format!("{:.2}", s.pitch));
+                        .set_text(&format!("{:.2}", s.pitch));
                         self.sprocket_teeth_entry.set_text(&s.teeth.to_string());
                         self.sprocket_roller_diameter_entry
-                            .set_text(&format!("{:.2}", s.roller_diameter));
+                        .set_text(&format!("{:.2}", s.roller_diameter));
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false);
 
@@ -650,18 +782,19 @@ impl PropertiesPanel {
                             }) => Some((*pitch, *teeth, *belt_width, *hole_radius)),
                             _ => None,
                         };
-                        self.timing_pulley_frame.set_visible(timing_params.is_some());
+                        self.timing_pulley_frame
+                        .set_visible(timing_params.is_some());
                         self.path_frame.set_visible(true);
                         self.path_closed_check.set_active(p.closed);
 
                         if let Some((pitch, teeth, belt_width, hole_radius)) = timing_params {
                             self.timing_pulley_pitch_entry
-                                .set_text(&format!("{:.2}", pitch));
+                            .set_text(&format!("{:.2}", pitch));
                             self.timing_pulley_teeth_entry.set_text(&teeth.to_string());
                             self.timing_pulley_belt_width_entry
-                                .set_text(&format!("{:.2}", belt_width));
+                            .set_text(&format!("{:.2}", belt_width));
                             self.timing_pulley_hole_radius_entry
-                                .set_text(&format!("{:.2}", hole_radius));
+                            .set_text(&format!("{:.2}", hole_radius));
                         }
 
                         // No edit X Y
@@ -720,7 +853,7 @@ impl PropertiesPanel {
                             system,
                         );
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", tri.rotation));
+                        .set_text(&format!("{:.1}", tri.rotation));
 
                         // --- Laser Parameters
                         self.set_entry_text_if_changed(
@@ -761,7 +894,7 @@ impl PropertiesPanel {
                             system,
                         );
                         self.rotation_entry
-                            .set_text(&format!("{:.1}", line.rotation));
+                        .set_text(&format!("{:.1}", line.rotation));
                         self.rotation_entry.set_sensitive(true);
 
                         // Laser Parameters
@@ -795,8 +928,6 @@ impl PropertiesPanel {
                 self.timing_pulley_frame.set_visible(false);
                 self.path_frame.set_visible(false);
                 self.image_engraving_frame.set_visible(false);
-                self.laser_override_frame.set_visible(false);
-                self.laser_override_frame.set_visible(false);
 
                 // Calculate bounding box of all selected shapes
                 let designer_state = self.state.borrow();
@@ -836,16 +967,16 @@ impl PropertiesPanel {
             self.ramp_angle_entry.set_sensitive(cam_entries_enabled);
 
             self.op_type_combo
-                .set_selected(if op_type == OperationType::Pocket {
-                    1
-                } else {
-                    0
-                });
+            .set_selected(if op_type == OperationType::Pocket {
+                1
+            } else {
+                0
+            });
 
             self.set_entry_text_if_changed(&self.step_down_entry, step_down, system);
             self.set_entry_text_if_changed(&self.step_in_entry, step_in, system);
             self.ramp_angle_entry
-                .set_text(&format!("{:.1}", ramp_angle));
+            .set_text(&format!("{:.1}", ramp_angle));
 
             let strategy_index = match strategy {
                 PocketStrategy::Raster { .. } => 0,
@@ -854,20 +985,23 @@ impl PropertiesPanel {
             };
             self.strategy_combo.set_selected(strategy_index);
             self.raster_fill_entry
-                .set_text(&format!("{:.0}", raster_fill * 100.0));
+            .set_text(&format!("{:.0}", raster_fill * 100.0));
 
             // Update geometry ops values
             self.offset_entry.set_text(&format!("{:.2}", offset));
             self.chamfer_entry.set_text(&format!("{:.2}", chamfer));
 
             let is_pocket = op_type == OperationType::Pocket;
-            self.strategy_combo.set_sensitive(cam_entries_enabled && is_pocket);
-            self.step_in_entry.set_sensitive(cam_entries_enabled && is_pocket);
-            self.step_in_label.set_sensitive(cam_entries_enabled && is_pocket);
-            self.step_in_unit_label.set_sensitive(cam_entries_enabled && is_pocket);
-            self.raster_fill_entry.set_sensitive(cam_entries_enabled && is_pocket);
-
-
+            self.strategy_combo
+            .set_sensitive(cam_entries_enabled && is_pocket);
+            self.step_in_entry
+            .set_sensitive(cam_entries_enabled && is_pocket);
+            self.step_in_label
+            .set_sensitive(cam_entries_enabled && is_pocket);
+            self.step_in_unit_label
+            .set_sensitive(cam_entries_enabled && is_pocket);
+            self.raster_fill_entry
+            .set_sensitive(cam_entries_enabled && is_pocket);
 
             *self.updating.borrow_mut() = false;
         } else {
@@ -951,7 +1085,6 @@ impl PropertiesPanel {
             &self.image_min_power_entry,
             &self.image_max_power_entry,
             &self.image_ppi_entry,
-            &self.image_halftone_threshold_entry,
             // ---
             &self.laser_feed_rate_entry,
             &self.laser_power_entry,
@@ -1008,7 +1141,7 @@ impl PropertiesPanel {
 
         if has_rotation {
             self.rotation_warning_label
-                .set_text("⚠️ Rotated object: Dimensions locked");
+            .set_text("⚠️ Rotated object: Dimensions locked");
             self.rotation_warning_label.set_visible(true);
             entry_w.set_sensitive(false);
             entry_h.set_sensitive(false);

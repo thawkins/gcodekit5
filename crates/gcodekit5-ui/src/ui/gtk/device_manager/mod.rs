@@ -1,3 +1,4 @@
+//! gcodekit5-ui/src/ui/gtk/device_manager/mod.rs
 //! # Device Manager UI
 //!
 //! UI panel for managing CNC device profiles. Provides device

@@ -446,4 +446,59 @@ impl DesignerState {
         });
         self.push_command(cmd);
     }
+
+    /// Mueve los shapes seleccionados al principio del orden de mecanizado.
+    /// Devuelve `true` si se aplicó, `false` si se rechazó porque partiría un grupo.
+pub fn move_selected_to_top(&mut self) -> bool {
+    let Some(after) = self.canvas.move_selected_to_top() else {
+        return false;
+    };
+    let before = self.canvas.shape_store.draw_order().clone();
+    self.push_command(DesignerCommand::Reorder(Reorder {
+        before,
+        after,
+        name: "Move to Top".to_string(),
+    }));
+    true
+}
+
+pub fn move_selected_to_bottom(&mut self) -> bool {
+    let Some(after) = self.canvas.move_selected_to_bottom() else {
+        return false;
+    };
+    let before = self.canvas.shape_store.draw_order().clone();
+    self.push_command(DesignerCommand::Reorder(Reorder {
+        before,
+        after,
+        name: "Move to Bottom".to_string(),
+    }));
+    true
+}
+
+pub fn move_selected_up(&mut self) -> bool {
+    let Some(after) = self.canvas.move_selected_up() else {
+        return false;
+    };
+    let before = self.canvas.shape_store.draw_order().clone();
+    self.push_command(DesignerCommand::Reorder(Reorder {
+        before,
+        after,
+        name: "Move Up".to_string(),
+    }));
+    true
+}
+
+pub fn move_selected_down(&mut self) -> bool {
+    let Some(after) = self.canvas.move_selected_down() else {
+        return false;
+    };
+    let before = self.canvas.shape_store.draw_order().clone();
+    self.push_command(DesignerCommand::Reorder(Reorder {
+        before,
+        after,
+        name: "Move Down".to_string(),
+    }));
+    true
+}
+
 }
