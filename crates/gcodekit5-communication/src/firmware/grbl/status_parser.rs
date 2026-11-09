@@ -167,21 +167,21 @@ impl FeedSpindleState {
 pub struct BufferRxState {
     /// Plan buffer blocks
     pub plan: u8,
-    /// RX buffer bytes
-    pub rx: u8,
+    /// RX buffer bytes available (u16: grblHAL reports RX buffers larger than 255)
+    pub rx: u16,
 }
 
 impl BufferRxState {
-    /// Parse buffer state from string (format: "plan:rx")
+    /// Parse buffer state from string (GRBL 1.1 format: "plan,rx"; legacy "plan:rx")
     pub fn parse(buf_str: &str) -> Option<Self> {
-        let parts: Vec<&str> = buf_str.split(':').collect();
+        let parts: Vec<&str> = buf_str.split([',', ':']).collect();
 
         if parts.len() < 2 {
             return None;
         }
 
         let plan = parts[0].trim().parse::<u8>().ok()?;
-        let rx = parts[1].trim().parse::<u8>().ok()?;
+        let rx = parts[1].trim().parse::<u16>().ok()?;
 
         Some(Self { plan, rx })
     }
@@ -227,7 +227,8 @@ impl StatusParser {
     /// Extracts state from format: <Idle|...> or <Run|...>
     pub fn parse_machine_state(status_line: &str) -> Option<String> {
         if let Some(start) = status_line.find('<') {
-            if let Some(end) = status_line[start..].find('|') {
+            // State is terminated by the first '|' (or '>' for a bare "<Idle>" report)
+            if let Some(end) = status_line[start..].find(['|', '>']) {
                 let state = &status_line[start + 1..start + end];
                 return Some(state.to_string());
             }
@@ -252,7 +253,10 @@ impl StatusParser {
 
     /// Parse buffer state from status report
     pub fn parse_buffer(status_line: &str) -> Option<BufferRxState> {
-        Self::extract_field(status_line, "Buf:").and_then(BufferRxState::parse)
+        // GRBL 1.1 reports "Bf:<planner blocks>,<rx bytes>"; keep "Buf:" for older formats.
+        Self::extract_field(status_line, "Bf:")
+            .or_else(|| Self::extract_field(status_line, "Buf:"))
+            .and_then(BufferRxState::parse)
     }
 
     /// Parse overrides from status report
@@ -320,12 +324,13 @@ impl StatusParser {
             status_line
         };
 
-        let start = search_line.find(field_prefix)? + field_prefix.len();
-        let rest = &search_line[start..];
-
-        // Find the end of this field (next pipe or end of string)
-        let end = rest.find('|').unwrap_or(rest.len());
-        Some(&rest[..end])
+        // Match whole '|'-delimited fields only. A substring search would find
+        // "S:" inside "FS:500,8000" and return garbage for the spindle speed.
+        // The first field is always the machine state, so it is skipped.
+        search_line
+            .split('|')
+            .skip(1)
+            .find_map(|field| field.trim().strip_prefix(field_prefix))
     }
 
     fn sub_opt(pos: Option<f64>, offset: Option<f64>) -> Option<f64> {

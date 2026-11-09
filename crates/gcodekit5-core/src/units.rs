@@ -148,7 +148,13 @@ pub fn parse_length(input: &str, system: MeasurementSystem) -> Result<f32, Strin
         MeasurementSystem::Imperial => {
             // Check for fraction
             if input.contains('/') {
-                let parts: Vec<&str> = input.split_whitespace().collect();
+                // A leading sign applies to the whole mixed number: "-1 1/2" is -1.5 in,
+                // not -1 + 0.5.
+                let (sign, unsigned) = match input.strip_prefix('-') {
+                    Some(rest) => (-1.0, rest.trim_start()),
+                    None => (1.0, input.strip_prefix('+').unwrap_or(input).trim_start()),
+                };
+                let parts: Vec<&str> = unsigned.split_whitespace().collect();
                 let mut total_inches = 0.0;
 
                 for part in parts {
@@ -172,7 +178,7 @@ pub fn parse_length(input: &str, system: MeasurementSystem) -> Result<f32, Strin
                         total_inches += part.parse::<f32>().map_err(|_| "Invalid number part")?;
                     }
                 }
-                Ok(total_inches * 25.4)
+                Ok(sign * total_inches * 25.4)
             } else {
                 // Decimal inches
                 let inches = input.parse::<f32>().map_err(|e| e.to_string())?;

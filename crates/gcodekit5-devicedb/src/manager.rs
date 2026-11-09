@@ -48,7 +48,10 @@ impl DeviceManager {
 
         if let Some(profiles_array) = data.get("profiles").and_then(|v| v.as_array()) {
             for p in profiles_array {
-                let profile: DeviceProfile = serde_json::from_value(p.clone())?;
+                // Fail the whole load on a bad entry: silently skipping it would let the
+                // next save() overwrite the file and permanently drop that profile.
+                let profile: DeviceProfile = serde_json::from_value(p.clone())
+                    .context("Failed to parse device profile entry")?;
                 profiles_map.insert(profile.id.clone(), profile);
             }
         }
@@ -88,7 +91,12 @@ impl DeviceManager {
         }
 
         let content = serde_json::to_string_pretty(&data)?;
-        fs::write(&self.config_path, content).context("Failed to write device profiles file")?;
+        // Write to a sibling temp file and rename so a crash mid-write cannot leave a
+        // truncated profiles file (which would then fail to load).
+        let tmp_path = self.config_path.with_extension("json.tmp");
+        fs::write(&tmp_path, content).context("Failed to write device profiles file")?;
+        fs::rename(&tmp_path, &self.config_path)
+            .context("Failed to replace device profiles file")?;
 
         Ok(())
     }

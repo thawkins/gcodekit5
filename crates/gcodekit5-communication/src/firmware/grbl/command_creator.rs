@@ -134,19 +134,19 @@ impl JogCommand {
         match self.plane {
             JogMode::XY => {
                 format!(
-                    "$J=G91 G0 X{:.3} Y{:.3} F{:.0}\n",
+                    "$J=G91 X{:.3} Y{:.3} F{:.0}\n",
                     self.target.x, self.target.y, self.feed_rate
                 )
             }
             JogMode::XZ => {
                 format!(
-                    "$J=G91 G0 X{:.3} Z{:.3} F{:.0}\n",
+                    "$J=G91 X{:.3} Z{:.3} F{:.0}\n",
                     self.target.x, self.target.z, self.feed_rate
                 )
             }
             JogMode::YZ => {
                 format!(
-                    "$J=G91 G0 Y{:.3} Z{:.3} F{:.0}\n",
+                    "$J=G91 Y{:.3} Z{:.3} F{:.0}\n",
                     self.target.y, self.target.z, self.feed_rate
                 )
             }
@@ -275,12 +275,16 @@ impl CommandCreator {
 
     /// Create an incremental jog command (relative motion)
     pub fn jog_incremental(axis: &str, distance: f64, feed_rate: f64) -> String {
-        format!("$J=G91 G0 {}+{:.3} F{:.0}\n", axis, distance, feed_rate)
+        // GRBL rejects motion modes (G0/G1) inside $J= (error:16); the sign comes
+        // from `distance` itself so negative jogs are not rendered as "X+-5.000".
+        format!("$J=G91 {}{:.3} F{:.0}\n", axis, distance, feed_rate)
     }
 
     /// Create a zero work offset command (G10)
     pub fn set_work_offset(axes: &[&str]) -> String {
-        let mut cmd = "G10 P0".to_string();
+        // G10 requires an L word; L20 sets the offset so the current position
+        // becomes the given value in the active WCS (P0).
+        let mut cmd = "G10 L20 P0".to_string();
         for axis in axes {
             cmd.push(' ');
             cmd.push_str(axis);

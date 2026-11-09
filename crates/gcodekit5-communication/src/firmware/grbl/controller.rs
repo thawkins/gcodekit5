@@ -15,6 +15,8 @@ use gcodekit5_core::{ControllerTrait, OverrideState};
 const DEFAULT_PROBE_TIMEOUT_MS: u64 = 30_000;
 /// Retract distance when probe fails to trigger (mm).
 const PROBE_FAILSAFE_RETRACT_MM: f64 = 5.0;
+/// Distance used for a "continuous" jog; the move is stopped with jog-cancel (0x85).
+const CONTINUOUS_JOG_DISTANCE_MM: f64 = 1000.0;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,6 +24,25 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use uuid::Uuid;
+
+/// Build the GRBL real-time byte sequence that moves a feed/spindle override
+/// from 100% to `percentage`.
+///
+/// `codes` is `[reset_100, plus_10, minus_10, plus_1, minus_1]`.
+fn override_step_bytes(percentage: u16, codes: [u8; 5]) -> Vec<u8> {
+    let [reset, plus10, minus10, plus1, minus1] = codes;
+    let mut bytes = vec![reset];
+    let delta = i32::from(percentage) - 100;
+    let (step10, step1) = if delta >= 0 {
+        (plus10, plus1)
+    } else {
+        (minus10, minus1)
+    };
+    let magnitude = delta.unsigned_abs();
+    bytes.extend(std::iter::repeat_n(step10, (magnitude / 10) as usize));
+    bytes.extend(std::iter::repeat_n(step1, (magnitude % 10) as usize));
+    bytes
+}
 
 /// GRBL Controller state management
 #[derive(Debug, Clone)]
@@ -152,6 +173,7 @@ impl GrblController {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => {
                 let _ = self.send_retract(axis).await;
+                self.state.write().probe_in_progress = false;
                 anyhow::bail!("Probe result channel closed unexpectedly")
             }
             Err(_) => {
@@ -191,8 +213,21 @@ impl GrblController {
 
     /// Send a rapid retract move to safe height (Z+).
     async fn send_retract(&self, _axis: char) -> anyhow::Result<()> {
-        let retract_cmd = format!("G91 G0 Z+{:.3} G90", PROBE_FAILSAFE_RETRACT_MM);
-        let _ = self.communicator.send_command(&retract_cmd);
+        // G90 and G91 are in the same modal group, so they cannot share a block
+        // (GRBL error:21). Route through the IO loop so character counting stays in sync.
+        let tx = self
+            .command_tx
+            .read()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Controller not connected"))?;
+        for cmd in [
+            format!("G91 G0 Z{:.3}", PROBE_FAILSAFE_RETRACT_MM),
+            "G90".to_string(),
+        ] {
+            tx.send(cmd)
+                .await
+                .map_err(|_| anyhow::anyhow!("Failed to send command to IO loop"))?;
+        }
         Ok(())
     }
 
@@ -235,7 +270,7 @@ impl GrblController {
                         // Process complete lines
                         while let Some(pos) = buffer.find('\n') {
                             let line = buffer[..pos].trim().to_string();
-                            buffer.drain(..=pos + 1); // +1 to remove \n
+                            buffer.drain(..=pos); // inclusive range removes the '\n'
 
                             if !line.is_empty() {
                                 // Check for status report
@@ -408,10 +443,11 @@ impl ControllerTrait for GrblController {
 
         // Initialize (this might need to be async or handled via queue now)
         // For now, we'll just queue the initialization commands
-        self.send_command("$RST=*").await?;
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // NOTE: never send "$RST=*" here: it restores EEPROM defaults and wipes the
+        // user's machine settings and work offsets. "$$" (not "$", which is help)
+        // lists the settings.
         self.send_command("$I").await?;
-        self.send_command("$").await?;
+        self.send_command("$$").await?;
         self.send_command("$G").await?;
 
         {
@@ -492,7 +528,11 @@ impl ControllerTrait for GrblController {
 
         // Create a jog command using $J= syntax with G91 (relative) and G0 (rapid)
         let direction_str = if direction > 0 { "+" } else { "-" };
-        let cmd = format!("$J=G91 G0 {}{} F{:.0}", axis, direction_str, feed_rate);
+        // $J= rejects motion-mode words (G0/G1 -> error:16) and needs a numeric target.
+        let cmd = format!(
+            "$J=G91 {}{}{:.3} F{:.0}",
+            axis, direction_str, CONTINUOUS_JOG_DISTANCE_MM, feed_rate
+        );
         self.send_command(&cmd).await?;
 
         Ok(())
@@ -509,9 +549,9 @@ impl ControllerTrait for GrblController {
         distance: f64,
         feed_rate: f64,
     ) -> anyhow::Result<()> {
-        // Format: $J=G91 G0 X{signed_distance} F{feed_rate}
+        // Format: $J=G91 X{signed_distance} F{feed_rate}
         // distance already includes sign from the caller
-        let cmd = format!("$J=G91 G0 {}{:.3} F{:.0}", axis, distance, feed_rate);
+        let cmd = format!("$J=G91 {}{:.3} F{:.0}", axis, distance, feed_rate);
         self.send_command(&cmd).await?;
 
         Ok(())
@@ -564,13 +604,12 @@ impl ControllerTrait for GrblController {
             return Err(anyhow::anyhow!("Feed override must be 0-200%"));
         }
 
-        self.state.write().override_state.feed_override = percentage;
-
-        // Send real-time override commands based on percentage
-        // GRBL uses specific codes for different percentages
-        if percentage == 100 {
-            self.communicator.send_realtime_byte(0x90)?;
+        // GRBL has no "set to N%" command: reset to 100% (0x90) then step with
+        // +10 (0x91) / -10 (0x92) / +1 (0x93) / -1 (0x94).
+        for byte in override_step_bytes(percentage, [0x90, 0x91, 0x92, 0x93, 0x94]) {
+            self.communicator.send_realtime_byte(byte)?;
         }
+        self.state.write().override_state.feed_override = percentage;
 
         Ok(())
     }
@@ -580,6 +619,12 @@ impl ControllerTrait for GrblController {
             return Err(anyhow::anyhow!("Rapid override must be 25, 50, or 100"));
         }
 
+        let byte = match percentage {
+            25 => 0x97,
+            50 => 0x96,
+            _ => 0x95,
+        };
+        self.communicator.send_realtime_byte(byte)?;
         self.state.write().override_state.rapid_override = percentage;
         Ok(())
     }
@@ -589,6 +634,10 @@ impl ControllerTrait for GrblController {
             return Err(anyhow::anyhow!("Spindle override must be 0-200%"));
         }
 
+        // Reset to 100% (0x99) then step with +10 (0x9A) / -10 (0x9B) / +1 (0x9C) / -1 (0x9D).
+        for byte in override_step_bytes(percentage, [0x99, 0x9A, 0x9B, 0x9C, 0x9D]) {
+            self.communicator.send_realtime_byte(byte)?;
+        }
         self.state.write().override_state.spindle_override = percentage;
         Ok(())
     }
@@ -640,13 +689,13 @@ impl ControllerTrait for GrblController {
     }
 
     async fn query_settings(&mut self) -> anyhow::Result<()> {
-        self.communicator.send_command("$")?;
-        Ok(())
+        // "$$" lists settings ("$" only prints help). Queue it so the IO loop
+        // tracks its "ok" for character counting.
+        self.send_command("$$").await
     }
 
     async fn query_parser_state(&mut self) -> anyhow::Result<()> {
-        self.communicator.send_command("$G")?;
-        Ok(())
+        self.send_command("$G").await
     }
 
     fn register_listener(

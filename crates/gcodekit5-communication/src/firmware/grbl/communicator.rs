@@ -171,6 +171,12 @@ impl GrblCommunicator {
     ///
     /// Real-time commands are sent immediately and don't follow the character counting protocol.
     pub fn send_realtime_byte(&self, byte: u8) -> anyhow::Result<()> {
-        self.send_bytes(&[byte])
+        // Real-time bytes are consumed immediately by GRBL, never enter the RX
+        // buffer and never produce an "ok", so they must not be added to
+        // `pending_chars` (doing so leaks one byte per '?' poll until streaming stalls).
+        let mut comm = self.communicator.write();
+        comm.send(&[byte])
+            .map_err(|e| anyhow::anyhow!("Send failed: {}", e))?;
+        Ok(())
     }
 }

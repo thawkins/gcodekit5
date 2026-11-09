@@ -235,9 +235,15 @@ impl ProbeReport {
             }
             _ => {
                 // Work coordinate offset: G10 L2 P<n> X<x> Y<y> Z<z>
+                // `wcs` is given as 54-59 but G10's P word is the WCS index
+                // (P1 = G54 ... P6 = G59); "P54" is rejected by the controller.
+                let p_index = match wcs {
+                    54..=59 => wcs - 53,
+                    other => other,
+                };
                 self.suggested_g10 = Some(format!(
                     "G10 L2 P{} X{:.3} Y{:.3} Z{:.3}",
-                    wcs, pos.x, pos.y, pos.z
+                    p_index, pos.x, pos.y, pos.z
                 ));
                 // Temporary offset alternative
                 self.suggested_g92 = Some(format!("G92 X{:.3} Y{:.3} Z{:.3}", pos.x, pos.y, pos.z));

@@ -118,6 +118,8 @@ impl DeviceUiController {
 
         profile.controller_type = match ui_model.controller_type.as_str() {
             "GRBL" => ControllerType::Grbl,
+            // Must match ControllerType's Display output, or grblHAL profiles can't be saved
+            "grblHAL" => ControllerType::GrblHal,
             "TinyG" => ControllerType::TinyG,
             "g2core" => ControllerType::G2Core,
             "Smoothieware" => ControllerType::Smoothieware,

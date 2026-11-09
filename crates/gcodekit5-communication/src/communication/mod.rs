@@ -652,16 +652,11 @@ impl Communicator for TcpCommunicator {
                     Ok(n)
                 }
                 Err(e) => {
-                    // Handle BrokenPipe more gracefully - it often occurs during cleanup
-                    if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        // Return success for BrokenPipe if data was likely sent
-                        Ok(0)
-                    } else {
-                        let msg = format!("Send error: {}", e);
-                        // tracing::error!("{}", msg);
-                        self.notify_listeners(CommunicatorEvent::Error, &msg);
-                        Err(gcodekit5_core::Error::other(msg))
-                    }
+                    // BrokenPipe means the peer is gone: the data was NOT sent, so it
+                    // must be reported rather than swallowed as a successful 0-byte write.
+                    let msg = format!("Send error: {}", e);
+                    self.notify_listeners(CommunicatorEvent::Error, &msg);
+                    Err(gcodekit5_core::Error::other(msg))
                 }
             }
         } else {
@@ -673,6 +668,14 @@ impl Communicator for TcpCommunicator {
         if let Some(port) = &mut self.port {
             let mut buf = [0u8; 4096];
             match port.read(&mut buf) {
+                Ok(0) => {
+                    // A 0-byte read on a TCP stream is EOF: the controller closed the
+                    // connection. Drop the port so is_connected() reflects reality.
+                    self.port = None;
+                    let msg = "TCP connection closed by peer";
+                    self.notify_listeners(CommunicatorEvent::Disconnected, msg);
+                    Err(gcodekit5_core::Error::other(msg))
+                }
                 Ok(n) => {
                     let data = buf[..n].to_vec();
                     if n > 0 {

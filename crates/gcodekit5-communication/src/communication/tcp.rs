@@ -13,7 +13,7 @@
 use crate::{ConnectionDriver, ConnectionParams};
 use gcodekit5_core::{Error, Result};
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 /// TCP connection information
@@ -90,12 +90,15 @@ impl RealTcpPort {
 
         let address = format!("{}:{}", params.port, params.network_port);
 
-        match TcpStream::connect_timeout(
-            &address
-                .parse()
-                .map_err(|e| Error::other(format!("Invalid address '{}': {}", address, e)))?,
-            Duration::from_millis(params.timeout_ms),
-        ) {
+        // Resolve via ToSocketAddrs so hostnames (e.g. "fluidnc.local") and IPv6
+        // literals work; `SocketAddr::parse` only accepts numeric "ip:port".
+        let socket_addr = (params.port.as_str(), params.network_port)
+            .to_socket_addrs()
+            .map_err(|e| Error::other(format!("Invalid address '{}': {}", address, e)))?
+            .next()
+            .ok_or_else(|| Error::other(format!("Address '{}' did not resolve", address)))?;
+
+        match TcpStream::connect_timeout(&socket_addr, Duration::from_millis(params.timeout_ms)) {
             Ok(stream) => {
                 // Set read timeout
                 stream
@@ -130,7 +133,8 @@ impl RealTcpPort {
 
 impl TcpPort for RealTcpPort {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
-        self.stream.write(data)
+        // write_all: a short write would silently drop the tail of a G-code line
+        self.stream.write_all(data).map(|()| data.len())
     }
 
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {

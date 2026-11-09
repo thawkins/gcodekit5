@@ -72,6 +72,18 @@ impl SettingsPersistence {
 
     /// Load settings from dialog into config
     pub fn load_from_dialog(&mut self, dialog: &SettingsDialog) -> Result<()> {
+        // Apply to a copy and commit only if everything validates, so a rejected
+        // save does not leave the in-memory config half-updated with invalid values.
+        let backup = self.config.clone();
+        let result = self.apply_dialog(dialog);
+        if result.is_err() {
+            self.config = backup;
+        }
+        result
+    }
+
+    /// Copy all dialog values into the config and validate the result.
+    fn apply_dialog(&mut self, dialog: &SettingsDialog) -> Result<()> {
         // Update connection settings - Moved to DeviceDB
         // self.update_connection_settings(dialog)?;
 

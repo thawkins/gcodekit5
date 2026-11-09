@@ -13,20 +13,20 @@ pub enum RealTimeOverrideCommand {
     CycleStart = 0x7E,
     /// Reset (0x18 = Ctrl+X)
     Reset = 0x18,
-    /// Feed rate: 10% decrease (0x91)
-    FeedDecrease10 = 0x91,
-    /// Feed rate: 1% decrease (0x92)
-    FeedDecrease1 = 0x92,
+    /// Feed rate: 10% decrease (0x92)
+    FeedDecrease10 = 0x92,
+    /// Feed rate: 1% decrease (0x94)
+    FeedDecrease1 = 0x94,
     /// Feed rate: 1% increase (0x93)
     FeedIncrease1 = 0x93,
-    /// Feed rate: 10% increase (0x94)
-    FeedIncrease10 = 0x94,
-    /// Rapid: 25% (0x95)
-    RapidOv25 = 0x95,
+    /// Feed rate: 10% increase (0x91)
+    FeedIncrease10 = 0x91,
+    /// Rapid: 25% (0x97)
+    RapidOv25 = 0x97,
     /// Rapid: 50% (0x96)
     RapidOv50 = 0x96,
-    /// Rapid: 100% (0x97)
-    RapidOv100 = 0x97,
+    /// Rapid: 100% (0x95)
+    RapidOv100 = 0x95,
     /// Spindle: 100% (0x99)
     SpindleReset = 0x99,
     /// Spindle: 10% increase (0x9A)
