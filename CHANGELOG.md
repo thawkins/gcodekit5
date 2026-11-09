@@ -12,6 +12,7 @@
 - **Dialogs**: message dialogs show both the message and the secondary text; reusable dialogs (Fast Shapes, Stock Settings, Add Text) survive being closed with the title-bar button
 - **Export Settings**: the suggested file name `grbl_settings.json` is now shown in the save dialog
 - **Stylesheet**: removed properties GTK does not support (`max-height`, `spacing`) that produced theme parser warnings; `dropdown` shares the `combobox` height rule
+- **Designer**: the coordinate OSD no longer uses a negative bottom margin, which made GTK print a "GtkBox adjusted size ... must not decrease" warning every 100 ms; it now sits flush on the canvas edge
 
 ## [Unreleased] - 2026-11-09 (audit follow-up)
 
