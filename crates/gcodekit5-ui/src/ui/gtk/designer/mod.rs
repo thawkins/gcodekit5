@@ -712,12 +712,12 @@ impl DesignerView {
         });
 
         // Empty state actions
-/*
-        {
-            let v = view.clone();
-            empty_new_btn.connect_clicked(move |_| v.new_file());
-        }
-*/
+        /*
+                {
+                    let v = view.clone();
+                    empty_new_btn.connect_clicked(move |_| v.new_file());
+                }
+        */
         {
             let v = view.clone();
             empty_open_btn.connect_clicked(move |_| v.open_file());

@@ -348,7 +348,11 @@ impl DesignerCanvas {
                 // Obtener el estado actual del zoom y pan
                 let (current_zoom, pan_x, pan_y) = {
                     let state = canvas_scroll.state.borrow();
-                    (state.canvas.zoom(), state.canvas.pan_x(), state.canvas.pan_y())
+                    (
+                        state.canvas.zoom(),
+                        state.canvas.pan_x(),
+                        state.canvas.pan_y(),
+                    )
                 };
 
                 // Calcular el factor de zoom
@@ -461,7 +465,11 @@ impl DesignerCanvas {
 
             let (pan_x, pan_y, zoom) = {
                 let state = canvas_pan_update.state.borrow();
-                (state.canvas.pan_x(), state.canvas.pan_y(), state.canvas.zoom())
+                (
+                    state.canvas.pan_x(),
+                    state.canvas.pan_y(),
+                    state.canvas.zoom(),
+                )
             };
 
             let zoom_factor = zoom.max(0.01); // Evitar división por cero

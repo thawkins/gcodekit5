@@ -544,7 +544,8 @@ fn interpolate_polyline_arcs(pline: &Polyline, tolerance: f64) -> Vec<[f64; 2]> 
 
         // Si el segmento actual es un arco (bulge)
         if v_start.bulge.abs() > 1e-6 {
-            let (radius, center) = cavalier_contours::polyline::seg_arc_radius_and_center(v_start, v_end);
+            let (radius, center) =
+                cavalier_contours::polyline::seg_arc_radius_and_center(v_start, v_end);
 
             let start_angle = (v_start.y - center.y).atan2(v_start.x - center.x);
             let mut end_angle = (v_end.y - center.y).atan2(v_end.x - center.x);
@@ -578,9 +579,7 @@ fn interpolate_polyline_arcs(pline: &Polyline, tolerance: f64) -> Vec<[f64; 2]> 
     }
 
     // CORRECCIÓN DEDUP
-    points.dedup_by(|a, b| {
-        (a[0] - b[0]).abs() < 1e-5 && (a[1] - b[1]).abs() < 1e-5
-    });
+    points.dedup_by(|a, b| (a[0] - b[0]).abs() < 1e-5 && (a[1] - b[1]).abs() < 1e-5);
 
     points
 }
@@ -600,7 +599,8 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
 
             let to_origin = Matrix4::new_translation(&Vector3::new(-center_x, -center_y, 0.0));
             let rotation_mat = Matrix4::new(
-                cos_a, -sin_a, 0.0, 0.0, sin_a, cos_a, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                cos_a, -sin_a, 0.0, 0.0, sin_a, cos_a, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                1.0,
             );
             let from_origin = Matrix4::new_translation(&Vector3::new(center_x, center_y, 0.0));
             let transform = from_origin * rotation_mat * to_origin;
@@ -655,7 +655,8 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
             for offset in offsets {
                 let pts = interpolate_polyline_arcs(&offset, 0.01);
                 if pts.len() >= 3 {
-                    result_sketch = result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
+                    result_sketch =
+                        result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
                 }
             }
         }
@@ -795,7 +796,10 @@ pub fn perform_chamfer(shape: &Shape, distance: f64) -> Shape {
 
     // For simple closed polygonal shapes, compute chamfer directly on rendered
     // polyline vertices so the edge distance matches the user-entered value.
-    if matches!(shape, Shape::Rectangle(_) | Shape::Triangle(_) | Shape::Polygon(_)) {
+    if matches!(
+        shape,
+        Shape::Rectangle(_) | Shape::Triangle(_) | Shape::Polygon(_)
+    ) {
         let rendered = shape.render();
         if let Some(points) = extract_closed_polyline_points(&rendered) {
             let chamfered = chamfer_closed_points(&points, distance);

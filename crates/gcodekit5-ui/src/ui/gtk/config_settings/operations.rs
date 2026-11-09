@@ -130,7 +130,9 @@ impl ConfigSettingsView {
                     // Only look at output that arrived after `$$` was sent; older `$n=`
                     // lines (previous reads, another device) would otherwise be parsed as
                     // current values. If the log was cleared meanwhile, use all of it.
-                    let new_text = console_text.get(start_log_length..).unwrap_or(&console_text);
+                    let new_text = console_text
+                        .get(start_log_length..)
+                        .unwrap_or(&console_text);
 
                     // `$$` output streams in over several polls: wait until settings lines
                     // were seen *and* the log stopped growing, so we don't parse a partial
@@ -138,9 +140,8 @@ impl ConfigSettingsView {
                     let log_len = console_text.len();
                     let settled = log_len == *last_log_length.borrow();
                     *last_log_length.borrow_mut() = log_len;
-                    let has_settings_response = (new_text.contains("$0=")
-                        || new_text.contains("$100="))
-                        && settled;
+                    let has_settings_response =
+                        (new_text.contains("$0=") || new_text.contains("$100=")) && settled;
 
                     if has_settings_response || *attempt_count.borrow() > 40 {
                         // 2 seconds timeout

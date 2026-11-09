@@ -503,30 +503,30 @@ impl Visualizer {
     pub fn get_scale_factor(&self) -> f32 {
         self.scale_factor
     }
-/*
-    /// Extract multiple parameters from G-Code line
-    // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
-    #[allow(dead_code)]
-    fn extract_params(line: &str, param_names: &[char]) -> HashMap<char, f32> {
-        let mut params = HashMap::new();
+    /*
+        /// Extract multiple parameters from G-Code line
+        // Deprecated: Use direct parsing in parse_linear_move/parse_arc_move instead
+        #[allow(dead_code)]
+        fn extract_params(line: &str, param_names: &[char]) -> HashMap<char, f32> {
+            let mut params = HashMap::new();
 
-        for part in line.split_whitespace() {
-            if part.len() < 2 {
-                continue;
-            }
-            let Some(first_char) = part.chars().next() else {
-                continue;
-            };
-            if param_names.contains(&first_char) {
-                if let Ok(value) = part[1..].parse::<f32>() {
-                    params.insert(first_char, value);
+            for part in line.split_whitespace() {
+                if part.len() < 2 {
+                    continue;
+                }
+                let Some(first_char) = part.chars().next() else {
+                    continue;
+                };
+                if param_names.contains(&first_char) {
+                    if let Ok(value) = part[1..].parse::<f32>() {
+                        params.insert(first_char, value);
+                    }
                 }
             }
-        }
 
-        params
-    }
-*/
+            params
+        }
+    */
     /// Get number of commands parsed
     pub fn get_command_count(&self) -> usize {
         self.toolpath_cache.len()
@@ -1032,7 +1032,7 @@ impl Visualizer {
         self.toolpath_sender.clone()
     }
 
-     /// Obtain the color for a given intensity.
+    /// Obtain the color for a given intensity.
     pub fn get_color_for_intensity(&self, intensity: f32) -> (f32, f32, f32) {
         if !self.use_intensity_colors {
             return (1.0, 1.0, 0.0);
@@ -1043,7 +1043,7 @@ impl Visualizer {
         }
 
         intensity_to_color(intensity, self.max_intensity)
-    }   
+    }
 
     /// Activate/deactivate colors by intensity
     pub fn toggle_intensity_colors(&mut self) {

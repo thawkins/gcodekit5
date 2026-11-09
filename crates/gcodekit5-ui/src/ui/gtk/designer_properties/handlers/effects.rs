@@ -81,7 +81,8 @@ pub fn setup_offset_handler(
     let settings_activate = settings.clone();
     offset_entry.connect_activate(move |_| {
         let system = settings_activate.borrow().config().ui.measurement_system;
-        if let Ok(dist) = units::parse_length(&offset_entry_activate.text(), system).map(f64::from) {
+        if let Ok(dist) = units::parse_length(&offset_entry_activate.text(), system).map(f64::from)
+        {
             preview_activate.borrow_mut().clear();
             let mut designer_state = state_activate.borrow_mut();
             // Only record a change when the value actually differs; otherwise merely
@@ -203,7 +204,8 @@ pub fn setup_chamfer_handler(
     let settings_activate = settings.clone();
     chamfer_entry.connect_activate(move |_| {
         let system = settings_activate.borrow().config().ui.measurement_system;
-        if let Ok(dist) = units::parse_length(&chamfer_entry_activate.text(), system).map(f64::from) {
+        if let Ok(dist) = units::parse_length(&chamfer_entry_activate.text(), system).map(f64::from)
+        {
             preview_activate.borrow_mut().clear();
             let mut designer_state = state_activate.borrow_mut();
             // Only record a change when the value actually differs; otherwise merely

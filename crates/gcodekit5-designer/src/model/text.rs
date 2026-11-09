@@ -215,4 +215,3 @@ impl DesignerShape for DesignText {
         self.y += dy;
     }
 }
-

@@ -21,7 +21,7 @@ mod transforms;
 mod viewport;
 
 use crate::commands::DesignerCommand;
-use crate::stock_removal::{StockMaterial};
+use crate::stock_removal::StockMaterial;
 use crate::{Canvas, ToolpathGenerator};
 
 /// Tool settings for the designer
@@ -96,8 +96,10 @@ impl DesignerState {
         let tool_settings = ToolSettings::default();
         // Keep the generator in sync with the tool settings from the start;
         // otherwise it would emit F0 / S0 until a setter is called.
-        let mut toolpath_generator =
-            ToolpathGenerator::with_global_settings(tool_settings.feed_rate, tool_settings.spindle_speed);
+        let mut toolpath_generator = ToolpathGenerator::with_global_settings(
+            tool_settings.feed_rate,
+            tool_settings.spindle_speed,
+        );
         toolpath_generator.set_tool_diameter(tool_settings.tool_diameter);
         Self {
             canvas: Canvas::with_size(800.0, 600.0),
@@ -207,7 +209,11 @@ impl DesignerState {
             step.round().clamp(1.0, 10.0)
         } else {
             // En modo CNC: profundidad de pasada en mm
-            if step <= 0.0 { 0.1 } else { step }
+            if step <= 0.0 {
+                0.1
+            } else {
+                step
+            }
         };
         debug_assert!(
             step.is_finite() && step > 0.0,

@@ -88,11 +88,11 @@ impl CamToolsView {
         // Bitmap Engraving Tool
         let bitmap_tool = BitmapEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(bitmap_tool.widget(), Some("laser_image"));
-/*
-        // Vector Engraving Tool
-        let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
-        stack.add_named(vector_tool.widget(), Some("laser_vector"));
-*/
+        /*
+                // Vector Engraving Tool
+                let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
+                stack.add_named(vector_tool.widget(), Some("laser_vector"));
+        */
         // Speeds & Feeds Calculator
         let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
         stack.add_named(feeds_tool.widget(), Some("feeds"));

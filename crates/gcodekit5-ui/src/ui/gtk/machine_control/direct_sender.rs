@@ -22,7 +22,7 @@ impl DirectSender {
     pub fn new(
         communicator: ThreadSafe<SerialCommunicator>,
         is_streaming: ThreadSafe<bool>,
-        _is_paused: ThreadSafe<bool>,  // Mantenemos el parámetro por compatibilidad pero no lo usamos
+        _is_paused: ThreadSafe<bool>, // Mantenemos el parámetro por compatibilidad pero no lo usamos
         _waiting_for_ack: ThreadSafe<bool>,
     ) -> (Self, mpsc::Receiver<String>) {
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -160,7 +160,9 @@ impl DirectSender {
 
                 thread::yield_now();
 
-                let percent = ((i as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u32;
+                let percent = ((i as f64 / total as f64) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as u32;
                 if percent != last_percent {
                     last_percent = percent;
                     let _ = progress_tx.send(format!("* {}%", percent));

@@ -7,7 +7,6 @@ use crate::model::{DesignerShape, ParametricPathSource, Shape};
 use crate::shapes::OperationType;
 use crate::{Point, Rectangle};
 
-
 impl DesignerState {
     /// Sets the use_custom_values flag for selected shapes.
     pub fn set_selected_use_custom_values(&mut self, use_custom: bool) {

@@ -264,13 +264,8 @@ impl PropertiesPanel {
         ) = Self::build_timing_pulley_section();
         content.append(&timing_pulley_frame);
 
-        let (
-            ops_frame,
-            offset_entry,
-            chamfer_entry,
-            offset_unit_label,
-            chamfer_unit_label,
-        ) = Self::build_geometry_ops_section();
+        let (ops_frame, offset_entry, chamfer_entry, offset_unit_label, chamfer_unit_label) =
+            Self::build_geometry_ops_section();
         content.append(&ops_frame);
 
         let (

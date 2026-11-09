@@ -13,9 +13,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tracing::warn;
 
-use super::common::{
-    create_dimension_row, set_paned_initial_fraction, track_measurement_system,
-};
+use super::common::{create_dimension_row, set_paned_initial_fraction, track_measurement_system};
 use super::CamToolsView;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
@@ -229,9 +227,11 @@ impl GerberTool {
         layer_row.add_suffix(&layer_type);
         params_group.add(&layer_row);
 
-        let (w_row, board_width, board_width_unit) = create_dimension_row("Board Width", 100.0, &settings);
+        let (w_row, board_width, board_width_unit) =
+            create_dimension_row("Board Width", 100.0, &settings);
         params_group.add(&w_row);
-        let (h_row, board_height, board_height_unit) = create_dimension_row("Board Height", 100.0, &settings);
+        let (h_row, board_height, board_height_unit) =
+            create_dimension_row("Board Height", 100.0, &settings);
         params_group.add(&h_row);
 
         let (ox_row, offset_x, offset_x_unit) = create_dimension_row("Offset X", 0.0, &settings);
@@ -257,16 +257,19 @@ impl GerberTool {
         ss_row.add_suffix(&spindle_speed);
         params_group.add(&ss_row);
 
-        let (cd_row, cut_depth, cut_depth_unit) = create_dimension_row("Cut Depth", -0.1, &settings);
+        let (cd_row, cut_depth, cut_depth_unit) =
+            create_dimension_row("Cut Depth", -0.1, &settings);
         params_group.add(&cd_row);
 
         let (sz_row, safe_z, safe_z_unit) = create_dimension_row("Safe Z", 5.0, &settings);
         params_group.add(&sz_row);
 
-        let (td_row, tool_diameter, tool_diameter_unit) = create_dimension_row("Tool Diameter", 0.1, &settings);
+        let (td_row, tool_diameter, tool_diameter_unit) =
+            create_dimension_row("Tool Diameter", 0.1, &settings);
         params_group.add(&td_row);
 
-        let (iw_row, isolation_width, isolation_width_unit) = create_dimension_row("Isolation Width", 0.0, &settings);
+        let (iw_row, isolation_width, isolation_width_unit) =
+            create_dimension_row("Isolation Width", 0.0, &settings);
         params_group.add(&iw_row);
 
         let rubout = CheckButton::builder()
@@ -307,7 +310,8 @@ impl GerberTool {
             create_dimension_row("Hole Diameter", 3.175, &settings);
         align_group.add(&ahd_row);
 
-        let (ahm_row, alignment_hole_margin, alignment_hole_margin_unit) = create_dimension_row("Margin", 5.0, &settings);
+        let (ahm_row, alignment_hole_margin, alignment_hole_margin_unit) =
+            create_dimension_row("Margin", 5.0, &settings);
         align_group.add(&ahm_row);
 
         sidebar_box.append(&align_group);
@@ -325,7 +329,10 @@ impl GerberTool {
                 (safe_z.clone(), safe_z_unit),
                 (tool_diameter.clone(), tool_diameter_unit),
                 (isolation_width.clone(), isolation_width_unit),
-                (alignment_hole_diameter.clone(), alignment_hole_diameter_unit),
+                (
+                    alignment_hole_diameter.clone(),
+                    alignment_hole_diameter_unit,
+                ),
                 (alignment_hole_margin.clone(), alignment_hole_margin_unit),
             ],
         );

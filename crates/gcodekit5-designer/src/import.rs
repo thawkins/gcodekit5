@@ -727,7 +727,8 @@ impl DxfImporter {
                             let p1 = point(v1.x as f32, v1.y as f32);
                             let p2 = point(v2.x as f32, v2.y as f32);
 
-                            let dist = ((v2.x - v1.x).powi(2) + (v2.y - v1.y).powi(2)).sqrt() as f32;
+                            let dist =
+                                ((v2.x - v1.x).powi(2) + (v2.y - v1.y).powi(2)).sqrt() as f32;
 
                             if bulge.abs() < 0.0001 || dist < 1e-9 {
                                 // Straight line
@@ -784,14 +785,22 @@ impl DxfImporter {
                         // Process each segment with its potential bulge
                         let n = polyline.vertices.len();
                         for i in 0..n - 1 {
-                            add_segment(polyline.vertices[i], polyline.vertices[i + 1], bulge_at(i));
+                            add_segment(
+                                polyline.vertices[i],
+                                polyline.vertices[i + 1],
+                                bulge_at(i),
+                            );
                         }
 
                         // A closed polyline's last vertex carries the bulge of the closing
                         // segment back to the first vertex; without this it would be drawn
                         // as a straight line (e.g. rounded ends of slots).
                         if polyline.closed && n > 1 && bulge_at(n - 1).abs() >= 0.0001 {
-                            add_segment(polyline.vertices[n - 1], polyline.vertices[0], bulge_at(n - 1));
+                            add_segment(
+                                polyline.vertices[n - 1],
+                                polyline.vertices[0],
+                                bulge_at(n - 1),
+                            );
                         }
 
                         if polyline.closed {

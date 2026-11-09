@@ -158,7 +158,8 @@ impl Camera {
         let is_left = pitch_deg.abs() < 5.0 && (yaw_norm - 180.0).abs() < 5.0;
         let is_iso = (pitch_deg - 35.264).abs() < 5.0;
 
-        let is_orthogonal = is_top || is_bottom || is_front || is_back || is_right || is_left || is_iso;
+        let is_orthogonal =
+            is_top || is_bottom || is_front || is_back || is_right || is_left || is_iso;
 
         if is_orthogonal {
             // PROYECCIÓN ORTOGRÁFICA

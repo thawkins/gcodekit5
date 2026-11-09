@@ -22,7 +22,10 @@ fn new_shapes_inherit_default_properties_from_designer_state() {
     state.default_properties_shape.operation_type = OperationType::Pocket;
 
     let id = state.add_shape_with_undo(Shape::Rectangle(Rectangle::new(0.0, 0.0, 10.0, 10.0)));
-    let created = state.canvas.get_shape(id).expect("new shape should be created");
+    let created = state
+        .canvas
+        .get_shape(id)
+        .expect("new shape should be created");
 
     assert!((created.start_depth - 2.5).abs() < f64::EPSILON);
     assert!((created.pocket_depth - 3.0).abs() < f64::EPSILON);

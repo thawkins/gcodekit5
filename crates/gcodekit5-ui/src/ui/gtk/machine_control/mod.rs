@@ -1528,7 +1528,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let view_pause = view.clone();
 
-        // Boton de pausa
+            // Boton de pausa
             view.pause_btn.connect_clicked(move |_| {
                 if let Some(c) = console.as_ref() {
                     c.append_log("> ! (Pause)\n");
@@ -1568,7 +1568,6 @@ impl MachineControlView {
 
                 *is_paused.lock() = true;
             });
-
         }
 
         {
@@ -2126,8 +2125,9 @@ impl MachineControlView {
                     }
                     match comm.send_command(&cmd) {
                         Ok(_) => console_clone.append_log(&format!("> {}\n", cmd)),
-                        Err(e) => console_clone
-                            .append_log(&format!("{}: {}\n", t!("Error sending"), e)),
+                        Err(e) => {
+                            console_clone.append_log(&format!("{}: {}\n", t!("Error sending"), e))
+                        }
                     }
                 }
 
