@@ -4,6 +4,7 @@
 
 pub mod device_status;
 pub mod editor;
+pub mod glib_log_filter;
 pub mod gtk_app;
 pub mod i18n;
 pub mod types;

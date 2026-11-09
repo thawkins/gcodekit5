@@ -1,9 +1,9 @@
 //! Machine control operations
-#![allow(deprecated)]
 
 use super::*;
 
 impl MachineControlView {
+    /// Re-lists the serial ports in the port combo box.
     pub fn refresh_ports(&self) {
         self.port_combo.remove_all();
 
@@ -22,16 +22,25 @@ impl MachineControlView {
                 self.port_combo.set_active_id(Some("none"));
             }
         }
+        self.refresh_connection_target();
     }
 
+    /// Returns the jog step size in mm.
     pub fn get_step_size(&self) -> f64 {
         *self.jog_step_mm.lock() as f64
     }
 
+    /// Starts a line-by-line job (one line in flight; the status poller sends the next
+    /// line after each ack). Used by tools such as the drill press.
+    ///
+    /// # Arguments
+    /// * `content` - The G-code program.
     pub fn start_job(&self, content: &str) {
         if *self.is_streaming.lock() {
             return;
         }
+        let content = self.prepare_job_content(content.to_string());
+        let content = content.as_str();
 
         let lines: Vec<String> = content
             .lines()
@@ -111,12 +120,29 @@ impl MachineControlView {
                 *self.waiting_for_ack.lock() = true;
             }
         }
+        self.update_job_controls();
     }
 
+    /// Emergency stop: stops any job and halts the controller.
+    ///
+    /// GRBL-style controllers get a soft reset (Ctrl-X, `0x18`); flow-control protocols
+    /// (Repetier) have no realtime reset and get their firmware emergency stop, `M112`.
     pub fn emergency_stop(&self) {
+        // Signal the sender's worker *before* sending the reset. The GRBL worker re-checks
+        // this flag while holding the communicator lock, so once we hold the lock below no
+        // further job lines can be written after the soft reset.
+        let sender = self.active_sender.borrow().clone();
+        if let Some(sender) = sender.as_ref() {
+            sender.stop();
+        }
+
         {
             let mut comm = self.communicator.lock();
-            let _ = comm.send(&[0x18]);
+            if Self::is_flow_control_protocol() {
+                let _ = comm.send_command("M112");
+            } else {
+                let _ = comm.send(&[0x18]);
+            }
         }
 
         *self.is_streaming.lock() = false;
@@ -130,9 +156,23 @@ impl MachineControlView {
             sb.set_progress(0.0, "", "");
         }
 
+        // Allow a new job to be sent once the controller is reset.
+        if self.communicator.lock().is_connected() {
+            self.send_btn.set_sensitive(true);
+        }
+
+        // The soft reset restores the parser defaults (G90), so no probe follow-up remains.
+        self.quick_probe.set(QuickProbeState::Idle);
+        self.update_job_controls();
+
         // Match StatusBar eStop behavior
         if let Some(c) = self.device_console.as_ref() {
-            c.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
+            let msg = if Self::is_flow_control_protocol() {
+                t!("Emergency stop (M112)")
+            } else {
+                t!("Emergency stop (Ctrl-X)")
+            };
+            c.append_log(&format!("{}\n", msg));
         }
     }
 }

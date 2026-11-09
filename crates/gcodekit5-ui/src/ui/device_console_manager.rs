@@ -7,9 +7,7 @@
 use crate::device_status;
 use crate::ui::console_panel::{ConsolePanel, MessageLevel};
 use gcodekit5_communication::CommunicatorListener;
-use gcodekit5_core::{
-    thread_safe, thread_safe_vec, DataCallback, ThreadSafe, ThreadSafeVec,
-};
+use gcodekit5_core::{thread_safe, thread_safe_vec, DataCallback, ThreadSafe, ThreadSafeVec};
 use std::sync::Arc;
 
 /// Message type for device communication
@@ -267,7 +265,6 @@ pub struct ConsoleListener {
     console_manager: Arc<DeviceConsoleManager>,
     /// Buffer for accumulating multi-line responses (like $I)
     _response_buffer: ThreadSafe<String>,
-
 }
 
 impl ConsoleListener {
@@ -280,10 +277,7 @@ impl ConsoleListener {
     }
 
     /// Create with firmware detection state sharing
-    pub fn new_with_firmware_state(
-        console_manager: Arc<DeviceConsoleManager>,
-
-    ) -> Arc<Self> {
+    pub fn new_with_firmware_state(console_manager: Arc<DeviceConsoleManager>) -> Arc<Self> {
         Arc::new(Self {
             console_manager,
             _response_buffer: thread_safe(String::new()),

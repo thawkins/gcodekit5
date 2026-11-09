@@ -66,7 +66,7 @@ impl EventFilter {
 }
 
 /// Type alias for event handler functions
-type EventHandler = Box<dyn Fn(AppEvent) + Send + Sync>;
+type EventHandler = std::sync::Arc<dyn Fn(AppEvent) + Send + Sync>;
 
 /// Configuration for the event bus.
 ///
@@ -197,12 +197,21 @@ impl EventBus {
             self.add_to_history(&event);
         }
 
-        // Call synchronous handlers
-        let handlers = self.handlers.read();
-        for (_, (filter, handler)) in handlers.iter() {
-            if filter.matches(&event) {
-                handler(event.clone());
-            }
+        // Snapshot matching handlers and release the lock before invoking them, so a
+        // handler may subscribe/unsubscribe/publish without deadlocking on `handlers`.
+        let (matching, has_handlers): (Vec<EventHandler>, bool) = {
+            let handlers = self.handlers.read();
+            (
+                handlers
+                    .values()
+                    .filter(|(filter, _)| filter.matches(&event))
+                    .map(|(_, handler)| std::sync::Arc::clone(handler))
+                    .collect(),
+                !handlers.is_empty(),
+            )
+        };
+        for handler in matching {
+            handler(event.clone());
         }
 
         // Send via broadcast channel for async receivers
@@ -210,7 +219,7 @@ impl EventBus {
             Ok(count) => Ok(count),
             Err(_) => {
                 // No receivers, but handlers may have been called
-                if handlers.is_empty() {
+                if !has_handlers {
                     Err(EventBusError::NoSubscribers)
                 } else {
                     Ok(0)
@@ -229,7 +238,7 @@ impl EventBus {
     {
         let id = SubscriptionId::new();
         let mut handlers = self.handlers.write();
-        handlers.insert(id, (filter, Box::new(handler)));
+        handlers.insert(id, (filter, std::sync::Arc::new(handler)));
         tracing::debug!("Subscription {} added", id);
         id
     }

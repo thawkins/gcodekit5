@@ -40,7 +40,8 @@ impl Viewport {
     /// Update total line count
     pub fn set_total_lines(&mut self, total: usize) {
         self.total_lines = total;
-        self.update_visible_range();
+        // Re-clamp the scroll offset: the document may have shrunk below it
+        self.set_scroll_offset(self.scroll_offset);
     }
 
     /// Update viewport dimensions
@@ -48,7 +49,7 @@ impl Viewport {
         self.viewport_height = height;
         self.line_height = line_height;
         self.visible_lines = (height / line_height).ceil() as usize;
-        self.update_visible_range();
+        self.set_scroll_offset(self.scroll_offset);
     }
 
     /// Scroll by number of lines (positive = down, negative = up)
@@ -71,7 +72,7 @@ impl Viewport {
             self.set_scroll_offset(line);
         } else if line >= self.end_line {
             // Scroll down to show line at bottom
-            let offset = line.saturating_sub(self.visible_lines - 1);
+            let offset = line.saturating_sub(self.visible_lines.saturating_sub(1));
             self.set_scroll_offset(offset);
         }
     }
@@ -79,7 +80,10 @@ impl Viewport {
     /// Update visible line range based on scroll offset
     fn update_visible_range(&mut self) {
         self.start_line = self.scroll_offset;
-        self.end_line = (self.scroll_offset + self.visible_lines).min(self.total_lines);
+        self.end_line = self
+            .scroll_offset
+            .saturating_add(self.visible_lines)
+            .min(self.total_lines);
     }
 
     /// Get the range of visible lines
@@ -127,7 +131,10 @@ impl Viewport {
     /// Get overscan range (lines to pre-render above/below viewport)
     pub fn overscan_range(&self, overscan_lines: usize) -> Range<usize> {
         let start = self.start_line.saturating_sub(overscan_lines);
-        let end = (self.end_line + overscan_lines).min(self.total_lines);
+        let end = self
+            .end_line
+            .saturating_add(overscan_lines)
+            .min(self.total_lines);
         start..end
     }
 }

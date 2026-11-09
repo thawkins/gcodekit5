@@ -1,10 +1,11 @@
 //! Performance benchmarks for core types: command creation, position operations,
 //! state transitions, and unit conversions.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use gcodekit5_core::data::{CNCPoint, Units};
 use gcodekit5_core::gcode::{CommandNumberGenerator, GcodeCommand};
 use gcodekit5_core::{PartialPosition, Position};
+use std::hint::black_box;
 
 // ---------------------------------------------------------------------------
 // GcodeCommand creation benchmarks

@@ -167,21 +167,21 @@ impl FeedSpindleState {
 pub struct BufferRxState {
     /// Plan buffer blocks
     pub plan: u8,
-    /// RX buffer bytes
-    pub rx: u8,
+    /// RX buffer bytes available (u16: grblHAL reports RX buffers larger than 255)
+    pub rx: u16,
 }
 
 impl BufferRxState {
-    /// Parse buffer state from string (format: "plan:rx")
+    /// Parse buffer state from string (GRBL 1.1 format: "plan,rx"; legacy "plan:rx")
     pub fn parse(buf_str: &str) -> Option<Self> {
-        let parts: Vec<&str> = buf_str.split(':').collect();
+        let parts: Vec<&str> = buf_str.split([',', ':']).collect();
 
         if parts.len() < 2 {
             return None;
         }
 
         let plan = parts[0].trim().parse::<u8>().ok()?;
-        let rx = parts[1].trim().parse::<u8>().ok()?;
+        let rx = parts[1].trim().parse::<u16>().ok()?;
 
         Some(Self { plan, rx })
     }
@@ -227,7 +227,8 @@ impl StatusParser {
     /// Extracts state from format: <Idle|...> or <Run|...>
     pub fn parse_machine_state(status_line: &str) -> Option<String> {
         if let Some(start) = status_line.find('<') {
-            if let Some(end) = status_line[start..].find('|') {
+            // State is terminated by the first '|' (or '>' for a bare "<Idle>" report)
+            if let Some(end) = status_line[start..].find(['|', '>']) {
                 let state = &status_line[start + 1..start + end];
                 return Some(state.to_string());
             }
@@ -252,7 +253,10 @@ impl StatusParser {
 
     /// Parse buffer state from status report
     pub fn parse_buffer(status_line: &str) -> Option<BufferRxState> {
-        Self::extract_field(status_line, "Buf:").and_then(BufferRxState::parse)
+        // GRBL 1.1 reports "Bf:<planner blocks>,<rx bytes>"; keep "Buf:" for older formats.
+        Self::extract_field(status_line, "Bf:")
+            .or_else(|| Self::extract_field(status_line, "Buf:"))
+            .and_then(BufferRxState::parse)
     }
 
     /// Parse overrides from status report
@@ -320,12 +324,13 @@ impl StatusParser {
             status_line
         };
 
-        let start = search_line.find(field_prefix)? + field_prefix.len();
-        let rest = &search_line[start..];
-
-        // Find the end of this field (next pipe or end of string)
-        let end = rest.find('|').unwrap_or(rest.len());
-        Some(&rest[..end])
+        // Match whole '|'-delimited fields only. A substring search would find
+        // "S:" inside "FS:500,8000" and return garbage for the spindle speed.
+        // The first field is always the machine state, so it is skipped.
+        search_line
+            .split('|')
+            .skip(1)
+            .find_map(|field| field.trim().strip_prefix(field_prefix))
     }
 
     fn sub_opt(pos: Option<f64>, offset: Option<f64>) -> Option<f64> {
@@ -366,6 +371,10 @@ impl StatusParser {
         }
     }
 
+    pub fn parse_probe_pin(status_line: &str) -> Option<bool> {
+        Self::extract_field(status_line, "Pn:").map(|pins| pins.contains('P'))
+    }
+
     /// Parse complete status line into all components.
     ///
     /// Note: GRBL can be configured (via $10) to report either `MPos` or `WPos`.
@@ -380,6 +389,7 @@ impl StatusParser {
             overrides: Self::parse_overrides(status_line),
             feed_rate: Self::parse_feed_rate(status_line),
             spindle_speed: Self::parse_spindle_speed(status_line),
+            probe_pin: Self::parse_probe_pin(status_line),
         };
 
         // Derive missing coordinate space when possible.
@@ -418,4 +428,41 @@ pub struct FullStatus {
     pub feed_rate: Option<f64>,
     /// Spindle speed
     pub spindle_speed: Option<u32>,
+    /// Probe pin state (`Pn:P` indicates probe is triggered)
+    pub probe_pin: Option<bool>,
+}
+
+/// Parse a GRBL probe report `[PRB:x,y,z(,a...):flag]`.
+///
+/// The position is in machine coordinates, in the controller's report units
+/// (mm unless `$13=1`). A missing flag is treated as success.
+///
+/// # Arguments
+/// * `line` - One trimmed line received from the controller.
+///
+/// # Returns
+/// The probe result, or `None` if the line is not a well-formed probe report.
+pub fn parse_probe_report(line: &str) -> Option<gcodekit5_core::ProbeResult> {
+    let inner = line.trim().strip_prefix("[PRB:")?.strip_suffix(']')?;
+    let mut parts = inner.splitn(2, ':');
+    let coords: Vec<f32> = parts
+        .next()?
+        .split(',')
+        .map(|v| v.trim().parse::<f32>())
+        .collect::<Result<_, _>>()
+        .ok()?;
+    if coords.len() < 3 {
+        return None;
+    }
+    let success = match parts.next().map(str::trim) {
+        None | Some("") => true,
+        Some(flag) => flag.parse::<u8>().ok()? != 0,
+    };
+    let mut position = gcodekit5_core::Position::new(coords[0], coords[1], coords[2]);
+    position.a = coords.get(3).copied();
+    Some(gcodekit5_core::ProbeResult::new(
+        position,
+        success,
+        gcodekit5_core::Units::MM,
+    ))
 }

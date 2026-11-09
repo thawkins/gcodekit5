@@ -1,6 +1,17 @@
 //! G-Code Validator - Task 65
 //!
 //! Validates G-code syntax, ranges, and consistency.
+//!
+//! Lines are tokenized with [`crate::comment_processor::words`], so comments are ignored and
+//! only whole words are checked.
+//!
+//! GRBL system commands (lines starting with `$`) are classified with
+//! [`crate::comment_processor::system_command`]: known commands (`$H`, `$X`, `$$`, `$#`,
+//! `$RST=*`, `$100=80`, ...) are accepted, unknown ones are reported, and the G-code payload
+//! of a `$J=` jog is checked with the normal word checks (it must also carry a feed rate, as
+//! GRBL requires).
+
+use crate::comment_processor::{system_command, words, SystemCommand, Word};
 
 /// Validation error
 #[derive(Debug, Clone)]
@@ -71,83 +82,64 @@ impl GCodeValidator {
     }
 
     fn validate_line(&self, line: &str, line_num: usize) -> Result<(), Vec<ValidationError>> {
-        let mut errors = Vec::new();
-        let trimmed = line.trim();
-
-        if trimmed.is_empty() || trimmed.starts_with(';') {
-            return Ok(());
-        }
-
-        // Extract and validate coordinates using regex
-        if let Some(x_pos) = self.extract_coord(trimmed, 'X') {
-            if x_pos < self.config.min_x || x_pos > self.config.max_x {
-                errors.push(ValidationError {
-                    line: line_num,
-                    message: format!(
-                        "X {} out of range [{}, {}]",
-                        x_pos, self.config.min_x, self.config.max_x
-                    ),
-                });
+        let messages = match system_command(line) {
+            None => self.check_words(&words(line)),
+            Some(SystemCommand::Known(_)) => Vec::new(),
+            Some(SystemCommand::Jog(payload)) => {
+                let jog_words = words(&payload);
+                let mut messages = self.check_words(&jog_words);
+                if jog_words.is_empty() {
+                    messages.push("Jog command '$J=' has no G-code payload".to_string());
+                } else if !jog_words.iter().any(|w| w.letter == 'F') {
+                    messages.push("Jog command '$J=' requires a feed rate (F)".to_string());
+                }
+                messages
             }
-        }
-
-        if let Some(y_pos) = self.extract_coord(trimmed, 'Y') {
-            if y_pos < self.config.min_y || y_pos > self.config.max_y {
-                errors.push(ValidationError {
-                    line: line_num,
-                    message: format!(
-                        "Y {} out of range [{}, {}]",
-                        y_pos, self.config.min_y, self.config.max_y
-                    ),
-                });
+            Some(SystemCommand::Unknown(command)) => {
+                vec![format!("Unknown GRBL system command '{}'", command)]
             }
-        }
+        };
 
-        if let Some(z_pos) = self.extract_coord(trimmed, 'Z') {
-            if z_pos < self.config.min_z || z_pos > self.config.max_z {
-                errors.push(ValidationError {
-                    line: line_num,
-                    message: format!(
-                        "Z {} out of range [{}, {}]",
-                        z_pos, self.config.min_z, self.config.max_z
-                    ),
-                });
-            }
-        }
-
-        // Validate feed rate
-        if let Some(feed) = self.extract_coord(trimmed, 'F') {
-            if feed <= 0.0 {
-                errors.push(ValidationError {
-                    line: line_num,
-                    message: format!("Feed rate must be positive, got {}", feed),
-                });
-            }
-        }
-
-        if errors.is_empty() {
+        if messages.is_empty() {
             Ok(())
         } else {
-            Err(errors)
+            Err(messages
+                .into_iter()
+                .map(|message| ValidationError {
+                    line: line_num,
+                    message,
+                })
+                .collect())
         }
     }
 
-    fn extract_coord(&self, line: &str, axis: char) -> Option<f64> {
-        let pattern = format!("{}", axis);
-        if let Some(pos) = line.find(pattern.as_str()) {
-            let remainder = &line[pos + 1..];
-            let mut num_str = String::new();
-            for ch in remainder.chars() {
-                if ch.is_ascii_digit() || ch == '.' || ch == '-' {
-                    num_str.push(ch);
-                } else {
-                    break;
+    /// Check G-code words for unparsable numbers, out-of-range coordinates and bad feeds.
+    fn check_words(&self, line_words: &[Word]) -> Vec<String> {
+        let mut messages = Vec::new();
+        for word in line_words {
+            if word.value.is_nan() {
+                messages.push(format!("Invalid number for word '{}'", word.letter));
+                continue;
+            }
+            let range = match word.letter {
+                'X' => Some((self.config.min_x, self.config.max_x)),
+                'Y' => Some((self.config.min_y, self.config.max_y)),
+                'Z' => Some((self.config.min_z, self.config.max_z)),
+                _ => None,
+            };
+            if let Some((min, max)) = range {
+                if word.value < min || word.value > max {
+                    messages.push(format!(
+                        "{} {} out of range [{}, {}]",
+                        word.letter, word.value, min, max
+                    ));
                 }
             }
-            num_str.parse().ok()
-        } else {
-            None
+            if word.letter == 'F' && word.value <= 0.0 {
+                messages.push(format!("Feed rate must be positive, got {}", word.value));
+            }
         }
+        messages
     }
 }
 

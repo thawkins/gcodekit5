@@ -3,6 +3,13 @@
 //! Converts Gerber (RS-274X) PCB layout files to G-code toolpaths.
 //! Supports copper layer isolation routing, rubout/hatch fill,
 //! and edge-cut operations using CSG boolean geometry.
+//!
+//! Apertures: circle, rectangle, obround and regular-polygon apertures are supported for
+//! flashes and for linear draws (a linear draw is the convex hull of the aperture at both
+//! ends, which is exact for these convex shapes). Circular-arc draws are only defined for
+//! circular apertures by the Gerber specification; a non-circular aperture on an arc is
+//! approximated by a round stroke of its smallest dimension. Aperture macros and aperture
+//! holes are not supported.
 
 use crate::hatch_generator;
 use anyhow::Result;
@@ -24,7 +31,7 @@ use std::fs;
 use std::io::BufReader;
 use std::panic;
 use std::path::PathBuf;
-use tracing::warn;
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GerberLayerType {
@@ -78,6 +85,9 @@ pub struct GerberParameters {
     pub generate_alignment_holes: bool,
     pub alignment_hole_diameter: f32,
     pub alignment_hole_margin: f32,
+    /// Z depth of the alignment holes (mm, negative = below the surface). Separate from
+    /// `cut_depth`, which is only the isolation depth; holes normally go through the board.
+    pub alignment_hole_depth: f32,
     pub cut_depth: f32,
     pub safe_z: f32,
     pub tool_diameter: f32,
@@ -107,6 +117,8 @@ impl Default for GerberParameters {
             generate_alignment_holes: false,
             alignment_hole_diameter: 3.175,
             alignment_hole_margin: 5.0,
+            // Through a 1.6 mm board plus a little into the spoilboard.
+            alignment_hole_depth: -1.8,
             cut_depth: -0.1,
             safe_z: 5.0,
             tool_diameter: 0.1,
@@ -132,19 +144,10 @@ impl GerberConverter {
         writeln!(gcode, "G17 ; XY plane selection")?;
         writeln!(gcode)?;
 
-        writeln!(gcode, "; Home and set work coordinate system")?;
-        writeln!(gcode, " ; Home all axes (bottom-left corner)")?;
-        if params.num_axes >= 3 {
-            writeln!(gcode, "G10 L2 P1 X0 Y0 Z0 ; Clear G54 offset")?;
-        } else {
-            writeln!(gcode, "G10 L2 P1 X0 Y0 ; Clear G54 offset")?;
-        }
+        // Work zero is set at the current (jogged) tool position. The X/Y offsets are applied
+        // to every emitted coordinate, so they must not also be baked into the work origin.
+        writeln!(gcode, "; Set work coordinate system at current position")?;
         writeln!(gcode, "G54 ; Select work coordinate system 1")?;
-        writeln!(
-            gcode,
-            "G0 X{:.3} Y{:.3} ; Move to work origin",
-            params.offset_x, params.offset_y
-        )?;
         if params.num_axes >= 3 {
             writeln!(
                 gcode,
@@ -188,6 +191,128 @@ impl GerberConverter {
         writeln!(gcode, "G0 X0 Y0")?;
 
         Ok(gcode)
+    }
+
+    /// Signed parallel-offset distance that moves a copper boundary away from the copper.
+    ///
+    /// cavalier_contours offsets positive values to the left of the travel direction, so the
+    /// sign depends on ring orientation. Exterior rings must grow outward and hole rings must
+    /// shrink into the hole; both mean "away from copper".
+    ///
+    /// # Arguments
+    /// * `poly` - Closed boundary ring
+    /// * `is_hole` - Whether the ring is an interior (hole) ring
+    /// * `distance` - Unsigned isolation distance in mm
+    ///
+    /// # Returns
+    /// The signed offset to pass to `parallel_offset`.
+    fn outward_offset(poly: &Polyline<f64>, is_hole: bool, distance: f64) -> f64 {
+        let ccw = poly.area() > 0.0;
+        if is_hole == ccw {
+            distance
+        } else {
+            -distance
+        }
+    }
+
+    /// Axis-aligned rectangle covering `sketch`'s bounds grown by `margin` on every side.
+    ///
+    /// # Returns
+    /// `None` if the sketch is empty.
+    fn bounds_rectangle(sketch: &Sketch<()>, margin: f64) -> Option<Sketch<()>> {
+        let bb = sketch.bounding_box();
+        if !(bb.mins.x.is_finite() && bb.maxs.x.is_finite()) || bb.mins.x > bb.maxs.x {
+            return None;
+        }
+        let (x0, y0) = (bb.mins.x - margin, bb.mins.y - margin);
+        let (w, h) = (
+            bb.maxs.x - bb.mins.x + 2.0 * margin,
+            bb.maxs.y - bb.mins.y + 2.0 * margin,
+        );
+        let rect: Sketch<()> = Sketch::rectangle(w, h, None);
+        Some(rect.transform(&Matrix4::new_translation(&Vector3::new(x0, y0, 0.0))))
+    }
+
+    /// Outline of a standard aperture as a convex polygon centred on the origin (mm).
+    ///
+    /// # Arguments
+    /// * `ap` - Aperture definition.
+    /// * `unit_scale` - File unit to mm factor.
+    ///
+    /// # Returns
+    /// The polygon vertices, or `None` for unsupported apertures (macros).
+    fn aperture_outline(ap: &gerber_types::Aperture, unit_scale: f64) -> Option<Vec<[f64; 2]>> {
+        use gerber_types::Aperture as GAperture;
+        use std::f64::consts::PI;
+        let circle = |r: f64, n: usize, rot: f64| -> Vec<[f64; 2]> {
+            (0..n)
+                .map(|i| {
+                    let a = rot + 2.0 * PI * i as f64 / n as f64;
+                    [r * a.cos(), r * a.sin()]
+                })
+                .collect()
+        };
+        match ap {
+            GAperture::Circle(c) => Some(circle(c.diameter * unit_scale / 2.0, 32, 0.0)),
+            GAperture::Rectangle(r) => {
+                let (hw, hh) = (r.x * unit_scale / 2.0, r.y * unit_scale / 2.0);
+                Some(vec![[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]])
+            }
+            GAperture::Obround(o) => {
+                // Stadium: two semicircles joined along the longer side.
+                let (w, h) = (o.x * unit_scale, o.y * unit_scale);
+                let r = w.min(h) / 2.0;
+                let half_len = (w.max(h) / 2.0 - r).max(0.0);
+                let horizontal = w >= h;
+                let segs = 16;
+                let mut pts = Vec::with_capacity(2 * (segs + 1));
+                for (cx, start) in [(half_len, -PI / 2.0), (-half_len, PI / 2.0)] {
+                    for i in 0..=segs {
+                        let a = start + PI * i as f64 / segs as f64;
+                        let (x, y) = (cx + r * a.cos(), r * a.sin());
+                        pts.push(if horizontal { [x, y] } else { [-y, x] });
+                    }
+                }
+                Some(pts)
+            }
+            GAperture::Polygon(p) => {
+                let n = usize::from(p.vertices.clamp(3, 12));
+                let rot = p.rotation.unwrap_or(0.0).to_radians();
+                Some(circle(p.diameter * unit_scale / 2.0, n, rot))
+            }
+            _ => None,
+        }
+    }
+
+    /// Convex hull (counter-clockwise) of a point set, Andrew's monotone chain.
+    fn convex_hull(mut pts: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+        pts.sort_by(|a, b| a[0].total_cmp(&b[0]).then(a[1].total_cmp(&b[1])));
+        pts.dedup_by(|a, b| (a[0] - b[0]).abs() < 1e-12 && (a[1] - b[1]).abs() < 1e-12);
+        if pts.len() < 3 {
+            return pts;
+        }
+        let cross = |o: [f64; 2], a: [f64; 2], b: [f64; 2]| {
+            (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+        };
+        let mut hull: Vec<[f64; 2]> = Vec::with_capacity(pts.len() * 2);
+        for &p in pts.iter().chain(pts.iter().rev().skip(1)) {
+            // Lower hull on the forward pass, upper hull on the reverse pass.
+            while hull.len() >= 2 && cross(hull[hull.len() - 2], hull[hull.len() - 1], p) <= 0.0 {
+                hull.pop();
+            }
+            hull.push(p);
+        }
+        hull.pop();
+        hull
+    }
+
+    /// Area swept by a convex aperture moved in a straight line from `p1` to `p2`.
+    fn stroke_convex(outline: &[[f64; 2]], p1: (f64, f64), p2: (f64, f64)) -> Sketch<()> {
+        let pts: Vec<[f64; 2]> = outline
+            .iter()
+            .flat_map(|v| [[v[0] + p1.0, v[1] + p1.1], [v[0] + p2.0, v[1] + p2.1]])
+            .collect();
+        Sketch::polygon(&Self::convex_hull(pts), None)
     }
 
     fn create_thick_segment(p1: (f64, f64), p2: (f64, f64), width: f64) -> Sketch<()> {
@@ -340,28 +465,23 @@ impl GerberConverter {
         let mut interpolation = InterpolationMode::Linear;
         let mut _quadrant_mode = QuadrantMode::Single;
 
-        let mut decimals_x = 4;
-        let mut decimals_y = 4;
-
         if let Some(fmt) = &doc.format_specification {
-            decimals_x = fmt.decimal;
-            decimals_y = fmt.decimal;
-            warn!(
+            debug!(
                 "Found Format Specification: {}.{}",
                 fmt.integer, fmt.decimal
             );
         } else {
-            warn!("No Format Specification found, assuming 2.4");
+            warn!("No Format Specification found in Gerber file");
         }
 
         let unit_scale = if let Some(units) = &doc.units {
             match units {
                 Unit::Millimeters => {
-                    warn!("Units: Millimeters");
+                    debug!("Units: Millimeters");
                     1.0
                 }
                 Unit::Inches => {
-                    warn!("Units: Inches");
+                    debug!("Units: Inches");
                     25.4
                 }
             }
@@ -370,37 +490,12 @@ impl GerberConverter {
             1.0
         };
 
-        let divisor_x = 10f64.powi(decimals_x as i32);
-        let divisor_y = 10f64.powi(decimals_y as i32);
-
-        warn!(
-            "Conversion params: Divisor X: {}, Divisor Y: {}, Unit Scale: {}",
-            divisor_x, divisor_y, unit_scale
-        );
-
-        let convert_coord = |c: &CoordinateNumber, is_x: bool| -> f64 {
-            let s = format!("{:?}", c);
-            let val = if let Some(start) = s.find("nano: ") {
-                if let Some(end_offset) = s[start..].find(" }") {
-                    let num_str = &s[start + 6..start + end_offset];
-                    num_str.parse::<f64>().unwrap_or(0.0)
-                } else if let Some(end_offset) = s[start..].find("}") {
-                    let num_str = &s[start + 6..start + end_offset];
-                    num_str.parse::<f64>().unwrap_or(0.0)
-                } else {
-                    0.0
-                }
-            } else {
-                let val_str = s
-                    .trim_start_matches("CoordinateNumber(")
-                    .trim_end_matches(')')
-                    .trim_start_matches("CoordinateNumber {")
-                    .trim_end_matches('}');
-                val_str.parse::<f64>().unwrap_or(0.0)
-            };
-            let div = if is_x { divisor_x } else { divisor_y };
-            val / div * unit_scale
-        };
+        // `CoordinateNumber` is stored by gerber-types with a fixed 6-decimal fixed-point
+        // representation, independent of the file's %FS format (the parser already rescales
+        // raw integers by 10^(6 - decimals)). Converting via `f64::from` therefore yields the
+        // value in file units; only the unit scale (inch -> mm) must still be applied.
+        let convert_coord =
+            |c: &CoordinateNumber, _is_x: bool| -> f64 { f64::from(*c) * unit_scale };
 
         for command in doc.commands() {
             match command {
@@ -421,32 +516,49 @@ impl GerberConverter {
                                         .map(|v| convert_coord(v, false))
                                         .unwrap_or(current_y);
 
-                                    let width = if let Some(ap) =
-                                        doc.apertures.get(&current_aperture_code)
-                                    {
-                                        use gerber_types::Aperture as GAperture;
-                                        match ap {
-                                            GAperture::Circle(c) => c.diameter * unit_scale,
-                                            GAperture::Rectangle(r) => {
-                                                (r.x * unit_scale).min(r.y * unit_scale)
-                                            } // Approx
-                                            GAperture::Obround(o) => {
-                                                (o.x * unit_scale).min(o.y * unit_scale)
-                                            } // Approx
-                                            GAperture::Polygon(p) => p.diameter * unit_scale, // Approx
-                                            _ => 0.1,
+                                    use gerber_types::Aperture as GAperture;
+                                    let aperture = doc.apertures.get(&current_aperture_code);
+                                    // Round-stroke width: exact for circles, the smallest
+                                    // dimension otherwise (only used for arcs and macros).
+                                    let width = match aperture {
+                                        Some(GAperture::Circle(c)) => c.diameter * unit_scale,
+                                        Some(GAperture::Rectangle(r))
+                                        | Some(GAperture::Obround(r)) => {
+                                            (r.x * unit_scale).min(r.y * unit_scale)
                                         }
-                                    } else {
-                                        0.1
+                                        Some(GAperture::Polygon(p)) => {
+                                            // Inscribed circle of the regular polygon.
+                                            let n = f64::from(p.vertices.clamp(3, 12));
+                                            p.diameter
+                                                * unit_scale
+                                                * (std::f64::consts::PI / n).cos()
+                                        }
+                                        _ => 0.1,
+                                    };
+                                    let convex_outline = match aperture {
+                                        Some(ap @ GAperture::Rectangle(_))
+                                        | Some(ap @ GAperture::Obround(_))
+                                        | Some(ap @ GAperture::Polygon(_)) => {
+                                            Self::aperture_outline(ap, unit_scale)
+                                        }
+                                        _ => None,
                                     };
 
                                     match interpolation {
                                         InterpolationMode::Linear => {
-                                            sketches.push(Self::create_thick_segment(
-                                                (current_x, current_y),
-                                                (x, y),
-                                                width,
-                                            ));
+                                            let stroke = match &convex_outline {
+                                                Some(outline) => Self::stroke_convex(
+                                                    outline,
+                                                    (current_x, current_y),
+                                                    (x, y),
+                                                ),
+                                                None => Self::create_thick_segment(
+                                                    (current_x, current_y),
+                                                    (x, y),
+                                                    width,
+                                                ),
+                                            };
+                                            sketches.push(stroke);
                                         }
                                         InterpolationMode::ClockwiseCircular
                                         | InterpolationMode::CounterclockwiseCircular => {
@@ -468,6 +580,13 @@ impl GerberConverter {
                                                 interpolation,
                                                 InterpolationMode::ClockwiseCircular
                                             );
+                                            if convex_outline.is_some() {
+                                                warn!(
+                                                    aperture = current_aperture_code,
+                                                    "Arc drawn with a non-circular aperture; \
+                                                     approximated by a round stroke"
+                                                );
+                                            }
                                             sketches.push(Self::create_thick_arc(
                                                 (current_x, current_y),
                                                 (x, y),
@@ -508,48 +627,13 @@ impl GerberConverter {
                                         .unwrap_or(current_y);
 
                                     if let Some(ap) = doc.apertures.get(&current_aperture_code) {
-                                        use gerber_types::Aperture as GAperture;
-                                        let (s, tx, ty): (Sketch<()>, f64, f64) = match ap {
-                                            GAperture::Circle(c) => (
-                                                Sketch::circle(
-                                                    (c.diameter * unit_scale) / 2.0,
-                                                    32,
-                                                    None,
-                                                ),
-                                                x,
-                                                y,
-                                            ),
-                                            GAperture::Rectangle(r) => {
-                                                let w = r.x * unit_scale;
-                                                let h = r.y * unit_scale;
-                                                (
-                                                    Sketch::rectangle(w, h, None),
-                                                    x - w / 2.0,
-                                                    y - h / 2.0,
-                                                )
-                                            }
-                                            GAperture::Obround(o) => {
-                                                let w = o.x * unit_scale;
-                                                let h = o.y * unit_scale;
-                                                (
-                                                    Sketch::rectangle(w, h, None),
-                                                    x - w / 2.0,
-                                                    y - h / 2.0,
-                                                )
-                                            }
-                                            GAperture::Polygon(p) => (
-                                                Sketch::circle(
-                                                    (p.diameter * unit_scale) / 2.0,
-                                                    32,
-                                                    None,
-                                                ),
-                                                x,
-                                                y,
-                                            ),
-                                            _ => (Sketch::circle(0.05, 8, None), x, y),
-                                        };
+                                        let s: Sketch<()> =
+                                            match Self::aperture_outline(ap, unit_scale) {
+                                                Some(outline) => Sketch::polygon(&outline, None),
+                                                None => Sketch::circle(0.05, 8, None),
+                                            };
                                         let s = s.transform(&Matrix4::new_translation(
-                                            &Vector3::new(tx, ty, 0.0),
+                                            &Vector3::new(x, y, 0.0),
                                         ));
                                         sketches.push(s);
                                     }
@@ -688,12 +772,8 @@ impl GerberConverter {
 
         let mut isolation_paths = Vec::new();
         for (poly, is_hole) in polylines {
-            let offset_val = if is_hole {
-                -isolation_offset
-            } else {
-                isolation_offset
-            };
             let poly = clean_polyline(poly);
+            let offset_val = Self::outward_offset(&poly, is_hole, isolation_offset);
             let offset_res =
                 panic::catch_unwind(panic::AssertUnwindSafe(|| poly.parallel_offset(offset_val)));
 
@@ -785,12 +865,8 @@ impl GerberConverter {
         let mut negative_sketch = Sketch::new();
 
         for (poly, is_hole) in polylines {
-            let offset_val = if is_hole {
-                -isolation_offset
-            } else {
-                isolation_offset
-            };
             let poly = clean_polyline(poly);
+            let offset_val = Self::outward_offset(&poly, is_hole, isolation_offset);
             let offset_res =
                 panic::catch_unwind(panic::AssertUnwindSafe(|| poly.parallel_offset(offset_val)));
 
@@ -812,9 +888,10 @@ impl GerberConverter {
         // The tool diameter in the hatching will provide the clearance
         let buffered_traces = isolation_sketch.clone();
 
-        // 3. Board Area
-        let mut board =
-            Sketch::rectangle(params.board_width as f64, params.board_height as f64, None);
+        // 3. Board Area: the outline file if one is found, otherwise the copper bounds
+        // (Gerber coordinates are usually not anchored at 0,0, so a board-sized rectangle at
+        // the origin could miss the copper entirely).
+        let mut board: Option<Sketch<()>> = None;
 
         if params.use_board_outline {
             if let Some(dir) = &params.directory {
@@ -847,8 +924,8 @@ impl GerberConverter {
                                         for s in sketches.iter().skip(1) {
                                             merged_outline = merged_outline.union(s);
                                         }
-                                        board = merged_outline;
-                                        warn!("Using board outline from file: {:?}", path);
+                                        board = Some(merged_outline);
+                                        debug!("Using board outline from file: {:?}", path);
                                         break;
                                     }
                                 }
@@ -859,21 +936,33 @@ impl GerberConverter {
             }
         }
 
-        // Board is already at (0,0) to (w,h), no translation needed if we assume bottom-left origin
+        let board = match board {
+            Some(b) => b,
+            None => {
+                if params.use_board_outline {
+                    warn!("No board outline file found; rubout uses the copper bounds");
+                }
+                let margin = isolation_offset + params.tool_diameter as f64;
+                match Self::bounds_rectangle(&merged, margin) {
+                    Some(rect) => rect,
+                    None => return Ok(()),
+                }
+            }
+        };
 
         // 4. Rubout Area
-        warn!("Board bounds: {:?}", board.bounding_box());
-        warn!(
+        debug!("Board bounds: {:?}", board.bounding_box());
+        debug!(
             "Isolation sketch bounds: {:?}",
             isolation_sketch.bounding_box()
         );
-        warn!(
+        debug!(
             "Buffered traces bounds: {:?}",
             buffered_traces.bounding_box()
         );
         let rubout_area = board.difference(&buffered_traces);
-        warn!("Rubout area bounds: {:?}", rubout_area.bounding_box());
-        warn!(
+        debug!("Rubout area bounds: {:?}", rubout_area.bounding_box());
+        debug!(
             "Rubout area multipolygon polygon count: {}",
             rubout_area.to_multipolygon().0.len()
         );
@@ -881,7 +970,7 @@ impl GerberConverter {
         // 5. Hatch - Convert each polygon with holes to a single lyon path
         // Lyon's even-odd fill rule will properly handle holes if they wind opposite direction
         let mp = rubout_area.to_multipolygon();
-        warn!("Rubout area multipolygon count: {}", mp.0.len());
+        debug!("Rubout area multipolygon count: {}", mp.0.len());
         let mut lyon_paths = Vec::new();
         for poly in mp.0 {
             let mut builder = LyonPath::builder();
@@ -912,19 +1001,19 @@ impl GerberConverter {
         }
 
         let spacing = params.tool_diameter * 0.8;
-        warn!("Generating hatch with spacing: {}", spacing);
+        debug!("Generating hatch with spacing: {}", spacing);
         let mut hatch_lines = Vec::new();
         for path in lyon_paths {
             let lines = hatch_generator::generate_hatch(&path, 45.0, spacing, 0.01);
             hatch_lines.extend(lines);
         }
-        warn!("Generated {} hatch lines", hatch_lines.len());
+        debug!("Generated {} hatch lines", hatch_lines.len());
 
         // 6. G-Code
         let has_z = params.num_axes >= 3;
         for (i, path) in hatch_lines.iter().enumerate() {
             if i < 5 {
-                warn!("Hatch line {}: {:?}", i, path.iter().collect::<Vec<_>>());
+                debug!("Hatch line {}: {:?}", i, path.iter().collect::<Vec<_>>());
             }
             for event in path.iter() {
                 match event {
@@ -1084,6 +1173,12 @@ impl GerberConverter {
                 (-margin, height + margin),
             ];
 
+            if has_z
+                && !(params.alignment_hole_depth.is_finite() && params.alignment_hole_depth < 0.0)
+            {
+                anyhow::bail!("Alignment hole depth must be below the surface (negative Z)");
+            }
+
             for (hx, hy) in holes.iter() {
                 let tx = hx + params.offset_x;
                 let ty = hy + params.offset_y;
@@ -1095,8 +1190,8 @@ impl GerberConverter {
                 if has_z {
                     writeln!(
                         gcode,
-                        "G1 Z{:.3} F{:.1}",
-                        params.cut_depth, params.feed_rate
+                        "G1 Z{:.3} F{:.1} ; Drill alignment hole",
+                        params.alignment_hole_depth, params.feed_rate
                     )?;
                     writeln!(gcode, "G0 Z{:.3}", params.safe_z)?;
                 }

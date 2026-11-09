@@ -34,6 +34,8 @@ pub struct DeviceProfileUiModel {
     pub connection_type: String,
     pub baud_rate: String,
     pub port: String,
+    /// Hostname or IP address used for TCP/IP and WebSocket connections.
+    pub tcp_host: String,
     pub tcp_port: String,
     pub timeout_ms: String,
     pub auto_reconnect: bool,
@@ -66,6 +68,7 @@ impl From<DeviceProfile> for DeviceProfileUiModel {
             connection_type: p.connection_type,
             baud_rate: p.baud_rate.to_string(),
             port: p.port,
+            tcp_host: p.tcp_host,
             tcp_port: p.tcp_port.to_string(),
             timeout_ms: p.timeout_ms.to_string(),
             auto_reconnect: p.auto_reconnect,
@@ -117,11 +120,10 @@ impl DeviceUiController {
             _ => anyhow::bail!("Unknown device type: {}", ui_model.device_type),
         };
 
-        profile.controller_type = ControllerType::from_str(&ui_model.controller_type)
-            .ok_or_else(|| anyhow::anyhow!(
-                "Unknown controller type: {}",
-                ui_model.controller_type
-            ))?;
+        profile.controller_type =
+            ControllerType::from_name(&ui_model.controller_type).ok_or_else(|| {
+                anyhow::anyhow!("Unknown controller type: {}", ui_model.controller_type)
+            })?;
 
         let mut x_min: f64 = ui_model
             .x_min
@@ -225,6 +227,23 @@ impl DeviceUiController {
             format!("Baud Rate must be an integer (got {})", ui_model.baud_rate)
         })?;
         profile.port = ui_model.port;
+        let tcp_host = ui_model.tcp_host.trim();
+        if tcp_host.is_empty() {
+            if profile.connection_type != "Serial" {
+                anyhow::bail!(
+                    "TCP Host must not be empty for {} connections",
+                    profile.connection_type
+                );
+            }
+            // Serial profiles keep whatever host was stored previously.
+        } else if tcp_host.chars().any(char::is_whitespace) {
+            anyhow::bail!(
+                "TCP Host must not contain spaces (got {})",
+                ui_model.tcp_host
+            );
+        } else {
+            profile.tcp_host = tcp_host.to_string();
+        }
         profile.tcp_port =
             ui_model.tcp_port.trim().parse().with_context(|| {
                 format!("TCP Port must be an integer (got {})", ui_model.tcp_port)

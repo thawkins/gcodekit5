@@ -6,12 +6,12 @@
 
 use crate::communication::Communicator;
 use crate::firmware::repetier::processor::RepetierEvent;
+use crate::firmware::Sender;
 use crate::SerialCommunicator;
 use gcodekit5_core::ThreadSafe;
 use std::sync::mpsc::{channel, Receiver, Sender as MpscSender};
 use std::thread;
 use std::time::Duration;
-use crate::firmware::Sender;
 
 #[derive(Clone)]
 pub struct RepetierSender {
@@ -22,7 +22,8 @@ pub struct RepetierSender {
     /// For now it is only stored here; the actual migration of the
     /// `process_outgoing`/`process_incoming` calls from the communicator to
     /// the sender happens in later phases.
-    processor: std::sync::Arc<std::sync::Mutex<crate::firmware::repetier::processor::RepetierProcessor>>,
+    processor:
+        std::sync::Arc<std::sync::Mutex<crate::firmware::repetier::processor::RepetierProcessor>>,
 }
 
 enum SenderCommand {
@@ -48,7 +49,7 @@ impl RepetierSender {
         let communicator_for_struct = communicator.clone();
         let is_streaming_for_struct = is_streaming.clone();
         let processor = std::sync::Arc::new(std::sync::Mutex::new(
-            crate::firmware::repetier::processor::RepetierProcessor::new()
+            crate::firmware::repetier::processor::RepetierProcessor::new(),
         ));
         let processor_for_thread = processor.clone();
 
@@ -68,20 +69,21 @@ impl RepetierSender {
                 // Process control commands from the UI
                 while let Ok(cmd) = rx_control.try_recv() {
                     match cmd {
-            SenderCommand::SendGcode(content) => {
-                let gcode_with_pen = apply_pen_mode(&content);
-                file_lines = gcode_with_pen
-                    .lines()
-                    .map(|s| s.trim())
-                    .filter(|s| {
-                        let s = s.trim();
-                        !s.is_empty()
-                            && !s.starts_with(';')
-                            && !s.starts_with('(')
-                    })
-                    .map(|s| s.to_string())
-                    .collect();
-                    tracing::debug!("📋 [SENDER] Cargadas {} líneas útiles (comandos reales)", file_lines.len());
+                        SenderCommand::SendGcode(content) => {
+                            let gcode_with_pen = apply_pen_mode(&content);
+                            file_lines = gcode_with_pen
+                                .lines()
+                                .map(|s| s.trim())
+                                .filter(|s| {
+                                    let s = s.trim();
+                                    !s.is_empty() && !s.starts_with(';') && !s.starts_with('(')
+                                })
+                                .map(|s| s.to_string())
+                                .collect();
+                            tracing::debug!(
+                                "📋 [SENDER] Cargadas {} líneas útiles (comandos reales)",
+                                file_lines.len()
+                            );
 
                             // Clear the communicator's flow control flags
                             if let Some(mut comm) = communicator.try_lock() {
@@ -111,50 +113,50 @@ impl RepetierSender {
                     }
                 }
 
-                    if local_streaming && !local_paused {
-                        // Check the communicator's flow control status
-                        let (flow_paused, flow_stopped) = if let Some(comm) = communicator.try_lock() {
-                            (comm.repetier_is_paused(), comm.repetier_is_stopped())
-                        } else {
-                            (false, false)
-                        };
+                if local_streaming && !local_paused {
+                    // Check the communicator's flow control status
+                    let (flow_paused, flow_stopped) = if let Some(comm) = communicator.try_lock() {
+                        (comm.repetier_is_paused(), comm.repetier_is_stopped())
+                    } else {
+                        (false, false)
+                    };
 
-                        if flow_stopped {
-                            tracing::debug!("⏹️  [SENDER] Stop detectado. Terminando streaming.");
-                            local_streaming = false;
-                            *is_streaming.lock() = false;
-                            let _ = tx_ui_thread.send("Completed".to_string());
-                        } else if flow_paused {
+                    if flow_stopped {
+                        tracing::debug!("⏹️  [SENDER] Stop detectado. Terminando streaming.");
+                        local_streaming = false;
+                        *is_streaming.lock() = false;
+                        let _ = tx_ui_thread.send("Completed".to_string());
+                    } else if flow_paused {
+                    } else if commands_in_flight < 1 && current_idx < file_lines.len() {
+                        let raw_line = file_lines[current_idx].clone();
 
-                            } else if commands_in_flight < 1 && current_idx < file_lines.len() {
-                            let raw_line = file_lines[current_idx].clone();
-
-                            if let Some(mut comm) = communicator.try_lock() {
-                                match comm.send(raw_line.as_bytes()) {
-                                    Ok(written) if written > 0 => {
-                                        let _ = tx_ui_thread.send(format!("> {}", raw_line.trim()));
-                                        commands_in_flight += 1;
-                                        current_idx += 1;
-                                        last_retry_idx = None;
-                                    }
-                                    Ok(_) => {
-                                        current_idx += 1;
-                                    }
-                                    Err(e) => {
-                                        if last_retry_idx != Some(current_idx) {
-                                            tracing::debug!(
-                                                "⏸️  [SENDER] Reintentando idx={} por: {}",
-                                                current_idx, e
-                                            );
-                                            last_retry_idx = Some(current_idx);
-                                        }
+                        if let Some(mut comm) = communicator.try_lock() {
+                            match comm.send(raw_line.as_bytes()) {
+                                Ok(written) if written > 0 => {
+                                    let _ = tx_ui_thread.send(format!("> {}", raw_line.trim()));
+                                    commands_in_flight += 1;
+                                    current_idx += 1;
+                                    last_retry_idx = None;
+                                }
+                                Ok(_) => {
+                                    current_idx += 1;
+                                }
+                                Err(e) => {
+                                    if last_retry_idx != Some(current_idx) {
+                                        tracing::debug!(
+                                            "⏸️  [SENDER] Reintentando idx={} por: {}",
+                                            current_idx,
+                                            e
+                                        );
+                                        last_retry_idx = Some(current_idx);
                                     }
                                 }
                             }
-
-                            let progress = (current_idx as f64 / file_lines.len() as f64) * 100.0;
-                            let _ = tx_ui_thread.send(format!("*{:.1}%", progress));
                         }
+
+                        let progress = (current_idx as f64 / file_lines.len() as f64) * 100.0;
+                        let _ = tx_ui_thread.send(format!("*{:.1}%", progress));
+                    }
 
                     // Listening for Confirmations and Handling OKs
                     if let Some(mut comm) = communicator.try_lock() {
@@ -164,7 +166,10 @@ impl RepetierSender {
                             match event {
                                 RepetierEvent::Ack => {
                                     commands_in_flight = commands_in_flight.saturating_sub(1);
-                                    tracing::debug!("✅ [SENDER] Ack. in_flight={}", commands_in_flight);
+                                    tracing::debug!(
+                                        "✅ [SENDER] Ack. in_flight={}",
+                                        commands_in_flight
+                                    );
                                 }
                                 RepetierEvent::Resend(target_line) => {
                                     tracing::debug!("🔄 [SENDER] Resend N{}. in_flight antes={}, current_idx antes={}",

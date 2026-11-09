@@ -47,11 +47,12 @@ impl DesignerShape for DesignCircle {
         // shapes.rs Circle::to_path_shape applied rotation.
         // So we should apply it.
         if self.rotation.abs() > 1e-6 {
-            let transform = Transform::translation(self.center.x as f32, self.center.y as f32)
-                .then_rotate(lyon::math::Angle::radians(self.rotation as f32))
+            // Rotation is stored in degrees; rotate about the centre.
+            let transform = Transform::translation(-self.center.x as f32, -self.center.y as f32)
+                .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
                 .then_translate(lyon::math::vector(
-                    -self.center.x as f32,
-                    -self.center.y as f32,
+                    self.center.x as f32,
+                    self.center.y as f32,
                 ));
             return path.transformed(&transform);
         }

@@ -95,14 +95,8 @@ pub const PROTOCOLS: &[ProtocolProfile] = &[
         sender: SenderKind::FlowControl,
         announces_identity: true,
         init_commands: &["M110", "M115"],
-        detection_signatures: &[
-            "Free RAM",
-            "FIRMWARE_NAME:Repetier",
-            "Repetier",
-            "Resend:",
-        ],
+        detection_signatures: &["Free RAM", "FIRMWARE_NAME:Repetier", "Repetier", "Resend:"],
     },
-
     // ─── grblHAL ───
     ProtocolProfile {
         id: "grblHAL",
@@ -113,7 +107,6 @@ pub const PROTOCOLS: &[ProtocolProfile] = &[
         init_commands: &["$I", "$$"],
         detection_signatures: &["grblHAL", "[FIRMWARE:grblHAL]"],
     },
-
     // ─── FluidNC ───
     ProtocolProfile {
         id: "FluidNC",
@@ -124,7 +117,6 @@ pub const PROTOCOLS: &[ProtocolProfile] = &[
         init_commands: &["$I", "$$"],
         detection_signatures: &["FluidNC"],
     },
-
     // ─── GRBL ───
     ProtocolProfile {
         id: "GRBL",
@@ -135,7 +127,6 @@ pub const PROTOCOLS: &[ProtocolProfile] = &[
         init_commands: &["$I", "$$"],
         detection_signatures: &["Grbl"],
     },
-
     // ──────────────────────────
     // Protocols not implemented
     // ──────────────────────────
@@ -216,7 +207,7 @@ pub fn detect_protocol(text: &str) -> Option<ControllerProtocol> {
                 .iter()
                 .any(|sig| text_lower.contains(&sig.to_lowercase()))
         })
-        .map(|p| ControllerProtocol::from_str(p.id))
+        .map(|p| ControllerProtocol::from_name(p.id))
 }
 
 pub use super::ControllerProtocol;

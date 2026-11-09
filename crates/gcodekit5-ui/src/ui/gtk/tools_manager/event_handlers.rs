@@ -204,32 +204,23 @@ impl ToolsManagerView {
                     let prev = view.last_selected_tool_id.borrow().clone();
                     let window_opt = view.widget.root().and_downcast::<gtk4::Window>();
                     if let Some(window) = window_opt {
-                        let dialog = gtk4::MessageDialog::builder()
-                            .transient_for(&window)
-                            .modal(true)
-                            .message_type(gtk4::MessageType::Question)
-                            .buttons(gtk4::ButtonsType::YesNo)
-                            .text("Discard changes?")
-                            .secondary_text(
-                                "You have unsaved changes. Discard them and switch tools?",
-                            )
-                            .build();
-
                         let view2 = view.clone();
                         let list = list.clone();
-                        dialog.connect_response(move |d, resp| {
-                            if resp == gtk4::ResponseType::Yes {
-                                view2.load_tool_for_edit(&tool_id);
-                                view2.persist_ui_state();
-                            } else if let Some(prev_id) = prev.as_deref() {
-                                view2.select_row_by_tool_id(&list, prev_id);
-                            } else {
-                                list.unselect_all();
-                            }
-                            d.close();
-                        });
-
-                        dialog.show();
+                        crate::ui::gtk::common::dialog::show_question(
+                            "Discard changes?",
+                            "You have unsaved changes. Discard them and switch tools?",
+                            Some(&window),
+                            move |resp| {
+                                if resp == gtk4::ResponseType::Yes {
+                                    view2.load_tool_for_edit(&tool_id);
+                                    view2.persist_ui_state();
+                                } else if let Some(prev_id) = prev.as_deref() {
+                                    view2.select_row_by_tool_id(&list, prev_id);
+                                } else {
+                                    list.unselect_all();
+                                }
+                            },
+                        );
                     }
 
                     return;
@@ -273,6 +264,15 @@ impl ToolsManagerView {
         {
             let view = self.clone();
             self.edit_flutes.connect_value_changed(move |_| {
+                view.update_save_state();
+            });
+        }
+
+        // Tool number is part of the saved tool; without tracking it, editing only the
+        // number never enabled Save.
+        {
+            let view = self.clone();
+            self.edit_number.connect_value_changed(move |_| {
                 view.update_save_state();
             });
         }

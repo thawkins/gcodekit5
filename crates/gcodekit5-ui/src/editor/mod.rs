@@ -218,7 +218,7 @@ impl EditorState {
     }
 
     /// Get visible lines for rendering with overscan for smooth scrolling
-    /// Returns (start_line, Vec<String>) where start_line is the 0-indexed line number of the first line
+    /// Returns `(start_line, Vec<String>)` where start_line is the 0-indexed line number of the first line
     pub fn get_visible_lines(&self) -> (usize, Vec<String>) {
         // Use small overscan (5 lines) to reduce lag while maintaining smooth scrolling
         let range = self.viewport.overscan_range(5);

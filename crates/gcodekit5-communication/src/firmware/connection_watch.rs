@@ -4,7 +4,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration};
 use tracing::warn;
@@ -44,11 +44,17 @@ pub enum ConnectionWatchState {
     Lost,
 }
 
-/// Connection watcher that monitors communication
+/// Connection watcher that monitors communication.
+///
+/// Timing uses a monotonic [`Instant`] so wall-clock changes (NTP, DST, manual
+/// adjustment) cannot trigger or mask a timeout. The timeout window starts when
+/// [`ConnectionWatcher::start`] is called, not when the watcher is constructed.
 pub struct ConnectionWatcher {
     /// Configuration
     config: ConnectionWatchConfig,
-    /// Last heartbeat timestamp (Unix timestamp in ms)
+    /// Monotonic reference point; heartbeats are stored as ms elapsed since it
+    origin: Instant,
+    /// Last heartbeat, in milliseconds since `origin`
     last_heartbeat: Arc<AtomicU64>,
     /// Watcher task handle
     watch_task: Arc<tokio::sync::Mutex<Option<JoinHandle<()>>>>,
@@ -56,39 +62,56 @@ pub struct ConnectionWatcher {
     state: Arc<tokio::sync::Mutex<ConnectionWatchState>>,
 }
 
-impl ConnectionWatcher {
-    /// Create a new connection watcher
-    pub fn new(config: ConnectionWatchConfig) -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+/// Milliseconds elapsed since `origin`, saturating at `u64::MAX`.
+fn elapsed_ms(origin: Instant) -> u64 {
+    u64::try_from(origin.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
 
+impl ConnectionWatcher {
+    /// Create a new connection watcher. No timing happens until [`Self::start`].
+    pub fn new(config: ConnectionWatchConfig) -> Self {
         Self {
             config,
-            last_heartbeat: Arc::new(AtomicU64::new(now)),
+            origin: Instant::now(),
+            last_heartbeat: Arc::new(AtomicU64::new(0)),
             watch_task: Arc::new(tokio::sync::Mutex::new(None)),
             state: Arc::new(tokio::sync::Mutex::new(ConnectionWatchState::Healthy)),
         }
     }
 
-    /// Start watching the connection
+    /// Start watching the connection.
+    ///
+    /// Resets the heartbeat clock and state to healthy, so the timeout is measured
+    /// from this call. Calling `start` again stops the previous watch task first,
+    /// so at most one task ever runs.
+    ///
+    /// # Errors
+    /// Currently infallible; returns `Result` for API stability.
     pub async fn start(&self) -> anyhow::Result<()> {
+        // Hold the task slot for the whole restart so concurrent start() calls
+        // cannot both spawn.
+        let mut watch_task = self.watch_task.lock().await;
+        if let Some(previous) = watch_task.take() {
+            previous.abort();
+        }
+
+        self.heartbeat();
+        *self.state.lock().await = ConnectionWatchState::Healthy;
+
         let config = self.config.clone();
+        let origin = self.origin;
         let last_heartbeat = Arc::clone(&self.last_heartbeat);
         let state = Arc::clone(&self.state);
 
         let task = tokio::spawn(async move {
-            let mut check_interval = interval(Duration::from_millis(config.check_interval_ms));
+            // tokio::time::interval panics on a zero period.
+            let period = Duration::from_millis(config.check_interval_ms.max(1));
+            let mut check_interval = interval(period);
 
             loop {
                 check_interval.tick().await;
 
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-
+                let now = elapsed_ms(origin);
                 let last = last_heartbeat.load(Ordering::Relaxed);
                 let time_since_heartbeat = now.saturating_sub(last);
 
@@ -102,14 +125,18 @@ impl ConnectionWatcher {
                 };
 
                 if *current_state != new_state {
+                    if new_state == ConnectionWatchState::Lost {
+                        warn!(
+                            elapsed_ms = time_since_heartbeat,
+                            timeout_ms = config.timeout_ms,
+                            "Connection timeout detected"
+                        );
+                    }
                     *current_state = new_state;
-                } else if new_state == ConnectionWatchState::Lost {
-                    warn!("Connection timeout detected");
                 }
             }
         });
 
-        let mut watch_task = self.watch_task.lock().await;
         *watch_task = Some(task);
 
         Ok(())
@@ -123,13 +150,19 @@ impl ConnectionWatcher {
         }
     }
 
+    /// Returns `true` while a watch task started by [`Self::start`] is running.
+    pub async fn is_running(&self) -> bool {
+        self.watch_task
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|t| !t.is_finished())
+    }
+
     /// Update the last heartbeat time
     pub fn heartbeat(&self) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        self.last_heartbeat.store(now, Ordering::Relaxed);
+        self.last_heartbeat
+            .store(elapsed_ms(self.origin), Ordering::Relaxed);
     }
 
     /// Get current connection state
@@ -147,14 +180,22 @@ impl ConnectionWatcher {
         self.get_state().await == ConnectionWatchState::Lost
     }
 
-    /// Get time since last heartbeat in milliseconds
+    /// Get time since last heartbeat (or since construction if never started) in
+    /// milliseconds, measured on the monotonic clock.
     pub fn time_since_heartbeat(&self) -> u64 {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
         let last = self.last_heartbeat.load(Ordering::Relaxed);
-        now.saturating_sub(last)
+        elapsed_ms(self.origin).saturating_sub(last)
+    }
+}
+
+impl Drop for ConnectionWatcher {
+    fn drop(&mut self) {
+        // Do not leave a detached task polling forever once the watcher is gone.
+        if let Ok(mut slot) = self.watch_task.try_lock() {
+            if let Some(task) = slot.take() {
+                task.abort();
+            }
+        }
     }
 }
 

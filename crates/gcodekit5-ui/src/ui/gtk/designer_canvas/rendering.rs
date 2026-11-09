@@ -24,25 +24,16 @@ impl DesignerCanvas {
         toolpaths: &[Toolpath],
         pending_fast_shape: Option<Shape>,
         device_bounds: (f64, f64, f64, f64),
-        style_context: &gtk4::StyleContext,
+        fg_color: gtk4::gdk::RGBA,
         grid_major_line_width: f64,
         grid_minor_line_width: f64,
     ) {
         // Background handled by CSS
 
-        let fg_color = style_context.color();
-        let accent_color = style_context
-            .lookup_color("accent_color")
-            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.5, 1.0, 1.0));
-        let success_color = style_context
-            .lookup_color("success_color")
-            .unwrap_or(gtk4::gdk::RGBA::new(0.0, 0.8, 0.0, 1.0));
-        let warning_color = style_context
-            .lookup_color("warning_color")
-            .unwrap_or(gtk4::gdk::RGBA::new(1.0, 1.0, 0.0, 1.0));
-        let error_color = style_context
-            .lookup_color("error_color")
-            .unwrap_or(gtk4::gdk::RGBA::new(1.0, 0.0, 0.0, 1.0));
+        let accent_color = common::colors::accent_color();
+        let success_color = common::colors::success_color();
+        let warning_color = common::colors::warning_color();
+        let error_color = common::colors::error_color();
 
         // Setup coordinate system
         // Designer uses Y-up (Cartesian), Cairo uses Y-down
@@ -1177,7 +1168,8 @@ impl DesignerCanvas {
                     path_shape.scale(sx, sy, anchor);
 
                     if path_shape.rotation.abs() <= 1e-9 {
-                        if let Some((ox1, oy1, _ox2, _oy2)) = path_orig_bounds.get(&obj.id).copied() {
+                        if let Some((ox1, oy1, _ox2, _oy2)) = path_orig_bounds.get(&obj.id).copied()
+                        {
                             let expected_x1 = anchor.x + (ox1 - anchor.x) * sx;
                             let expected_y1 = anchor.y + (oy1 - anchor.y) * sy;
                             let (px1, py1, _, _) = path_shape.bounds();

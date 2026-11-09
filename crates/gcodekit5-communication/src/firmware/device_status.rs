@@ -28,7 +28,9 @@ pub enum MachineStateType {
 impl MachineStateType {
     /// Parse from GRBL status string
     pub fn from_grbl_state(state_str: &str) -> Self {
-        match state_str.trim() {
+        // GRBL 1.1 appends sub-states, e.g. "Hold:0" or "Door:1"; match on the base state.
+        let base = state_str.trim().split(':').next().unwrap_or_default();
+        match base {
             "Idle" => Self::Idle,
             "Run" => Self::Run,
             "Hold" => Self::Hold,
@@ -93,9 +95,10 @@ impl Overrides {
     pub fn parse(override_str: &str) -> Option<Self> {
         let parts: Vec<&str> = override_str.split(',').collect();
         if parts.len() >= 3 {
+            // GRBL 1.1 order is "Ov:feed,rapid,spindle"
             let feed_rate = parts[0].trim().parse::<u16>().ok()?;
-            let spindle_speed = parts[1].trim().parse::<u16>().ok()?;
-            let rapid = parts[2].trim().parse::<u16>().ok()?;
+            let rapid = parts[1].trim().parse::<u16>().ok()?;
+            let spindle_speed = parts[2].trim().parse::<u16>().ok()?;
             return Some(Self {
                 feed_rate,
                 spindle_speed,
@@ -158,24 +161,24 @@ impl DeviceStatus {
         let mut status = Self::new(state);
 
         // Parse remaining fields
-        for part in &parts[1..] {
-            if let Some(mpos_start) = part.find("MPos:") {
-                let coords_str = &part[mpos_start + 5..];
+        // Match field prefixes exactly: a substring search finds "S:" inside "FS:".
+        for part in parts[1..].iter().map(|p| p.trim()) {
+            if let Some(coords_str) = part.strip_prefix("MPos:") {
                 status.machine_pos = parse_coordinates(coords_str)?;
-            } else if let Some(wpos_start) = part.find("WPos:") {
-                let coords_str = &part[wpos_start + 5..];
+            } else if let Some(coords_str) = part.strip_prefix("WPos:") {
                 status.work_pos = parse_coordinates(coords_str)?;
-            } else if let Some(bf_start) = part.find("Bf:") {
-                let bf_str = &part[bf_start + 3..];
+            } else if let Some(bf_str) = part.strip_prefix("Bf:") {
                 status.buffer = BufferStatus::parse(bf_str);
-            } else if let Some(ov_start) = part.find("Ov:") {
-                let ov_str = &part[ov_start + 3..];
+            } else if let Some(ov_str) = part.strip_prefix("Ov:") {
                 status.overrides = Overrides::parse(ov_str);
-            } else if let Some(f_start) = part.find("F:") {
-                let f_str = &part[f_start + 2..];
+            } else if let Some(fs_str) = part.strip_prefix("FS:") {
+                // GRBL 1.1 combined "FS:feed,spindle"
+                let mut fs = fs_str.split(',');
+                status.feed_rate = fs.next().and_then(|f| f.trim().parse::<f64>().ok());
+                status.spindle_speed = fs.next().and_then(|s| s.trim().parse::<u16>().ok());
+            } else if let Some(f_str) = part.strip_prefix("F:") {
                 status.feed_rate = f_str.trim().parse::<f64>().ok();
-            } else if let Some(s_start) = part.find("S:") {
-                let s_str = &part[s_start + 2..];
+            } else if let Some(s_str) = part.strip_prefix("S:") {
                 status.spindle_speed = s_str.trim().parse::<u16>().ok();
             }
         }

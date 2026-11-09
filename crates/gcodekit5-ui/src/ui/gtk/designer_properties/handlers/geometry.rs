@@ -1,123 +1,82 @@
-//! Geometry property handlers (rotation, corner radius, slot, polygon sides)
+//! Geometry property handlers (rotation, corner radius, slot, polygon sides).
+//!
+//! Text entries apply on commit (Enter / focus-out); see [`super::connect_entry_commit`].
 
+use super::{change_selected_with_undo, connect_entry_commit};
+use crate::ui::gtk::designer_properties::SharedMeasurementSystem;
 use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption};
-use gcodekit5_designer::canvas::DrawingObject;
 use gcodekit5_designer::commands::{ChangeProperty, DesignerCommand};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::Shape;
-use gcodekit5_settings::SettingsPersistence;
 use gtk4::prelude::*;
 use gtk4::{CheckButton, Entry};
 use std::rc::Rc;
 
-fn modify_selected_shape_with_undo<F>(designer_state: &mut DesignerState, modifier: F)
-where
-    F: FnOnce(&mut DrawingObject),
-{
-    if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-        if let Some(old_obj) = designer_state.canvas.get_shape(id) {
-            let old_obj = old_obj.clone();
-
-            if let Some(obj) = designer_state.canvas.get_shape_mut(id) {
-                modifier(obj);
-                let new_obj = obj.clone();
-
-                let cmd = DesignerCommand::ChangeProperty(ChangeProperty {
-                    id,
-                    old_state: old_obj,
-                    new_state: new_obj,
-                });
-                designer_state.record_command(cmd);
-            }
-        }
+/// Invokes the redraw callback (if any) without holding its borrow during the call.
+#[allow(clippy::type_complexity)]
+fn redraw(redraw_callback: &SharedOption<Rc<dyn Fn()>>) {
+    let cb = redraw_callback.borrow().clone();
+    if let Some(cb) = cb {
+        cb();
     }
 }
 
-/// Setup rotation entry handler
+/// Setup rotation entry handler (applied on Enter / focus-out).
+///
+/// For a single shape the value is the absolute angle in degrees. For a multi-shape
+/// selection the panel shows `0` and the value is the angle to rotate the whole
+/// selection by; after the commit the panel refresh resets it to `0`, so the rotation
+/// is applied exactly once per edit.
 #[allow(clippy::type_complexity)]
 pub fn setup_rotation_handler(
     rotation_entry: &Entry,
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    // Text change
-    rotation_entry.connect_changed({
-        let state = state.clone();
-        let redraw_callback = redraw_callback.clone();
-        let updating = updating.clone();
-
-        move |entry| {
-            if *updating.borrow() {
-                return;
-            }
-            if let Ok(val) = entry.text().parse::<f64>() {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-                designer_state.set_selected_rotation(val);
-                drop(designer_state);
-
-                // Force iteration so the UI doesn't fall behind
-                while gtk4::glib::MainContext::default().iteration(false) {}
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
-                }
-            } else {
-                entry.add_css_class("entry-invalid");
-            }
-        }
+    let apply_state = state.clone();
+    connect_entry_commit(rotation_entry, state, updating, has_focus, move |entry| {
+        let Ok(val) = entry.text().trim().replace(',', ".").parse::<f64>() else {
+            entry.add_css_class("entry-invalid");
+            return;
+        };
+        entry.remove_css_class("entry-invalid");
+        apply_state.borrow_mut().set_selected_rotation(val);
+        redraw(&redraw_callback);
     });
-
-    // ENTER
-    rotation_entry.connect_activate({
-        let redraw_callback = redraw_callback.clone();
-        move |_| {
-            if let Some(ref cb) = *redraw_callback.borrow() {
-                cb();
-            }
-        }
-    });
-
-    // TAB
-    let focus_controller = gtk4::EventControllerFocus::new();
-    focus_controller.connect_leave({
-        let redraw_callback = redraw_callback.clone();
-        move |_| {
-            if let Some(ref cb) = *redraw_callback.borrow() {
-                cb();
-            }
-        }
-    });
-    rotation_entry.add_controller(focus_controller);
 }
 
-/// Setup corner radius entry handler
+/// Setup corner radius entry handler (applied on Enter / focus-out).
 #[allow(clippy::type_complexity)]
 pub fn setup_corner_radius_handler(
     corner_radius_entry: &Entry,
     state: Shared<DesignerState>,
-    settings: Shared<SettingsPersistence>,
+    measurement_system: SharedMeasurementSystem,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    corner_radius_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        let system = settings.borrow().config().ui.measurement_system;
-        if let Ok(val) = units::parse_length(&entry.text(), system) {
-            entry.remove_css_class("entry-invalid");
-            let mut designer_state = state.borrow_mut();
-            designer_state.set_selected_corner_radius(val as f64);
-            drop(designer_state);
-            if let Some(ref cb) = *redraw_callback.borrow() {
-                cb();
+    let apply_state = state.clone();
+    connect_entry_commit(
+        corner_radius_entry,
+        state,
+        updating,
+        has_focus,
+        move |entry| {
+            let system = measurement_system.get();
+            if let Ok(val) = units::parse_length(&entry.text(), system) {
+                entry.remove_css_class("entry-invalid");
+                apply_state
+                    .borrow_mut()
+                    .set_selected_corner_radius(val as f64);
+                redraw(&redraw_callback);
+            } else {
+                entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup is-slot checkbox handler
@@ -141,40 +100,41 @@ pub fn setup_is_slot_handler(
     });
 }
 
-/// Setup polygon sides entry handler
+/// Setup polygon sides entry handler (applied on Enter / focus-out).
 #[allow(clippy::type_complexity)]
 pub fn setup_sides_handler(
     sides_entry: &Entry,
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    sides_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(val) = entry.text().parse::<u32>() {
-            if val >= 3 {
+    let apply_state = state.clone();
+    connect_entry_commit(
+        sides_entry,
+        state,
+        updating,
+        has_focus,
+        move |entry| match entry.text().trim().parse::<u32>() {
+            Ok(val) if val >= 3 => {
                 entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-
-                modify_selected_shape_with_undo(&mut designer_state, |obj| {
-                    if let Shape::Polygon(polygon) = &mut obj.shape {
-                        polygon.sides = val;
-                    }
-                });
-
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                {
+                    let mut designer_state = apply_state.borrow_mut();
+                    change_selected_with_undo(&mut designer_state, "Change Polygon Sides", |obj| {
+                        if let Shape::Polygon(polygon) = &mut obj.shape {
+                            let changed = polygon.sides != val;
+                            polygon.sides = val;
+                            changed
+                        } else {
+                            false
+                        }
+                    });
                 }
-            } else {
-                entry.add_css_class("entry-invalid");
+                redraw(&redraw_callback);
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+            _ => entry.add_css_class("entry-invalid"),
+        },
+    );
 }
 
 /// Setup path closed checkbox handler

@@ -8,7 +8,7 @@
 //! - Sender buffer tracking
 //! - Flow control to prevent buffer overflow
 //! - Command acknowledgment tracking
-//! - Retry logic for failed commands
+//! - Failed commands are reported (never re-sent out of order)
 //! - Pause/resume capabilities
 
 use crate::communication::Communicator;
@@ -36,9 +36,9 @@ pub struct BufferedCommand {
     pub command: String,
     /// Current status of the command
     pub status: CommandStatus,
-    /// Number of retry attempts
+    /// Number of times the command has been sent (1 once sent; never re-sent)
     pub retry_count: u32,
-    /// Maximum number of retries allowed
+    /// Retained for API compatibility; the wrapper never re-sends failed commands
     pub max_retries: u32,
     /// Response from the device
     pub response: Option<String>,
@@ -100,7 +100,8 @@ pub struct BufferedCommunicatorConfig {
     pub buffer_size: usize,
     /// Maximum number of commands to queue
     pub queue_size: usize,
-    /// Maximum retries per command
+    /// Retained for API compatibility. Failed commands are never re-sent, because a
+    /// resend would execute after lines already in the controller buffer.
     pub max_retries: u32,
     /// Enable flow control
     pub flow_control: bool,
@@ -109,7 +110,8 @@ pub struct BufferedCommunicatorConfig {
 impl Default for BufferedCommunicatorConfig {
     fn default() -> Self {
         Self {
-            buffer_size: 254,
+            // GRBL's serial RX buffer is 128 bytes; overfilling it corrupts commands.
+            buffer_size: 128,
             queue_size: 200,
             max_retries: 3,
             flow_control: true,
@@ -179,7 +181,11 @@ impl BufferedCommunicatorWrapper {
         let used_space = self.sent_buffer_size + command_size + 1; // +1 for newline
         used_space <= self.config.buffer_size
     }
-    // DXF modification
+    /// Send queued commands while the controller buffer has room (character-counting
+    /// flow control). Does nothing while paused.
+    ///
+    /// # Errors
+    /// Returns an error if the underlying communicator fails to send.
     pub fn stream_commands(&mut self) -> gcodekit5_core::Result<()> {
         if self.send_paused {
             return Ok(());
@@ -189,8 +195,8 @@ impl BufferedCommunicatorWrapper {
             let command_to_send = {
                 let mut queue = self.command_queue.lock();
                 if let Some(cmd) = queue.front() {
-                    let cmd_size = cmd.command.len() + 1;
-                    if self.has_room_in_buffer(cmd_size) {
+                    // has_room_in_buffer() adds the newline itself
+                    if self.has_room_in_buffer(cmd.command.len()) {
                         queue.pop_front()
                     } else {
                         None
@@ -245,39 +251,49 @@ impl BufferedCommunicatorWrapper {
         Ok(())
     }
 
-    /// Handle error response from the device
-    pub fn handle_error(&mut self, error_msg: String) -> gcodekit5_core::Result<()> {
+    /// Handle an `error:` response from the device.
+    ///
+    /// GRBL acknowledges lines strictly in order, so the error belongs to the oldest
+    /// in-flight command. That command is removed, its buffer space released, and it
+    /// is returned (status [`CommandStatus::Failed`], `response` set) so the caller
+    /// can report it. It is **never re-sent**: later lines may already be in the
+    /// controller's buffer, so a retry would execute out of order, and GRBL errors
+    /// are deterministic anyway.
+    ///
+    /// Streaming is paused after an error so no further lines are sent until the
+    /// caller decides how to proceed (call [`Self::resume`] to continue or
+    /// [`Self::clear_queue`] to abort).
+    ///
+    /// # Arguments
+    /// * `error_msg` - The raw error line received from the controller.
+    ///
+    /// # Returns
+    /// The failed command, or `None` if no command was awaiting acknowledgment.
+    pub fn handle_error(
+        &mut self,
+        error_msg: String,
+    ) -> gcodekit5_core::Result<Option<BufferedCommand>> {
         let mut active = self.active_commands.lock();
-
-        if let Some(command) = active.first_mut() {
-            command.mark_failed();
-            command.set_response(error_msg);
-
-            if command.can_retry() {
-                tracing::warn!(
-                    "Command failed, retrying ({}/{})",
-                    command.retry_count,
-                    command.max_retries
-                );
-
-                // Move failed command back to queue for retry
-                let retry_command = active.remove(0);
-                let mut queue = self.command_queue.lock();
-                queue.push_front(retry_command);
-
-                if let Some(front) = queue.front() {
-                    let command_size = front.command.len() + 1;
-                    self.sent_buffer_size = self.sent_buffer_size.saturating_sub(command_size);
-                }
-            } else {
-                tracing::error!("Command failed after {} retries", command.max_retries);
-                let command_size = command.command.len() + 1;
-                self.sent_buffer_size = self.sent_buffer_size.saturating_sub(command_size);
-                active.remove(0);
-            }
+        if active.is_empty() {
+            tracing::warn!(error = %error_msg, "Controller error with no command in flight");
+            return Ok(None);
         }
 
-        Ok(())
+        let mut failed = active.remove(0);
+        drop(active);
+
+        failed.mark_failed();
+        let command_size = failed.command.len() + 1;
+        self.sent_buffer_size = self.sent_buffer_size.saturating_sub(command_size);
+        tracing::error!(
+            command = %failed.command,
+            error = %error_msg,
+            "Controller rejected command; streaming paused"
+        );
+        failed.set_response(error_msg);
+        self.send_paused = true;
+
+        Ok(Some(failed))
     }
 
     /// Pause sending commands

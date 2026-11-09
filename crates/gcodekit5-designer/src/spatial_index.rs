@@ -143,7 +143,7 @@ fn insert_into_node(
         node.split();
 
         // Redistribute items among children
-        let items: Vec<u64> = node.items.drain(..).collect();
+        let items: Vec<u64> = std::mem::take(&mut node.items);
         for item_id in items {
             if let Some(children) = node.children.as_mut() {
                 // Insert into only the children that intersect with the item bounds

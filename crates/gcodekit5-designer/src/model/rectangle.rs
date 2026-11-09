@@ -140,8 +140,13 @@ impl DesignerShape for DesignRectangle {
         let angle_rad = t.m12.atan2(t.m11);
         let angle_deg = angle_rad.to_degrees() as f64;
 
-        // We add the new rotation to the existing one.
+        // We add the new rotation to the existing one. A reflection (negative
+        // determinant) mirrors the orientation, so the angle is negated.
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
         self.rotation += angle_deg;
+        if det < 0.0 {
+            self.rotation = -self.rotation;
+        }
 
         // 3. SCALING
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
@@ -190,7 +195,7 @@ impl DesignerShape for DesignRectangle {
         // Rotate point to local coords
         let dx = p.x - self.center.x;
         let dy = p.y - self.center.y;
-        let angle = -self.rotation;
+        let angle = (-self.rotation).to_radians();
         let rx = dx * angle.cos() - dy * angle.sin();
         let ry = dx * angle.sin() + dy * angle.cos();
 

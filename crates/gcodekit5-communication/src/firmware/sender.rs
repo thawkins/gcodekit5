@@ -7,7 +7,8 @@
 //! stop, and unlock.
 //!
 //! Each protocol (GRBL, Repetier, etc.) provides its own implementation:
-//! - `GrblSender`: windowed streaming, `!`/`~`/`0x18`, `$X`, laser/CNC handling.
+//! - `DirectSender` (gcodekit5-ui machine control): GRBL character-counting streaming,
+//!   `!`/`~`, `$X`.
 //! - `RepetierSender`: line-numbered streaming with ack/resend, flow control.
 //!
 //! The UI (`MachineControlView`) holds a `Rc<dyn Sender>` and calls these

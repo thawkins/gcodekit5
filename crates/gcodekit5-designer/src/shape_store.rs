@@ -80,8 +80,15 @@ impl ShapeStore {
     /// but the draw order will have a duplicate entry. Use `remove` first
     /// if replacing an existing shape.
     pub fn insert(&mut self, id: u64, object: DrawingObject) {
-        self.shapes.insert(id, object);
-        self.draw_order.push(id);
+        // Replacing an existing shape must not duplicate it in the draw order.
+        if self.shapes.insert(id, object).is_none() {
+            self.draw_order.push(id);
+        }
+        // Shapes restored with explicit IDs (file load, undo) must never be
+        // overwritten by a later `generate_id()`.
+        if id >= self.next_id {
+            self.next_id = id + 1;
+        }
     }
 
     /// Removes a shape from the store by ID.
@@ -390,24 +397,18 @@ impl ShapeStore {
             }
         }
 
-        for positions in groups.values() {
-            if positions.is_empty() {
-                continue;
-            }
-            let min = *positions.iter().min().unwrap();
-            let max = *positions.iter().max().unwrap();
-            if positions.len() != (max - min + 1) {
-                return true;
-            }
-        }
-        false
+        groups.values().any(
+            |positions| match (positions.iter().min(), positions.iter().max()) {
+                (Some(&min), Some(&max)) => positions.len() != max - min + 1,
+                _ => false,
+            },
+        )
     }
 
     /// Reemplaza el `draw_order` por el dado. No comprueba nada.
     pub fn apply_order(&mut self, new_order: Vec<u64>) {
         self.draw_order = new_order;
     }
-
 }
 
 impl Default for ShapeStore {

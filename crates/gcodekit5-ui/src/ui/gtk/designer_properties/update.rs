@@ -22,31 +22,35 @@ pub(crate) enum LaserSelection {
     Summary(LaserSummary),
 }
 
+/// Laser values of one shape after resolving global settings:
+/// `(use_global, feed_rate, power_percent, passes)`.
+type ResolvedLaser = (bool, f64, f64, u32);
+
 impl LaserSummary {
     pub fn from_slice(
         params: &[gcodekit5_designer::model::LaserParams],
         global: &gcodekit5_designer::designer_state::ToolSettings,
     ) -> Self {
-        let resolved: Vec<(bool, f64, f64, u32)> = params
-        .iter()
-        .map(|p| {
-            let (feed, power, passes) = if p.use_global {
-                (
-                    global.feed_rate,
-                 (global.spindle_speed as f64) / 10.0,
-                 (global.step_down as u32).max(1),
-                )
-            } else {
-                (p.feed_rate, p.power_percent, p.passes)
-            };
-            (p.use_global, feed, power, passes)
-        })
-        .collect();
+        let resolved: Vec<ResolvedLaser> = params
+            .iter()
+            .map(|p| {
+                let (feed, power, passes) = if p.use_global {
+                    (
+                        global.feed_rate,
+                        (global.spindle_speed as f64) / 10.0,
+                        (global.step_down as u32).max(1),
+                    )
+                } else {
+                    (p.feed_rate, p.power_percent, p.passes)
+                };
+                (p.use_global, feed, power, passes)
+            })
+            .collect();
 
         let all_use_global = resolved.iter().all(|(u, _, _, _)| *u);
         let any_override = resolved.iter().any(|(u, _, _, _)| !*u);
 
-        let common_f64 = |f: &dyn Fn(&(bool, f64, f64, u32)) -> f64| -> Option<f64> {
+        let common_f64 = |f: &dyn Fn(&ResolvedLaser) -> f64| -> Option<f64> {
             let mut it = resolved.iter();
             let first = f(it.next()?);
             if it.all(|x| (f(x) - first).abs() < 1e-9) {
@@ -55,7 +59,7 @@ impl LaserSummary {
                 None
             }
         };
-        let common_u32 = |f: &dyn Fn(&(bool, f64, f64, u32)) -> u32| -> Option<u32> {
+        let common_u32 = |f: &dyn Fn(&ResolvedLaser) -> u32| -> Option<u32> {
             let mut it = resolved.iter();
             let first = f(it.next()?);
             if it.all(|x| f(x) == first) {
@@ -92,15 +96,46 @@ impl PropertiesPanel {
     }
 
     /// Update the panel from the current selection.
+    ///
+    /// Does nothing while the user is editing one of the panel's entries.
     pub fn update_from_selection(&self) {
+        self.refresh_from_selection(false);
+    }
+
+    /// Switch the measurement system used to display and parse lengths, and
+    /// refresh the panel so every length field shows the new units.
+    ///
+    /// The refresh runs even while an entry has focus: otherwise its text would
+    /// still be in the old units but be parsed in the new ones when committed.
+    ///
+    /// # Arguments
+    /// * `system` - The newly selected measurement system.
+    pub fn set_measurement_system(&self, system: units::MeasurementSystem) {
+        if self.measurement_system.get() == system {
+            return;
+        }
+        tracing::debug!(
+            ?system,
+            "Designer properties panel switching measurement system"
+        );
+        self.measurement_system.set(system);
+        self.refresh_from_selection(true);
+    }
+
+    /// Refresh the panel from the current selection.
+    ///
+    /// # Arguments
+    /// * `force` - Refresh even while the user is editing an entry.
+    fn refresh_from_selection(&self, force: bool) {
         // Do not rewrite entries while the user is typing; this preserves caret
         // position and avoids forced formatting mid-edit.
-        if *self.has_focus.borrow() {
+        if !force && *self.has_focus.borrow() {
             return;
         }
 
-        // Get current measurement system
-        let system = self.settings.borrow().config().ui.measurement_system;
+        // The panel's measurement system is the single source for both display
+        // and parsing (see `set_measurement_system`).
+        let system = self.measurement_system.get();
         let unit_label = units::get_unit_label(system);
 
         // Update unit labels
@@ -121,10 +156,10 @@ impl PropertiesPanel {
             let designer_state = self.state.borrow();
 
             let selected: Vec<_> = designer_state
-            .canvas
-            .shapes()
-            .filter(|s| s.selected)
-            .collect();
+                .canvas
+                .shapes()
+                .filter(|s| s.selected)
+                .collect();
 
             let data = if selected.is_empty() {
                 None
@@ -149,20 +184,20 @@ impl PropertiesPanel {
                 Some((
                     vec![obj.id],
                     Some(obj.shape.clone()),
-                      obj.use_custom_values,
-                      obj.operation_type,
-                      obj.start_depth,
-                      obj.step_down,
-                      obj.step_in,
-                      obj.ramp_angle,
-                      obj.pocket_strategy,
-                      obj.raster_fill_ratio,
-                      obj.offset,
-                      obj.fillet,
-                      obj.chamfer,
-                      any_not_text,
-                      obj.lock_aspect_ratio,
-                      laser_params_opt.map(LaserSelection::Single),
+                    obj.use_custom_values,
+                    obj.operation_type,
+                    obj.start_depth,
+                    obj.step_down,
+                    obj.step_in,
+                    obj.ramp_angle,
+                    obj.pocket_strategy,
+                    obj.raster_fill_ratio,
+                    obj.offset,
+                    obj.fillet,
+                    obj.chamfer,
+                    any_not_text,
+                    obj.lock_aspect_ratio,
+                    laser_params_opt.map(LaserSelection::Single),
                 ))
             } else {
                 let obj = &selected[0];
@@ -170,25 +205,25 @@ impl PropertiesPanel {
 
                 // --- NUEVO: calcular resumen láser ---
                 let any_raster = selected
-                .iter()
-                .any(|s| matches!(s.shape, Shape::RasterImage(_)));
+                    .iter()
+                    .any(|s| matches!(s.shape, Shape::RasterImage(_)));
 
                 let all_laser: Vec<gcodekit5_designer::model::LaserParams> = selected
-                .iter()
-                .filter_map(|s| match &s.shape {
-                    Shape::Rectangle(r) => Some(r.laser_params),
-                            Shape::Circle(c) => Some(c.laser_params),
-                            Shape::Ellipse(e) => Some(e.laser_params),
-                            Shape::Line(l) => Some(l.laser_params),
-                            Shape::Path(p) => Some(p.laser_params),
-                            Shape::Polygon(p) => Some(p.laser_params),
-                            Shape::Triangle(t) => Some(t.laser_params),
-                            Shape::Text(t) => Some(t.laser_params),
-                            Shape::Gear(g) => Some(g.laser_params),
-                            Shape::Sprocket(s) => Some(s.laser_params),
-                            Shape::RasterImage(_) => None,
-                })
-                .collect();
+                    .iter()
+                    .filter_map(|s| match &s.shape {
+                        Shape::Rectangle(r) => Some(r.laser_params),
+                        Shape::Circle(c) => Some(c.laser_params),
+                        Shape::Ellipse(e) => Some(e.laser_params),
+                        Shape::Line(l) => Some(l.laser_params),
+                        Shape::Path(p) => Some(p.laser_params),
+                        Shape::Polygon(p) => Some(p.laser_params),
+                        Shape::Triangle(t) => Some(t.laser_params),
+                        Shape::Text(t) => Some(t.laser_params),
+                        Shape::Gear(g) => Some(g.laser_params),
+                        Shape::Sprocket(s) => Some(s.laser_params),
+                        Shape::RasterImage(_) => None,
+                    })
+                    .collect();
 
                 let laser_summary = if all_laser.is_empty() || any_raster {
                     None
@@ -199,21 +234,21 @@ impl PropertiesPanel {
 
                 Some((
                     selected.iter().map(|s| s.id).collect(),
-                      None,
-                      obj.use_custom_values,
-                      obj.operation_type,
-                      obj.start_depth,
-                      obj.step_down,
-                      obj.step_in,
-                      obj.ramp_angle,
-                      obj.pocket_strategy,
-                      obj.raster_fill_ratio,
-                      obj.offset,
-                      obj.fillet,
-                      obj.chamfer,
-                      any_not_text,
-                      false,
-                      laser_summary.map(LaserSelection::Summary),
+                    None,
+                    obj.use_custom_values,
+                    obj.operation_type,
+                    obj.start_depth,
+                    obj.step_down,
+                    obj.step_in,
+                    obj.ramp_angle,
+                    obj.pocket_strategy,
+                    obj.raster_fill_ratio,
+                    obj.offset,
+                    obj.fillet,
+                    obj.chamfer,
+                    any_not_text,
+                    false,
+                    laser_summary.map(LaserSelection::Summary),
                 ))
             };
             data
@@ -255,10 +290,11 @@ impl PropertiesPanel {
             } else {
                 (0.0, 0.0, 0.0)
             };
-            self.update_dimensions_ui(&self.width_entry, &self.height_entry, w, h, rot, system);
-
-            // Set flag to prevent feedback loop during updates
+            // Set flag to prevent feedback loop during updates. This must be set before
+            // update_dimensions_ui, which toggles the lock-aspect checkbox.
             *self.updating.borrow_mut() = true;
+
+            self.update_dimensions_ui(&self.width_entry, &self.height_entry, w, h, rot, system);
 
             match laser_params_opt {
                 Some(LaserSelection::Single(params)) => {
@@ -287,22 +323,16 @@ impl PropertiesPanel {
                     // Solo actualizar si el valor ha cambiado y NO hay foco
                     if !*self.has_focus.borrow() {
                         self.laser_feed_rate_entry
-                        .set_text(&display_feed.to_string());
+                            .set_text(&display_feed.to_string());
                         self.laser_power_entry.set_text(&display_power.to_string());
                         self.laser_passes_entry
-                        .set_text(&display_passes.to_string());
+                            .set_text(&display_passes.to_string());
                         self.laser_use_global_check.set_active(params.use_global);
 
                         self.laser_feed_rate_entry.set_sensitive(!params.use_global);
                         self.laser_power_entry.set_sensitive(!params.use_global);
                         self.laser_passes_entry.set_sensitive(!params.use_global);
                     }
-
-                    self.laser_feed_rate_entry
-                    .set_text(&display_feed.to_string());
-                    self.laser_power_entry.set_text(&display_power.to_string());
-                    self.laser_passes_entry
-                    .set_text(&display_passes.to_string());
                     self.laser_use_global_check.set_active(params.use_global);
 
                     // Deshabilitar campos si es global
@@ -320,11 +350,11 @@ impl PropertiesPanel {
                     if let Ok(current) = self.laser_feed_rate_entry.text().parse::<f64>() {
                         if (current - display_feed).abs() > 1e-6 {
                             self.laser_feed_rate_entry
-                            .set_text(&display_feed.to_string());
+                                .set_text(&display_feed.to_string());
                         }
                     } else {
                         self.laser_feed_rate_entry
-                        .set_text(&display_feed.to_string());
+                            .set_text(&display_feed.to_string());
                     }
 
                     // Asignar power a la caja de texto
@@ -340,11 +370,11 @@ impl PropertiesPanel {
                     if let Ok(current) = self.laser_passes_entry.text().parse::<u32>() {
                         if current != display_passes {
                             self.laser_passes_entry
-                            .set_text(&display_passes.to_string());
+                                .set_text(&display_passes.to_string());
                         }
                     } else {
                         self.laser_passes_entry
-                        .set_text(&display_passes.to_string());
+                            .set_text(&display_passes.to_string());
                     }
 
                     // Forzar al Checkbox visual a ponerse en su sitio
@@ -384,7 +414,7 @@ impl PropertiesPanel {
             // Update header with shape ID(s)
             if ids.len() == 1 {
                 self.header
-                .set_text(&format!("{} [{}]", t!("Properties"), ids[0]));
+                    .set_text(&format!("{} [{}]", t!("Properties"), ids[0]));
             } else {
                 self.header.set_text(&format!(
                     "{} [{} {}]",
@@ -412,13 +442,20 @@ impl PropertiesPanel {
 
             // El panel de propiedades láser solo se muestra en modo láser
             self.laser_override_frame
-            .set_visible(is_laser && !is_raster);
+                .set_visible(is_laser && !is_raster);
 
             if let Some(shape) = shape_opt {
                 // Single selection - show shape-specific properties
+                self.rotation_entry.set_tooltip_text(Some(&t!(
+                    "Rotation angle (degrees). Applied on Enter or when leaving the field."
+                )));
                 self.pos_frame.set_visible(true);
                 self.size_frame.set_visible(true);
                 self.rot_frame.set_visible(true);
+                // Reset frames that only some shape kinds show; the match below
+                // re-enables the relevant ones.
+                self.image_engraving_frame.set_visible(false);
+                self.path_frame.set_visible(false);
                 // --- Object Center
                 let (x1, y1, x2, y2) = shape.bounds();
                 let center_x = (x1 + x2) / 2.0;
@@ -453,16 +490,16 @@ impl PropertiesPanel {
                         self.image_engraving_frame.set_visible(true);
 
                         self.image_feed_rate_entry
-                        .set_text(&r.feed_rate.to_string());
+                            .set_text(&r.feed_rate.to_string());
                         self.image_travel_rate_entry
-                        .set_text(&r.travel_rate.to_string());
+                            .set_text(&r.travel_rate.to_string());
                         self.image_min_power_entry
-                        .set_text(&r.min_power.to_string());
+                            .set_text(&r.min_power.to_string());
                         self.image_max_power_entry
-                        .set_text(&r.max_power.to_string());
+                            .set_text(&r.max_power.to_string());
                         self.image_ppi_entry.set_text(&r.ppi.to_string());
                         self.image_scan_direction_combo
-                        .set_active_id(Some(&r.scan_direction));
+                            .set_active_id(Some(&r.scan_direction));
                         self.image_bidirectional_check.set_active(r.bidirectional);
                         self.image_invert_check.set_active(r.invert);
                         //                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
@@ -501,26 +538,9 @@ impl PropertiesPanel {
                         self.rotation_entry.set_sensitive(true);
                         self.set_entry_text_if_changed(&self.width_entry, r.width as f32, system);
                         self.set_entry_text_if_changed(&self.height_entry, r.height as f32, system);
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            r.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            r.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            r.laser_params.passes as f32,
-                            system,
-                        );
                     }
 
-                    Shape::Circle(c) => {
+                    Shape::Circle(_) => {
                         self.corner_frame.set_visible(false);
                         self.text_frame.set_visible(false);
                         self.polygon_frame.set_visible(false);
@@ -530,22 +550,6 @@ impl PropertiesPanel {
                         self.path_frame.set_visible(false);
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false);
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            c.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            c.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            c.laser_params.passes as f32,
-                            system,
-                        );
                     }
 
                     Shape::Ellipse(e) => {
@@ -554,8 +558,10 @@ impl PropertiesPanel {
                         if has_rotation {
                             self.width_entry.set_sensitive(false);
                             self.height_entry.set_sensitive(false);
-                            self.width_entry.set_text(&format!("{:.2}", e.rx * 2.0));
-                            self.height_entry.set_text(&format!("{:.2}", e.ry * 2.0));
+                            self.width_entry
+                                .set_text(&units::format_length((e.rx * 2.0) as f32, system));
+                            self.height_entry
+                                .set_text(&units::format_length((e.ry * 2.0) as f32, system));
                         } else {
                             self.width_entry.set_sensitive(true);
                             self.height_entry.set_sensitive(true);
@@ -577,23 +583,6 @@ impl PropertiesPanel {
                         self.gear_frame.set_visible(false);
                         self.sprocket_frame.set_visible(false);
                         self.timing_pulley_frame.set_visible(false);
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            e.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            e.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            e.laser_params.passes as f32,
-                            system,
-                        );
                     }
 
                     Shape::Text(text_shape) => {
@@ -606,42 +595,25 @@ impl PropertiesPanel {
                         self.path_frame.set_visible(false);
                         self.text_entry.set_text(&text_shape.text);
                         self.font_size_entry
-                        .set_text(&format_font_points(text_shape.font_size));
+                            .set_text(&format_font_points(text_shape.font_size));
                         self.font_bold_check.set_active(text_shape.bold);
                         self.font_italic_check.set_active(text_shape.italic);
 
                         // Set font family in dropdown
-                        let Some(model) =
-                        self.font_family_combo.model().and_downcast::<StringList>()
-                        else {
-                            return;
-                        };
-                        for i in 0..model.n_items() {
-                            if let Some(item) = model.string(i) {
-                                if item == text_shape.font_family {
-                                    self.font_family_combo.set_selected(i);
-                                    break;
+                        // Note: no early return here, `updating` must be reset below.
+                        if let Some(model) =
+                            self.font_family_combo.model().and_downcast::<StringList>()
+                        {
+                            for i in 0..model.n_items() {
+                                if let Some(item) = model.string(i) {
+                                    if item == text_shape.font_family {
+                                        self.font_family_combo.set_selected(i);
+                                        break;
+                                    }
                                 }
                             }
                         }
                         self.rotation_entry.set_sensitive(true);
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            text_shape.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            text_shape.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            text_shape.laser_params.passes as f32,
-                            system,
-                        );
                     }
                     Shape::Polygon(p) => {
                         let has_rotation = p.rotation.abs() > f64::EPSILON;
@@ -665,23 +637,6 @@ impl PropertiesPanel {
                         self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
                         self.rotation_entry.set_sensitive(true);
                         self.height_entry.set_sensitive(false);
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            p.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            p.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            p.laser_params.passes as f32,
-                            system,
-                        );
                     }
                     Shape::Gear(g) => {
                         self.corner_frame.set_visible(false);
@@ -695,26 +650,9 @@ impl PropertiesPanel {
                         self.gear_teeth_entry.set_text(&g.teeth.to_string());
                         // Ahora pressure_angle_deg ya está en grados
                         self.gear_pressure_angle_entry
-                        .set_text(&format!("{:.1}", g.pressure_angle_deg));
+                            .set_text(&format!("{:.1}", g.pressure_angle_deg));
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false);
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            g.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            g.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            g.laser_params.passes as f32,
-                            system,
-                        );
                     }
                     Shape::Sprocket(s) => {
                         self.corner_frame.set_visible(false);
@@ -725,29 +663,12 @@ impl PropertiesPanel {
                         self.timing_pulley_frame.set_visible(false);
                         self.path_frame.set_visible(false);
                         self.sprocket_pitch_entry
-                        .set_text(&format!("{:.2}", s.pitch));
+                            .set_text(&format!("{:.2}", s.pitch));
                         self.sprocket_teeth_entry.set_text(&s.teeth.to_string());
                         self.sprocket_roller_diameter_entry
-                        .set_text(&format!("{:.2}", s.roller_diameter));
+                            .set_text(&format!("{:.2}", s.roller_diameter));
                         self.rotation_entry.set_text("0.0");
                         self.rot_frame.set_visible(false);
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            s.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            s.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            s.laser_params.passes as f32,
-                            system,
-                        );
                     }
 
                     Shape::Path(p) => {
@@ -783,18 +704,18 @@ impl PropertiesPanel {
                             _ => None,
                         };
                         self.timing_pulley_frame
-                        .set_visible(timing_params.is_some());
+                            .set_visible(timing_params.is_some());
                         self.path_frame.set_visible(true);
                         self.path_closed_check.set_active(p.closed);
 
                         if let Some((pitch, teeth, belt_width, hole_radius)) = timing_params {
                             self.timing_pulley_pitch_entry
-                            .set_text(&format!("{:.2}", pitch));
+                                .set_text(&format!("{:.2}", pitch));
                             self.timing_pulley_teeth_entry.set_text(&teeth.to_string());
                             self.timing_pulley_belt_width_entry
-                            .set_text(&format!("{:.2}", belt_width));
+                                .set_text(&format!("{:.2}", belt_width));
                             self.timing_pulley_hole_radius_entry
-                            .set_text(&format!("{:.2}", hole_radius));
+                                .set_text(&format!("{:.2}", hole_radius));
                         }
 
                         // No edit X Y
@@ -802,40 +723,6 @@ impl PropertiesPanel {
                         self.pos_y_entry.set_sensitive(true);
                         self.width_entry.set_sensitive(!has_rotation);
                         self.height_entry.set_sensitive(!has_rotation);
-
-                        // Transfer real value to GTK Entry
-                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
-                        // Other
-                        let (x1, y1, x2, y2) = shape.bounds();
-                        let cx = (x1 + x2) / 2.0;
-                        let cy = (y1 + y2) / 2.0;
-                        self.pos_x_entry.set_text(&format!("{:.2}", cx));
-                        self.pos_y_entry.set_text(&format!("{:.2}", cy));
-                        self.width_entry.set_text(&format!("{:.2}", x2 - x1));
-                        self.height_entry.set_text(&format!("{:.2}", y2 - y1));
-                        self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
-                        self.set_entry_text_if_changed(
-                            &self.height_entry,
-                            (y2 - y1) as f32,
-                            system,
-                        );
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            p.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            p.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            p.laser_params.passes as f32,
-                            system,
-                        );
                     }
 
                     Shape::Triangle(tri) => {
@@ -853,7 +740,7 @@ impl PropertiesPanel {
                             system,
                         );
                         self.rotation_entry
-                        .set_text(&format!("{:.1}", tri.rotation));
+                            .set_text(&format!("{:.1}", tri.rotation));
 
                         // --- Laser Parameters
                         self.set_entry_text_if_changed(
@@ -894,25 +781,8 @@ impl PropertiesPanel {
                             system,
                         );
                         self.rotation_entry
-                        .set_text(&format!("{:.1}", line.rotation));
+                            .set_text(&format!("{:.1}", line.rotation));
                         self.rotation_entry.set_sensitive(true);
-
-                        // Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            line.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            line.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            line.laser_params.passes as f32,
-                            system,
-                        );
                     }
                 }
             } else {
@@ -944,8 +814,14 @@ impl PropertiesPanel {
                     max_y = max_y.max(y2);
                 }
 
-                self.set_entry_text_if_changed(&self.pos_x_entry, min_x as f32, system);
-                self.set_entry_text_if_changed(&self.pos_y_entry, min_y as f32, system);
+                drop(designer_state);
+
+                // Position entries are interpreted as the selection centre by the
+                // position handlers, so display the centre here too.
+                let center_x = (min_x + max_x) / 2.0;
+                let center_y = (min_y + max_y) / 2.0;
+                self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
+                self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
                 if is_laser {
                     self.pos_z_entry.set_text("0");
                 } else {
@@ -953,6 +829,14 @@ impl PropertiesPanel {
                 }
                 self.set_entry_text_if_changed(&self.width_entry, (max_x - min_x) as f32, system);
                 self.set_entry_text_if_changed(&self.height_entry, (max_y - min_y) as f32, system);
+
+                // For a multi-selection the rotation entry is a relative angle: the
+                // committed value rotates the whole selection once, then resets to 0.
+                self.rotation_entry.set_text("0.0");
+                self.rotation_entry.set_sensitive(true);
+                self.rotation_entry.set_tooltip_text(Some(&t!(
+                    "Rotate the selection by this angle (degrees). Applied on Enter or when leaving the field."
+                )));
             }
 
             // Update CAM properties (common to all shapes)
@@ -967,16 +851,16 @@ impl PropertiesPanel {
             self.ramp_angle_entry.set_sensitive(cam_entries_enabled);
 
             self.op_type_combo
-            .set_selected(if op_type == OperationType::Pocket {
-                1
-            } else {
-                0
-            });
+                .set_selected(if op_type == OperationType::Pocket {
+                    1
+                } else {
+                    0
+                });
 
             self.set_entry_text_if_changed(&self.step_down_entry, step_down, system);
             self.set_entry_text_if_changed(&self.step_in_entry, step_in, system);
             self.ramp_angle_entry
-            .set_text(&format!("{:.1}", ramp_angle));
+                .set_text(&format!("{:.1}", ramp_angle));
 
             let strategy_index = match strategy {
                 PocketStrategy::Raster { .. } => 0,
@@ -985,23 +869,37 @@ impl PropertiesPanel {
             };
             self.strategy_combo.set_selected(strategy_index);
             self.raster_fill_entry
-            .set_text(&format!("{:.0}", raster_fill * 100.0));
+                .set_text(&format!("{:.0}", raster_fill * 100.0));
 
             // Update geometry ops values
-            self.offset_entry.set_text(&format!("{:.2}", offset));
-            self.chamfer_entry.set_text(&format!("{:.2}", chamfer));
+            self.offset_entry
+                .set_text(&units::format_length(offset as f32, system));
+            self.chamfer_entry
+                .set_text(&units::format_length(chamfer as f32, system));
 
             let is_pocket = op_type == OperationType::Pocket;
             self.strategy_combo
-            .set_sensitive(cam_entries_enabled && is_pocket);
+                .set_sensitive(cam_entries_enabled && is_pocket);
             self.step_in_entry
-            .set_sensitive(cam_entries_enabled && is_pocket);
+                .set_sensitive(cam_entries_enabled && is_pocket);
             self.step_in_label
-            .set_sensitive(cam_entries_enabled && is_pocket);
+                .set_sensitive(cam_entries_enabled && is_pocket);
             self.step_in_unit_label
-            .set_sensitive(cam_entries_enabled && is_pocket);
+                .set_sensitive(cam_entries_enabled && is_pocket);
             self.raster_fill_entry
-            .set_sensitive(cam_entries_enabled && is_pocket);
+                .set_sensitive(cam_entries_enabled && is_pocket);
+
+            // Refresh the locked aspect ratio from the newly displayed size; the
+            // checkbox handler only captures it when toggled, so it would otherwise
+            // keep the ratio of a previously selected shape.
+            if let (Ok(cur_w), Ok(cur_h)) = (
+                units::parse_length(&self.width_entry.text(), system),
+                units::parse_length(&self.height_entry.text(), system),
+            ) {
+                if cur_h > 0.0 {
+                    *self.aspect_ratio.borrow_mut() = cur_w as f64 / cur_h as f64;
+                }
+            }
 
             *self.updating.borrow_mut() = false;
         } else {
@@ -1141,12 +1039,12 @@ impl PropertiesPanel {
 
         if has_rotation {
             self.rotation_warning_label
-            .set_text("⚠️ Rotated object: Dimensions locked");
+                .set_text("⚠️ Rotated object: Dimensions locked");
             self.rotation_warning_label.set_visible(true);
             entry_w.set_sensitive(false);
             entry_h.set_sensitive(false);
-            entry_w.set_text(&format!("{:.2}", width));
-            entry_h.set_text(&format!("{:.2}", height));
+            entry_w.set_text(&units::format_length(width as f32, system));
+            entry_h.set_text(&units::format_length(height as f32, system));
             self.lock_aspect_ratio.set_active(true);
             self.lock_aspect_ratio.set_sensitive(false);
         } else {

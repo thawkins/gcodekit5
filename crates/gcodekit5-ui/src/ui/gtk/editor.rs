@@ -4,14 +4,12 @@
 //! line numbers, and integration with the editor backend bridge.
 
 use crate::t;
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
 use gcodekit5_settings::controller::SettingsController;
-use glib;
 use gtk4::prelude::*;
-use gtk4::{
-    Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ResponseType, ScrolledWindow,
-};
+use gtk4::{Box, Button, Entry, Label, Orientation, Overlay, PolicyType, ScrolledWindow};
 use libadwaita::StyleManager;
 use sourceview5::prelude::*;
 use sourceview5::{
@@ -20,8 +18,6 @@ use sourceview5::{
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::thread;
 use tracing::error;
 
 pub struct GcodeEditor {
@@ -184,7 +180,7 @@ impl GcodeEditor {
         // Search Row
         let search_row = Box::new(Orientation::Horizontal, 4);
         let search_entry = Entry::builder()
-            .placeholder_text(&t!("Search..."))
+            .placeholder_text(t!("Search..."))
             .width_request(200)
             .build();
         let prev_btn = Button::builder()
@@ -203,7 +199,7 @@ impl GcodeEditor {
         // Replace Row
         let replace_row = Box::new(Orientation::Horizontal, 4);
         let replace_entry = Entry::builder()
-            .placeholder_text(&t!("Replace with ..."))
+            .placeholder_text(t!("Replace with ..."))
             .width_request(200)
             .build();
         let replace_btn = Button::builder()
@@ -456,64 +452,26 @@ impl GcodeEditor {
         });
 
         // Connect Replace All Button
-        let buffer_clone = buffer.clone();
+        //
+        // Replace through the search context so Replace All uses exactly the same
+        // matching options (case sensitivity, regex, word boundaries) as the search
+        // highlighting, and lands as a single undoable user action.
+        let context_clone = search_context.clone();
         let replace_entry_clone = replace_entry.clone();
         let search_settings_clone = search_settings.clone();
-        let status_bar_clone = status_bar.clone();
 
         replace_all_btn.connect_clicked(move |_| {
-            let replace_text = replace_entry_clone.text().to_string();
-            let search_text = search_settings_clone
+            let has_search_text = search_settings_clone
                 .search_text()
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-
-            if search_text.is_empty() {
+                .is_some_and(|s| !s.is_empty());
+            if !has_search_text {
                 return;
             }
 
-            let buffer = buffer_clone.clone();
-            let status_bar = status_bar_clone.clone();
-
-            // Get text from buffer (must be on main thread)
-            let start = buffer.start_iter();
-            let end = buffer.end_iter();
-            let text = buffer.text(&start, &end, true).to_string();
-
-            if let Some(sb) = &status_bar {
-                sb.set_progress(10.0, &t!("Calculating..."), &t!("Please wait"));
+            let replace_text = replace_entry_clone.text().to_string();
+            if let Err(e) = context_clone.replace_all(&replace_text) {
+                tracing::warn!(error = %e, "editor replace all failed");
             }
-
-            // Spawn thread
-            let (sender, receiver) = mpsc::channel();
-
-            thread::spawn(move || {
-                // Perform replacement
-                let new_text = text.replace(&search_text, &replace_text);
-                let _ = sender.send(new_text);
-            });
-
-            let buffer = buffer_clone.clone();
-            let status_bar = status_bar_clone.clone();
-
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                match receiver.try_recv() {
-                    Ok(new_text) => {
-                        buffer.set_text(&new_text);
-                        if let Some(sb) = &status_bar {
-                            sb.set_progress(0.0, "", ""); // Clear
-                        }
-                        glib::ControlFlow::Break
-                    }
-                    Err(mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        if let Some(sb) = &status_bar {
-                            sb.set_progress(0.0, "", ""); // Clear
-                        }
-                        glib::ControlFlow::Break
-                    }
-                }
-            });
         });
 
         let editor = Self {
@@ -565,7 +523,13 @@ impl GcodeEditor {
         label.set_text(&format!("Line {} / {}", current_line, total_lines));
     }
 
+    /// Replace the editor content with newly generated / cleared G-code.
+    ///
+    /// The content no longer corresponds to the previously opened file, so the file
+    /// association is dropped: otherwise "Save" would silently overwrite that file with
+    /// unrelated generated G-code.
     pub fn set_text(&self, text: &str) {
+        *self.current_file.borrow_mut() = None;
         self.buffer.set_text(text);
         // Move cursor to start (line 1, column 1)
         let mut start_iter = self.buffer.start_iter();
@@ -623,7 +587,11 @@ impl GcodeEditor {
 
     pub fn open_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = super::file_dialog::open_dialog(&t!("Open G-Code File"), parent.as_ref());
+        let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Open G-Code File"));
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -648,57 +616,42 @@ impl GcodeEditor {
         let current_file = self.current_file.clone();
         let settings_controller = self.settings_controller.clone();
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        match fs::read_to_string(&path) {
-                            Ok(content) => {
-                                buffer.set_text(&content);
-                                *current_file.borrow_mut() = Some(path.clone());
-                                // Move cursor to start
-                                let start_iter = buffer.start_iter();
-                                buffer.place_cursor(&start_iter);
-                                // Save last-used directory to settings so other dialogs default to it
-                                if let Some(controller) = settings_controller.as_ref() {
-                                    if let Ok(mut persistence) =
-                                        controller.persistence.try_borrow_mut()
-                                    {
-                                        persistence.config_mut().file_processing.output_directory =
-                                            path.clone();
-
-                                        // Persist config to disk
-                                        let config_path =
-                                            gcodekit5_settings::SettingsManager::config_file_path()
-                                                .unwrap_or_else(|_| {
-                                                    std::path::PathBuf::from("config.json")
-                                                });
-                                        let _ = persistence.save_to_file(&config_path);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                error!("Error reading file {}: {}", path.display(), e);
-                                let parent = super::file_dialog::parent_window(dialog);
-                                super::file_dialog::show_error_dialog(
-                                    &t!("Error Reading File"),
-                                    &format!(
-                                        "{} '{}'.\n\n{}",
-                                        t!("Could not open"),
-                                        path.display(),
-                                        e
-                                    ),
-                                    parent.as_ref(),
-                                );
+        let err_parent = parent.clone();
+        dialog.pick_open(parent.as_ref(), move |file| {
+            if let Some(path) = file.path() {
+                match fs::read_to_string(&path) {
+                    Ok(content) => {
+                        buffer.set_text(&content);
+                        *current_file.borrow_mut() = Some(path.clone());
+                        // Move cursor to start
+                        let start_iter = buffer.start_iter();
+                        buffer.place_cursor(&start_iter);
+                        // Save last-used directory to settings so other dialogs default to it
+                        if let Some(controller) = settings_controller.as_ref() {
+                            if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
+                                persistence.config_mut().file_processing.output_directory =
+                                    path.clone();
+                                let config_path =
+                                    gcodekit5_settings::SettingsManager::config_file_path()
+                                        .unwrap_or_else(|_| {
+                                            std::path::PathBuf::from("config.json")
+                                        });
+                                let _ = persistence.save_to_file(&config_path);
                             }
                         }
                     }
+                    Err(e) => {
+                        error!("Error reading file {}: {}", path.display(), e);
+                        let parent = err_parent.clone();
+                        super::file_dialog::show_error_dialog(
+                            &t!("Error Reading File"),
+                            &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
+                            parent.as_ref(),
+                        );
+                    }
                 }
             }
-            dialog.destroy();
         });
-
-        dialog.show();
     }
 
     pub fn save_file(&self) {
@@ -725,7 +678,7 @@ impl GcodeEditor {
 
     pub fn save_as_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = super::file_dialog::save_dialog(&t!("Save G-Code File"), parent.as_ref());
+        let dialog = crate::ui::gtk::file_dialog::save_dialog(&t!("Save G-Code File"));
         super::file_dialog::set_last_working_directory(
             &dialog,
             self.settings_controller.as_deref(),
@@ -742,45 +695,34 @@ impl GcodeEditor {
         let buffer = self.buffer.clone();
         let current_file = self.current_file.clone();
 
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(mut path) = file.path() {
-                        // Ensure extension
-                        if path.extension().is_none() {
-                            path.set_extension("gcode");
-                        }
+        let err_parent = parent.clone();
+        dialog.pick_save(parent.as_ref(), move |file| {
+            if let Some(mut path) = file.path() {
+                // Ensure extension
+                if path.extension().is_none() {
+                    path.set_extension("gcode");
+                }
 
-                        let start = buffer.start_iter();
-                        let end = buffer.end_iter();
-                        let content = buffer.text(&start, &end, true);
+                let start = buffer.start_iter();
+                let end = buffer.end_iter();
+                let content = buffer.text(&start, &end, true);
 
-                        match fs::write(&path, content.as_str()) {
-                            Ok(_) => {
-                                *current_file.borrow_mut() = Some(path);
-                            }
-                            Err(e) => {
-                                error!("Error saving file {}: {}", path.display(), e);
-                                let parent = super::file_dialog::parent_window(dialog);
-                                super::file_dialog::show_error_dialog(
-                                    &t!("Error Saving File"),
-                                    &format!(
-                                        "{} '{}'.\n\n{}",
-                                        t!("Could not save"),
-                                        path.display(),
-                                        e
-                                    ),
-                                    parent.as_ref(),
-                                );
-                            }
-                        }
+                match fs::write(&path, content.as_str()) {
+                    Ok(_) => {
+                        *current_file.borrow_mut() = Some(path);
+                    }
+                    Err(e) => {
+                        error!("Error saving file {}: {}", path.display(), e);
+                        let parent = err_parent.clone();
+                        super::file_dialog::show_error_dialog(
+                            &t!("Error Saving File"),
+                            &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
+                            parent.as_ref(),
+                        );
                     }
                 }
             }
-            dialog.destroy();
         });
-
-        dialog.show();
     }
 
     // Método público para actualizar el tema

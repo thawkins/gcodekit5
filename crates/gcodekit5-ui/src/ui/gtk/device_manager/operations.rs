@@ -183,6 +183,7 @@ impl DeviceManagerWindow {
             self.edit_port.set_text(&profile.port);
             self.edit_baud_rate
                 .set_active_id(Some(profile.baud_rate.as_str()));
+            self.edit_tcp_host.set_text(profile.tcp_host.trim());
             self.edit_tcp_port.set_text(profile.tcp_port.trim());
             self.edit_timeout.set_text(profile.timeout_ms.trim());
             self.edit_auto_reconnect.set_active(profile.auto_reconnect);
@@ -231,11 +232,13 @@ impl DeviceManagerWindow {
             "Serial" => {
                 self.edit_port.set_sensitive(true);
                 self.edit_baud_rate.set_sensitive(true);
+                self.edit_tcp_host.set_sensitive(false);
                 self.edit_tcp_port.set_sensitive(false);
             }
             "TCP/IP" | "WebSocket" => {
                 self.edit_port.set_sensitive(false);
                 self.edit_baud_rate.set_sensitive(false);
+                self.edit_tcp_host.set_sensitive(true);
                 self.edit_tcp_port.set_sensitive(true);
             }
             _ => {}
@@ -293,6 +296,7 @@ impl DeviceManagerWindow {
                     return;
                 }
             };
+            model.tcp_host = self.edit_tcp_host.text().trim().to_string();
             model.tcp_port = tcp_port.to_string();
             model.timeout_ms = timeout_ms.to_string();
             model.auto_reconnect = self.edit_auto_reconnect.is_active();
@@ -435,9 +439,8 @@ impl DeviceManagerWindow {
             // Validación específica: rechazar protocolos no soportados
             // antes de intentar guardar. El registro de protocolos es la
             // fuente de verdad sobre qué está implementado.
-            let protocol = gcodekit5_communication::firmware::protocol_profile(
-                &model.controller_type
-            );
+            let protocol =
+                gcodekit5_communication::firmware::protocol_profile(&model.controller_type);
             if !protocol.is_supported {
                 self.show_error_dialog(
                     "Unsupported controller",
@@ -471,29 +474,22 @@ impl DeviceManagerWindow {
             return;
         };
 
-        let dialog = MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(MessageType::Question)
-            .buttons(gtk4::ButtonsType::YesNo)
-            .text("Delete device?")
-            .secondary_text(format!(
+        let view = self.clone();
+        crate::ui::gtk::common::dialog::show_question(
+            "Delete device?",
+            &format!(
                 "Delete \u{201c}{}\u{201d}? This cannot be undone.",
                 model.name
-            ))
-            .build();
-
-        let view = self.clone();
-        dialog.connect_response(move |d, resp| {
-            if resp == ResponseType::Yes {
-                let _ = view.controller.delete_profile(&model.id);
-                view.load_devices();
-                view.cancel_edit();
-            }
-            d.close();
-        });
-
-        dialog.show();
+            ),
+            Some(&window),
+            move |resp| {
+                if resp == ResponseType::Yes {
+                    let _ = view.controller.delete_profile(&model.id);
+                    view.load_devices();
+                    view.cancel_edit();
+                }
+            },
+        );
     }
 
     pub(crate) fn set_as_active(&self) {
@@ -587,16 +583,6 @@ impl DeviceManagerWindow {
             return;
         };
 
-        let dialog = MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(MessageType::Info)
-            .buttons(gtk4::ButtonsType::Ok)
-            .text("Device Information Updated")
-            .secondary_text("Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.")
-            .build();
-
-        dialog.connect_response(|d, _| d.close());
-        dialog.show();
+        crate::ui::gtk::common::dialog::show_info("Device Information Updated", "Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.", Some(&window));
     }
 }

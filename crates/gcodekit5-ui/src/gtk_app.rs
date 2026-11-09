@@ -10,6 +10,7 @@ use crate::ui::gtk::config_settings::ConfigSettingsView;
 use crate::ui::gtk::designer::DesignerView;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 // DeviceInfoView is now embedded in the Device Config panel; standalone import removed.
+use crate::device_status;
 use crate::i18n;
 use crate::t;
 use crate::ui::gtk::device_manager::DeviceManagerWindow;
@@ -34,25 +35,7 @@ use std::rc::Rc;
 use tracing::{debug, info};
 
 pub fn main() {
-
-    // GTK 4.20+ on Wayland no longer internally handles dead keys or
-    // composition sequences. Without an active input method (IBus, Fcitx5),
-    // typing '´' + 'a' does not produce 'á'—only the 'a' is entered.
-    // We force the use of GTK's "simple" module, which restores the
-    // classic behavior without requiring the user to install or
-    // activate an input method. We only set this if the user has not
-    // already configured a different value (e.g., GTK_IM_MODULE=ibus
-    // for Japanese/Chinese).
-    //
-    // SAFETY: This runs before GTK is initialized and before any threads
-    // are created, so there are no race conditions when reading
-    // environment variables.
-    if std::env::var_os("GTK_IM_MODULE").is_none() {
-        unsafe {
-            std::env::set_var("GTK_IM_MODULE", "simple");
-        }
-    }
-    // end
+    crate::glib_log_filter::install();
 
     let app = Application::builder()
         .application_id("com.gcodekit5.app")
@@ -75,6 +58,17 @@ pub fn main() {
         if let Err(e) = libadwaita::init() {
             tracing::error!("Failed to initialize LibAdwaita: {}", e);
             std::process::exit(1);
+        }
+
+        // GTK 4.20+ on Wayland no longer handles dead keys or compose sequences
+        // without an input method (IBus, Fcitx5), so typing '´' + 'a' gives only
+        // 'a'. Select GTK's "simple" input method, which restores the classic
+        // behaviour, unless the user configured one with GTK_IM_MODULE (e.g. ibus
+        // for Japanese/Chinese), which GTK applies instead of this setting.
+        if std::env::var_os("GTK_IM_MODULE").is_none() {
+            if let Some(settings) = gtk4::Settings::default() {
+                settings.set_gtk_im_module(Some("simple"));
+            }
         }
         load_resources();
         load_css();
@@ -205,15 +199,15 @@ pub fn main() {
         glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
             status_bar_clone.refresh_device_info(&device_manager_clone);
 
-        if let Some(profile) = device_manager_clone.get_active_profile() {
-            crate::device_status::set_active_controller_type(
-                Some(profile.controller_type.as_str().to_string())
-            );
-        } else {
-            crate::device_status::set_active_controller_type(None);
-        }
-                    glib::ControlFlow::Continue
-                });
+            if let Some(profile) = device_manager_clone.get_active_profile() {
+                crate::device_status::set_active_controller_type(Some(
+                    profile.controller_type.as_str().to_string(),
+                ));
+            } else {
+                crate::device_status::set_active_controller_type(None);
+            }
+            glib::ControlFlow::Continue
+        });
 
         // Sync active device num_axes to global state
         if let Some(profile) = device_manager.get_active_profile() {
@@ -228,7 +222,7 @@ pub fn main() {
             crate::device_status::set_active_controller_type(Some(controller_type.clone()));
 
             status_bar.set_device_info(device_name, &controller_type, &device_type);
-}
+        }
 
         let device_controller = Rc::new(gcodekit5_devicedb::DeviceUiController::new(
             device_manager.clone(),
@@ -312,7 +306,7 @@ pub fn main() {
         glib::timeout_add_local(std::time::Duration::from_millis(1500), move || {
             designer_fit.canvas.fit_to_device_area();
             designer_fit.canvas.widget.queue_draw();
-
+            //    println!("fit_to_device_area aplicado al designer");
             glib::ControlFlow::Break
         });
 
@@ -326,6 +320,16 @@ pub fn main() {
             Some(visualizer.clone()),
             Some(settings_controller.clone()),
         );
+        // The active device profile decides whether Connect opens a serial port or a
+        // TCP/WebSocket host; keep the port area in sync when the profile changes.
+        machine_control.set_device_manager(device_manager.clone());
+        {
+            let mc = machine_control.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
+                mc.refresh_connection_target();
+                glib::ControlFlow::Continue
+            });
+        }
 
         // ==========================================
         // CAM TOOLS
@@ -424,36 +428,9 @@ pub fn main() {
             comm.add_listener(console_listener);
         }
 
-        // Wire up console send
-        let communicator = machine_control.communicator.clone();
-        let console_clone = device_console.clone();
-
-        let send_cmd = move || {
-            let text = console_clone.command_entry.text();
-            if !text.is_empty() {
-                let mut comm = communicator.lock();
-                if comm.is_connected() {
-                    if let Err(e) = comm.send_command(&text) {
-                        console_clone.append_log(&format!("Error sending: {}\n", e));
-                    } else {
-                        console_clone.append_log(&format!("> {}\n", text));
-                        console_clone.command_entry.set_text("");
-                    }
-                } else {
-                    console_clone.append_log("Not connected\n");
-                }
-            }
-        };
-
-        let send_cmd_clone = send_cmd.clone();
-        device_console.send_btn.connect_clicked(move |_| {
-            send_cmd_clone();
-        });
-
-        let send_cmd_clone = send_cmd.clone();
-        device_console.command_entry.connect_activate(move |_| {
-            send_cmd_clone();
-        });
+        // Console send (button + Enter) is wired by MachineControlView, which shares this
+        // DeviceConsoleView; wiring it here as well registered a second, order-dependent
+        // handler for the same signals.
 
         // Connect Editor to Visualizer
         let vis_clone = visualizer.clone();
@@ -473,54 +450,81 @@ pub fn main() {
             editor_clone_gen.grab_focus();
         });
 
+        // Connect device info and config to machine control connection state
+        let config_settings_clone = config_settings.clone();
+        let communicator_for_device = machine_control.communicator.clone();
+
+        // Update Device Config when the connection or the reported device info changes.
+        // Only push changes: re-applying them every tick overwrote Device Config status
+        // messages and rebuilt the capabilities list twice a second.
+        let last_device_info: Rc<RefCell<Option<DeviceInfoSnapshot>>> = Rc::new(RefCell::new(None));
+        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            // Don't block the GTK main thread while a streaming thread holds the port.
+            let Some(comm) = communicator_for_device.try_lock() else {
+                return glib::ControlFlow::Continue;
+            };
+            let connected = comm.is_connected();
+            drop(comm);
+
+            let snapshot = if connected {
+                let status = device_status::get_status();
+                let device_name = status
+                    .device_name
+                    .clone()
+                    .or_else(|| status.port_name.clone())
+                    .unwrap_or_else(|| t!("CNC Device").to_string());
+                DeviceInfoSnapshot {
+                    connected: true,
+                    device_name,
+                    firmware_type: status
+                        .firmware_type
+                        .clone()
+                        .unwrap_or_else(|| "GRBL".to_string()),
+                    firmware_version: status
+                        .firmware_version
+                        .clone()
+                        .unwrap_or_else(|| t!("Unknown").to_string()),
+                }
+            } else {
+                DeviceInfoSnapshot::default()
+            };
+
+            let mut last = last_device_info.borrow_mut();
+            let connection_changed = last.as_ref().map(|l| l.connected) != Some(connected);
+            if connection_changed {
+                config_settings_clone.set_connected(connected);
+            }
+            if last.as_ref() != Some(&snapshot) {
+                config_settings_clone.set_device_info(
+                    snapshot.connected,
+                    &snapshot.device_name,
+                    &snapshot.firmware_type,
+                    &snapshot.firmware_version,
+                );
+                *last = Some(snapshot);
+            }
+            drop(last);
+
+            // Settings from `$$` arrive after connecting; pick up new ones (cheap no-op
+            // when nothing changed).
+            if connected {
+                config_settings_clone.sync_device_settings();
+            }
+
+            glib::ControlFlow::Continue
+        });
+
         main_box.append(&content_box);
 
         // Append the StatusBar
         main_box.append(&status_bar.widget);
 
-        // Connect eStop (Ctrl-X / 0x18), same behavior as MachineControlView's E-Stop.
+        // Connect eStop (Ctrl-X / 0x18): delegate to MachineControlView so the DirectSender
+        // worker thread is stopped too (resetting only the flags let it keep streaming).
         {
-            let communicator = machine_control.communicator.clone();
-            let is_streaming = machine_control.is_streaming.clone();
-            let is_paused = machine_control.is_paused.clone();
-            let waiting_for_ack = machine_control.waiting_for_ack.clone();
-            let send_queue = machine_control.send_queue.clone();
-            let job_start_time = machine_control.job_start_time.clone();
-            let sb = status_bar.clone();
-            let estop_btn = status_bar.estop_btn.clone();
-            let device_console = device_console.clone();
-
-            estop_btn.connect_clicked(move |_| {
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(&[0x18]);
-                }
-
-                // Reset streaming state - recover from poisoned locks
-                {
-                    let mut guard = is_streaming.lock();
-                    *guard = false;
-                }
-                {
-                    let mut guard = is_paused.lock();
-                    *guard = false;
-                }
-                {
-                    let mut guard = waiting_for_ack.lock();
-                    *guard = false;
-                }
-                {
-                    let mut guard = job_start_time.lock();
-                    *guard = None;
-                }
-                {
-                    let mut guard = send_queue.lock();
-                    guard.clear();
-                }
-
-                sb.set_progress(0.0, "", "");
-
-                device_console.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
+            let machine_control_estop = machine_control.clone();
+            status_bar.estop_btn.connect_clicked(move |_| {
+                machine_control_estop.emergency_stop();
             });
         }
 
@@ -929,9 +933,49 @@ pub fn main() {
         for name in action_names {
             let action = gio::SimpleAction::new(name, None);
             if name == "quit" {
-                let app_for_quit = app.clone();
+                // Close the main window instead of quitting outright so Quit goes
+                // through the same unsaved-changes prompt as the window close button
+                // (see `connect_close_request` below). The window's destroy handler
+                // ends the application once the close goes ahead.
+                let window_weak = window.downgrade();
                 action.connect_activate(move |_, _| {
-                    app_for_quit.quit();
+                    if let Some(window) = window_weak.upgrade() {
+                        window.close();
+                    }
+                });
+            } else if name == "machine_connect" || name == "machine_disconnect" {
+                // Toggle via the Machine Control connect button, but only in the
+                // direction the menu item names.
+                let want_connected = name == "machine_connect";
+                let mc = machine_control.clone();
+                action.connect_activate(move |_, _| {
+                    // The button is insensitive while a connect is in progress; its worker
+                    // thread then holds the port lock, so never block on it here.
+                    if !mc.connect_btn.is_sensitive() {
+                        return;
+                    }
+                    let Some(connected) = mc.communicator.try_lock().map(|c| c.is_connected())
+                    else {
+                        return;
+                    };
+                    if connected != want_connected {
+                        mc.connect_btn.emit_clicked();
+                    }
+                });
+            } else if name == "machine_home" {
+                let mc = machine_control.clone();
+                action.connect_activate(move |_, _| {
+                    // Respect the button state (disabled while disconnected).
+                    if mc.home_btn.is_sensitive() {
+                        mc.home_btn.emit_clicked();
+                    }
+                });
+            } else if name == "machine_reset" {
+                let mc = machine_control.clone();
+                action.connect_activate(move |_, _| {
+                    if mc.communicator.lock().is_connected() {
+                        mc.emergency_stop();
+                    }
                 });
             } else if name == "help_docs" {
                 // Acción para abrir la ayuda principal
@@ -1039,6 +1083,28 @@ pub fn main() {
         };
         stack.set_visible_child_name(initial_tab);
 
+        // Ask before closing the window while the design has unsaved changes.
+        {
+            let designer_close = designer.clone();
+            window.connect_close_request(move |win| {
+                if !designer_close.has_unsaved_changes() {
+                    return glib::Propagation::Proceed;
+                }
+                let win = win.clone();
+                // `destroy` does not emit close-request again, so this cannot loop.
+                designer_close.confirm_discard_changes(move || win.destroy());
+                glib::Propagation::Stop
+            });
+
+            // Once the main window is gone the application is finished, even if
+            // other application windows (e.g. the help browser) are still open.
+            let app_for_quit = app.clone();
+            window.connect_destroy(move |_| {
+                tracing::info!("Main window destroyed; quitting application");
+                app_for_quit.quit();
+            });
+        }
+
         //        window.maximize();
         window.present();
 
@@ -1144,8 +1210,7 @@ fn load_resources() {
 
 fn load_css() {
     let provider = CssProvider::new();
-    // GTK 0.9 uses load_from_data instead of load_from_string
-    provider.load_from_data(include_str!("ui/gtk/style.css"));
+    provider.load_from_string(include_str!("ui/gtk/style.css"));
 
     let Some(display) = gtk4::gdk::Display::default() else {
         tracing::error!("Could not connect to a display");
@@ -1165,4 +1230,14 @@ fn apply_theme(theme: Theme) {
         Theme::Light => manager.set_color_scheme(libadwaita::ColorScheme::ForceLight),
         Theme::Dark => manager.set_color_scheme(libadwaita::ColorScheme::ForceDark),
     }
+}
+
+/// Connection and firmware details last pushed to the Device Config view, so the
+/// periodic refresh only updates it when something actually changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DeviceInfoSnapshot {
+    connected: bool,
+    device_name: String,
+    firmware_type: String,
+    firmware_version: String,
 }
