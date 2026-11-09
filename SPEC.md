@@ -2031,6 +2031,7 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
   - Refactored `pocket_operations.rs` to support strategy pattern.
   - Integrated `cavalier_contours` for polygon operations.
   - Updated `DesignerShape` and `DrawingObject` to persist strategy settings.
+- **Holes (islands)**: paths (including imported SVG/DXF), gears, sprockets and text are pocketed with the even-odd rule. Each closed contour's nesting depth decides its role: even depth bounds material to remove, odd depth is a hole left uncut, and an island inside a hole is pocketed again. Each region is offset as a whole (`cavalier_contours` `Shape`), so the tool keeps a tool-radius clearance from the outer wall and from every hole; links between loops/spans stay at depth only when they remain inside the region, otherwise the tool retracts and re-enters. All three strategies support holes. Text pockets leave letter counters (the insides of O, A, B, ...) standing.
 
 ## Device Database (DeviceDB)
 - **New Crate**: `gcodekit5-devicedb`

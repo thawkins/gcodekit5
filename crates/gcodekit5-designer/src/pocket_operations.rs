@@ -1,7 +1,11 @@
 //! Pocket operations for CAM toolpath generation.
 //!
 //! Implements pocket milling operations with island detection and offset path generation.
-//! Supports outline pocket and island preservation.
+//! Supports outline pocket and island preservation. Regions with polygonal holes are
+//! handled by the [`holes`] submodule
+//! ([`PocketGenerator::generate_polygon_pocket_with_holes`]).
+
+mod holes;
 
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
 use crate::model::{DesignCircle as Circle, DesignRectangle as Rectangle, Point};

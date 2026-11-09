@@ -1136,13 +1136,8 @@ impl ToolpathGenerator {
         gen.generate_circular_pocket(circle, step_down)
     }
 
-    pub fn generate_polyline_pocket(
-        &self,
-        vertices: &[Point],
-        pocket_depth: f64,
-        step_down: f64,
-        step_in: f64,
-    ) -> Vec<Toolpath> {
+    /// Builds a [`PocketGenerator`] configured from this generator's settings.
+    fn polyline_pocket_generator(&self, pocket_depth: f64, step_in: f64) -> PocketGenerator {
         let op = PocketOperation::new(
             "polyline_pocket".to_string(),
             pocket_depth,
@@ -1156,9 +1151,45 @@ impl ToolpathGenerator {
             .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
         gen.operation.set_strategy(self.pocket_strategy);
         gen.operation.raster_fill_ratio = self.raster_fill_ratio;
+        gen
+    }
 
+    pub fn generate_polyline_pocket(
+        &self,
+        vertices: &[Point],
+        pocket_depth: f64,
+        step_down: f64,
+        step_in: f64,
+    ) -> Vec<Toolpath> {
         // Generar toolpaths (el raster cleanup ya está desactivado en pocket_operations.rs)
-        gen.generate_polygon_pocket(vertices, step_down)
+        self.polyline_pocket_generator(pocket_depth, step_in)
+            .generate_polygon_pocket(vertices, step_down)
+    }
+
+    /// Generates pocket toolpaths for a polygon with holes (islands left uncut).
+    ///
+    /// The tool keeps at least one tool radius of clearance from `outer` and from every
+    /// hole. With no holes this is identical to [`Self::generate_polyline_pocket`].
+    ///
+    /// # Arguments
+    /// * `outer` - Outer boundary vertices.
+    /// * `holes` - Hole boundaries inside `outer`.
+    /// * `pocket_depth` - Final pocket depth in mm.
+    /// * `step_down` - Depth per pass in mm.
+    /// * `step_in` - Stepover in mm (0 uses the generator default).
+    ///
+    /// # Returns
+    /// One toolpath per depth pass.
+    pub fn generate_polyline_pocket_with_holes(
+        &self,
+        outer: &[Point],
+        holes: &[Vec<Point>],
+        pocket_depth: f64,
+        step_down: f64,
+        step_in: f64,
+    ) -> Vec<Toolpath> {
+        self.polyline_pocket_generator(pocket_depth, step_in)
+            .generate_polygon_pocket_with_holes(outer, holes, step_down)
     }
 
     pub fn generate_triangle_pocket(
@@ -1225,9 +1256,12 @@ impl ToolpathGenerator {
 
     /// Generates pocket toolpaths for an arbitrary path shape.
     ///
-    /// Curves are flattened and each closed subpath is pocketed independently, so
-    /// separate contours are never joined. Nested contours (holes) are not yet kept
-    /// as islands; a warning is logged when they are detected.
+    /// Curves are flattened and the closed subpaths are classified by nesting depth
+    /// using the even-odd rule: a contour at even depth (0, 2, ...) bounds material to
+    /// remove, and a contour at odd depth is a hole (island) in its nearest enclosing
+    /// even-depth contour. Each region is pocketed minus its direct holes with tool-radius
+    /// clearance from both, so holes are left uncut while an island inside a hole is
+    /// pocketed again. Separate contours are never joined.
     ///
     /// # Arguments
     /// * `path_shape` - The path to pocket (rotation is applied about its bounds centre).
@@ -1276,23 +1310,20 @@ impl ToolpathGenerator {
         }
         contours.retain(|c| c.len() >= 3);
 
-        let nested = contours.iter().enumerate().any(|(i, inner)| {
-            contours
-                .iter()
-                .enumerate()
-                .any(|(j, outer)| i != j && point_in_polygon(&inner[0], outer))
-        });
-        if nested {
-            tracing::warn!(
-                "Path pocket has nested contours; holes are not preserved as islands \
-                 and each contour is pocketed independently"
-            );
+        let regions = group_contours_even_odd(&contours);
+        let mut toolpaths = Vec::new();
+        for (outer, hole_indices) in regions {
+            let holes: Vec<Vec<Point>> =
+                hole_indices.iter().map(|&h| contours[h].clone()).collect();
+            toolpaths.extend(self.generate_polyline_pocket_with_holes(
+                &contours[outer],
+                &holes,
+                pocket_depth,
+                step_down,
+                step_in,
+            ));
         }
-
-        contours
-            .iter()
-            .flat_map(|c| self.generate_polyline_pocket(c, pocket_depth, step_down, step_in))
-            .collect()
+        toolpaths
     }
 
     pub fn generate_gear_pocket(
@@ -1358,18 +1389,18 @@ impl ToolpathGenerator {
         let mut all_toolpaths = Vec::new();
         let pocket_depth = self.cut_depth.abs();
 
-        // Procesar cada contorno (letra) individualmente
-        for (i, contour) in contours.iter().enumerate() {
-            if contour.len() < 3 {
-                continue;
-            }
+        // Group letter outlines with the even-odd rule so the counters of letters such
+        // as "O", "A" or "B" are left as islands instead of being pocketed away.
+        let contours: Vec<Vec<Point>> = contours.into_iter().filter(|c| c.len() >= 3).collect();
+        let tool_area = std::f64::consts::PI * (self.tool_diameter / 2.0).powi(2);
+        for (i, (outer_idx, hole_idxs)) in
+            group_contours_even_odd(&contours).into_iter().enumerate()
+        {
+            let contour = &contours[outer_idx];
 
             // Si el contorno es muy pequeño, usar contour en lugar de pocket
             let area = self.polygon_area(contour);
-            let tool_area = std::f64::consts::PI * (self.tool_diameter / 2.0).powi(2);
-
             if area < tool_area || area < 0.01 {
-                // Contorno pequeño: usar contour
                 let toolpaths = self.create_multipass_toolpaths_from_contour(
                     contour,
                     step_down,
@@ -1380,7 +1411,7 @@ impl ToolpathGenerator {
                 continue;
             }
 
-            // Generar pocket para esta letra
+            // Generar pocket para esta letra, dejando sus huecos sin cortar
             let op = PocketOperation::new(
                 format!("text_pocket_{}", i),
                 pocket_depth,
@@ -1394,7 +1425,9 @@ impl ToolpathGenerator {
             gen.operation.set_strategy(self.pocket_strategy);
             gen.operation.raster_fill_ratio = self.raster_fill_ratio;
 
-            let pocket_toolpaths = gen.generate_polygon_pocket(contour, step_down);
+            let holes: Vec<Vec<Point>> = hole_idxs.iter().map(|&h| contours[h].clone()).collect();
+            let pocket_toolpaths =
+                gen.generate_polygon_pocket_with_holes(contour, &holes, step_down);
             all_toolpaths.extend(pocket_toolpaths);
         }
 
@@ -1765,6 +1798,36 @@ impl OutlineBuilder for ToolpathBuilder {
         }
         self.current_point = self.start_point;
     }
+}
+
+/// Groups closed contours into pocket regions using the even-odd nesting rule.
+///
+/// A contour's depth is the number of other contours that contain it. Contours at even
+/// depth are outer boundaries; contours at odd depth are holes of the contour that
+/// directly encloses them (depth one less).
+///
+/// # Arguments
+/// * `contours` - Closed contours (at least three points each).
+///
+/// # Returns
+/// `(outer_index, hole_indices)` for every even-depth contour, in input order.
+fn group_contours_even_odd(contours: &[Vec<Point>]) -> Vec<(usize, Vec<usize>)> {
+    let contains = |outer: usize, inner: usize| -> bool {
+        outer != inner && point_in_polygon(&contours[inner][0], &contours[outer])
+    };
+    let depth: Vec<usize> = (0..contours.len())
+        .map(|i| (0..contours.len()).filter(|&j| contains(j, i)).count())
+        .collect();
+
+    (0..contours.len())
+        .filter(|&i| depth[i].is_multiple_of(2))
+        .map(|i| {
+            let holes = (0..contours.len())
+                .filter(|&j| depth[j] == depth[i] + 1 && contains(i, j))
+                .collect();
+            (i, holes)
+        })
+        .collect()
 }
 
 /// Even-odd ray-casting test: returns true if `p` lies inside the closed polygon `poly`.
