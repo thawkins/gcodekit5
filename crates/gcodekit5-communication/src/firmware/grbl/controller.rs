@@ -19,13 +19,18 @@ use gcodekit5_core::{ControllerTrait, OverrideState};
 const DEFAULT_PROBE_TIMEOUT_MS: u64 = 30_000;
 /// Retract distance when probe fails to trigger (mm).
 const PROBE_FAILSAFE_RETRACT_MM: f64 = 5.0;
-/// Distance used for a "continuous" jog; the move is stopped with jog-cancel (0x85).
-const CONTINUOUS_JOG_DISTANCE_MM: f64 = 1000.0;
+/// Interval between the short jog increments that make up a continuous jog.
+const CONTINUOUS_JOG_TICK: Duration = Duration::from_millis(50);
+/// Maximum continuous-jog increments sent but not yet acknowledged by the controller.
+const CONTINUOUS_JOG_LOOKAHEAD: usize = 3;
+/// How long `jog_stop` waits for the IO loop to drop queued, unsent jog increments.
+const JOG_PURGE_TIMEOUT: Duration = Duration::from_millis(250);
 /// How long to wait for a status report to confirm one override step.
 const OVERRIDE_STEP_TIMEOUT: Duration = Duration::from_secs(2);
 /// Upper bound on override steps for one request (a reset plus 9 x 10% and 9 x 1% is 19).
 const MAX_OVERRIDE_STEPS: usize = 32;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -95,6 +100,47 @@ pub struct GrblController {
     listeners: ThreadSafeRwMap<String, Arc<dyn gcodekit5_core::ControllerListener>>,
     /// Connection parameters
     connection_params: ConnectionParams,
+    /// Shared bookkeeping for continuous jogging (see `jog_start`).
+    jog: JogTracking,
+    /// The running continuous-jog task and its stop flag, if any.
+    jog_session: ThreadSafeRw<Option<(Arc<AtomicBool>, JoinHandle<()>)>>,
+}
+
+/// Counters shared between the continuous-jog task and the IO loop.
+#[derive(Clone, Default)]
+struct JogTracking {
+    /// `$J=` commands queued or sent but not yet answered with `ok`/`error`.
+    in_flight: Arc<AtomicUsize>,
+    /// Set when the controller answers a jog with `error:` (e.g. soft limit, error 15).
+    rejected: Arc<AtomicBool>,
+    /// Asks the IO loop to drop queued, unsent jog commands; cleared once done.
+    purge: Arc<AtomicBool>,
+}
+
+impl JogTracking {
+    /// Marks `n` jog commands as answered (or dropped), never going below zero.
+    fn release(&self, n: usize) {
+        let _ = self
+            .in_flight
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                Some(v.saturating_sub(n))
+            });
+    }
+}
+
+/// Length in mm of one continuous-jog increment at `feed_rate` (mm/min).
+///
+/// Each increment takes one tick to execute, so sending one per tick keeps the
+/// controller moving without building up a long queue of motion.
+///
+/// # Arguments
+/// * `feed_rate` - Jog feed rate in mm/min.
+/// * `tick` - Interval between increments.
+///
+/// # Returns
+/// The increment length in mm.
+pub fn continuous_jog_increment(feed_rate: f64, tick: Duration) -> f64 {
+    feed_rate / 60.0 * tick.as_secs_f64()
 }
 
 impl GrblController {
@@ -165,6 +211,8 @@ impl GrblController {
             shutdown_signal: thread_safe_rw(None),
             listeners: thread_safe_rw(std::collections::HashMap::new()),
             connection_params,
+            jog: JogTracking::default(),
+            jog_session: thread_safe_rw(None),
         })
     }
 
@@ -282,10 +330,12 @@ impl GrblController {
         let communicator = self.communicator.clone();
         let state = self.state.clone();
         let listeners = self.listeners.clone();
+        let jog = self.jog.clone();
 
         let handle = tokio::spawn(async move {
             let mut buffer = String::new();
-            let mut sent_queue: VecDeque<usize> = VecDeque::new();
+            // (bytes, is a `$J=` jog) for each command awaiting `ok`/`error`.
+            let mut sent_queue: VecDeque<(usize, bool)> = VecDeque::new();
             let mut local_cmd_queue: VecDeque<String> = VecDeque::new();
             let mut last_poll = Instant::now();
 
@@ -394,14 +444,21 @@ impl GrblController {
                                     }
                                 } else if line == "ok" {
                                     // Acknowledge command
-                                    if let Some(len) = sent_queue.pop_front() {
+                                    if let Some((len, is_jog)) = sent_queue.pop_front() {
                                         communicator.acknowledge_chars(len);
+                                        if is_jog {
+                                            jog.release(1);
+                                        }
                                     }
                                 } else if line.starts_with("error:") {
                                     // Handle error (also consumes a command slot)
                                     tracing::error!("GRBL Error: {}", line);
-                                    if let Some(len) = sent_queue.pop_front() {
+                                    if let Some((len, is_jog)) = sent_queue.pop_front() {
                                         communicator.acknowledge_chars(len);
+                                        if is_jog {
+                                            jog.release(1);
+                                            jog.rejected.store(true, Ordering::SeqCst);
+                                        }
                                     }
                                 } else {
                                     // Other messages (welcome, settings, etc)
@@ -418,6 +475,15 @@ impl GrblController {
                     local_cmd_queue.push_back(cmd);
                 }
 
+                // Drop queued jog increments that have not been written yet, so nothing
+                // can follow the jog-cancel that `jog_stop` sends next.
+                if jog.purge.load(Ordering::SeqCst) {
+                    let before = local_cmd_queue.len();
+                    local_cmd_queue.retain(|c| !c.starts_with("$J="));
+                    jog.release(before - local_cmd_queue.len());
+                    jog.purge.store(false, Ordering::SeqCst);
+                }
+
                 // 3. WRITE PHASE: Send commands if buffer allows
                 // We peek at the next command
                 if let Some(cmd) = local_cmd_queue.front() {
@@ -426,7 +492,7 @@ impl GrblController {
                         // Send it
                         if communicator.send_command(cmd).is_ok() {
                             // Move to sent queue
-                            sent_queue.push_back(cmd_len);
+                            sent_queue.push_back((cmd_len, cmd.starts_with("$J=")));
                             local_cmd_queue.pop_front();
                         }
                     }
@@ -575,20 +641,71 @@ impl ControllerTrait for GrblController {
         if direction == 0 {
             return Err(anyhow::anyhow!("Direction must be non-zero"));
         }
+        if !(feed_rate.is_finite() && feed_rate > 0.0) {
+            return Err(anyhow::anyhow!("Jog feed rate must be positive"));
+        }
+        let tx = self
+            .command_tx
+            .read()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Controller not connected"))?;
 
-        // Create a jog command using $J= syntax with G91 (relative) and G0 (rapid)
-        let direction_str = if direction > 0 { "+" } else { "-" };
-        // $J= rejects motion-mode words (G0/G1 -> error:16) and needs a numeric target.
-        let cmd = format!(
-            "$J=G91 {}{}{:.3} F{:.0}",
-            axis, direction_str, CONTINUOUS_JOG_DISTANCE_MM, feed_rate
-        );
-        self.send_command(&cmd).await?;
+        // Only one continuous jog at a time.
+        self.jog_stop().await?;
 
+        // GRBL's recommended continuous jog: stream short increments, each taking
+        // about one tick to execute, with only a few unacknowledged at once. Unlike a
+        // single long jog, this never asks for a target beyond the machine's travel:
+        // at a soft limit GRBL rejects the next increment (error 15) and the jog ends.
+        let step = continuous_jog_increment(feed_rate, CONTINUOUS_JOG_TICK);
+        let signed = if direction > 0 { step } else { -step };
+        let cmd = format!("$J=G91 {axis}{signed:.4} F{feed_rate:.0}");
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let jog = self.jog.clone();
+        jog.rejected.store(false, Ordering::SeqCst);
+        let task_stop = stop.clone();
+        let handle = tokio::spawn(async move {
+            while !task_stop.load(Ordering::SeqCst) {
+                if jog.rejected.load(Ordering::SeqCst) {
+                    tracing::info!("Continuous jog ended: controller rejected an increment");
+                    break;
+                }
+                if jog.in_flight.load(Ordering::SeqCst) < CONTINUOUS_JOG_LOOKAHEAD {
+                    jog.in_flight.fetch_add(1, Ordering::SeqCst);
+                    if tx.send(cmd.clone()).await.is_err() {
+                        jog.release(1);
+                        break;
+                    }
+                }
+                tokio::time::sleep(CONTINUOUS_JOG_TICK).await;
+            }
+        });
+        *self.jog_session.write() = Some((stop, handle));
         Ok(())
     }
 
     async fn jog_stop(&mut self) -> anyhow::Result<()> {
+        // Stop the increment task first so it cannot queue anything after the cancel.
+        let session = self.jog_session.write().take();
+        if let Some((stop, handle)) = session {
+            stop.store(true, Ordering::SeqCst);
+            let _ = handle.await;
+        }
+
+        // Have the IO loop drop increments that are queued but not yet written; those
+        // already written are flushed by GRBL's jog-cancel below.
+        if self.io_task.read().is_some() {
+            self.jog.purge.store(true, Ordering::SeqCst);
+            let deadline = Instant::now() + JOG_PURGE_TIMEOUT;
+            while self.jog.purge.load(Ordering::SeqCst) && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+            if self.jog.purge.swap(false, Ordering::SeqCst) {
+                tracing::warn!("IO loop did not confirm the jog purge before jog-cancel");
+            }
+        }
+
         self.communicator.send_realtime_byte(0x85)?;
         Ok(())
     }

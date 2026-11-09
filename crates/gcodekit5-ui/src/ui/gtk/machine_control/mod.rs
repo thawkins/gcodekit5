@@ -29,6 +29,7 @@ use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
+use crate::ui::gtk::machine_control::continuous_jog::{numpad_jog, ContinuousJogState};
 use crate::ui::gtk::machine_control::direct_sender::DirectSender;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
@@ -37,6 +38,7 @@ use gcodekit5_core::{
 };
 use std::rc::Rc;
 
+mod continuous_jog;
 mod direct_sender;
 mod state;
 mod ui_builders;
@@ -163,6 +165,10 @@ pub struct MachineControlView {
     pub probe_y_pos_btn: Option<Button>,
     pub step_combo: ComboBoxText,
     pub step_label: Label,
+    /// When active, holding a jog button or numpad key jogs continuously.
+    pub continuous_jog_check: CheckButton,
+    /// State of the continuous jog in progress, shared with the status poller.
+    pub continuous_jog: ThreadSafe<ContinuousJogState>,
     pub jog_feed_entry: gtk4::Entry,
     pub jog_feed_units: Label,
     pub jog_step_mm: ThreadSafe<f32>,
@@ -757,6 +763,13 @@ impl MachineControlView {
         step_combo.set_width_request(140);
         step_box.append(&step_combo);
 
+        let continuous_jog_check = CheckButton::with_label(&t!("Continuous"));
+        continuous_jog_check.set_tooltip_text(Some(&t!(
+            "Hold a jog button or numpad key to jog continuously; release to stop. \
+             Moves in short increments, so a soft limit stops the jog safely."
+        )));
+        step_box.append(&continuous_jog_check);
+
         // Feed controls
         let feed_box = Box::new(Orientation::Horizontal, 8);
         let feed_label = Label::new(Some(&t!("Jog Feed:")));
@@ -1289,6 +1302,8 @@ impl MachineControlView {
             probe_y_pos_btn: Some(probe_y_pos_btn.clone()),
             step_combo,
             step_label,
+            continuous_jog_check,
+            continuous_jog: thread_safe(ContinuousJogState::default()),
             jog_feed_entry,
             jog_feed_units,
             jog_step_mm: jog_step_mm.clone(),
@@ -1432,7 +1447,11 @@ impl MachineControlView {
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_x_pos.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
                 send_jog('X', step, &communicator, feed, &console, &is_streaming);
@@ -1444,7 +1463,11 @@ impl MachineControlView {
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_x_neg.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
                 send_jog('X', -step, &communicator, feed, &console, &is_streaming);
@@ -1456,7 +1479,11 @@ impl MachineControlView {
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_y_pos.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
                 send_jog('Y', step, &communicator, feed, &console, &is_streaming);
@@ -1468,7 +1495,11 @@ impl MachineControlView {
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_y_neg.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
                 send_jog('Y', -step, &communicator, feed, &console, &is_streaming);
@@ -1480,7 +1511,11 @@ impl MachineControlView {
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_z_pos.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
                 send_jog('Z', step, &communicator, feed, &console, &is_streaming);
@@ -1492,7 +1527,11 @@ impl MachineControlView {
             let jog_feed_mm_per_min = view.jog_feed_mm_per_min.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let continuous = view.continuous_jog_check.clone();
             view.jog_z_neg.connect_clicked(move |_| {
+                if continuous.is_active() {
+                    return;
+                }
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
                 send_jog('Z', -step, &communicator, feed, &console, &is_streaming);
@@ -1512,6 +1551,19 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
 
+            let view_keys = view.clone();
+            let console_entry_release = console_entry.clone();
+            let view_release = view.clone();
+            controller.connect_key_released(move |_, key, _, _| {
+                if let Some(entry) = console_entry_release.as_ref() {
+                    if entry.has_focus() {
+                        return;
+                    }
+                }
+                if key.to_unicode().and_then(numpad_jog).is_some() {
+                    view_release.stop_continuous_jog();
+                }
+            });
             controller.connect_key_pressed(move |_, key, _, _| {
                 if let Some(entry) = console_entry.as_ref() {
                     if entry.has_focus() {
@@ -1522,6 +1574,14 @@ impl MachineControlView {
                 let Some(ch) = key.to_unicode() else {
                     return glib::Propagation::Proceed;
                 };
+
+                if view_keys.continuous_jog_enabled() {
+                    let Some((axis, direction)) = numpad_jog(ch) else {
+                        return glib::Propagation::Proceed;
+                    };
+                    view_keys.start_continuous_jog(axis, direction);
+                    return glib::Propagation::Stop;
+                }
 
                 let step = *jog_step_mm.lock();
                 let feed = *jog_feed_mm_per_min.lock();
@@ -1540,6 +1600,28 @@ impl MachineControlView {
             });
 
             view.widget.add_controller(controller);
+
+            // A key release can be missed if focus leaves the panel mid-jog: stop then too.
+            let focus = gtk4::EventControllerFocus::new();
+            let view_focus = view.clone();
+            focus.connect_leave(move |_| view_focus.stop_continuous_jog());
+            view.widget.add_controller(focus);
+        }
+
+        // Continuous (hold-to-jog) mode for the jog buttons.
+        view.attach_continuous_jog(&view.jog_x_pos, 'X', 1.0);
+        view.attach_continuous_jog(&view.jog_x_neg, 'X', -1.0);
+        view.attach_continuous_jog(&view.jog_y_pos, 'Y', 1.0);
+        view.attach_continuous_jog(&view.jog_y_neg, 'Y', -1.0);
+        view.attach_continuous_jog(&view.jog_z_pos, 'Z', 1.0);
+        view.attach_continuous_jog(&view.jog_z_neg, 'Z', -1.0);
+        {
+            let view_toggle = view.clone();
+            view.continuous_jog_check.connect_toggled(move |c| {
+                if !c.is_active() {
+                    view_toggle.stop_continuous_jog();
+                }
+            });
         }
 
         let view_clone = view.clone();
@@ -2409,6 +2491,7 @@ impl MachineControlView {
                             let widget_poll = view_clone.widget.clone();
                             let job_start_time_poll = view_clone.job_start_time.clone();
                             let direct_sender_poll = view_clone.direct_sender.clone();
+                            let continuous_jog_poll = view_clone.continuous_jog.clone();
 
                             let mut query_counter = 0u32;
                             let mut response_buffer = String::new();
@@ -2516,6 +2599,11 @@ impl MachineControlView {
                                                 let lower = line.to_ascii_lowercase();
                                                 let lower_trim = lower.trim_start();
                                                 let is_error = lower_trim.starts_with("error:");
+                                                // Replies to continuous-jog increments are counted
+                                                // there; a rejected increment (e.g. soft limit)
+                                                // ends the jog and is logged, not shown as a dialog.
+                                                let jog_reply = (is_ack || is_error)
+                                                    && continuous_jog_poll.lock().on_reply(is_error);
 
                                                 // If this is an `error:n`, decode it and append the decoded text to the console log line.
                                                 let mut line_for_log = line.clone();
@@ -2528,7 +2616,7 @@ impl MachineControlView {
                                                             line_for_log = format!("{} - {}", line, decoded);
 
                                                             // Only show dialog if NOT streaming, otherwise just log
-                                                            if !*is_streaming_poll.lock() {
+                                                            if !*is_streaming_poll.lock() && !jog_reply {
                                                                 let secondary = format!("error:{} - {}", code, decoded);
                                                                 let dialog = gtk4::MessageDialog::builder()
                                                                 .message_type(gtk4::MessageType::Error)

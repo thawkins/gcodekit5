@@ -25,7 +25,7 @@ pub use command_creator::{
 };
 pub use communicator::{GrblCommunicator, GrblCommunicatorConfig};
 pub use constants::*;
-pub use controller::GrblController;
+pub use controller::{continuous_jog_increment, GrblController};
 pub use error_decoder::{decode_alarm, decode_error, format_alarm, format_error};
 pub use override_manager::{OverrideManager, RealTimeOverrideCommand};
 pub use override_sequencer::{

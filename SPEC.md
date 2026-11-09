@@ -1062,7 +1062,7 @@ Available as real-time commands (executed immediately):
 - Sets work position to offset
 
 **Jogging**:
-- Continuous jogging (pressed button held)
+- Continuous jogging (pressed button held): enabled with the "Continuous" checkbox next to the step selector. While a jog button or numpad key (8/2 Y, 4/6 X, 9/3 Z) is held, the jog is streamed as short `$J=` increments (one per 50 ms, each covering 50 ms of motion at the jog feed) with at most 3 unacknowledged; release, focus loss or unchecking sends jog-cancel (0x85), which also discards queued increments. Because no increment targets a point beyond the next ~50 ms of travel, GRBL soft limits stop the jog at the boundary (the rejected increment ends the jog with a console message instead of an error dialog). Refused while disconnected or while a job streams.
 - Incremental jogging (fixed distance per button click)
 - Selectable increments: 0.1mm, 1mm, 10mm, 100mm (configurable)
 - Selectable feed rate: user-defined
@@ -1448,7 +1448,7 @@ G54                ; Back to work coordinates
 ```
 - Buttons for each direction
 - Keyboard shortcuts: W/A/S/D or arrow keys
-- Key repeat support for continuous jog
+- Hold-to-jog (continuous mode) for buttons and numpad keys; see the Jogging section above
 
 **Alternative**: Pendant/gamepad support for jogging
 
