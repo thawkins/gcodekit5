@@ -1624,17 +1624,18 @@ impl MachineControlView {
             let view_stop = view.clone();
 
             view.stop_btn.connect_clicked(move |_| {
+                // Stop DirectSender before the reset so it cannot write lines after it
+                // (the worker re-checks this flag while holding the communicator lock).
+                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
+                    sender.stop();
+                }
+
                 if let Some(c) = console.as_ref() {
                     c.append_log("> 0x18 (Stop)\n");
                 }
                 {
                     let mut comm = communicator.lock();
                     let _ = comm.send(&[0x18]);
-                }
-
-                // Stop DirectSender if it exists - use view_stop
-                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
-                    sender.stop();
                 }
 
                 *is_streaming.lock() = false;

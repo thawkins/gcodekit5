@@ -135,7 +135,8 @@ impl GrblResponseParser {
         }
 
         // Check for alarm prefix. GRBL 1.1 emits "ALARM:n"; accept any case.
-        if line.len() > 6 && line[..6].eq_ignore_ascii_case("alarm:") {
+        // `str::get` avoids panicking when byte 6 is not a UTF-8 boundary (e.g. "[MSG:é]").
+        if line.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("alarm:")) {
             if let Ok(code) = line[6..].trim().parse::<u8>() {
                 return Some(GrblResponse::Alarm(code));
             }

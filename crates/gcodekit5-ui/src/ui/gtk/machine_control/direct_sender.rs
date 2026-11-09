@@ -94,7 +94,12 @@ impl DirectSender {
                 // Enviar hasta llenar la ventana
                 {
                     if let Some(mut c) = comm.try_lock() {
-                        while lines_in_flight < max_window && i < total {
+                        // Re-check the stop flag under the lock: E-stop sets it before taking
+                        // the lock to send the soft reset, so no line can follow the reset.
+                        while lines_in_flight < max_window
+                            && i < total
+                            && !stop_flag.load(Ordering::SeqCst)
+                        {
                             let cmd = format!("{}\n", lines[i]);
                             if c.send(cmd.as_bytes()).is_ok() {
                                 lines_in_flight += 1;

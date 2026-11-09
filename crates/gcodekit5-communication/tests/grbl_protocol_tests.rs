@@ -115,3 +115,11 @@ fn test_device_status_fs_and_override_order() {
     let ov = status.overrides.expect("overrides");
     assert_eq!((ov.feed_rate, ov.rapid, ov.spindle_speed), (110, 50, 90));
 }
+
+#[test]
+fn test_response_parser_non_ascii_message_does_not_panic() {
+    // Byte 6 of "[MSG:é]" falls inside 'é'; slicing at it used to panic.
+    let parser = GrblResponseParser::new();
+    let _ = parser.parse("[MSG:é]");
+    let _ = parser.parse("ALARMé");
+}

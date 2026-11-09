@@ -369,3 +369,40 @@ fn test_dxf_closed_lwpolyline_closing_bulge() {
     // The closing arc has radius 5, so the shape spans 5 mm in Y (not a flat line).
     assert!((y2 - y1) > 4.9, "closing bulge ignored: y-span {}", y2 - y1);
 }
+
+#[test]
+fn test_path_pocket_does_not_join_separate_contours() {
+    // Two disjoint closed squares in one path must be pocketed independently:
+    // no cutting move may bridge the 20 mm gap between them.
+    let mut b = lyon::path::Path::builder();
+    for x0 in [0.0_f32, 30.0] {
+        b.begin(lyon::math::point(x0, 0.0));
+        b.line_to(lyon::math::point(x0 + 10.0, 0.0));
+        b.line_to(lyon::math::point(x0 + 10.0, 10.0));
+        b.line_to(lyon::math::point(x0, 10.0));
+        b.end(true);
+    }
+    let path = DesignPath::from_lyon_path(&b.build());
+
+    let mut gen = ToolpathGenerator::new();
+    gen.set_feed_rate(100.0);
+    gen.set_cut_depth(1.0);
+    let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
+
+    let cuts: Vec<_> = toolpaths
+        .iter()
+        .flat_map(|tp| tp.segments.iter())
+        .filter(|s| s.segment_type != ToolpathSegmentType::RapidMove)
+        .collect();
+    assert!(!cuts.is_empty(), "expected pocket cuts");
+    for s in cuts {
+        let in_gap = |x: f64| x > 10.5 && x < 29.5;
+        let (lo, hi) = (s.start.x.min(s.end.x), s.start.x.max(s.end.x));
+        assert!(
+            !in_gap(s.start.x) && !in_gap(s.end.x) && !(lo < 10.5 && hi > 29.5),
+            "cut bridges the gap between contours: {:?} -> {:?}",
+            s.start,
+            s.end
+        );
+    }
+}

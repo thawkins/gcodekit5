@@ -1230,37 +1230,55 @@ pub fn generate_polyline_pocket(
         step_down: f64,
         step_in: f64,
     ) -> Vec<Toolpath> {
-        let mut vertices = Vec::new();
         // Rotate about the centre of the path bounds, matching the canvas
         // renderer and `generate_path_contour`.
         let (bx1, by1, bx2, by2) = path_shape.bounds();
         let center = Point::new((bx1 + bx2) / 2.0, (by1 + by2) / 2.0);
         let rotation = path_shape.rotation;
+        let to_point = |x: f32, y: f32| -> Point {
+            let p = Point::new(x as f64, y as f64);
+            if rotation.abs() > 1e-6 {
+                crate::model::rotate_point(p, center, rotation)
+            } else {
+                p
+            }
+        };
 
         // Flatten curves so Bezier segments (e.g. from SVG/DXF import) contribute
-        // their geometry instead of being silently dropped.
+        // their geometry, keeping each subpath separate so unrelated contours are
+        // never joined by connecting edges.
+        let mut contours: Vec<Vec<Point>> = Vec::new();
         let rendered = path_shape.render();
         for event in rendered.iter().flattened(0.01) {
             match event {
-                lyon::path::Event::Begin { at } => {
-                    let mut p = Point::new(at.x as f64, at.y as f64);
-                    if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation);
+                lyon::path::Event::Begin { at } => contours.push(vec![to_point(at.x, at.y)]),
+                lyon::path::Event::Line { to, .. } => {
+                    if let Some(c) = contours.last_mut() {
+                        c.push(to_point(to.x, to.y));
                     }
-                    vertices.push(p);
-                }
-                lyon::path::Event::Line { from: _, to } => {
-                    let mut p = Point::new(to.x as f64, to.y as f64);
-                    if rotation.abs() > 1e-6 {
-                        p = crate::model::rotate_point(p, center, rotation);
-                    }
-                    vertices.push(p);
                 }
                 _ => {}
             }
         }
+        contours.retain(|c| c.len() >= 3);
 
-        self.generate_polyline_pocket(&vertices, pocket_depth, step_down, step_in)
+        let nested = contours.iter().enumerate().any(|(i, inner)| {
+            contours
+                .iter()
+                .enumerate()
+                .any(|(j, outer)| i != j && point_in_polygon(&inner[0], outer))
+        });
+        if nested {
+            tracing::warn!(
+                "Path pocket has nested contours; holes are not preserved as islands \
+                 and each contour is pocketed independently"
+            );
+        }
+
+        contours
+            .iter()
+            .flat_map(|c| self.generate_polyline_pocket(c, pocket_depth, step_down, step_in))
+            .collect()
     }
 
     pub fn generate_gear_pocket(
@@ -1737,4 +1755,18 @@ impl OutlineBuilder for ToolpathBuilder {
         }
         self.current_point = self.start_point;
     }
+}
+
+/// Even-odd ray-casting test: returns true if `p` lies inside the closed polygon `poly`.
+fn point_in_polygon(p: &Point, poly: &[Point]) -> bool {
+    let mut inside = false;
+    let mut j = poly.len() - 1;
+    for i in 0..poly.len() {
+        let (a, b) = (&poly[i], &poly[j]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }

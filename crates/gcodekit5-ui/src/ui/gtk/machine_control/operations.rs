@@ -114,15 +114,16 @@ impl MachineControlView {
     }
 
     pub fn emergency_stop(&self) {
+        // Signal the DirectSender worker *before* sending the reset. The worker re-checks
+        // this flag while holding the communicator lock, so once we hold the lock below no
+        // further job lines can be written after the soft reset.
+        if let Some(sender) = self.direct_sender.lock().as_ref() {
+            sender.stop();
+        }
+
         {
             let mut comm = self.communicator.lock();
             let _ = comm.send(&[0x18]);
-        }
-
-        // Also halt the DirectSender worker thread, otherwise it keeps streaming the
-        // rest of the job into the controller right after the soft reset.
-        if let Some(sender) = self.direct_sender.lock().as_ref() {
-            sender.stop();
         }
 
         *self.is_streaming.lock() = false;
