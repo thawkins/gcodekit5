@@ -133,6 +133,22 @@ impl RealTcpPort {
         )))
     }
 
+    /// Sets the read timeout of the underlying stream.
+    ///
+    /// [`RealTcpPort::open`] uses `params.timeout_ms` for connecting, reading and
+    /// writing. Callers that poll for incoming data (such as `SerialCommunicator`)
+    /// should shorten the read timeout so an idle read returns quickly; an idle read
+    /// then fails with `WouldBlock` (Unix) or `TimedOut` (Windows).
+    ///
+    /// # Arguments
+    /// * `timeout` - The new read timeout; `None` blocks until data arrives.
+    ///
+    /// # Errors
+    /// Returns an error if `timeout` is `Some(Duration::ZERO)` or the OS rejects it.
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.stream.set_read_timeout(timeout)
+    }
+
     /// Reconnect the TCP connection
     pub fn reconnect(&mut self, params: &ConnectionParams) -> Result<()> {
         self.close().ok();

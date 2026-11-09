@@ -16,6 +16,14 @@ use std::io::{self, Read, Write};
 use std::sync::Mutex;
 use std::time::Duration;
 
+/// Read timeout used by byte-stream ports that are polled through
+/// [`crate::Communicator::receive`].
+///
+/// It is kept short so that an idle read returns "no data" quickly; the UI's status
+/// poller and job sender call `receive()` while holding the communicator lock, and a
+/// long read would delay Pause and E-stop, which need the same lock.
+pub const POLL_READ_TIMEOUT: Duration = Duration::from_millis(10);
+
 /// Result type for serial operations
 pub type SerialResult<T> = std::result::Result<T, SerialPortError>;
 
@@ -308,7 +316,7 @@ impl RealSerialPort {
         }
 
         let builder = serialport::new(&params.port, params.baud_rate)
-            .timeout(Duration::from_millis(10)) // Short timeout for non-blocking reads (Modify at 1 for Ray5)
+            .timeout(POLL_READ_TIMEOUT) // Short timeout for non-blocking reads (Modify at 1 for Ray5)
             .data_bits(match params.data_bits {
                 5 => serialport::DataBits::Five,
                 6 => serialport::DataBits::Six,
