@@ -14,6 +14,7 @@
   - Removed a 30-second "watchdog" recovery mechanism that, on inspection, was placed after the exact loop it was meant to rescue and could never actually trigger during a real stall — no longer needed now that the root cause is fixed.
   - Verified stable on real hardware with engravings of 216,604 and 158,923 G-code lines, completed with no stutter and no stops.
   - Trade-off: while an image engraving job is streaming, the live DRO/position and buffer-state readouts in Machine Control no longer update (the progress bar still does, via the engraving job itself), keeping the serial port free of contention for maximum reliability and speed.
+- **MSRV raised to Rust 1.90**: the locked `ordered-float` 5.5 dependency requires rustc 1.90, so 1.88 could no longer build the workspace
 - **Code audit fixes (2026-11-09)** — regression tests added under each crate's `tests/`:
   - Machine control: Pause no longer queues `M5` (spindle stayed off after resume); feed-hold/resume sent once; jogs and manual commands blocked while streaming; jogs force `G21`; quick probes relative; E-stop stops the streaming thread; drill-press jobs no longer stall; Machine menu actions wired
   - GRBL protocol: `connect()` no longer sends `$RST=*` (wiped machine settings); `S:` no longer matched inside `FS:`; `Bf:` parsed; realtime bytes no longer stall the ok-counter; valid `$J=` jog syntax; override byte values corrected; `G10 L20`/`L2 P1-P6`; `ALARM:n` recognised; serial/TCP `write_all`; TCP hostnames

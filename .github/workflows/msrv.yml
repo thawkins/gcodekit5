@@ -9,7 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # Minimum Supported Rust Version
-  MSRV: "1.88"
+  MSRV: "1.90"
 
 jobs:
   msrv-check:
