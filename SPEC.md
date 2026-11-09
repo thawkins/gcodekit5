@@ -1,8 +1,8 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.55.0-alpha.1
-**Last Updated**: 2026-05-16
-**Status**: Alpha Release
+**Version**: 1.1.0-beta.1
+**Last Updated**: 2026-11-09
+**Status**: Beta Release
 
 ### Latest Release (v0.55.0-alpha.1) - 6-Axis Support, Touch Probe, Feeds & Speeds
 - ✅ **6-Axis Support** (per 6AXISPLAN.md)

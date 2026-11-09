@@ -5,7 +5,7 @@ use gcodekit5_designer::font_manager;
 use gcodekit5_designer::model::{
     DesignCircle as Circle, DesignEllipse as Ellipse, DesignLine as Line, DesignPath as PathShape,
     DesignPolygon as Polygon, DesignRectangle as Rectangle, DesignText as TextShape,
-    DesignTriangle as Triangle, Point, Shape,
+    DesignTriangle as Triangle, DesignerShape, Point, Shape,
 };
 use gtk4::prelude::*;
 use gtk4::{
@@ -175,7 +175,7 @@ impl DesignerCanvas {
                 tracing::info!("Polyline mode with points - finishing polyline");
                 if points.len() >= 2 {
                     // Create polyline
-                    let path_shape = PathShape::from_points(&points, false); // Open polyline
+                    let path_shape = PathShape::from_points(&points, true); // Close polyline
                     let shape = Shape::Path(path_shape);
 
                     let mut state = self.state.borrow_mut();
@@ -493,18 +493,14 @@ impl DesignerCanvas {
         if !state.snap_enabled {
             return (x, y);
         }
-        let spacing = state.grid_spacing_mm;
-        if spacing <= 0.0 {
+        let step = state.snap_threshold_mm.max(0.0);
+        if step <= f64::EPSILON {
             return (x, y);
         }
-        let threshold = state.snap_threshold_mm.max(0.0);
 
-        let sx = (x / spacing).round() * spacing;
-        let sy = (y / spacing).round() * spacing;
-
-        let out_x = if (sx - x).abs() <= threshold { sx } else { x };
-        let out_y = if (sy - y).abs() <= threshold { sy } else { y };
-        (out_x, out_y)
+        let sx = (x / step).round() * step;
+        let sy = (y / step).round() * step;
+        (sx, sy)
     }
 
     fn open_text_tool_dialog(&self, canvas_x: f64, canvas_y: f64) {
@@ -682,7 +678,7 @@ impl DesignerCanvas {
     pub(super) fn handle_click(&self, x: f64, y: f64, ctrl_pressed_arg: bool, n_press: i32) {
         // Combine gesture modifier state with tracked keyboard state for reliability
         let ctrl_pressed = ctrl_pressed_arg || *self.ctrl_pressed.borrow();
-
+        let shift_pressed = *self.shift_pressed.borrow();
         // Reset drag flag
         *self.did_drag.borrow_mut() = false;
 
@@ -719,6 +715,32 @@ impl DesignerCanvas {
         } else {
             (snapped_x, snapped_y)
         };
+
+        // Fast Shape placement: consume pending shape on next click and place at cursor point.
+        if let Some(mut pending_shape) = self.pending_fast_shape.borrow_mut().take() {
+            let (x1, y1, x2, y2) = pending_shape.bounds();
+            let center_x = (x1 + x2) * 0.5;
+            let center_y = (y1 + y2) * 0.5;
+            pending_shape.translate(canvas_x - center_x, canvas_y - center_y);
+
+            let mut state = self.state.borrow_mut();
+            state.add_shape_with_undo(pending_shape);
+            drop(state);
+
+            self.widget.set_cursor(None);
+
+            self.widget.queue_draw();
+
+            if let Some(ref props) = *self.properties.borrow() {
+                props.update_from_selection();
+            }
+
+            if let Some(ref layers) = *self.layers.borrow() {
+                layers.refresh(&self.state);
+            }
+
+            return;
+        }
 
         match tool {
             DesignerTool::Select => {
@@ -786,20 +808,21 @@ impl DesignerCanvas {
                     let is_selected = state.canvas.selection_manager.selected_id() == Some(id)
                         || state.canvas.shapes().any(|s| s.id == id && s.selected);
 
-                    if is_selected && !ctrl_pressed {
-                        // Clicked on already selected item, and no Ctrl.
-                        // Do NOT change selection yet. Wait for release.
-                        // This allows dragging the current selection group.
+                    // Si está seleccionado y NO hay modificadores, esperamos al "release" para permitir arrastrar
+                    if is_selected && !ctrl_pressed && !shift_pressed {
                         return;
                     }
                 }
 
-                // Try to select shape at click point with multi-select if Ctrl is held
-                if let Some(_selected_id) = state.canvas.select_at(&point, tolerance, ctrl_pressed)
+                // Llamada corregida delegando al Canvas y SelectionManager con ambos modificadores
+                if let Some(_selected_id) =
+                    state
+                        .canvas
+                        .select_at(&point, tolerance, shift_pressed, ctrl_pressed)
                 {
                     // Shape selected
-                } else if !ctrl_pressed {
-                    // Click on empty space without Ctrl - deselect all
+                } else if !ctrl_pressed && !shift_pressed {
+                    // Click en espacio vacío sin modificadores - deselecciona todo
                     state.canvas.deselect_all();
                 }
 
@@ -816,13 +839,14 @@ impl DesignerCanvas {
                     layers.refresh(&self.state);
                 }
             }
+
             DesignerTool::Polyline => {
                 if n_press == 2 {
                     // Double click - finish
                     let mut points = self.polyline_points.borrow_mut();
                     if points.len() >= 2 {
                         // Create polyline
-                        let path_shape = PathShape::from_points(&points, false);
+                        let path_shape = PathShape::from_points(&points, true);
                         let shape = Shape::Path(path_shape);
 
                         let mut state = self.state.borrow_mut();
@@ -850,6 +874,8 @@ impl DesignerCanvas {
 
     pub(super) fn handle_release(&self, x: f64, y: f64, ctrl_pressed_arg: bool) {
         let ctrl_pressed = ctrl_pressed_arg || *self.ctrl_pressed.borrow();
+        // 1. Extraemos el estado actual de la tecla Shift:
+        let shift_pressed = *self.shift_pressed.borrow();
 
         if *self.did_drag.borrow() {
             return;
@@ -885,6 +911,23 @@ impl DesignerCanvas {
         };
 
         if tool == DesignerTool::Select {
+            // Consultamos el hardware real en el milisegundo exacto del "Release"
+            let display = gtk4::gdk::Display::default().unwrap();
+            let seat = display.default_seat().unwrap();
+            let keyboard = seat.keyboard().unwrap();
+            let modifiers = keyboard.modifier_state(); // ¡Aquí se usa!
+
+            let real_ctrl =
+                ctrl_pressed || modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+            let real_shift =
+                shift_pressed || modifiers.contains(gtk4::gdk::ModifierType::SHIFT_MASK);
+
+            // Si se detecta que el usuario mantiene pulsado físicamente Ctrl o Shift,
+            // salimos de inmediato para que el Release no altere la selección del Press.
+            if real_ctrl || real_shift {
+                return;
+            }
+
             let mut state = self.state.borrow_mut();
             let point = Point::new(canvas_x, canvas_y);
 
@@ -900,9 +943,7 @@ impl DesignerCanvas {
             if let Some(id) = clicked_shape_id {
                 let is_selected = state.canvas.shapes().any(|s| s.id == id && s.selected);
 
-                if is_selected && !ctrl_pressed {
-                    // We clicked on a selected item and didn't drag.
-                    // Now we select ONLY this item (deselect others).
+                if is_selected && !real_ctrl && !real_shift {
                     state.canvas.deselect_all();
                     state.canvas.select_shape(id, false);
 
@@ -1011,6 +1052,15 @@ impl DesignerCanvas {
                         *self.resize_original_bounds.borrow_mut() =
                             Some((min_x, min_y, max_x - min_x, max_y - min_y));
 
+                        // Anchor drag start to the exact handle position to avoid introducing
+                        // an initial offset from where inside the handle box the user clicked.
+                        let handle_start = match handle {
+                            ResizeHandle::TopLeft => (min_x, max_y),
+                            ResizeHandle::TopRight => (max_x, max_y),
+                            ResizeHandle::BottomLeft => (min_x, min_y),
+                            ResizeHandle::BottomRight => (max_x, min_y),
+                        };
+
                         // Snapshot original shapes so resizing doesn't compound on each drag update.
                         // This matters for group resize and for path/text scaling.
                         let originals: Vec<(u64, Shape)> = {
@@ -1024,7 +1074,7 @@ impl DesignerCanvas {
                         };
                         *self.resize_original_shapes.borrow_mut() = Some(originals);
 
-                        *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
+                        *self.creation_start.borrow_mut() = Some(handle_start);
                         if is_group_resize {
                             // For group resize, we keep moving behavior the same but scale on drag updates.
                         }
@@ -1247,8 +1297,16 @@ impl DesignerCanvas {
             let canvas_offset_x = offset_x / zoom;
             let canvas_offset_y = offset_y / zoom;
 
-            let end_x = start.0 + canvas_offset_x;
-            let end_y = start.1 - canvas_offset_y; // Flip Y offset
+            let raw_end_x = start.0 + canvas_offset_x;
+            let raw_end_y = start.1 - canvas_offset_y; // Flip Y offset
+            let (snapped_end_x, snapped_end_y) = self.snap_canvas_point(raw_end_x, raw_end_y);
+
+            // Selection logic should keep raw coordinates; drawing tools use snapped coordinates.
+            let (end_x, end_y) = if tool == DesignerTool::Select {
+                (raw_end_x, raw_end_y)
+            } else {
+                (snapped_end_x, snapped_end_y)
+            };
 
             match tool {
                 DesignerTool::Select => {
@@ -1404,6 +1462,10 @@ impl DesignerCanvas {
     }
 
     fn create_shape(&self, tool: DesignerTool, start: (f64, f64), end: (f64, f64)) {
+        // Defensive quantization so created geometry always starts from snapped points.
+        let start = self.snap_canvas_point(start.0, start.1);
+        let end = self.snap_canvas_point(end.0, end.1);
+
         // Scope the borrow to release it before queue_draw
         {
             let mut state = self.state.borrow_mut();
@@ -1450,6 +1512,7 @@ impl DesignerCanvas {
                         None
                     }
                 }
+
                 DesignerTool::Triangle => {
                     let width = (end.0 - start.0).abs();
                     let height = (end.1 - start.1).abs();
@@ -1457,15 +1520,26 @@ impl DesignerCanvas {
                     let cy = (start.1 + end.1) / 2.0;
 
                     if width > 1.0 && height > 1.0 {
-                        Some(Shape::Triangle(Triangle::new(
+                        // Determinar la esquina del ángulo recto según la dirección del arrastre
+                        // end.1 > start.1 significa que el mouse está más arriba (porque el eje Y en canvas va hacia arriba)
+                        let corner = match (end.0 >= start.0, end.1 >= start.1) {
+                            (true, true) => 2,   // Superior-Izquierda (arrastre derecha-arriba)
+                            (true, false) => 0,  // Inferior-Izquierda (arrastre derecha-abajo)
+                            (false, true) => 3,  // Superior-Derecha (arrastre izquierda-arriba)
+                            (false, false) => 1, // Inferior-Derecha (arrastre izquierda-abajo)
+                        };
+
+                        Some(Shape::Triangle(Triangle::new_with_corner(
                             Point::new(cx, cy),
                             width,
                             height,
+                            corner,
                         )))
                     } else {
                         None
                     }
                 }
+
                 DesignerTool::Polygon => {
                     let cx = (start.0 + end.0) / 2.0;
                     let cy = (start.1 + end.1) / 2.0;

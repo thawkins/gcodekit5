@@ -8,29 +8,37 @@
 //!
 //! ```rust
 //! use gcodekit5_camtools::speeds_feeds::{
-//!     SpeedsFeedsCalculator, CalculationInput, OperationType,
-//!     SpeedsFeedsDataContext
+//!     CalculationInput, CalculationResult, OperationType, SpeedsFeedsCalculator,
+//!     SpeedsFeedsDataContext,
 //! };
+//! use gcodekit5_core::data::materials::Material;
+//! use gcodekit5_core::data::tools::Tool;
+//! use gcodekit5_devicedb::model::DeviceProfile;
 //!
-//! // Create data context with device
-//! let context = SpeedsFeedsDataContext::new(Some(device_profile));
+//! fn slotting_speeds(
+//!     selected_material: Material,
+//!     selected_tool: Tool,
+//!     device_profile: DeviceProfile,
+//! ) -> CalculationResult {
+//!     // Data context giving access to the tool, material and device databases
+//!     let _context = SpeedsFeedsDataContext::new(Some(device_profile.clone()));
 //!
-//! // Build calculation input
-//! let input = CalculationInput {
-//!     material: selected_material,
-//!     tool: selected_tool,
-//!     device: device_profile,
-//!     operation: OperationType::Slotting,
-//!     depth_of_cut: 3.0,
-//!     width_of_cut: None,
-//!     tool_stick_out: 25.0,
-//!     coolant_enabled: true,
-//!     conservative: false,
-//! };
+//!     // Build calculation input
+//!     let input = CalculationInput {
+//!         material: selected_material,
+//!         tool: selected_tool,
+//!         device: device_profile,
+//!         operation: OperationType::Slotting,
+//!         depth_of_cut: 3.0,
+//!         width_of_cut: None,
+//!         tool_stick_out: 25.0,
+//!         coolant_enabled: true,
+//!         conservative: false,
+//!     };
 //!
-//! // Calculate
-//! let result = SpeedsFeedsCalculator::calculate(&input);
-//! println!("RPM: {}, Feed: {}", result.rpm, result.feed_rate);
+//!     // Calculate RPM, feed rate and chip load
+//!     SpeedsFeedsCalculator::calculate(&input)
+//! }
 //! ```
 
 // Module declarations

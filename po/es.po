@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2026-03-31 00:59+0200\n"
+"PO-Revision-Date: 2026-05-15 17:54+0200\n"
 "Last-Translator: Fernando Velez <feveal@hotmail.com>\n"
 "Language-Team: Spanish\n"
 "Language: es_ES\n"
@@ -182,17 +182,32 @@ msgstr "Formas rapidas"
 msgid "Shape Gallery…"
 msgstr "Galería de formas…"
 
-msgid "Feed (Speed Laser)"
-msgstr "Alimentación o Velocidad del Laser"
+msgid "Machine Mode"
+msgstr "Tipo de Máquina"
 
-msgid "Feed Rate or Speed Laser"
-msgstr "Velocidad de alimentación o del Laser"
+msgid "Laser Speed"
+msgstr "Velocidad del Laser"
 
-msgid "Speed (Power Laser)"
-msgstr "Velocidad o Potencia del Laser"
+msgid "Feed rate:"
+msgstr "Velocidad:"
 
-msgid "Spindle Speed or Power Laser %"
-msgstr "Velocidad de husillo o Potencia del laser"
+msgid "Power:"
+msgstr "Potencia:"
+
+msgid "Passes:"
+msgstr "Pasadas:"
+
+msgid "Laser Config (Object)"
+msgstr "Configuración Láser (Objeto)"
+
+msgid "Use global values"
+msgstr "Usar valores globales"
+
+msgid "Laser Power"
+msgstr "Potencia Láser"
+
+msgid "Spindle Speed"
+msgstr "Velocidad de husillo"
 
 msgid "Tool Dia"
 msgstr "Diam. de herramienta"
@@ -207,7 +222,10 @@ msgid "Target Cut Depth (positive)"
 msgstr "Profundidad de corte objetivo (positiva)"
 
 msgid "Step Down"
-msgstr "Pasada"
+msgstr "Profundidad de pasada"
+
+msgid "Passes"
+msgstr "Pasadas"
 
 msgid "Depth per pass"
 msgstr "Profundidad de pasada"
@@ -798,13 +816,13 @@ msgid "Output Settings"
 msgstr "Configuración de salida"
 
 msgid "Feed Rate:"
-msgstr "Velocidad en trabajo:"
+msgstr "Avance:"
+
+msgid "Spindle Speed:"
+msgstr "Velocidad de husillo:"
 
 msgid "Travel Rate:"
 msgstr "Velocidad en vacío:"
-
-msgid "Laser Power"
-msgstr "Potencia de Láser"
 
 msgid "Cut Power (%):"
 msgstr "Potencia de corte (%):"
@@ -823,9 +841,6 @@ msgstr "Configuración Multipasada"
 
 msgid "Multi-Pass:"
 msgstr "Multipasada:"
-
-msgid "Number of Passes:"
-msgstr "Num. de Pasadas:"
 
 msgid "Hatching"
 msgstr "Sombreado"
@@ -1033,9 +1048,6 @@ msgstr "Ancho del espacio:"
 msgid "Laser Settings"
 msgstr "Configuración del láser"
 
-msgid "Passes:"
-msgstr "Pases:"
-
 msgid "Power (S):"
 msgstr "Potencia (S):"
 
@@ -1173,11 +1185,8 @@ msgstr "Perfil"
 msgid "Depth:"
 msgstr "Profundidad:"
 
-msgid "Step Down:"
-msgstr "Bajar un paso:"
-
 msgid "Step In:"
-msgstr "Subir un paso:"
+msgstr "Paso lateral:"
 
 msgid "Ramp Angle:"
 msgstr "Ángulo de rampa:"
@@ -1186,7 +1195,7 @@ msgid "Strategy:"
 msgstr "Estrategia:"
 
 msgid "Raster Fill (%):"
-msgstr "Relleno Rasterizado (%):"
+msgstr "Relleno Raster (%):"
 
 # gcodekit5/crates/gcodekit5-ui/src/ui/gtk/designer_properties/mod.rs
 msgid "Select a shape to edit its properties"

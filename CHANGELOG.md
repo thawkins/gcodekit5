@@ -1,3 +1,60 @@
+## [Unreleased] - 2026-09-03
+
+### Added
+- **6-axis support, touch probing and feeds & speeds** merged from the `tim1503` branch (developed as 0.55.0-alpha.1 to alpha.7; detailed entries below 1.0.0-alpha.1):
+  - 6-axis (A/B/C) machine control, settings, G-code validation, visualizer bounds and firmware capability flags (6AXISPLAN.md)
+  - Touch probe routines, GRBL probe parsing and WCS offset updates (PROBEPLAN.md)
+  - Feeds & speeds calculator integrated with the Tools and Materials databases (FEEDSSPEEDS.md)
+  - DeviceDB profile templates
+- Note: `GCodeSegmentType::Probe` (0.55.0-alpha.1) was dropped in the merge, because `gcodekit5-core::gcode_parser` was removed on master
+
+### Fixed
+- **Laser stalls and stops on long image engravings**: The Machine Control status poller (50ms) and the DirectSender streaming thread were both reading the same serial port independently. Under load, the poller could "steal" the GRBL "ok" acknowledgments meant for the streaming job, desyncing its internal flow-control window. On short jobs this caused occasional stuttering; on long jobs it could eventually make the sender stop feeding new G-code entirely, starving the machine's buffer and bringing the laser to a complete stop.
+  - `DirectSender` is now the sole reader/writer of the serial port while an image engraving job is running; the status poller yields the port for the duration of the job instead of competing for it.
+  - Removed a 30-second "watchdog" recovery mechanism that, on inspection, was placed after the exact loop it was meant to rescue and could never actually trigger during a real stall — no longer needed now that the root cause is fixed.
+  - Verified stable on real hardware with engravings of 216,604 and 158,923 G-code lines, completed with no stutter and no stops.
+  - Trade-off: while an image engraving job is streaming, the live DRO/position and buffer-state readouts in Machine Control no longer update (the progress bar still does, via the engraving job itself), keeping the serial port free of contention for maximum reliability and speed.
+
+## [1.1.0-beta.1] - 2026-08-03
+
+- The grid adjustment checkbox now forces the cursor to move with a snapping point based on the adjustment parameter. Objects take values ​​in multiples of this adjustment value (Snap).
+
+- In 3D mode, the Z coordinate is implemented to generate 3D G-code with passes based on the machining parameters in the Global or specific properties of each object.
+
+- **The 2D viewer is removed**, and the 3D viewer is always used for all G-code, whether 2D or 3D. Camera positions are used for this purpose.
+
+- The safety height parameter is generated from the entered value and the material thickness.
+
+- A warning dialog box has been added for when G-code is generated outside the machine limits. The warning is also retained within the G-code itself.
+
+- When saving as, the last path is used.
+
+- Play/pause/stop buttons and playback speed values ​​have been added to the viewer for simulating the tool's path on screen.
+
+- The shapes in the Shape Gallery have been corrected, and parametric mode has been added to the timing belt pulley, which previously lacked it.
+
+- Some errors in creating chamfers and radii on shape objects have been fixed.
+
+## [1.0.1-alpha.0] - 2026-06-18
+
+- Triangle generation in the designer has been corrected. Triangles can now be generated in all four positions and true symmetry can be applied. Previously, they could only be generated in one position.
+- The bounds of the triangles are now generated correctly and updated when the triangle is rotated.
+- The G-code and the Visualizer correctly reproduce the position of the triangles.
+- The triangles are now correctly saved in the gckd file
+- The display establishes a color scale based on the power S to preview the movements
+- In the designer, the bounds for the created lines are corrected. They now take into account the size and rotation of the line, which they didn't do before.
+- The Pause and Resume function in laser mode, which turned off the laser during some movements, has been fixed.
+- Help is implemented via F1 with explanatory images for each program module
+- The program translation has been expanded, including the help section.
+- A Warning is added to the G-code when the path goes outside the machine area (negative coordinates)
+- The positioning of texts and their grips is corrected.
+- Other visual modifications
+
+## [1.0.0-alpha.1] - 2026-05-21
+
+### Added
+- **individual laser parameters for each object**: In addition to the laser working parameters, it is now also possible to define the speed, power and passes properties individually for the desired objects while maintaining the global properties for the rest of the objects.
+
 ## [0.55.0-alpha.1] - 2026-05-16
 
 ### Added

@@ -62,7 +62,7 @@ impl SpatialManager {
     ///
     /// This method is currently unused. Use `insert_bounds()` instead for better performance
     /// when you already have the bounds calculated.
-    #[allow(dead_code)]
+
     pub fn insert(&mut self, id: u64, shape: &Shape) {
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.index
@@ -94,7 +94,7 @@ impl SpatialManager {
     ///
     /// This method is currently unused. Use `remove_bounds()` instead for better performance
     /// when you already have the bounds calculated.
-    #[allow(dead_code)]
+
     pub fn remove(&mut self, id: u64, shape: &Shape) {
         let (min_x, min_y, max_x, max_y) = shape.bounds();
         self.index
@@ -127,7 +127,7 @@ impl SpatialManager {
     ///
     /// This method is currently unused. Most code manually calls `remove_bounds()`
     /// and `insert_bounds()` for better control.
-    #[allow(dead_code)]
+
     pub fn update(&mut self, id: u64, old_shape: &Shape, new_shape: &Shape) {
         self.remove(id, old_shape);
         self.insert(id, new_shape);
@@ -149,7 +149,7 @@ impl SpatialManager {
     ///
     /// This method is currently unused. Use `query_point()` for point queries or
     /// access the index directly via `inner()` for custom queries.
-    #[allow(dead_code)]
+
     pub fn query(&self, bounds: &Bounds) -> Vec<u64> {
         self.index.query(bounds)
     }
@@ -204,7 +204,7 @@ impl SpatialManager {
     /// # Note
     ///
     /// This method is currently unused but kept for potential future use.
-    #[allow(dead_code)]
+
     pub fn inner_mut(&mut self) -> &mut SpatialIndex {
         &mut self.index
     }

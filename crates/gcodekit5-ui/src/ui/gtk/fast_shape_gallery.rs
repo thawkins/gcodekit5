@@ -4,7 +4,9 @@
 
 use crate::t;
 use gcodekit5_core::{shared_none, SharedOption};
-use gcodekit5_designer::model::{DesignGear, DesignPath, DesignSprocket, Point, Shape};
+use gcodekit5_designer::model::{
+    DesignGear, DesignPath, DesignSprocket, ParametricPathSource, Point, Shape,
+};
 use gcodekit5_designer::parametric_shapes::*;
 use gtk4::prelude::*;
 use gtk4::{Box, Dialog, FlowBox, Frame, Image, Label, Orientation, ResponseType, ScrolledWindow};
@@ -107,7 +109,13 @@ impl FastShapeGallery {
             item_box.set_margin_bottom(8);
 
             // Icon
-            let icon = Image::from_icon_name(&template.icon_name);
+            let icon_name = &template.icon_name;
+            let icon = if icon_name.ends_with(".svg") {
+                let resource_path = format!("/com/gcodekit5/icons/{}", icon_name);
+                Image::from_resource(&resource_path)
+            } else {
+                Image::from_icon_name(icon_name)
+            };
             icon.set_pixel_size(48);
             item_box.append(&icon);
 
@@ -176,7 +184,7 @@ impl FastShapeGallery {
             FastShapeTemplate::new(
                 t!("Spur Gear"),
                 t!("Standard involute spur gear"),
-                "system-run-symbolic".to_string(),
+                "gear.svg".to_string(),
                 Rc::new(|center| {
                     Shape::Gear(DesignGear::new(
                         center, 2.0, // module
@@ -184,24 +192,11 @@ impl FastShapeGallery {
                     ))
                 }),
             ),
-            FastShapeTemplate::new(
-                t!("Helical Gear"),
-                t!("Helical gear with angled teeth"),
-                "system-run-symbolic".to_string(),
-                Rc::new(|center| {
-                    Shape::Path(DesignPath::from_lyon_path(&generate_helical_gear(
-                        center, 2.0,  // module
-                        20,   // teeth
-                        20.0, // pressure angle
-                        15.0, // helix angle
-                        5.0,  // hole radius
-                    )))
-                }),
-            ),
+
             FastShapeTemplate::new(
                 t!("Sprocket"),
                 t!("Chain sprocket for #40 chain"),
-                "emblem-system-symbolic".to_string(),
+                "sprocket1.svg".to_string(),
                 Rc::new(|center| {
                     Shape::Sprocket(DesignSprocket::new(
                         center, 12.7, // pitch (ANSI 40)
@@ -209,42 +204,65 @@ impl FastShapeGallery {
                     ))
                 }),
             ),
+
+
             FastShapeTemplate::new(
                 t!("Timing Pulley"),
                 t!("XL timing belt pulley"),
-                "emblem-system-symbolic".to_string(),
+                "timingpulley.svg".to_string(),
                 Rc::new(|center| {
-                    Shape::Path(DesignPath::from_lyon_path(&generate_timing_pulley(
-                        center, 5.08, // pitch (XL)
-                        20,   // teeth
-                        9.4,  // belt width
-                        5.0,  // hole radius
-                    )))
+                    let pitch = 5.08;
+                    let teeth = 20;
+                    let belt_width = 9.4;
+                    let hole_radius = 5.0;
+                    let mut path = DesignPath::from_lyon_path(&generate_timing_pulley(
+                        center,
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    ));
+                    path.parametric_source = Some(ParametricPathSource::TimingPulley {
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    });
+                    Shape::Path(path)
                 }),
             ),
             // Structural shapes
             FastShapeTemplate::new(
                 t!("Slot"),
                 t!("Rectangular slot/cutout"),
-                "media-playback-start-symbolic".to_string(),
+                "slot.svg".to_string(),
                 Rc::new(|center| {
-                    Shape::Path(DesignPath::from_lyon_path(&generate_slot(
-                        center, 50.0, // length
-                        20.0, // width
-                        5.0,  // corner radius
-                    )))
+                    use gcodekit5_designer::model::DesignRectangle as Rectangle;
+
+                    let width = 50.0;  // length
+                    let height = 20.0; // width
+
+                    // Calculamos la esquina superior izquierda a partir del centro recibido
+                    let x = center.x - width / 2.0;
+                    let y = center.y - height / 2.0;
+
+                    let mut rect = Rectangle::new(x, y, width, height);
+                    rect.corner_radius = 5.0; // El radio pasa a ser numérico y explícito
+                    rect.is_slot = true;      // Activar el modo Slot nativo del motor
+
+                    Shape::Rectangle(rect)
                 }),
             ),
             FastShapeTemplate::new(
                 t!("L-Bracket"),
                 t!("L-shaped bracket with holes"),
-                "view-grid-symbolic".to_string(),
+                "Lsupport.svg".to_string(),
                 Rc::new(|center| {
                     Shape::Path(DesignPath::from_lyon_path(&generate_l_bracket(
                         center, 80.0, // width
                         60.0, // height
                         5.0,  // thickness
-                        8.0,  // hole diameter
+                        2.5,  // hole diameter
                         15.0, // hole spacing
                     )))
                 }),
@@ -252,13 +270,13 @@ impl FastShapeGallery {
             FastShapeTemplate::new(
                 t!("U-Bracket"),
                 t!("U-shaped channel bracket"),
-                "view-grid-symbolic".to_string(),
+                "Usupport.svg".to_string(),
                 Rc::new(|center| {
                     Shape::Path(DesignPath::from_lyon_path(&generate_u_bracket(
                         center, 100.0, // length
                         40.0,  // width
                         5.0,   // thickness
-                        8.0,   // hole diameter
+                        2.5,   // hole diameter
                         15.0,  // hole spacing
                     )))
                 }),

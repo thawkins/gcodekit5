@@ -5,38 +5,28 @@
 //! - Toolpath visualization (rendering)
 //! - Interactive camera controls (controls)
 //! - Grid and axis rendering
-//! - 3D mesh rendering for STL models
+//! - 3D mesh rendering
 
 pub mod camera;
-pub mod canvas_renderer;
 pub mod controls;
 pub mod features;
-pub mod mesh_renderer;
-pub mod mesh_rendering;
-pub mod mesh_shaders;
-pub mod scene3d;
+
 pub mod setup;
 pub mod stock_removal_3d;
 pub mod toolpath_cache;
 pub mod toolpath_rendering;
 pub mod viewport;
-// Module name matches parent — acceptable for the primary visualizer type.
+
 #[allow(clippy::module_inception)]
 pub mod visualizer;
 
 pub use camera::Camera as Camera3D;
-pub use canvas_renderer::{
-    render_g1_to_path, render_g2_to_path, render_g3_to_path, render_g4_to_path,
-    render_grid_to_path, render_intensity_overlay, render_origin_to_path,
-    render_rapid_moves_to_path, render_toolpath_to_path,
-};
+
 pub use controls::{CameraController, ViewPreset, VisualizerControls};
 pub use features::{
     BoundingBox, GridConfig, MachineLimits, SceneFeatures, ToolMarker, WorkCoordinateSystem,
 };
-pub use mesh_renderer::{LightingParams, MeshRenderError, MeshRenderer};
-pub use mesh_rendering::{MeshCollection, MeshMaterial, RenderableMesh};
-pub use scene3d::{stl_integration, Renderer3D, Scene3D, Scene3DStats};
+
 pub use setup::{Camera, CameraType, Color, Light, LightType, Renderer, Scene, Vector3};
 pub use stock_removal_3d::{
     generate_surface_mesh, StockSimulator3D, ToolpathSegment, ToolpathSegmentType, VoxelGrid,
@@ -45,7 +35,5 @@ pub use toolpath_cache::ToolpathCache;
 pub use toolpath_rendering::{
     ArcSegment, LineSegment, MovementType, PathSegment, Toolpath, ToolpathStats,
 };
-pub use viewport::{Bounds, ViewportTransform};
+pub use viewport::{Bounds};
 pub use visualizer::{GCodeCommand, Point3D, Visualizer};
-
-// Removed conflicting Visualizer struct definition as it is now imported from visualizer module

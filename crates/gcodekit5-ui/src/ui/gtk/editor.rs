@@ -5,6 +5,7 @@
 
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{shared_none, SharedOption};
+use gcodekit5_settings::controller::SettingsController;
 use glib;
 use gtk4::prelude::*;
 use gtk4::{
@@ -20,6 +21,8 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 use tracing::error;
+use crate::t;
+use libadwaita::StyleManager;
 
 pub struct GcodeEditor {
     pub widget: Overlay,
@@ -30,10 +33,11 @@ pub struct GcodeEditor {
     _search_context: SearchContext,
     _search_settings: SearchSettings,
     _status_bar: Option<StatusBar>,
+    settings_controller: Option<Rc<SettingsController>>,
 }
 
 impl GcodeEditor {
-    pub fn new(status_bar: Option<StatusBar>) -> Self {
+    pub fn new(status_bar: Option<StatusBar>, settings_controller: Option<Rc<SettingsController>>) -> Self {
         let buffer = Buffer::new(None);
         let view = View::with_buffer(&buffer);
 
@@ -71,12 +75,31 @@ impl GcodeEditor {
         let style_path_refs: Vec<&str> = new_style_paths.iter().map(|s| s.as_str()).collect();
         scheme_manager.set_search_path(&style_path_refs);
 
-        // Try to load our custom bright scheme first
-        if let Some(scheme) = scheme_manager.scheme("gcode-bright") {
-            buffer.set_style_scheme(Some(&scheme));
-        } else if let Some(scheme) = scheme_manager.scheme("kate") {
-            buffer.set_style_scheme(Some(&scheme));
-        } else if let Some(scheme) = scheme_manager.scheme("classic") {
+        // Detectar si el sistema o la app está usando tema oscuro de forma dinámica
+        let style_manager = StyleManager::default();
+        let is_dark = style_manager.is_dark();
+
+        let scheme_name = if is_dark {
+            // Intenta usar esquemas oscuros
+            if scheme_manager.scheme("gcode-dark").is_some() {
+                "gcode-dark"
+            } else if scheme_manager.scheme("oblivion").is_some() {
+                "oblivion" // Esquema oscuro estándar de GtkSourceView
+            } else {
+                "classic"
+            }
+        } else {
+            // Esquemas claros originales
+            if scheme_manager.scheme("gcode-bright").is_some() {
+                "gcode-bright"
+            } else if scheme_manager.scheme("kate").is_some() {
+                "kate"
+            } else {
+                "classic"
+            }
+        };
+
+        if let Some(scheme) = scheme_manager.scheme(scheme_name) {
             buffer.set_style_scheme(Some(&scheme));
         }
 
@@ -158,16 +181,16 @@ impl GcodeEditor {
         // Search Row
         let search_row = Box::new(Orientation::Horizontal, 4);
         let search_entry = Entry::builder()
-            .placeholder_text("Search...")
+            .placeholder_text(&t!("Search..."))
             .width_request(200)
             .build();
         let prev_btn = Button::builder()
             .icon_name("go-up-symbolic")
-            .tooltip_text("Previous Match")
+            .tooltip_text(t!("Previous Match"))
             .build();
         let next_btn = Button::builder()
             .icon_name("go-down-symbolic")
-            .tooltip_text("Next Match")
+            .tooltip_text(t!("Next Match"))
             .build();
 
         search_row.append(&search_entry);
@@ -177,16 +200,16 @@ impl GcodeEditor {
         // Replace Row
         let replace_row = Box::new(Orientation::Horizontal, 4);
         let replace_entry = Entry::builder()
-            .placeholder_text("Replace with...")
+            .placeholder_text(&t!("Replace with ..."))
             .width_request(200)
             .build();
         let replace_btn = Button::builder()
             .icon_name("edit-find-replace-symbolic")
-            .tooltip_text("Replace")
+            .tooltip_text(t!("Replace"))
             .build();
         let replace_all_btn = Button::builder()
             .icon_name("mail-send-receive-symbolic")
-            .tooltip_text("Replace All")
+             .tooltip_text(t!("Replace All"))
             .build();
 
         replace_row.append(&replace_entry);
@@ -239,13 +262,13 @@ impl GcodeEditor {
                 replace_all_btn.set_sensitive(has_matches && has_replace_text);
 
                 if count == -1 {
-                    label.set_label("Calculating...");
+                    label.set_label(&t!("Calculating..."));
                     prev_btn.set_sensitive(false);
                     next_btn.set_sensitive(false);
                     return;
                 }
                 if count == 0 {
-                    label.set_label("0 matches");
+                    label.set_label(&t!("0 matches"));
                     prev_btn.set_sensitive(false);
                     next_btn.set_sensitive(false);
                     return;
@@ -455,7 +478,7 @@ impl GcodeEditor {
             let text = buffer.text(&start, &end, true).to_string();
 
             if let Some(sb) = &status_bar {
-                sb.set_progress(10.0, "Calculating...", "Please wait");
+                sb.set_progress(10.0, &t!("Calculating..."), &t!("Please wait"));
             }
 
             // Spawn thread
@@ -499,6 +522,7 @@ impl GcodeEditor {
             _search_context: search_context,
             _search_settings: search_settings,
             _status_bar: status_bar,
+            settings_controller: settings_controller.clone(),
         };
 
         // Update line counter when cursor moves
@@ -527,7 +551,6 @@ impl GcodeEditor {
 
         // Initial update
         Self::update_line_counter(&buffer, &line_counter_label);
-
         editor
     }
 
@@ -597,7 +620,7 @@ impl GcodeEditor {
 
     pub fn open_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = super::file_dialog::open_dialog("Open G-Code File", parent.as_ref());
+        let dialog = super::file_dialog::open_dialog(&t!("Open G-Code File"), parent.as_ref());
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -631,8 +654,8 @@ impl GcodeEditor {
                                 error!("Error reading file {}: {}", path.display(), e);
                                 let parent = super::file_dialog::parent_window(dialog);
                                 super::file_dialog::show_error_dialog(
-                                    "Error Reading File",
-                                    &format!("Could not open '{}'.\n\n{}", path.display(), e),
+                                    &t!("Error Reading File"),
+                                    &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
                                     parent.as_ref(),
                                 );
                             }
@@ -658,8 +681,8 @@ impl GcodeEditor {
                 error!("Error saving file {}: {}", path.display(), e);
                 let parent = super::file_dialog::parent_window(&self.widget);
                 super::file_dialog::show_error_dialog(
-                    "Error Saving File",
-                    &format!("Could not save '{}'.\n\n{}", path.display(), e),
+                    &t!("Error Saving File"),
+                    &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
                     parent.as_ref(),
                 );
             }
@@ -670,7 +693,8 @@ impl GcodeEditor {
 
     pub fn save_as_file(&self) {
         let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = super::file_dialog::save_dialog("Save G-Code File", parent.as_ref());
+        let dialog = super::file_dialog::save_dialog(&t!("Save G-Code File"), parent.as_ref());
+        super::file_dialog::set_last_working_directory(&dialog, self.settings_controller.as_deref());
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("G-Code Files"));
@@ -704,8 +728,8 @@ impl GcodeEditor {
                                 error!("Error saving file {}: {}", path.display(), e);
                                 let parent = super::file_dialog::parent_window(dialog);
                                 super::file_dialog::show_error_dialog(
-                                    "Error Saving File",
-                                    &format!("Could not save '{}'.\n\n{}", path.display(), e),
+                                    &t!("Error Saving File"),
+                                    &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
                                     parent.as_ref(),
                                 );
                             }
@@ -717,5 +741,34 @@ impl GcodeEditor {
         });
 
         dialog.show();
+    }
+
+    // Método público para actualizar el tema
+    pub fn update_theme_for_editor(&self) {
+        let scheme_manager = StyleSchemeManager::default();
+        let style_manager = StyleManager::default();
+        let is_dark = style_manager.is_dark();
+
+        let scheme_name = if is_dark {
+            if scheme_manager.scheme("gcode-dark").is_some() {
+                "gcode-dark"
+            } else if scheme_manager.scheme("oblivion").is_some() {
+                "oblivion"
+            } else {
+                "classic"
+            }
+        } else {
+            if scheme_manager.scheme("gcode-bright").is_some() {
+                "gcode-bright"
+            } else if scheme_manager.scheme("kate").is_some() {
+                "kate"
+            } else {
+                "classic"
+            }
+        };
+
+        if let Some(scheme) = scheme_manager.scheme(scheme_name) {
+            self.buffer.set_style_scheme(Some(&scheme));
+        }
     }
 }

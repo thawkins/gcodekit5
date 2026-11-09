@@ -43,36 +43,7 @@ impl ToolpathCache {
         self.commands.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.commands.is_empty()
-    }
-
-    pub fn toolpath_svg(&self) -> &str {
-        &self.cached_path
-    }
-
-    pub fn rapid_svg(&self) -> &str {
-        &self.cached_rapid_path
-    }
-
-    pub fn g1_svg(&self) -> &str {
-        &self.cached_g1_path
-    }
-
-    pub fn g2_svg(&self) -> &str {
-        &self.cached_g2_path
-    }
-
-    pub fn g3_svg(&self) -> &str {
-        &self.cached_g3_path
-    }
-
-    pub fn g4_svg(&self) -> &str {
-        &self.cached_g4_path
-    }
-
     fn rebuild_paths(&mut self) {
-        debug!("Rebuilding SVG paths from {} commands", self.commands.len());
 
         self.cached_path.clear();
         self.cached_rapid_path.clear();
@@ -80,11 +51,6 @@ impl ToolpathCache {
         self.cached_g2_path.clear();
         self.cached_g3_path.clear();
         self.cached_g4_path.clear();
-
-        if self.commands.is_empty() {
-            debug!("No commands to render");
-            return;
-        }
 
         self.cached_path.reserve(self.commands.len() * 25);
         self.cached_rapid_path.reserve(self.commands.len() * 10);

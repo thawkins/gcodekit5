@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_validate_empty_line() {
-        let validator = GcodeValidator::new();
+        let mut validator = GcodeValidator::new();
         assert_eq!(validator.validate_line(""), ValidationResult::Valid);
         assert_eq!(
             validator.validate_line("; comment"),

@@ -74,29 +74,6 @@ impl ProbeMesh {
         self.points.push(point);
     }
 
-    /// Get Z offset at position (interpolated)
-    pub fn get_z_offset(&self, x: f64, y: f64) -> Option<f64> {
-        if self.points.is_empty() {
-            return None;
-        }
-
-        // Find 4 nearest points for bilinear interpolation
-        let mut nearest = self
-            .points
-            .iter()
-            .map(|p| (p, (p.x - x).powi(2) + (p.y - y).powi(2)))
-            .collect::<Vec<_>>();
-        nearest.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        if nearest.len() < 4 {
-            return Some(nearest[0].0.z);
-        }
-
-        // Simple average of 4 nearest
-        let avg = nearest[..4].iter().map(|(p, _)| p.z).sum::<f64>() / 4.0;
-        Some(avg)
-    }
-
     /// Get mesh statistics
     pub fn stats(&self) -> (usize, f64, f64) {
         (self.points.len(), self.z_min, self.z_max)

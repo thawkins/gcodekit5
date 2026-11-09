@@ -116,6 +116,7 @@ fn polygon_centroid(points: &[Point]) -> Option<Point> {
     Some(Point::new(cx, cy))
 }
 
+/*
 fn point_in_polygon(poly: &[Point], test: Point) -> bool {
     // Standard ray casting test.
     let mut inside = false;
@@ -132,6 +133,7 @@ fn point_in_polygon(poly: &[Point], test: Point) -> bool {
     }
     inside
 }
+*/
 
 /// Strategy for pocket milling.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Default)]
@@ -268,6 +270,7 @@ impl PocketGenerator {
         }
     }
 
+/* // GENERA ZIG-ZAG QUE SE SALE DEL CONTORNO
     fn generate_raster_cleanup(
         &self,
         vertices: &[Point],
@@ -416,7 +419,7 @@ impl PocketGenerator {
             Some(toolpath)
         }
     }
-
+*/
     /// Adds an island to the pocket.
     pub fn add_island(&mut self, island: Island) {
         self.islands.push(island);
@@ -964,10 +967,13 @@ impl PocketGenerator {
 
             // Push main contour toolpath first, then raster cleanup
             toolpaths.push(toolpath);
+
+/* // NO HABILIZAR ESTAS LÍNEAS, GENERAN UN ZIG-ZAG ERRONEO QUE SE SALE DE LOS CONTORNOS
             // Sweep a raster cleanup over the whole polygon to catch any voids
             if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
                 toolpaths.push(raster);
             }
+*/
             prev_z = current_z;
             is_first_z_pass = false;
         }
@@ -1143,9 +1149,12 @@ impl PocketGenerator {
 
             // Push main adaptive toolpath first, then raster cleanup
             toolpaths.push(toolpath);
+
+/* // NO HABILIZAR ESTAS LÍNEAS, GENERAN UN ZIG-ZAG ERRONEO QUE SE SALE DE LOS CONTORNOS (ADAPTATIVE)
             if let Some(raster) = self.generate_raster_cleanup(vertices, current_z, 0.0) {
                 toolpaths.push(raster);
             }
+*/
             prev_z = current_z;
             is_first_z_pass = false;
         }

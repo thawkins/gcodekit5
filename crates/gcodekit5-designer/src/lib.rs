@@ -141,7 +141,7 @@ pub use slice_toolpath::{
     JobSummary, LayerToolpath, SliceStrategy, SliceToToolpath, SliceToolpathParams, SlicedJob,
 };
 pub use spatial_index::{Bounds, SpatialIndex, SpatialIndexStats};
-pub use stock_removal::{HeightMap2D, SimulationResult, StockMaterial};
+pub use stock_removal::{StockMaterial};
 pub use templates::*;
 pub use tool_library::{CoolantType, MaterialProfile, Tool, ToolLibrary, ToolType};
 pub use toolpath::{Toolpath, ToolpathGenerator, ToolpathSegment, ToolpathSegmentType};

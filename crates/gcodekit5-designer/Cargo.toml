@@ -21,17 +21,17 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 lyon = { version = "1.0", features = ["serialization"] }
 rusttype = "0.9.3"
 fontdb = "0.16"
-cavalier_contours = "0.6.0"
+cavalier_contours = "0.7.0"
 tiny-skia = "0.11.4"
 csgrs = { version = "0.20.1", features = ["svg-io", "stl-io"] }
-stl_io = "0.8"
-nalgebra = "0.33"
+stl_io = "0.11"
+nalgebra = "0.33.3"
 smallvec = { version = "1.13", features = ["const_generics"] }
 
 [dev-dependencies]
 tempfile = "3.10"
 proptest = "1.4"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "toolpath_bench"

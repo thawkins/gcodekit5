@@ -1,4 +1,4 @@
-//! Geometry property handlers (rotation, corner radius, slot, polygon sides).
+//! Geometry property handlers (rotation, corner radius, slot, polygon sides)
 
 use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption};
@@ -173,6 +173,43 @@ pub fn setup_sides_handler(
             }
         } else {
             entry.add_css_class("entry-invalid");
+        }
+    });
+}
+
+/// Setup path closed checkbox handler
+#[allow(clippy::type_complexity)]
+pub fn setup_path_closed_handler(
+    path_closed_check: &CheckButton,
+    state: Shared<DesignerState>,
+    redraw_callback: SharedOption<Rc<dyn Fn()>>,
+    updating: Shared<bool>,
+) {
+    path_closed_check.connect_toggled(move |check| {
+        if *updating.borrow() {
+            return;
+        }
+
+        let mut designer_state = state.borrow_mut();
+        if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
+            if let Some(obj) = designer_state.canvas.get_shape(id) {
+                let old_obj = obj.clone();
+                let mut new_obj = old_obj.clone();
+                if let Shape::Path(path) = &mut new_obj.shape {
+                    path.set_closed(check.is_active());
+                    let cmd = DesignerCommand::ChangeProperty(ChangeProperty {
+                        id,
+                        old_state: old_obj,
+                        new_state: new_obj,
+                    });
+                    designer_state.push_command(cmd);
+                }
+            }
+        }
+
+        drop(designer_state);
+        if let Some(ref cb) = *redraw_callback.borrow() {
+            cb();
         }
     });
 }

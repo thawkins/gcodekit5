@@ -86,6 +86,10 @@ pub struct DxfLine {
     pub layer: String,
     /// Color (ACI value or 256 for by-layer)
     pub color: u16,
+    /// Z elevation of the entity's plane (group code 30)
+    pub elevation: f64,
+    /// Extrusion thickness along Z (group code 39)
+    pub thickness: f64,
 }
 
 /// Represents a DXF circle entity
@@ -99,6 +103,10 @@ pub struct DxfCircle {
     pub layer: String,
     /// Color
     pub color: u16,
+    /// Z elevation of the entity's plane (group code 30)
+    pub elevation: f64,
+    /// Extrusion thickness along Z (group code 39)
+    pub thickness: f64,
 }
 
 /// Represents a DXF arc entity
@@ -116,6 +124,10 @@ pub struct DxfArc {
     pub layer: String,
     /// Color
     pub color: u16,
+    /// Z elevation of the entity's plane (group code 30)
+    pub elevation: f64,
+    /// Extrusion thickness along Z (group code 39)
+    pub thickness: f64,
 }
 
 /// Represents a DXF polyline entity
@@ -131,6 +143,10 @@ pub struct DxfPolyline {
     pub layer: String,
     /// Color
     pub color: u16,
+    /// Z elevation of the entity's plane (group code 38 for LWPOLYLINE, or first vertex Z for POLYLINE)
+    pub elevation: f64,
+    /// Extrusion thickness along Z (group code 39)
+    pub thickness: f64,
 }
 
 /// Represents a DXF text entity
@@ -238,6 +254,8 @@ pub struct DxfFile {
     pub entities: Vec<DxfEntity>,
     /// Entities organized by layer
     pub layers: HashMap<String, Vec<DxfEntity>>,
+    /// Unsupported entity types encountered (e.g. ACIS solids), mapped to occurrence count
+    pub unsupported_entities: HashMap<String, usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,6 +274,10 @@ pub struct DxfEllipse {
     pub layer: String,
     /// Color
     pub color: u16,
+    /// Z elevation of the entity's plane (group code 30)
+    pub elevation: f64,
+    /// Extrusion thickness along Z (group code 39)
+    pub thickness: f64,
 }
 
 impl DxfFile {
@@ -265,6 +287,7 @@ impl DxfFile {
             header: DxfHeader::default(),
             entities: Vec::new(),
             layers: HashMap::new(),
+            unsupported_entities: HashMap::new(),
         }
     }
 
@@ -302,19 +325,27 @@ impl DxfFile {
                 DxfEntity::Line(l) => {
                     l.start = Point::new(l.start.x * factor, l.start.y * factor);
                     l.end = Point::new(l.end.x * factor, l.end.y * factor);
+                    l.elevation *= factor;
+                    l.thickness *= factor;
                 }
                 DxfEntity::Circle(c) => {
                     c.center = Point::new(c.center.x * factor, c.center.y * factor);
                     c.radius *= factor;
+                    c.elevation *= factor;
+                    c.thickness *= factor;
                 }
                 DxfEntity::Arc(a) => {
                     a.center = Point::new(a.center.x * factor, a.center.y * factor);
                     a.radius *= factor;
+                    a.elevation *= factor;
+                    a.thickness *= factor;
                 }
                 DxfEntity::Polyline(p) => {
                     for vertex in &mut p.vertices {
                         *vertex = Point::new(vertex.x * factor, vertex.y * factor);
                     }
+                    p.elevation *= factor;
+                    p.thickness *= factor;
                 }
                 DxfEntity::Text(t) => {
                     t.position = Point::new(t.position.x * factor, t.position.y * factor);
@@ -323,6 +354,8 @@ impl DxfFile {
                 DxfEntity::Ellipse(e) => {
                     e.center = Point::new(e.center.x * factor, e.center.y * factor);
                     e.major_axis = Point::new(e.major_axis.x * factor, e.major_axis.y * factor);
+                    e.elevation *= factor;
+                    e.thickness *= factor;
                 }
             }
         }
@@ -333,19 +366,27 @@ impl DxfFile {
                     DxfEntity::Line(l) => {
                         l.start = Point::new(l.start.x * factor, l.start.y * factor);
                         l.end = Point::new(l.end.x * factor, l.end.y * factor);
+                        l.elevation *= factor;
+                        l.thickness *= factor;
                     }
                     DxfEntity::Circle(c) => {
                         c.center = Point::new(c.center.x * factor, c.center.y * factor);
                         c.radius *= factor;
+                        c.elevation *= factor;
+                        c.thickness *= factor;
                     }
                     DxfEntity::Arc(a) => {
                         a.center = Point::new(a.center.x * factor, a.center.y * factor);
                         a.radius *= factor;
+                        a.elevation *= factor;
+                        a.thickness *= factor;
                     }
                     DxfEntity::Polyline(p) => {
                         for vertex in &mut p.vertices {
                             *vertex = Point::new(vertex.x * factor, vertex.y * factor);
                         }
+                        p.elevation *= factor;
+                        p.thickness *= factor;
                     }
                     DxfEntity::Text(t) => {
                         t.position = Point::new(t.position.x * factor, t.position.y * factor);
@@ -354,6 +395,8 @@ impl DxfFile {
                     DxfEntity::Ellipse(e) => {
                         e.center = Point::new(e.center.x * factor, e.center.y * factor);
                         e.major_axis = Point::new(e.major_axis.x * factor, e.major_axis.y * factor);
+                        e.elevation *= factor;
+                        e.thickness *= factor;
                     }
                 }
             }
@@ -459,6 +502,22 @@ impl DxfParser {
                                 file.add_entity(DxfEntity::Ellipse(ellipse_entity));
                             }
                         }
+                        "SPLINE" => {
+                            i += 1;
+                            if let Ok(spline_entity) = Self::parse_spline(&lines, &mut i) {
+                                if !spline_entity.vertices.is_empty() {
+                                    file.add_entity(DxfEntity::Polyline(spline_entity));
+                                }
+                            }
+                        }
+                        // ACIS-based solids (3DSOLID/BODY/REGION) are not parseable without a CAD kernel; track and discard.
+                        "3DSOLID" | "BODY" | "REGION" => {
+                            *file
+                                .unsupported_entities
+                                .entry(entity_type.to_string())
+                                .or_insert(0) += 1;
+                            i += 1;
+                        }
                         _ => i += 1,
                     }
                     continue;
@@ -477,6 +536,8 @@ impl DxfParser {
         let mut end = Point::new(0.0, 0.0);
         let mut layer = "0".to_string();
         let mut color = 256u16;
+        let mut elevation = 0.0;
+        let mut thickness = 0.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -500,6 +561,8 @@ impl DxfParser {
                 "20" => start.y = value.parse().unwrap_or(0.0),
                 "11" => end.x = value.parse().unwrap_or(0.0),
                 "21" => end.y = value.parse().unwrap_or(0.0),
+                "30" => elevation = value.parse().unwrap_or(0.0),
+                "39" => thickness = value.parse().unwrap_or(0.0),
                 _ => {}
             }
 
@@ -511,6 +574,8 @@ impl DxfParser {
             end,
             layer,
             color,
+            elevation,
+            thickness,
         })
     }
 
@@ -520,6 +585,8 @@ impl DxfParser {
         let mut radius = 0.0;
         let mut layer = "0".to_string();
         let mut color = 256u16;
+        let mut elevation = 0.0;
+        let mut thickness = 0.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -542,6 +609,8 @@ impl DxfParser {
                 "10" => center.x = value.parse().unwrap_or(0.0),
                 "20" => center.y = value.parse().unwrap_or(0.0),
                 "40" => radius = value.parse().unwrap_or(0.0),
+                "30" => elevation = value.parse().unwrap_or(0.0),
+                "39" => thickness = value.parse().unwrap_or(0.0),
                 _ => {}
             }
 
@@ -553,6 +622,8 @@ impl DxfParser {
             radius,
             layer,
             color,
+            elevation,
+            thickness,
         })
     }
 
@@ -564,6 +635,8 @@ impl DxfParser {
         let mut end_angle = 0.0;
         let mut layer = "0".to_string();
         let mut color = 256u16;
+        let mut elevation = 0.0;
+        let mut thickness = 0.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -588,6 +661,8 @@ impl DxfParser {
                 "40" => radius = value.parse().unwrap_or(0.0),
                 "50" => start_angle = value.parse().unwrap_or(0.0),
                 "51" => end_angle = value.parse().unwrap_or(0.0),
+                "30" => elevation = value.parse().unwrap_or(0.0),
+                "39" => thickness = value.parse().unwrap_or(0.0),
                 _ => {}
             }
 
@@ -601,6 +676,8 @@ impl DxfParser {
             end_angle,
             layer,
             color,
+            elevation,
+            thickness,
         })
     }
 
@@ -611,6 +688,8 @@ impl DxfParser {
         let mut layer = "0".to_string();
         let mut color = 256u16;
         let mut current_x: Option<f64> = None;
+        let mut elevation = 0.0;
+        let mut thickness = 0.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -644,6 +723,8 @@ impl DxfParser {
                         }
                     }
                 }
+                "38" => elevation = value.parse().unwrap_or(0.0),
+                "39" => thickness = value.parse().unwrap_or(0.0),
                 "90" => { /* Optional: You could use it to do Vec::with_capacity(n) */ }
                 _ => {}
             }
@@ -656,15 +737,20 @@ impl DxfParser {
             closed,
             layer,
             color,
+            elevation,
+            thickness,
         })
     }
 
     /// Parse a POLYLINE entity
     fn parse_polyline(lines: &[&str], index: &mut usize) -> Result<DxfPolyline> {
-        let mut vertices = Vec::new();
+        let mut raw_vertices: Vec<(Point, i32)> = Vec::new();
         let mut closed = false;
         let mut layer = "0".to_string();
         let mut color = 256u16;
+        let mut thickness = 0.0;
+        let mut elevation: Option<f64> = None;
+        let mut header_flags: i32 = 0;
 
         // Parse POLYLINE header
         while *index < lines.len() {
@@ -686,10 +772,10 @@ impl DxfParser {
                 "8" => layer = value.to_string(),
                 "62" => color = value.parse().unwrap_or(256),
                 "70" => {
-                    if let Ok(flags) = value.parse::<i32>() {
-                        closed = (flags & 1) != 0;
-                    }
+                    header_flags = value.parse().unwrap_or(0);
+                    closed = (header_flags & 1) != 0;
                 }
+                "39" => thickness = value.parse().unwrap_or(0.0),
                 // Ignore 10, 20, 30 in POLYLINE header
                 _ => {}
             }
@@ -722,7 +808,9 @@ impl DxfParser {
             }
 
             if value == "VERTEX" {
-                let mut current_x: Option<f64> = None;
+                let mut vx: Option<f64> = None;
+                let mut vy: Option<f64> = None;
+                let mut vertex_flags: i32 = 0;
 
                 // Parse VERTEX body
                 while *index < lines.len() {
@@ -741,16 +829,22 @@ impl DxfParser {
                     *index += 1;
 
                     match v_code {
-                        "10" => current_x = v_value.parse().ok(),
-                        "20" => {
-                            if let Some(x) = current_x {
-                                let y = v_value.parse().unwrap_or(0.0);
-                                vertices.push(Point::new(x, y));
-                                current_x = None;
+                        "10" => vx = v_value.parse().ok(),
+                        "20" => vy = v_value.parse().ok(),
+                        // The plane elevation is taken from the first vertex's Z; true
+                        // per-vertex 3D polylines are not yet supported (see 3DFACE/MESH).
+                        "30" => {
+                            if elevation.is_none() {
+                                elevation = v_value.parse().ok();
                             }
                         }
+                        "70" => vertex_flags = v_value.parse().unwrap_or(0),
                         _ => {}
                     }
+                }
+
+                if let (Some(x), Some(y)) = (vx, vy) {
+                    raw_vertices.push((Point::new(x, y), vertex_flags));
                 }
             } else {
                 // Found unexpected entity type inside POLYLINE sequence
@@ -762,12 +856,34 @@ impl DxfParser {
             }
         }
 
+        // Spline-fit polylines (header flag bit 2) interleave the original control-frame
+        // vertices (vertex flag bit 16) with the generated curve vertices (vertex flag bit
+        // 8, "AcDbSplineVertex"). Rendering the control frame produces zig-zag artifacts,
+        // so only the curve-fit vertices are kept for these polylines.
+        let is_spline_fit = header_flags & 4 != 0;
+        let vertices: Vec<Point> = if is_spline_fit {
+            let curve_vertices: Vec<Point> = raw_vertices
+                .iter()
+                .filter(|(_, flags)| flags & 8 != 0)
+                .map(|(p, _)| *p)
+                .collect();
+            if curve_vertices.is_empty() {
+                raw_vertices.into_iter().map(|(p, _)| p).collect()
+            } else {
+                curve_vertices
+            }
+        } else {
+            raw_vertices.into_iter().map(|(p, _)| p).collect()
+        };
+
         Ok(DxfPolyline {
             vertices,
             bulges: vec![],
             closed,
             layer,
             color,
+            elevation: elevation.unwrap_or(0.0),
+            thickness,
         })
     }
 
@@ -827,6 +943,8 @@ impl DxfParser {
         let mut end_angle = 2.0 * std::f64::consts::PI;
         let mut layer = "0".to_string();
         let mut color = 256u16;
+        let mut elevation = 0.0;
+        let mut thickness = 0.0;
 
         while *index < lines.len() {
             let code = lines[*index].trim();
@@ -853,6 +971,8 @@ impl DxfParser {
                 "40" => ratio = value.parse().unwrap_or(0.0),
                 "41" => start_angle = value.parse().unwrap_or(0.0),
                 "42" => end_angle = value.parse().unwrap_or(2.0 * std::f64::consts::PI),
+                "30" => elevation = value.parse().unwrap_or(0.0),
+                "39" => thickness = value.parse().unwrap_or(0.0),
                 _ => {}
             }
 
@@ -867,7 +987,187 @@ impl DxfParser {
             end_angle,
             layer,
             color,
+            elevation,
+            thickness,
         })
+    }
+
+    /// Parse a SPLINE entity, approximating the NURBS curve as a polyline.
+    ///
+    /// AutoCAD 2000+ exports (AC1015 and later, e.g. the "2010"/"2018" DXF
+    /// versions) commonly use SPLINE for organic/curved geometry instead of
+    /// flattening it to POLYLINE segments the way older R12 (AC1009) exports
+    /// do. Without this, all spline geometry was silently dropped on import.
+    fn parse_spline(lines: &[&str], index: &mut usize) -> Result<DxfPolyline> {
+        let mut layer = "0".to_string();
+        let mut color = 256u16;
+        let mut flags: i32 = 0;
+        let mut degree: usize = 3;
+        let mut knots: Vec<f64> = Vec::new();
+        let mut weights: Vec<f64> = Vec::new();
+        let mut control_points: Vec<Point> = Vec::new();
+        let mut fit_points: Vec<Point> = Vec::new();
+        let mut pending_ctrl_x: Option<f64> = None;
+        let mut pending_fit_x: Option<f64> = None;
+
+        while *index < lines.len() {
+            let code = lines[*index].trim();
+            *index += 1;
+
+            if *index >= lines.len() {
+                break;
+            }
+
+            let value = lines[*index].trim();
+
+            if code == "0" && !value.is_empty() {
+                *index -= 1;
+                break;
+            }
+
+            match code {
+                "8" => layer = value.to_string(),
+                "62" => color = value.parse().unwrap_or(256),
+                "70" => flags = value.parse().unwrap_or(0),
+                "71" => degree = value.parse::<i64>().unwrap_or(3).max(1) as usize,
+                "40" => knots.push(value.parse().unwrap_or(0.0)),
+                "41" => weights.push(value.parse().unwrap_or(1.0)),
+                "10" => pending_ctrl_x = value.parse().ok(),
+                "20" => {
+                    if let Some(x) = pending_ctrl_x.take() {
+                        control_points.push(Point::new(x, value.parse().unwrap_or(0.0)));
+                    }
+                }
+                "11" => pending_fit_x = value.parse().ok(),
+                "21" => {
+                    if let Some(x) = pending_fit_x.take() {
+                        fit_points.push(Point::new(x, value.parse().unwrap_or(0.0)));
+                    }
+                }
+                _ => {}
+            }
+
+            *index += 1;
+        }
+
+        let closed = flags & 1 != 0;
+        let vertices = Self::sample_spline(&control_points, &knots, &weights, degree)
+            .filter(|v| v.len() >= 2)
+            .unwrap_or(fit_points);
+        let vertex_count = vertices.len();
+
+        Ok(DxfPolyline {
+            vertices,
+            bulges: vec![0.0; vertex_count],
+            closed,
+            layer,
+            color,
+            elevation: 0.0,
+            thickness: 0.0,
+        })
+    }
+
+    /// Sample a (possibly rational) B-spline curve into a polyline approximation.
+    ///
+    /// Returns `None` when the control point / knot vector data is insufficient
+    /// or malformed, so the caller can fall back to fit points instead of
+    /// producing a corrupt/empty curve.
+    fn sample_spline(
+        control_points: &[Point],
+        knots: &[f64],
+        weights: &[f64],
+        degree: usize,
+    ) -> Option<Vec<Point>> {
+        let num_ctrl = control_points.len();
+        if degree == 0 || num_ctrl < degree + 1 || knots.len() < num_ctrl + degree + 1 {
+            return None;
+        }
+
+        let t_min = *knots.get(degree)?;
+        let t_max = *knots.get(num_ctrl)?;
+        if !(t_max > t_min) {
+            return None;
+        }
+
+        // Scale sample density so chord segments are ~1mm long. The control
+        // polygon length is an upper bound on the actual curve length, so it
+        // gives a safe (never too coarse) sample count estimate.
+        const TARGET_SEGMENT_LEN: f64 = 1.0;
+        let control_length: f64 = control_points
+            .windows(2)
+            .map(|w| w[0].distance_to(&w[1]))
+            .sum();
+        let length_based = (control_length / TARGET_SEGMENT_LEN).ceil() as usize;
+        let samples = length_based.max(num_ctrl * 8).clamp(32, 2000);
+        let mut points = Vec::with_capacity(samples + 1);
+
+        for step in 0..=samples {
+            let t = t_min + (t_max - t_min) * (step as f64 / samples as f64);
+            if let Some(p) = Self::bspline_point(t, degree, control_points, weights, knots) {
+                points.push(p);
+            }
+        }
+
+        Some(points)
+    }
+
+    /// Evaluate a rational B-spline curve at parameter `t` using the rational
+    /// de Boor algorithm (homogeneous coordinates), defaulting weights to 1.0
+    /// for non-rational splines.
+    fn bspline_point(
+        t: f64,
+        degree: usize,
+        control_points: &[Point],
+        weights: &[f64],
+        knots: &[f64],
+    ) -> Option<Point> {
+        let n = control_points.len().checked_sub(1)?;
+        let p = degree;
+
+        // Find the knot span k such that knots[k] <= t < knots[k+1], clamped to [p, n].
+        let mut k = p;
+        for i in p..=n {
+            if *knots.get(i)? <= t {
+                k = i;
+            } else {
+                break;
+            }
+        }
+        k = k.min(n);
+
+        // Homogeneous coordinates (x*w, y*w, w) so rational weights fall out
+        // naturally after the recurrence.
+        let mut d: Vec<(f64, f64, f64)> = Vec::with_capacity(p + 1);
+        for j in 0..=p {
+            let idx = k.checked_sub(p)?.checked_add(j)?;
+            let cp = *control_points.get(idx)?;
+            let w = weights.get(idx).copied().unwrap_or(1.0);
+            d.push((cp.x * w, cp.y * w, w));
+        }
+
+        for r in 1..=p {
+            for j in (r..=p).rev() {
+                let i = k.checked_sub(p)?.checked_add(j)?;
+                let left = *knots.get(i)?;
+                let right = *knots.get(i + p - r + 1)?;
+                let denom = right - left;
+                let alpha = if denom.abs() < 1e-12 {
+                    0.0
+                } else {
+                    (t - left) / denom
+                };
+                d[j].0 = (1.0 - alpha) * d[j - 1].0 + alpha * d[j].0;
+                d[j].1 = (1.0 - alpha) * d[j - 1].1 + alpha * d[j].1;
+                d[j].2 = (1.0 - alpha) * d[j - 1].2 + alpha * d[j].2;
+            }
+        }
+
+        let (x, y, w) = d[p];
+        if w.abs() > 1e-9 {
+            Some(Point::new(x / w, y / w))
+        } else {
+            None
+        }
     }
 
     /// Validate DXF file format

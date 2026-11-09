@@ -26,6 +26,7 @@ impl GridSpacing {
         let pixels_per_unit = zoom * base_spacing;
 
         if pixels_per_unit < 5.0 {
+
             // Too crowded, use coarser spacing
             if pixels_per_unit * 10.0 < 5.0 {
                 GridSpacing::Coarse(base_spacing * 100.0)
@@ -84,8 +85,8 @@ pub fn draw_cartesian_grid(
     zoom: f64,
     major_line_width: f64,
     minor_line_width: f64,
-    view_offset_x: f64,
-    view_offset_y: f64,
+    _view_offset_x: f64,
+    _view_offset_y: f64,
     flip_y: bool,
 ) {
     let _ = cr.save();
@@ -97,18 +98,10 @@ pub fn draw_cartesian_grid(
     let y_scale = if flip_y { -1.0 } else { 1.0 };
     let view_width_mm = width / zoom;
     let view_height_mm = height / zoom;
-    let x0 = -view_offset_x;
+    let x0 = 0.0; //-view_offset_x;
     let x1 = x0 + view_width_mm;
-    let y0 = if flip_y {
-        -view_offset_y - view_height_mm
-    } else {
-        -view_offset_y
-    };
-    let y1 = if flip_y {
-        -view_offset_y
-    } else {
-        -view_offset_y + view_height_mm
-    };
+    let y0 = 0.0;
+    let y1 = y0 + view_height_mm;
 
     // Round to grid boundaries
     let x_start = (x0 / effective_spacing).floor() * effective_spacing;
@@ -385,3 +378,4 @@ pub fn calculate_viewport_bounds(
 
     (min_x, min_y.min(max_y), max_x, min_y.max(max_y))
 }
+

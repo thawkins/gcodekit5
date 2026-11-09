@@ -118,12 +118,12 @@ pub enum StartupTab {
 impl std::fmt::Display for StartupTab {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Designer => write!(f, "Designer"),
+            Self::Visualizer => write!(f, "Visualizer"),
             Self::Machine => write!(f, "Machine Control"),
             Self::Console => write!(f, "Device Console"),
             Self::Editor => write!(f, "G-Code Editor"),
-            Self::Visualizer => write!(f, "Visualizer"),
             Self::CamTools => write!(f, "CAM Tools"),
-            Self::Designer => write!(f, "Designer"),
             Self::DeviceInfo => write!(f, "Device Info"),
             Self::Config => write!(f, "Device Config"),
             Self::Devices => write!(f, "Device Manager"),

@@ -2,6 +2,7 @@
 
 use super::*;
 use gcodekit5_core::Shared;
+use gtk4::Image;
 
 impl DesignerView {
     /// Creates the view controls expander for the left sidebar
@@ -70,6 +71,12 @@ impl DesignerView {
         grid_spacing_row.append(&grid_spacing_combo);
         view_controls_box.append(&grid_spacing_row);
 
+        // Add separator
+        let separator = gtk4::Separator::new(Orientation::Horizontal);
+        separator.set_margin_top(10);
+        separator.set_margin_bottom(10);
+        view_controls_box.append(&separator);
+
         // Snap controls
         let snap_toggle = gtk4::CheckButton::with_label(&t!("Snap"));
         snap_toggle.set_tooltip_text(Some(&t!("Snap to grid")));
@@ -82,7 +89,7 @@ impl DesignerView {
         }
         view_controls_box.append(&snap_toggle);
 
-        let snap_threshold = gtk4::SpinButton::with_range(0.0, 5.0, 0.1);
+        let snap_threshold = gtk4::SpinButton::with_range(0.0, 10.0, 0.1);
         snap_threshold.set_tooltip_text(Some(&t!("Snap threshold")));
         let snap_display = match system {
             gcodekit5_core::units::MeasurementSystem::Metric => state.borrow().snap_threshold_mm,
@@ -107,24 +114,6 @@ impl DesignerView {
         snap_threshold_row.append(&Label::new(Some(&t!("Snap threshold"))));
         snap_threshold_row.append(&snap_threshold);
         view_controls_box.append(&snap_threshold_row);
-
-        // Toolpath toggle
-        let toolpath_toggle = gtk4::CheckButton::with_label(&t!("Show Toolpaths"));
-        toolpath_toggle.set_active(false);
-        {
-            let state_toolpath = state.clone();
-            let canvas_toolpath = canvas.clone();
-            toolpath_toggle.connect_toggled(move |btn| {
-                let active = btn.is_active();
-                state_toolpath.borrow_mut().show_toolpaths = active;
-                if active {
-                    canvas_toolpath.generate_preview_toolpaths();
-                } else {
-                    canvas_toolpath.widget.queue_draw();
-                }
-            });
-        }
-        view_controls_box.append(&toolpath_toggle);
 
         // Preview generation progress + cancel
         let preview_spinner = gtk4::Spinner::new();
@@ -324,10 +313,9 @@ impl DesignerView {
     ) {
         let floating_box = Box::new(Orientation::Horizontal, 4);
         floating_box.add_css_class("visualizer-osd");
-        floating_box.add_css_class("osd-controls");
         floating_box.set_halign(gtk4::Align::End);
-        floating_box.set_valign(gtk4::Align::End);
-        floating_box.set_margin_bottom(20);
+        floating_box.set_valign(gtk4::Align::Start);
+        floating_box.set_margin_top(10);
         floating_box.set_margin_end(20);
 
         let float_zoom_out = gtk4::Button::builder()
@@ -356,10 +344,11 @@ impl DesignerView {
             "Fit to Device Working Area"
         ))]);
 
-        let scrollbars_btn = gtk4::Button::builder()
-            .icon_name("view-list-symbolic")
-            .tooltip_text(t!("Toggle Scrollbars"))
-            .build();
+        let scrollbars_btn = gtk4::Button::new();
+        let scrollbars_image = Image::from_resource("/com/gcodekit5/icons/scroll_bars.svg");
+        scrollbars_image.set_pixel_size(24);
+        scrollbars_btn.set_child(Some(&scrollbars_image));
+        scrollbars_btn.set_tooltip_text(Some(&t!("Toggle Scrollbars")));
         scrollbars_btn
             .update_property(&[gtk4::accessible::Property::Label(&t!("Toggle Scrollbars"))]);
 
@@ -445,7 +434,6 @@ impl DesignerView {
         gtk4::Button,
         gtk4::Button,
         gtk4::Button,
-        gtk4::Button,
     ) {
         let empty_box = Box::new(Orientation::Vertical, 8);
         empty_box.add_css_class("visualizer-osd");
@@ -463,13 +451,16 @@ impl DesignerView {
         let empty_actions = Box::new(Orientation::Horizontal, 8);
         empty_actions.set_halign(gtk4::Align::Center);
 
-        let empty_new_btn = gtk4::Button::with_label(&t!("New"));
-        empty_new_btn.add_css_class("suggested-action");
         let empty_open_btn = gtk4::Button::with_label(&t!("Load Design"));
+        empty_open_btn.add_css_class("empty-actions");
         let empty_import_svg_btn = gtk4::Button::with_label(&t!("Import SVG"));
+        empty_import_svg_btn.add_css_class("empty-actions");
         let empty_import_dxf_btn = gtk4::Button::with_label(&t!("Import DXF"));
+        empty_import_dxf_btn.add_css_class("empty-actions");
         let empty_import_stl_btn = gtk4::Button::with_label(&t!("Import STL"));
+        empty_import_stl_btn.add_css_class("empty-actions");
         let empty_import_image_btn = gtk4::Button::with_label(&t!("Import Image"));
+        empty_import_image_btn.add_css_class("empty-actions");
 
         let enable_stl_import = settings_controller
             .persistence
@@ -479,7 +470,6 @@ impl DesignerView {
             .enable_stl_import;
         empty_import_stl_btn.set_visible(enable_stl_import);
 
-        empty_actions.append(&empty_new_btn);
         empty_actions.append(&empty_open_btn);
         empty_actions.append(&empty_import_svg_btn);
         empty_actions.append(&empty_import_dxf_btn);
@@ -490,7 +480,6 @@ impl DesignerView {
 
         (
             empty_box,
-            empty_new_btn,
             empty_open_btn,
             empty_import_svg_btn,
             empty_import_dxf_btn,
@@ -506,8 +495,8 @@ impl DesignerView {
         status_box.add_css_class("visualizer-osd");
         status_box.set_halign(gtk4::Align::Start);
         status_box.set_valign(gtk4::Align::End);
-        status_box.set_margin_bottom(20);
-        status_box.set_margin_start(20);
+        status_box.set_margin_bottom(-10); // Posición Vertical coordenadas puntero
+        status_box.set_margin_start(10); // Posición Horizontal coordenadas puntero
 
         let status_label_osd = Label::builder().label(" ").build();
         status_label_osd.set_hexpand(true);
@@ -580,5 +569,9 @@ impl DesignerView {
 
             gtk4::glib::ControlFlow::Continue
         });
+    }
+
+    pub fn get_state(&self) -> Shared<DesignerState> {
+        self.canvas.state.clone()
     }
 }

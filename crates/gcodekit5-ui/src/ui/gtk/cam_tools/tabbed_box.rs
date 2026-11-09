@@ -103,12 +103,18 @@ impl TabbedBoxMaker {
             .halign(Align::Start)
             .build();
 
-        let desc_lbl = Label::builder()
-            .label(t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm."))
-            .css_classes(vec!["body"])
-            .wrap(true)
-            .halign(Align::Start)
-            .build();
+let desc_lbl = Label::builder()
+    .label(&format!(
+        r#"{} <a href="https://github.com/florianfesti/boxes">{}</a> {}"#,
+        t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm. For more cases involving boxes and other objects, it is recommended to use the "),
+        t!("Boxes"),
+        t!(". Install the Extension in Inkscape. There, generate the models and save them as SVG files. Then import the SVG file into the Designer, rearrange the objects as needed, and generate the G-code to send to the machine.")
+    ))
+    .css_classes(vec!["body"])
+    .wrap(true)
+    .halign(Align::Start)
+    .use_markup(true)
+    .build();
 
         sidebar.append(&title_lbl);
         sidebar.append(&desc_lbl);

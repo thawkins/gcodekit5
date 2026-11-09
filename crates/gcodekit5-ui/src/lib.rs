@@ -7,7 +7,6 @@ pub mod editor;
 pub mod gtk_app;
 pub mod helpers;
 pub mod i18n;
-// pub mod platform; // Moved to ui::gtk::platform
 pub mod types;
 pub mod ui;
 
@@ -30,3 +29,5 @@ pub use crate::types::{
 // Re-export the UI's Slint EditorBridge at the crate root so existing imports keep working.
 pub use crate::editor::EditorBridge;
 pub use crate::editor::SlintTextLine as TextLineUi;
+
+

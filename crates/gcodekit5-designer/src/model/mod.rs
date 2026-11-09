@@ -33,6 +33,7 @@ pub use ellipse::DesignEllipse;
 pub use gear::DesignGear;
 pub use line::DesignLine;
 pub use path::DesignPath;
+pub use path::ParametricPathSource;
 pub use polygon::DesignPolygon;
 pub use rectangle::DesignRectangle;
 pub use sprocket::DesignSprocket;
@@ -106,7 +107,7 @@ impl Default for RasterImage {
             rotation: 0.0,
             image_data: Vec::new(),
             original_path: None,
-            feed_rate: 1000.0,
+            feed_rate: 2000.0,
             travel_rate: 3000.0,
             min_power: 0.0,
             max_power: 20.0, // Only 20%
@@ -256,7 +257,28 @@ impl RasterImage {
             },
         ]
     }
+} // impl RasterImage
+
+// ---
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LaserParams {
+    pub feed_rate: f64,     // mm/min
+    pub power_percent: f64, // 0-100
+    pub passes: u32,
+    pub use_global: bool,
 }
+
+impl Default for LaserParams {
+    fn default() -> Self {
+        Self {
+            feed_rate: 1010.0,
+            power_percent: 100.0,
+            passes: 1,
+            use_global: true,
+        }
+    }
+}
+// ---
 
 pub trait DesignerShape {
     fn render(&self) -> Path;
@@ -499,8 +521,11 @@ impl Shape {
                 Shape::Sprocket(s) => s.rotation,
                 Shape::RasterImage(s) => s.rotation,
             },
+            closed: false,
             original_path: None,
             lock_aspect_ratio: true,
+            parametric_source: None,
+            laser_params: LaserParams::default(),
         }
     }
 }

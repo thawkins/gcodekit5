@@ -35,6 +35,12 @@ pub struct ImportedDesign {
     pub layer_count: usize,
     /// Optional 3D mesh for 3D models
     pub mesh_3d: Option<Mesh3D>,
+    /// Entity types found in the source file that were parsed but discarded
+    /// (e.g. ACIS solids), mapped to occurrence count
+    pub unsupported_entities: Vec<(String, usize)>,
+    /// Per-shape (elevation, thickness) in mm, aligned by index with `shapes`;
+    /// (0.0, 0.0) when the source entity carried no Z metadata
+    pub z_metadata: Vec<(f64, f64)>,
 }
 
 /// Supported import file formats
@@ -428,6 +434,8 @@ impl SvgImporter {
             format: FileFormat::Svg,
             layer_count,
             mesh_3d: None,
+            unsupported_entities: Vec::new(),
+            z_metadata: Vec::new(),
         })
     }
 
@@ -511,11 +519,18 @@ impl DxfImporter {
         dxf_file.scale(self.scale);
 
         // Convert DXF entities to Designer shapes
-        let shapes = self.convert_entities_to_shapes(&dxf_file)?;
+        let (shapes, z_metadata) = self.convert_entities_to_shapes(&dxf_file)?;
 
         // Calculate dimensions from bounding box
         let (min, max) = dxf_file.bounds();
         let dimensions = ((max.x - min.x).abs(), (max.y - min.y).abs());
+
+        let mut unsupported_entities: Vec<(String, usize)> = dxf_file
+            .unsupported_entities
+            .iter()
+            .map(|(name, count)| (name.clone(), *count))
+            .collect();
+        unsupported_entities.sort();
 
         Ok(ImportedDesign {
             shapes,
@@ -523,6 +538,8 @@ impl DxfImporter {
             format: FileFormat::Dxf,
             layer_count: dxf_file.layer_names().len(),
             mesh_3d: None,
+            unsupported_entities,
+            z_metadata,
         })
     }
 
@@ -530,8 +547,12 @@ impl DxfImporter {
     ///
     /// Note: DXF coordinates are negated on X-axis to correct for coordinate system difference.
     /// DXF uses right-handed coordinate system, Designer uses left-handed with Y-up.
-    fn convert_entities_to_shapes(&self, dxf_file: &DxfFile) -> Result<Vec<Shape>> {
+    fn convert_entities_to_shapes(
+        &self,
+        dxf_file: &DxfFile,
+    ) -> Result<(Vec<Shape>, Vec<(f64, f64)>)> {
         let mut shapes: Vec<Shape> = Vec::new();
+        let mut z_metadata: Vec<(f64, f64)> = Vec::new();
 
         // Transform to apply: negate X and add offset
         // Note: dxf_file is already scaled by self.scale
@@ -540,6 +561,15 @@ impl DxfImporter {
             lyon::math::Transform::translation(self.offset_x as f32, self.offset_y as f32);
 
         for entity in &dxf_file.entities {
+            let entity_z = match entity {
+                DxfEntity::Line(l) => (l.elevation, l.thickness),
+                DxfEntity::Circle(c) => (c.elevation, c.thickness),
+                DxfEntity::Arc(a) => (a.elevation, a.thickness),
+                DxfEntity::Ellipse(e) => (e.elevation, e.thickness),
+                DxfEntity::Polyline(p) => (p.elevation, p.thickness),
+                DxfEntity::Text(_) => (0.0, 0.0),
+            };
+
             let path_opt = match entity {
                 DxfEntity::Line(line) => {
                     let mut builder = Path::builder();
@@ -749,10 +779,11 @@ impl DxfImporter {
                 let mut shape = PathShape::from_lyon_path(&path);
                 shape.transform(&transform);
                 shapes.push(Shape::Path(shape));
+                z_metadata.push(entity_z);
             }
         }
 
-        Ok(shapes)
+        Ok((shapes, z_metadata))
     }
 }
 
@@ -823,6 +854,8 @@ impl StlImporter {
             format: FileFormat::Stl,
             layer_count: 1, // STL shadow projection creates a single layer
             mesh_3d: Some(mesh),
+            unsupported_entities: Vec::new(),
+            z_metadata: Vec::new(),
         })
     }
 
@@ -848,6 +881,8 @@ impl StlImporter {
             format: FileFormat::Stl,
             layer_count: 1, // Single slice creates one layer
             mesh_3d: Some(mesh),
+            unsupported_entities: Vec::new(),
+            z_metadata: Vec::new(),
         })
     }
 }
