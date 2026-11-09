@@ -56,3 +56,38 @@ pub fn create_dimension_row(
 
     (row, entry, label)
 }
+
+/// Keep dimension entries created by [`create_dimension_row`] in sync with the
+/// measurement system: when the setting changes, each entry's value is converted
+/// from the previous system to the new one and its unit label is updated.
+///
+/// # Arguments
+/// * `settings` - Settings controller whose changes are observed.
+/// * `rows` - `(entry, unit label)` pairs to keep in sync.
+pub fn track_measurement_system(settings: &Rc<SettingsController>, rows: Vec<(Entry, Label)>) {
+    let last_system = Rc::new(Cell::new(
+        settings.persistence.borrow().config().ui.measurement_system,
+    ));
+    settings.on_setting_changed(move |key, value| {
+        if key != "measurement_system" {
+            return;
+        }
+        // Listeners fire before the change is saved to persistence, so the new
+        // system must be taken from `value`.
+        let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+            return;
+        };
+        let old_system = last_system.get();
+        if new_system == old_system {
+            return;
+        }
+        let unit_label = units::get_unit_label(new_system);
+        for (entry, label) in &rows {
+            if let Ok(val_mm) = units::parse_length(&entry.text(), old_system) {
+                entry.set_text(&units::format_length(val_mm, new_system));
+            }
+            label.set_text(unit_label);
+        }
+        last_system.set(new_system);
+    });
+}

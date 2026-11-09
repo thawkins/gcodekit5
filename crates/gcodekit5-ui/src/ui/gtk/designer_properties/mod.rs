@@ -497,6 +497,7 @@ impl PropertiesPanel {
             self.aspect_ratio.clone(),
             self.state.clone(),
             self.settings.clone(),
+            self.updating.clone(),
         );
 
         handlers::dimensions::setup_width_focus_out_handler(
@@ -726,6 +727,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
+            self.settings.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );
@@ -735,6 +737,7 @@ impl PropertiesPanel {
             self.state.clone(),
             self.preview_shapes.clone(),
             self.redraw_callback.clone(),
+            self.settings.clone(),
             self.updating.clone(),
             self.has_focus.clone(),
         );

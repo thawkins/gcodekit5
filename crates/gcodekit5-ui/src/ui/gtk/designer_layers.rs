@@ -46,22 +46,28 @@ impl LayersPanel {
     }
 
     pub fn sync_selection(list_box: &ListBox, state: &Shared<DesignerState>) {
-        let state_borrow = state.borrow();
+        // Collect first and release the borrow: (un)selecting rows emits
+        // `selected-rows-changed`, whose handler mutably borrows the state.
+        let selected_ids: Vec<u64> = state
+            .borrow()
+            .canvas
+            .shape_store
+            .iter()
+            .filter(|obj| obj.selected)
+            .map(|obj| obj.id)
+            .collect();
 
-        // 1. We clear the current selection from the list
         list_box.unselect_all();
-        let rows = Self::list_box_rows(list_box);
-
-        // 2. We iterate through the state objects to see which ones are selected
-        for (idx, shape_obj) in state_borrow.canvas.shape_store.iter().enumerate() {
-            if shape_obj.selected {
-                if let Some(row) = rows.get(idx) {
-                    // 3. We correct the GTK type error with Some::<&ListBoxRow>(row)
-                    list_box.select_row(Some(row));
-
-                    // 4. Auto-scroll: we put the focus so that the list moves to the object
-                    row.grab_focus();
-                }
+        for row in Self::list_box_rows(list_box) {
+            // Rows are ordered by draw position, so match by shape id (row name).
+            let is_selected = row
+                .widget_name()
+                .as_str()
+                .parse::<u64>()
+                .is_ok_and(|id| selected_ids.contains(&id));
+            if is_selected {
+                list_box.select_row(Some(&row));
+                row.grab_focus();
             }
         }
     }
@@ -120,32 +126,14 @@ impl LayersPanel {
         let state_to_sync = state.clone();
 
         let canvas_clone = canvas.clone();
-        let state_clone = state.clone();
 
-        click_on_canvas.connect_released(move |gesture, _n_press, x, y| {
-            let mods = gesture.current_event_state();
-            let ctrl = mods.contains(ModifierType::CONTROL_MASK);
-            let shift = mods.contains(ModifierType::SHIFT_MASK);
-            let multi = ctrl || shift;
-
-            let state_borrow = state_clone.borrow();
-            let world_point = state_borrow.canvas.pixel_to_world(x, y);
-            let zoom = state_borrow.canvas.zoom();
-            let tolerance = 15.0 / zoom;
-            drop(state_borrow);
-
-            // Select on canvas
-            let mut state_mut = state_clone.borrow_mut();
-            state_mut
-                .canvas
-                .select_at(&world_point, tolerance, multi, false);
-
-            drop(state_mut);
-
-            // Update ONLY the list, not canvas
+        // Selection on the canvas is owned by the canvas' own input handlers (which
+        // respect the active tool, Ctrl-toggle and resize handles). Performing a second
+        // `select_at` here re-selected shapes after a Ctrl-click deselect and changed the
+        // selection while drawing tools were active, without updating the properties
+        // panel. Only mirror the resulting selection into the list.
+        click_on_canvas.connect_released(move |_gesture, _n_press, _x, _y| {
             Self::refresh_list_box(&list_box_to_sync, &state_to_sync);
-
-            // Force canvas redraw to show selection
             canvas_clone.queue_draw();
         });
 

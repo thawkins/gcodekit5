@@ -5,6 +5,21 @@ use gcodekit5_designer::canvas::DrawingObject;
 use gcodekit5_designer::commands::{DesignerCommand, PasteShapes, RemoveShape};
 use gcodekit5_designer::model::DesignerShape;
 
+/// Give copied objects fresh group ids so that copies form their own groups instead
+/// of joining (and being selected together with) the groups of the originals.
+fn assign_fresh_group_ids(
+    state: &mut gcodekit5_designer::designer_state::DesignerState,
+    objects: &mut [DrawingObject],
+) {
+    let mut map: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+    for obj in objects.iter_mut() {
+        if let Some(gid) = obj.group_id {
+            let new_gid = *map.entry(gid).or_insert_with(|| state.canvas.generate_id());
+            obj.group_id = Some(new_gid);
+        }
+    }
+}
+
 impl DesignerCanvas {
     pub fn delete_selected(&self) {
         let mut state = self.state.borrow_mut();
@@ -57,6 +72,7 @@ impl DesignerCanvas {
             obj.selected = true;
             new_objects.push(obj);
         }
+        assign_fresh_group_ids(&mut state, &mut new_objects);
 
         let cmd = DesignerCommand::PasteShapes(PasteShapes {
             ids: new_objects.iter().map(|o| o.id).collect(),
@@ -102,13 +118,16 @@ impl DesignerCanvas {
 
         // For each selected object, create count copies
         for i in 1..count {
+            let mut copies = Vec::new();
             for obj in &selected {
                 let mut new_obj = obj.clone();
                 new_obj.id = state.canvas.generate_id();
                 new_obj.shape.translate(dx * i as f64, dy * i as f64);
                 new_obj.selected = true;
-                new_objects.push(new_obj);
+                copies.push(new_obj);
             }
+            assign_fresh_group_ids(&mut state, &mut copies);
+            new_objects.extend(copies);
         }
 
         // Re-select original items
@@ -166,13 +185,16 @@ impl DesignerCanvas {
                     continue;
                 } // Skip original position
 
+                let mut copies = Vec::new();
                 for obj in &selected {
                     let mut new_obj = obj.clone();
                     new_obj.id = state.canvas.generate_id();
                     new_obj.shape.translate(dx * c as f64, dy * r as f64);
                     new_obj.selected = true;
-                    new_objects.push(new_obj);
+                    copies.push(new_obj);
                 }
+                assign_fresh_group_ids(&mut state, &mut copies);
+                new_objects.extend(copies);
             }
         }
 
@@ -235,13 +257,16 @@ impl DesignerCanvas {
         for i in 1..count {
             let angle = angle_step * i as f64;
 
+            let mut copies = Vec::new();
             for obj in &selected {
                 let mut new_obj = obj.clone();
                 new_obj.id = state.canvas.generate_id();
                 new_obj.shape.rotate(angle, center_x, center_y);
                 new_obj.selected = true;
-                new_objects.push(new_obj);
+                copies.push(new_obj);
             }
+            assign_fresh_group_ids(&mut state, &mut copies);
+            new_objects.extend(copies);
         }
 
         // Re-select original items
@@ -458,6 +483,30 @@ impl DesignerCanvas {
         self.widget.queue_draw();
     }
 
+    /// Rotate the selection by `delta_degrees` relative to its current rotation.
+    ///
+    /// `DesignerState::set_selected_rotation` takes an absolute angle (degrees) for a
+    /// single shape but a delta for multi-selection, so translate accordingly.
+    pub fn rotate_selected_by(&self, delta_degrees: f64) {
+        let mut state = self.state.borrow_mut();
+        let current: Option<f64> = state
+            .canvas
+            .shapes()
+            .find(|s| s.selected)
+            .map(|s| s.shape.rotation());
+        if state.selected_count() > 1 {
+            state.set_selected_rotation(delta_degrees);
+        } else if let Some(current) = current {
+            let mut target = (current + delta_degrees).rem_euclid(360.0);
+            if target > 180.0 {
+                target -= 360.0;
+            }
+            state.set_selected_rotation(target);
+        }
+        drop(state);
+        self.widget.queue_draw();
+    }
+
     pub fn copy_selected(&self) {
         let mut state = self.state.borrow_mut();
         state.clipboard = state
@@ -497,6 +546,7 @@ impl DesignerCanvas {
             new_obj.selected = true;
             new_objects.push(new_obj);
         }
+        assign_fresh_group_ids(&mut state, &mut new_objects);
 
         let cmd = DesignerCommand::PasteShapes(PasteShapes {
             ids: new_objects.iter().map(|o| o.id).collect(),

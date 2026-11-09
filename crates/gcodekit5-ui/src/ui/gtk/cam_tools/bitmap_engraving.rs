@@ -331,7 +331,6 @@ impl BitmapEngravingTool {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_mm_unit = width_mm_unit.clone();
             let offset_x_unit = offset_x_unit.clone();
@@ -341,14 +340,13 @@ impl BitmapEngravingTool {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -445,8 +443,15 @@ impl BitmapEngravingTool {
         // Connect Generate
         let w_gen = widgets.clone();
         let on_gen = on_generate.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&w_gen);
+            let system = settings_gen
+                .persistence
+                .borrow()
+                .config()
+                .ui
+                .measurement_system;
+            let params = Self::collect_params(&w_gen, system);
             let image_path = w_gen.image_path.text().to_string();
             let home_before = w_gen.home_before.is_active();
 
@@ -503,9 +508,23 @@ impl BitmapEngravingTool {
 
             // Cancel button handler
             let cancel_tx_clone = cancel_tx.clone();
-            cancel_button.connect_clicked(move |_| {
-                let _ = cancel_tx_clone.send(());
-            });
+            // Cancelling (button or window close) discards the result; the worker
+            // thread cannot be interrupted mid-generation, so its output is ignored.
+            let cancelled = Rc::new(Cell::new(false));
+            {
+                let cancelled = cancelled.clone();
+                progress_window.connect_close_request(move |_| {
+                    cancelled.set(true);
+                    glib::Propagation::Proceed
+                });
+            }
+            {
+                let progress_window = progress_window.clone();
+                cancel_button.connect_clicked(move |_| {
+                    let _ = cancel_tx_clone.send(());
+                    progress_window.close();
+                });
+            }
 
             // Spawn background thread for generation
             std::thread::spawn(move || {
@@ -534,7 +553,11 @@ impl BitmapEngravingTool {
             });
 
             // Poll for progress and result on main thread
+            let cancelled_poll = cancelled.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                if cancelled_poll.get() {
+                    return glib::ControlFlow::Break;
+                }
                 // Check for progress updates
                 while let Ok(progress) = progress_rx.try_recv() {
                     progress_bar_clone.set_fraction(progress as f64);
@@ -661,7 +684,10 @@ impl BitmapEngravingTool {
         row
     }
 
-    fn collect_params(w: &BitmapEngravingWidgets) -> EngravingParameters {
+    fn collect_params(
+        w: &BitmapEngravingWidgets,
+        system: units::MeasurementSystem,
+    ) -> EngravingParameters {
         let rotation = match w.rotation.active_id().as_ref().map(|s| s.as_str()) {
             Some("90") => RotationAngle::Degrees90,
             Some("180") => RotationAngle::Degrees180,
@@ -685,7 +711,8 @@ impl BitmapEngravingTool {
             };
 
         EngravingParameters {
-            width_mm: w.width_mm.text().parse().unwrap_or(100.0),
+            // Dimension entries are shown in the current measurement system.
+            width_mm: units::parse_length(&w.width_mm.text(), system).unwrap_or(100.0),
             height_mm: None,
             feed_rate: w.feed_rate.text().parse().unwrap_or(1000.0),
             travel_rate: w.travel_rate.text().parse().unwrap_or(3000.0),
@@ -705,8 +732,8 @@ impl BitmapEngravingTool {
                 halftone_threshold: w.halftone_threshold.text().parse().unwrap_or(127),
                 invert: w.invert.is_active(),
             },
-            offset_x: w.offset_x.text().parse().unwrap_or(10.0),
-            offset_y: w.offset_y.text().parse().unwrap_or(10.0),
+            offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
+            offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
             num_axes: crate::device_status::get_active_num_axes(),
         }
     }

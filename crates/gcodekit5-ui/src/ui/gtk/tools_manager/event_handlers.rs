@@ -277,6 +277,15 @@ impl ToolsManagerView {
             });
         }
 
+        // Tool number is part of the saved tool; without tracking it, editing only the
+        // number never enabled Save.
+        {
+            let view = self.clone();
+            self.edit_number.connect_value_changed(move |_| {
+                view.update_save_state();
+            });
+        }
+
         {
             let view = self.clone();
             self.edit_material.connect_changed(move |_| {

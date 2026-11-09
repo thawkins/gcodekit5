@@ -240,8 +240,14 @@ fn insert_inline_image(
 // Crear tag para un link y retornar el topic_id
 fn create_link_tag(buffer: &gtk4::TextBuffer, topic_id: &str) -> gtk4::TextTag {
     let tag_name = format!("link-{}", topic_id);
-    let tag = buffer.create_tag(Some(&tag_name), &[]).unwrap();
-    
+    // A page may link to the same topic more than once; create_tag returns None for a
+    // name that already exists, so reuse the existing tag instead of panicking.
+    if let Some(existing) = buffer.tag_table().lookup(&tag_name) {
+        return existing;
+    }
+    let tag = gtk4::TextTag::new(Some(&tag_name));
+    buffer.tag_table().add(&tag);
+
     // Aplicar color azul y subrayado
     let color = gtk4::gdk::RGBA::new(0.0, 0.4, 0.8, 1.0);
     tag.set_foreground_rgba(Some(&color));

@@ -276,7 +276,6 @@ impl DrillPressTool {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let hole_dia_unit = hole_dia_unit.clone();
             let tool_dia_unit = tool_dia_unit.clone();
@@ -291,14 +290,13 @@ impl DrillPressTool {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -366,22 +364,58 @@ impl DrillPressTool {
                 return;
             }
 
+            // This tool sends G-code straight to the machine, so invalid input must
+            // abort instead of silently falling back to a default value.
+            let mut invalid: Vec<&str> = Vec::new();
+            let mut len = |entry: &Entry, name: &'static str| -> f64 {
+                match units::parse_length(&entry.text(), system) {
+                    Ok(v) => v as f64,
+                    Err(_) => {
+                        invalid.push(name);
+                        0.0
+                    }
+                }
+            };
+            let hole_diameter = len(&w_run.hole_diameter, "Hole Diameter");
+            let tool_diameter = len(&w_run.tool_diameter, "Tool Diameter");
+            let top_z = len(&w_run.top_z, "Top Z");
+            let bottom_z = len(&w_run.bottom_z, "Bottom Z");
+            let peck_depth = len(&w_run.peck_depth, "Peck Depth");
+            let safe_z = len(&w_run.safe_z, "Safe Z");
+            let x = len(&w_run.x, "Center X");
+            let y = len(&w_run.y, "Center Y");
+            let mut num = |entry: &Entry, name: &'static str| -> f64 {
+                match entry.text().trim().parse::<f64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        invalid.push(name);
+                        0.0
+                    }
+                }
+            };
+            let plunge_rate = num(&w_run.plunge_rate, "Plunge Rate");
+            let feed_rate = num(&w_run.feed_rate, "Feed Rate");
+            let spindle_speed = num(&w_run.spindle_speed, "Spindle Speed");
+            if !invalid.is_empty() {
+                CamToolsView::show_error_dialog(
+                    "Invalid Parameters",
+                    &format!("Please correct: {}", invalid.join(", ")),
+                );
+                return;
+            }
+
             let params = DrillPressParameters {
-                hole_diameter: units::parse_length(&w_run.hole_diameter.text(), system)
-                    .unwrap_or(10.0) as f64,
-                tool_diameter: units::parse_length(&w_run.tool_diameter.text(), system)
-                    .unwrap_or(6.0) as f64,
-                top_z: units::parse_length(&w_run.top_z.text(), system).unwrap_or(0.0) as f64,
-                bottom_z: units::parse_length(&w_run.bottom_z.text(), system).unwrap_or(-10.0)
-                    as f64,
-                peck_depth: units::parse_length(&w_run.peck_depth.text(), system).unwrap_or(2.0)
-                    as f64,
-                plunge_rate: w_run.plunge_rate.text().parse().unwrap_or(100.0),
-                feed_rate: w_run.feed_rate.text().parse().unwrap_or(500.0),
-                spindle_speed: w_run.spindle_speed.text().parse().unwrap_or(10000.0),
-                safe_z: units::parse_length(&w_run.safe_z.text(), system).unwrap_or(5.0) as f64,
-                x: units::parse_length(&w_run.x.text(), system).unwrap_or(0.0) as f64,
-                y: units::parse_length(&w_run.y.text(), system).unwrap_or(0.0) as f64,
+                hole_diameter,
+                tool_diameter,
+                top_z,
+                bottom_z,
+                peck_depth,
+                plunge_rate,
+                feed_rate,
+                spindle_speed,
+                safe_z,
+                x,
+                y,
             };
 
             let generator = DrillPressGenerator::new(params);

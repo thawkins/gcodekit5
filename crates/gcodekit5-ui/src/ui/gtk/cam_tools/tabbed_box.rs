@@ -331,7 +331,6 @@ let desc_lbl = Label::builder()
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_unit = width_unit.clone();
             let depth_unit = depth_unit.clone();
@@ -348,14 +347,13 @@ let desc_lbl = Label::builder()
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -433,9 +431,23 @@ let desc_lbl = Label::builder()
             let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
 
             let cancel_tx_clone = cancel_tx.clone();
-            cancel_button.connect_clicked(move |_| {
-                let _ = cancel_tx_clone.send(());
-            });
+            // Cancelling (button or window close) discards the result; the worker
+            // thread cannot be interrupted mid-generation, so its output is ignored.
+            let cancelled = Rc::new(Cell::new(false));
+            {
+                let cancelled = cancelled.clone();
+                progress_window.connect_close_request(move |_| {
+                    cancelled.set(true);
+                    glib::Propagation::Proceed
+                });
+            }
+            {
+                let progress_window = progress_window.clone();
+                cancel_button.connect_clicked(move |_| {
+                    let _ = cancel_tx_clone.send(());
+                    progress_window.close();
+                });
+            }
 
             // Spawn background thread
             std::thread::spawn(move || {
@@ -459,7 +471,11 @@ let desc_lbl = Label::builder()
 
             // Simulate progress
             let mut progress = 0.0;
+            let cancelled_poll = cancelled.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                if cancelled_poll.get() {
+                    return glib::ControlFlow::Break;
+                }
                 // Check for result
                 if let Ok(result) = result_rx.try_recv() {
                     progress_window_clone.close();
@@ -537,9 +553,23 @@ let desc_lbl = Label::builder()
                 let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
 
                 let cancel_tx_clone = cancel_tx.clone();
-                cancel_button.connect_clicked(move |_| {
-                    let _ = cancel_tx_clone.send(());
-                });
+                // Cancelling (button or window close) discards the result; the worker
+                // thread cannot be interrupted mid-generation, so its output is ignored.
+                let cancelled = Rc::new(Cell::new(false));
+                {
+                    let cancelled = cancelled.clone();
+                    progress_window.connect_close_request(move |_| {
+                        cancelled.set(true);
+                        glib::Propagation::Proceed
+                    });
+                }
+                {
+                    let progress_window = progress_window.clone();
+                    cancel_button.connect_clicked(move |_| {
+                        let _ = cancel_tx_clone.send(());
+                        progress_window.close();
+                    });
+                }
 
                 // Spawn background thread for shape generation
                 std::thread::spawn(move || {
@@ -576,7 +606,11 @@ let desc_lbl = Label::builder()
 
                 // Simulate progress and handle result
                 let mut progress = 0.0;
+                let cancelled_poll = cancelled.clone();
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    if cancelled_poll.get() {
+                        return glib::ControlFlow::Break;
+                    }
                     // Check for result
                     if let Ok(result) = result_rx.try_recv() {
                         progress_window_clone.close();

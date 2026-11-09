@@ -471,7 +471,7 @@ impl DesignerToolbox {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
                     settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
+                        if key == "measurement_system" || key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
                             {
@@ -868,6 +868,10 @@ impl DesignerToolbox {
                             let val_mm = match (units_kind, machine_mode) {
                                 (UnitsKind::Rpm, MachineMode::Laser2D) => val * 10.0,
                                 (UnitsKind::Rpm, MachineMode::Cnc3D) => val,
+                                // Must mirror update_display: in laser mode lengths (passes,
+                                // laser width) are shown unconverted. Converting here scaled
+                                // the value by 25.4 on every refresh in imperial mode.
+                                (UnitsKind::Length, MachineMode::Laser2D) => val,
                                 (UnitsKind::Length | UnitsKind::FeedRate, _) => match units {
                                     MeasurementSystem::Metric => val,
                                     MeasurementSystem::Imperial => val * 25.4,
@@ -885,7 +889,7 @@ impl DesignerToolbox {
                     let update_display = update_display.clone();
                     let current_units = current_units.clone();
                     settings_controller.on_setting_changed(move |key, value| {
-                        if key == "units.measurement_system" {
+                        if key == "measurement_system" || key == "units.measurement_system" {
                             if let Ok(system) =
                                 serde_json::from_str::<MeasurementSystem>(&format!("\"{}\"", value))
                             {

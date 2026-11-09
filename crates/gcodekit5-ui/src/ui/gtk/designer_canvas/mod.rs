@@ -102,6 +102,9 @@ pub struct DesignerCanvas {
     pub(crate) creation_current: SharedOption<(f64, f64)>,
     // Track last drag offset for incremental movement
     pub(crate) last_drag_offset: Shared<(f64, f64)>,
+    // Total movement actually applied to the selection during a move-drag (after any
+    // Shift axis constraint); used to record an exact undo command.
+    pub(crate) drag_applied_move: Shared<(f64, f64)>,
     // Track if a drag operation occurred
     pub(crate) did_drag: Shared<bool>,
     // Resize handle state
@@ -230,6 +233,7 @@ impl DesignerCanvas {
             creation_start: creation_start.clone(),
             creation_current: creation_current.clone(),
             last_drag_offset: last_drag_offset.clone(),
+            drag_applied_move: shared((0.0, 0.0)),
             did_drag: did_drag.clone(),
             active_resize_handle: shared_none(),
             resize_original_bounds: shared_none(),
@@ -585,15 +589,17 @@ impl DesignerCanvas {
                             let shape = Shape::Path(path_shape);
 
                             designer_state.add_shape_with_undo(shape);
-
-                            // Refresh layers
-                            if let Some(layers) = layers_key.borrow().as_ref() {
-                                layers.refresh(&state_key);
-                            }
                         }
                         points.clear();
                         drop(points);
+                        // Release the mutable borrow before refreshing the layers panel,
+                        // which borrows the state again (previously panicked on Enter).
                         drop(designer_state);
+
+                        // Refresh layers
+                        if let Some(layers) = layers_key.borrow().as_ref() {
+                            layers.refresh(&state_key);
+                        }
                         widget_key.queue_draw();
                         return glib::Propagation::Stop;
                     }

@@ -395,12 +395,13 @@ impl DesignerCanvas {
                 let canvas = self.clone();
                 let menu_clone = menu.clone(); // Main menu
                 let rotate_menu_clone = rotate_menu.clone();
-                let angle_radians = angle_degrees.to_radians();
 
                 btn.connect_clicked(move |_| {
                     rotate_menu_clone.popdown();
                     menu_clone.popdown();
-                    canvas.set_selected_rotation(angle_radians);
+                    // Relative rotation in degrees (previously radians were passed to an
+                    // absolute-degrees setter, so "90° CW" set the angle to -1.57°).
+                    canvas.rotate_selected_by(angle_degrees);
                 });
                 btn
             };
@@ -485,6 +486,12 @@ impl DesignerCanvas {
         vbox.append(&create_item("Convert to Rectangle", "convert_to_rectangle"));
 
         menu.set_child(Some(&vbox));
+        // The popover is parented to the canvas on every right-click; unparent it when
+        // closed so popovers do not accumulate on the canvas widget.
+        menu.connect_closed(|m| {
+            let m = m.clone();
+            gtk4::glib::idle_add_local_once(move || m.unparent());
+        });
         menu.popup();
     }
 
@@ -912,10 +919,13 @@ impl DesignerCanvas {
 
         if tool == DesignerTool::Select {
             // Consultamos el hardware real en el milisegundo exacto del "Release"
-            let display = gtk4::gdk::Display::default().unwrap();
-            let seat = display.default_seat().unwrap();
-            let keyboard = seat.keyboard().unwrap();
-            let modifiers = keyboard.modifier_state(); // ¡Aquí se usa!
+            // A seat may have no keyboard (touch-only / some remote sessions); fall back
+            // to the tracked modifier state instead of panicking.
+            let modifiers = gtk4::gdk::Display::default()
+                .and_then(|display| display.default_seat())
+                .and_then(|seat| seat.keyboard())
+                .map(|keyboard| keyboard.modifier_state())
+                .unwrap_or_else(gtk4::gdk::ModifierType::empty);
 
             let real_ctrl =
                 ctrl_pressed || modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
@@ -1092,6 +1102,7 @@ impl DesignerCanvas {
                     // Start dragging selected shapes
                     *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
                     *self.last_drag_offset.borrow_mut() = (0.0, 0.0); // Reset offset tracker
+                    *self.drag_applied_move.borrow_mut() = (0.0, 0.0);
                 } else {
                     // Start selection rectangle (future implementation)
                     *self.creation_start.borrow_mut() = Some((canvas_x, canvas_y));
@@ -1189,6 +1200,11 @@ impl DesignerCanvas {
                         // Apply incremental movement directly to canvas (without undo)
                         // We'll create the undo command when drag ends
                         state.canvas.move_selected(delta_x, -delta_y);
+                        {
+                            let mut applied = self.drag_applied_move.borrow_mut();
+                            applied.0 += delta_x;
+                            applied.1 -= delta_y;
+                        }
 
                         // Update last offset
                         *self.last_drag_offset.borrow_mut() = (offset_x, offset_y);
@@ -1359,9 +1375,10 @@ impl DesignerCanvas {
                     else if state.canvas.selection_manager.selected_id().is_some() {
                         let last_offset = *self.last_drag_offset.borrow();
                         if last_offset.0.abs() > 0.1 || last_offset.1.abs() > 0.1 {
-                            // We moved - calculate total movement from start
-                            let total_dx = canvas_offset_x;
-                            let total_dy = -canvas_offset_y;
+                            // Use the movement actually applied during the drag; the raw
+                            // pointer offset differs when Shift constrained the axis, which
+                            // made undo leave the shape displaced.
+                            let (total_dx, total_dy) = *self.drag_applied_move.borrow();
 
                             if total_dx.abs() > 0.01 || total_dy.abs() > 0.01 {
                                 let ids: Vec<u64> = state

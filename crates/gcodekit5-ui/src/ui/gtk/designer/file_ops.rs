@@ -12,6 +12,10 @@ impl DesignerView {
     pub fn new_file_2d(&self) {
         let mut state = self.canvas.state.borrow_mut();
         state.canvas.clear();
+        // Undo history refers to shapes of the previous document; replaying it
+        // against the new one would corrupt it.
+        state.clear_history();
+        state.is_modified = false;
         state.set_machine_mode(MachineMode::Laser2D);
         *self.current_file.borrow_mut() = None;
         drop(state);
@@ -25,6 +29,10 @@ impl DesignerView {
     pub fn new_file_3d(&self) {
         let mut state = self.canvas.state.borrow_mut();
         state.canvas.clear();
+        // Undo history refers to shapes of the previous document; replaying it
+        // against the new one would corrupt it.
+        state.clear_history();
+        state.is_modified = false;
         state.set_machine_mode(MachineMode::Cnc3D);
         *self.current_file.borrow_mut() = None;
         drop(state);
@@ -118,6 +126,9 @@ impl DesignerView {
                                 }
 
                                 state.canvas.set_next_id(max_id + 1);
+                                // Drop undo history of the previously open document.
+                                state.clear_history();
+                                state.is_modified = false;
                                 state.tool_settings.feed_rate =     design.toolpath_params.feed_rate;
                                 state.tool_settings.spindle_speed =
                                 design.toolpath_params.spindle_speed as u32;
