@@ -3,7 +3,6 @@
 //! Handles interaction between the UI and the Settings Model.
 //! Provides data transformation for UI consumption and handles user actions.
 
-use crate::manager::SettingsManager;
 use crate::persistence::SettingsPersistence;
 use crate::view_model::{SettingValue, SettingsCategory, SettingsDialog};
 use gcodekit5_core::{shared, Shared, SharedVec};
@@ -211,12 +210,23 @@ impl SettingsController {
             .load_from_dialog(&dialog)
             .map_err(|e| e.to_string())?;
 
-        let config_path = SettingsManager::config_file_path().map_err(|e| e.to_string())?;
-        SettingsManager::ensure_config_dir().map_err(|e| e.to_string())?;
+        persistence.persist().map_err(|e| e.to_string())?;
 
-        persistence
-            .save_to_file(&config_path)
-            .map_err(|e| e.to_string())?;
+        // What was just saved is the new baseline: later saves compare against
+        // it, so a folder remembered by a file dialog after this save is kept.
+        for setting in dialog.settings.values_mut() {
+            setting.default = setting.value.clone();
+        }
+        let folder = persistence
+            .config()
+            .file_processing
+            .output_directory
+            .to_string_lossy()
+            .to_string();
+        if let Some(setting) = dialog.get_setting_mut("default_directory") {
+            setting.value = SettingValue::Path(folder.clone());
+            setting.default = SettingValue::Path(folder);
+        }
 
         dialog.has_unsaved_changes = false;
 

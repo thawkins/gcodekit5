@@ -49,3 +49,58 @@ fn test_device_status_fs_and_override_order() {
     let ov = status.overrides.expect("overrides");
     assert_eq!((ov.feed_rate, ov.rapid, ov.spindle_speed), (110, 50, 90));
 }
+
+#[test]
+fn test_malformed_axis_token_rejects_the_report() {
+    // Audit B-11: a bad token used to be skipped, moving Z onto the Y axis.
+    use gcodekit5_communication::firmware::grbl::status_parser::{
+        MachinePosition, WorkCoordinateOffset, WorkPosition,
+    };
+    assert_eq!(MachinePosition::parse("1.000,2.0x0,3.000,4.000"), None);
+    assert_eq!(WorkPosition::parse("1.000,2.0x0,3.000"), None);
+    assert_eq!(WorkCoordinateOffset::parse("1,,3"), None);
+    let ok = MachinePosition::parse("1.000,2.000,3.000,4.000").expect("valid");
+    assert_eq!((ok.x, ok.y, ok.z, ok.a), (1.0, 2.0, 3.0, Some(4.0)));
+}
+
+#[test]
+fn test_grblhal_and_fluidnc_are_grbl_family() {
+    // Audit B-10: these banners were detected as Unknown, hiding the GRBL match.
+    use gcodekit5_communication::firmware::protocol_registry::detect_protocol;
+    use gcodekit5_communication::firmware::ControllerProtocol;
+    for name in ["grblHAL", "GrblHal", "FluidNC"] {
+        assert_eq!(
+            ControllerProtocol::from_name(name),
+            ControllerProtocol::Grbl
+        );
+    }
+    assert_eq!(
+        detect_protocol("GrblHAL 1.1f ['$' or '$HELP' for help]"),
+        Some(ControllerProtocol::Grbl)
+    );
+    assert_eq!(
+        detect_protocol("Grbl 3.7 [FluidNC v3.7.8 (wifi) '$' for help]"),
+        Some(ControllerProtocol::Grbl)
+    );
+}
+
+#[test]
+fn test_inch_reports_are_converted_to_mm() {
+    // Owner decision B-22: honour `$13=1` (positions reported in inches).
+    use gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report_in;
+    let line = "<Idle|MPos:1.000,2.000,-0.500|FS:10,0|WCO:0.500,0.000,0.000>";
+    let full = StatusParser::parse_full(line).into_mm(true);
+    let m = full.mpos.expect("mpos");
+    assert!((m.x - 25.4).abs() < 1e-9 && (m.y - 50.8).abs() < 1e-9 && (m.z + 12.7).abs() < 1e-9);
+    let w = full.wco.expect("wco");
+    assert!((w.x - 12.7).abs() < 1e-9);
+    assert_eq!(full.feed_rate, Some(254.0));
+    assert_eq!(
+        StatusParser::parse_full(line).into_mm(false).mpos,
+        StatusParser::parse_full(line).mpos
+    );
+
+    let probe = parse_probe_report_in("[PRB:1.000,0.000,-0.250:1]", true).expect("PRB");
+    assert!((probe.position.x - 25.4).abs() < 1e-4);
+    assert!((probe.position.z + 6.35).abs() < 1e-4);
+}

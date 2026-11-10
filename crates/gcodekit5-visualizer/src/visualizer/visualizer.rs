@@ -92,6 +92,9 @@ enum MotionMode {
     Linear, // G1
     ArcCW,  // G2
     ArcCCW, // G3
+    /// G38.2-G38.5: a probing move. It stops at contact, so it is drawn as
+    /// travel and never simulated as a cut.
+    Probe,
 }
 
 /// 6-Axis position including rotary axes
@@ -638,6 +641,7 @@ impl Visualizer {
                             (1, 0) => current_motion_mode = MotionMode::Linear,
                             (2, 0) => current_motion_mode = MotionMode::ArcCW,
                             (3, 0) => current_motion_mode = MotionMode::ArcCCW,
+                            (38, 2..=5) => current_motion_mode = MotionMode::Probe,
                             (4, 0) => dwell = true,
                             (10, _) | (28, 1) | (30, 1) | (43, 1) => axes_not_motion = true,
                             (17, 0) => plane = ArcPlane::XY,
@@ -839,6 +843,17 @@ impl Visualizer {
                         bounds.update(current_pos.x, current_pos.y, current_pos.z);
                         bounds.update(target.x, target.y, target.z);
                     }
+                    current_pos = target;
+                }
+                MotionMode::Probe => {
+                    commands.push(GCodeCommand::Move {
+                        from: current_pos,
+                        to: target,
+                        rapid: true,
+                        intensity: None,
+                    });
+                    bounds.update(current_pos.x, current_pos.y, current_pos.z);
+                    bounds.update(target.x, target.y, target.z);
                     current_pos = target;
                 }
                 MotionMode::None => {
