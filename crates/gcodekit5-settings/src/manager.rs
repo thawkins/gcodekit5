@@ -112,31 +112,12 @@ impl SettingsManager {
 
     /// Get platform-specific config directory
     pub fn config_directory() -> Result<PathBuf> {
-        #[cfg(target_os = "windows")]
-        {
-            let appdata = std::env::var("APPDATA")
-                .map_err(|_| Error::other("APPDATA environment variable not set".to_string()))?;
-            Ok(PathBuf::from(appdata).join("gcodekit5"))
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            let home = std::env::var("HOME")
-                .map_err(|_| Error::other("HOME environment variable not set".to_string()))?;
-            Ok(PathBuf::from(home).join("Library/Application Support/gcodekit5"))
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            let home = std::env::var("HOME")
-                .map_err(|_| Error::other("HOME environment variable not set".to_string()))?;
-            Ok(PathBuf::from(home).join(".config/gcodekit5"))
-        }
-
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        {
-            Err(Error::other("Unsupported platform".to_string()))
-        }
+        // The same directory as the device, tool and material files:
+        // %APPDATA% on Windows, ~/Library/Application Support on macOS and
+        // $XDG_CONFIG_HOME (default ~/.config) on Linux.
+        dirs::config_dir()
+            .map(|dir| dir.join("gcodekit5"))
+            .ok_or_else(|| Error::other("No configuration directory for this platform"))
     }
 
     /// Get config file path for platform

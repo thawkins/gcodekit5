@@ -341,6 +341,7 @@ impl DeviceManagerWindow {
         CheckButton,
         CheckButton,
         CheckButton,
+        CheckButton,
         Entry,
         Entry,
         Label,
@@ -462,12 +463,18 @@ impl DeviceManagerWindow {
         let edit_has_coolant = CheckButton::with_label("Has Coolant");
         vbox.append(&edit_has_coolant);
 
+        // Pen mode (Repetier only)
+        let edit_pen_mode =
+            CheckButton::with_label("Pen Mode (Repetier: M3/M5 become pen down/up Z moves)");
+        vbox.append(&edit_pen_mode);
+
         scroll.set_child(Some(&vbox));
         (
             scroll,
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
+            edit_pen_mode,
             edit_num_axes,
             edit_max_feed_rate,
             edit_max_feed_rate_unit,

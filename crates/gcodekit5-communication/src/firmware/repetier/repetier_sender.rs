@@ -9,21 +9,24 @@ use crate::firmware::repetier::processor::RepetierEvent;
 use crate::firmware::Sender;
 use crate::SerialCommunicator;
 use gcodekit5_core::ThreadSafe;
-use std::sync::mpsc::{channel, Receiver, Sender as MpscSender};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender as MpscSender, TryRecvError};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How long one line may keep failing to send before the job is stopped.
+/// A full port clears within milliseconds; a failure that lasts this long
+/// means the controller is gone.
+const SEND_RETRY_LIMIT: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 pub struct RepetierSender {
     tx_control: MpscSender<SenderCommand>,
     communicator: ThreadSafe<SerialCommunicator>,
     is_streaming: ThreadSafe<bool>,
-    /// Processor is created in `new()` and shared with the sender thread.
-    /// For now it is only stored here; the actual migration of the
-    /// `process_outgoing`/`process_incoming` calls from the communicator to
-    /// the sender happens in later phases.
-    processor:
-        std::sync::Arc<std::sync::Mutex<crate::firmware::repetier::processor::RepetierProcessor>>,
+    /// Pen-plotter mode: rewrite laser on/off as pen down/up Z moves.
+    pen_mode: Arc<AtomicBool>,
 }
 
 enum SenderCommand {
@@ -34,6 +37,10 @@ enum SenderCommand {
 }
 
 impl RepetierSender {
+    /// Starts the streaming thread and returns the sender plus the channel
+    /// it reports on (`> ...` log lines, `*NN%` progress, `Completed`).
+    ///
+    /// The thread exits once every clone of the returned sender is dropped.
     pub fn new(
         communicator: ThreadSafe<SerialCommunicator>,
         is_streaming: ThreadSafe<bool>,
@@ -48,30 +55,35 @@ impl RepetierSender {
         // the originals, so we save copies here.
         let communicator_for_struct = communicator.clone();
         let is_streaming_for_struct = is_streaming.clone();
-        let processor = std::sync::Arc::new(std::sync::Mutex::new(
-            crate::firmware::repetier::processor::RepetierProcessor::new(),
-        ));
-        let processor_for_thread = processor.clone();
+        let pen_mode = Arc::new(AtomicBool::new(false));
+        let pen_mode_for_struct = Arc::clone(&pen_mode);
 
         thread::spawn(move || {
-            // The processor is not used from the thread yet in this phase.
-            // It is kept alive so the next phase can start using it without
-            // re-plumbing the struct.
-            let _ = &processor_for_thread;
             let mut file_lines: Vec<String> = Vec::new();
             let mut current_idx: usize = 0;
             let mut commands_in_flight: usize = 0;
             let mut local_streaming = false;
             let mut local_paused = false;
-            let mut last_retry_idx: Option<usize> = None;
+            let mut send_failing_since: Option<Instant> = None;
 
             loop {
                 // Process control commands from the UI
-                while let Ok(cmd) = rx_control.try_recv() {
+                loop {
+                    let cmd = match rx_control.try_recv() {
+                        Ok(cmd) => cmd,
+                        Err(TryRecvError::Empty) => break,
+                        // Every sender handle is gone: nothing can start or
+                        // stop a job any more, so the thread ends.
+                        Err(TryRecvError::Disconnected) => return,
+                    };
                     match cmd {
                         SenderCommand::SendGcode(content) => {
-                            let gcode_with_pen = apply_pen_mode(&content);
-                            file_lines = gcode_with_pen
+                            let content = if pen_mode.load(Ordering::Relaxed) {
+                                apply_pen_mode(&content)
+                            } else {
+                                content
+                            };
+                            file_lines = content
                                 .lines()
                                 .map(|s| s.trim())
                                 .filter(|s| {
@@ -81,14 +93,24 @@ impl RepetierSender {
                                 .map(|s| s.to_string())
                                 .collect();
                             tracing::debug!(
-                                "📋 [SENDER] Cargadas {} líneas útiles (comandos reales)",
+                                "Repetier sender: loaded {} command lines",
                                 file_lines.len()
                             );
 
-                            // Clear the communicator's flow control flags
-                            if let Some(mut comm) = communicator.try_lock() {
+                            // Clear the flow control flags and any acks or
+                            // resends left over from before this job.
+                            {
+                                let mut comm = communicator.lock();
                                 comm.repetier_reset_flow_control();
+                                let stale = comm.take_repetier_events();
+                                if !stale.is_empty() {
+                                    tracing::debug!(
+                                        "Repetier sender: discarded {} stale events",
+                                        stale.len()
+                                    );
+                                }
                             }
+                            send_failing_since = None;
 
                             current_idx = 0;
                             commands_in_flight = 0;
@@ -115,14 +137,31 @@ impl RepetierSender {
 
                 if local_streaming && !local_paused {
                     // Check the communicator's flow control status
-                    let (flow_paused, flow_stopped) = if let Some(comm) = communicator.try_lock() {
-                        (comm.repetier_is_paused(), comm.repetier_is_stopped())
-                    } else {
-                        (false, false)
-                    };
+                    let (flow_paused, flow_stopped, connected) =
+                        if let Some(comm) = communicator.try_lock() {
+                            (
+                                comm.repetier_is_paused(),
+                                comm.repetier_is_stopped(),
+                                comm.is_connected(),
+                            )
+                        } else {
+                            (false, false, true)
+                        };
+
+                    if !connected {
+                        fail_job(
+                            &tx_ui_thread,
+                            &is_streaming,
+                            "controller not connected",
+                            current_idx,
+                            file_lines.len(),
+                        );
+                        local_streaming = false;
+                        continue;
+                    }
 
                     if flow_stopped {
-                        tracing::debug!("⏹️  [SENDER] Stop detectado. Terminando streaming.");
+                        tracing::debug!("Repetier sender: stop requested, ending stream");
                         local_streaming = false;
                         *is_streaming.lock() = false;
                         let _ = tx_ui_thread.send("Completed".to_string());
@@ -131,24 +170,45 @@ impl RepetierSender {
                         let raw_line = file_lines[current_idx].clone();
 
                         if let Some(mut comm) = communicator.try_lock() {
+                            let before = comm.repetier_line_counter();
                             match comm.send(raw_line.as_bytes()) {
                                 Ok(written) if written > 0 => {
+                                    let after = comm.repetier_line_counter();
                                     let _ = tx_ui_thread.send(format!("> {}", raw_line.trim()));
-                                    commands_in_flight += 1;
+                                    // One ack is due per numbered line sent.
+                                    commands_in_flight +=
+                                        (after.saturating_sub(before) as usize).max(1);
                                     current_idx += 1;
-                                    last_retry_idx = None;
+                                    send_failing_since = None;
                                 }
                                 Ok(_) => {
+                                    let _ = tx_ui_thread.send(format!(
+                                        "> Skipped (no Repetier equivalent): {}",
+                                        raw_line.trim()
+                                    ));
                                     current_idx += 1;
                                 }
                                 Err(e) => {
-                                    if last_retry_idx != Some(current_idx) {
+                                    // Retry briefly (a full port clears quickly);
+                                    // a failure that persists ends the job.
+                                    let since = *send_failing_since.get_or_insert_with(|| {
                                         tracing::debug!(
-                                            "⏸️  [SENDER] Reintentando idx={} por: {}",
+                                            "Repetier sender: retrying line {} after: {}",
                                             current_idx,
                                             e
                                         );
-                                        last_retry_idx = Some(current_idx);
+                                        Instant::now()
+                                    });
+                                    if since.elapsed() >= SEND_RETRY_LIMIT {
+                                        fail_job(
+                                            &tx_ui_thread,
+                                            &is_streaming,
+                                            &format!("send failed: {e}"),
+                                            current_idx,
+                                            file_lines.len(),
+                                        );
+                                        local_streaming = false;
+                                        continue;
                                     }
                                 }
                             }
@@ -166,33 +226,56 @@ impl RepetierSender {
                             match event {
                                 RepetierEvent::Ack => {
                                     commands_in_flight = commands_in_flight.saturating_sub(1);
-                                    tracing::debug!(
-                                        "✅ [SENDER] Ack. in_flight={}",
+                                    tracing::trace!(
+                                        "Repetier sender: ack, in flight {}",
                                         commands_in_flight
                                     );
                                 }
                                 RepetierEvent::Resend(target_line) => {
-                                    tracing::debug!("🔄 [SENDER] Resend N{}. in_flight antes={}, current_idx antes={}",
-                                        target_line, commands_in_flight, current_idx);
-
-                                    let _ = tx_ui_thread.send(format!(
-                                        "> ⚠️ [FIX] Resend detected for line N{}",
-                                        target_line
-                                    ));
-
-                                    commands_in_flight = 0;
-
-                                    comm.repetier_set_line_counter(target_line.saturating_sub(1));
-
-                                    if target_line as usize <= file_lines.len() {
-                                        current_idx = (target_line as usize).saturating_sub(1);
+                                    // Replay the exact numbered lines from the
+                                    // requested one, whoever sent them (job or
+                                    // console); each replayed line needs an ack.
+                                    match comm.repetier_resend(target_line) {
+                                        Ok(count) => {
+                                            commands_in_flight = count;
+                                            let _ = tx_ui_thread.send(format!(
+                                                "> Resend requested for N{}: re-sent {} line(s)",
+                                                target_line, count
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            fail_job(
+                                                &tx_ui_thread,
+                                                &is_streaming,
+                                                &format!("resend of N{target_line} failed: {e}"),
+                                                current_idx,
+                                                file_lines.len(),
+                                            );
+                                            local_streaming = false;
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        // Drain the byte buffer to avoid accumulation
-                        let _ = comm.receive();
+                        if !local_streaming {
+                            continue;
+                        }
+
+                        // Drain the byte buffer to avoid accumulation. A read
+                        // error means the controller can no longer answer.
+                        if let Err(e) = comm.receive() {
+                            fail_job(
+                                &tx_ui_thread,
+                                &is_streaming,
+                                &format!("receive failed: {e}"),
+                                current_idx,
+                                file_lines.len(),
+                            );
+                            local_streaming = false;
+                            continue;
+                        }
                     }
 
                     if current_idx >= file_lines.len() && commands_in_flight == 0 {
@@ -211,10 +294,22 @@ impl RepetierSender {
                 tx_control,
                 communicator: communicator_for_struct,
                 is_streaming: is_streaming_for_struct,
-                processor,
+                pen_mode: pen_mode_for_struct,
             },
             rx_ui,
         )
+    }
+}
+
+impl RepetierSender {
+    /// Turns pen-plotter mode on or off for jobs sent after this call.
+    ///
+    /// When on, laser on (`M3`/`M4`) becomes a pen-down `G0 Z0` and laser
+    /// off (`M5`) a pen-up `G0 Z5`. When off (the default) the program is
+    /// sent as written. This is a per-machine setting (`pen_mode` in the
+    /// device profile).
+    pub fn set_pen_mode(&self, enabled: bool) {
+        self.pen_mode.store(enabled, Ordering::Relaxed);
     }
 }
 
@@ -250,13 +345,30 @@ impl Sender for RepetierSender {
     }
 }
 
+/// Reports a job-ending error to the UI and marks streaming as finished.
+///
+/// The caller clears its own `local_streaming` flag.
+fn fail_job(
+    tx_ui: &MpscSender<String>,
+    is_streaming: &ThreadSafe<bool>,
+    reason: &str,
+    line: usize,
+    total: usize,
+) {
+    tracing::warn!("Repetier sender: {reason}; job stopped at line {line} of {total}");
+    let _ = tx_ui.send(format!(
+        "> Error: {reason}; job stopped at line {line} of {total}"
+    ));
+    *is_streaming.lock() = false;
+    let _ = tx_ui.send("Completed".to_string());
+}
+
 /// Replace laser on/off commands with a Z move, for pen-plotter use.
 ///
-/// Repetier/Marlin machines have no laser. When the profile is
-/// Repetier, we assume the tool is a pen (or any non-laser tool)
-/// and translate the laser commands into Z moves so the tool is
-/// lowered when the "laser" would be on and lifted when it would
-/// be off.
+/// Used only when the machine's profile turns pen mode on
+/// ([`RepetierSender::set_pen_mode`]). The laser commands become Z
+/// moves so the pen is lowered when the "laser" would be on and
+/// lifted when it would be off.
 fn apply_pen_mode(gcode: &str) -> String {
     let mut out = String::with_capacity(gcode.len() + 256);
     // Whether the tool is currently up (laser off). Start with

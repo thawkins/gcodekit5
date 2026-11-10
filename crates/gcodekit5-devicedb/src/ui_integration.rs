@@ -39,6 +39,8 @@ pub struct DeviceProfileUiModel {
     pub tcp_port: String,
     pub timeout_ms: String,
     pub auto_reconnect: bool,
+    /// Repetier pen-plotter mode (see [`DeviceProfile::pen_mode`]).
+    pub pen_mode: bool,
     pub is_active: bool,
 }
 
@@ -72,6 +74,7 @@ impl From<DeviceProfile> for DeviceProfileUiModel {
             tcp_port: p.tcp_port.to_string(),
             timeout_ms: p.timeout_ms.to_string(),
             auto_reconnect: p.auto_reconnect,
+            pen_mode: p.pen_mode,
             is_active: false, // Set separately
         }
     }
@@ -176,6 +179,7 @@ impl DeviceUiController {
         profile.has_spindle = ui_model.has_spindle;
         profile.has_laser = ui_model.has_laser;
         profile.has_coolant = ui_model.has_coolant;
+        profile.pen_mode = ui_model.pen_mode;
 
         profile.num_axes = ui_model.num_axes.trim().parse().with_context(|| {
             format!(

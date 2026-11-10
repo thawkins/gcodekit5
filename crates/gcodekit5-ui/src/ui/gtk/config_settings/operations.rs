@@ -81,6 +81,14 @@ impl ConfigSettingsView {
     }
 
     pub(crate) fn retrieve_settings(&self) {
+        // Check first: loading the definitions resets every value, and a
+        // refused Retrieve must keep the values already on the page.
+        if let Some(reason) = crate::device_status::settings_command_blocked() {
+            self.status_label
+                .set_text(&format!("{} {}", t!("Cannot retrieve settings:"), reason));
+            return;
+        }
+
         // Load settings definitions first
         self.load_default_grbl_settings();
 
@@ -451,7 +459,40 @@ impl ConfigSettingsView {
             if response == ResponseType::Accept {
                 let new_value = value_entry.text().to_string();
 
-                // Update local settings manager first
+                // Send to the device first: the page must only show a value the
+                // controller actually accepted.
+                let sent = match crate::device_status::settings_command_blocked() {
+                    Some(reason) => Err(reason),
+                    None => match *comm_clone.borrow() {
+                        Some(ref comm) => {
+                            let mut comm_lock = comm.lock();
+                            if comm_lock.is_connected() {
+                                let command = format!("${}={}", setting_number, new_value);
+                                let sent =
+                                    comm_lock.send_command(&command).map_err(|e| e.to_string());
+                                if sent.is_ok() {
+                                    // GRBL replies `ok`, not the value: keep the cache in step.
+                                    crate::device_status::note_setting_sent(&command);
+                                }
+                                sent
+                            } else {
+                                Err(t!("not connected").to_string())
+                            }
+                        }
+                        None => Err(t!("not connected").to_string()),
+                    },
+                };
+                if let Err(reason) = sent {
+                    crate::ui::gtk::common::dialog::show_warning(
+                        &t!("Setting not changed"),
+                        &format!("${setting_number}: {reason}"),
+                        None,
+                    );
+                    dialog.close();
+                    return;
+                }
+
+                // Update local settings manager
                 let mut manager = manager_clone.borrow_mut();
                 if let Some(setting) = manager.get_setting(setting_number) {
                     let mut updated = setting.clone();
@@ -463,15 +504,6 @@ impl ConfigSettingsView {
 
                 // Refresh the display
                 refresh_callback();
-
-                // Send to device
-                if let Some(ref comm) = *comm_clone.borrow() {
-                    let mut comm_lock = comm.lock();
-                    if comm_lock.is_connected() {
-                        let command = format!("${}={}", setting_number, new_value);
-                        let _ = comm_lock.send_command(&command);
-                    }
-                }
             }
             dialog.close();
         });
