@@ -4,8 +4,8 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, Align, Box, Button, Image, Label, Orientation,
-    ToggleButton,
+    Align, Box, Button, Image, Label, Orientation, ToggleButton,
+    accessible::Property as AccessibleProperty,
 };
 
 use crate::t;

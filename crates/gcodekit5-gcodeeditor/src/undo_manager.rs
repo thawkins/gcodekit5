@@ -137,10 +137,10 @@ impl UndoManager {
             return;
         }
         self.batch_depth -= 1;
-        if self.batch_depth == 0 {
-            if let Some(batch) = self.current_batch.take() {
-                self.push_undo(batch);
-            }
+        if self.batch_depth == 0
+            && let Some(batch) = self.current_batch.take()
+        {
+            self.push_undo(batch);
         }
     }
 

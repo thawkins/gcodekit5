@@ -195,10 +195,10 @@ impl ToolsManagerView {
                 if view.is_dirty() {
                     // If we are re-selecting the currently loaded tool (e.g. programmatically reverting),
                     // don't prompt.
-                    if let Some(current) = view.selected_tool.borrow().as_ref() {
-                        if current.id.0 == tool_id {
-                            return;
-                        }
+                    if let Some(current) = view.selected_tool.borrow().as_ref()
+                        && current.id.0 == tool_id
+                    {
+                        return;
                     }
 
                     let prev = view.last_selected_tool_id.borrow().clone();

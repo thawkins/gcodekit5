@@ -109,14 +109,14 @@ pub fn generate_spur_gear(
         }
         points.extend(right_points);
 
-        if root_radius < base_radius {
-            if let Some(p_last) = points.last() {
-                let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
-                points.push(Point::new(
-                    center.x + root_radius * angle_last.cos(),
-                    center.y + root_radius * angle_last.sin(),
-                ));
-            }
+        if root_radius < base_radius
+            && let Some(p_last) = points.last()
+        {
+            let angle_last = (p_last.y - center.y).atan2(p_last.x - center.x);
+            points.push(Point::new(
+                center.x + root_radius * angle_last.cos(),
+                center.y + root_radius * angle_last.sin(),
+            ));
         }
     }
 

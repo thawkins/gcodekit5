@@ -66,14 +66,17 @@ pub fn setup_corner_radius_handler(
         has_focus,
         move |entry| {
             let system = measurement_system.get();
-            if let Ok(val) = units::parse_length(&entry.text(), system) {
-                entry.remove_css_class("entry-invalid");
-                apply_state
-                    .borrow_mut()
-                    .set_selected_corner_radius(val as f64);
-                redraw(&redraw_callback);
-            } else {
-                entry.add_css_class("entry-invalid");
+            match units::parse_length(&entry.text(), system) {
+                Ok(val) => {
+                    entry.remove_css_class("entry-invalid");
+                    apply_state
+                        .borrow_mut()
+                        .set_selected_corner_radius(val as f64);
+                    redraw(&redraw_callback);
+                }
+                _ => {
+                    entry.add_css_class("entry-invalid");
+                }
             }
         },
     );
@@ -151,19 +154,19 @@ pub fn setup_path_closed_handler(
         }
 
         let mut designer_state = state.borrow_mut();
-        if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-            if let Some(obj) = designer_state.canvas.get_shape(id) {
-                let old_obj = obj.clone();
-                let mut new_obj = old_obj.clone();
-                if let Shape::Path(path) = &mut new_obj.shape {
-                    path.set_closed(check.is_active());
-                    let cmd = DesignerCommand::ChangeProperty(ChangeProperty {
-                        id,
-                        old_state: old_obj,
-                        new_state: new_obj,
-                    });
-                    designer_state.push_command(cmd);
-                }
+        if let Some(id) = designer_state.canvas.selection_manager.selected_id()
+            && let Some(obj) = designer_state.canvas.get_shape(id)
+        {
+            let old_obj = obj.clone();
+            let mut new_obj = old_obj.clone();
+            if let Shape::Path(path) = &mut new_obj.shape {
+                path.set_closed(check.is_active());
+                let cmd = DesignerCommand::ChangeProperty(ChangeProperty {
+                    id,
+                    old_state: old_obj,
+                    new_state: new_obj,
+                });
+                designer_state.push_command(cmd);
             }
         }
 

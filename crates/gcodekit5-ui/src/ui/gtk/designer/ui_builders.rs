@@ -1,7 +1,7 @@
 //! UI builder methods for DesignerView
 
 use super::*;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_core::Shared;
 use gtk4::Image;
 
@@ -58,11 +58,11 @@ impl DesignerView {
             let state_grid_spacing = state.clone();
             let canvas_grid_spacing = canvas.clone();
             grid_spacing_combo.connect_changed(move |cb| {
-                if let Some(id) = cb.active_id() {
-                    if let Ok(mm) = id.parse::<f64>() {
-                        state_grid_spacing.borrow_mut().grid_spacing_mm = mm;
-                        canvas_grid_spacing.widget.queue_draw();
-                    }
+                if let Some(id) = cb.active_id()
+                    && let Ok(mm) = id.parse::<f64>()
+                {
+                    state_grid_spacing.borrow_mut().grid_spacing_mm = mm;
+                    canvas_grid_spacing.widget.queue_draw();
                 }
             });
         }

@@ -176,12 +176,11 @@ pub fn setup_lock_aspect_handler(ctx: &DimensionContext) {
     ctx.lock_aspect.connect_toggled(move |check| {
         let is_active = check.is_active();
 
-        if is_active {
-            if let (Some(w), Some(h)) = (c.parse(&c.width), c.parse(&c.height)) {
-                if h > 0.0 {
-                    *c.aspect_ratio.borrow_mut() = w / h;
-                }
-            }
+        if is_active
+            && let (Some(w), Some(h)) = (c.parse(&c.width), c.parse(&c.height))
+            && h > 0.0
+        {
+            *c.aspect_ratio.borrow_mut() = w / h;
         }
 
         // Programmatic updates (selection refresh) must not write back into the

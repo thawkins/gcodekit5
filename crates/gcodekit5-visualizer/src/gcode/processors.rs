@@ -439,10 +439,10 @@ impl CommandProcessor for PatternRemover {
         command: &GcodeCommand,
         _state: &GcodeState,
     ) -> Result<Vec<GcodeCommand>, String> {
-        if let Some(re) = &self.regex {
-            if re.is_match(&command.command) {
-                return Ok(vec![]);
-            }
+        if let Some(re) = &self.regex
+            && re.is_match(&command.command)
+        {
+            return Ok(vec![]);
         }
         Ok(vec![command.clone()])
     }

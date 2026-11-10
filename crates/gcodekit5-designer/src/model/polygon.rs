@@ -3,7 +3,7 @@
 //! A regular polygon design shape with configurable number of sides.
 //! Supports rotation and CSG boolean operations.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 

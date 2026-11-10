@@ -62,12 +62,13 @@ impl std::fmt::Display for GerberLayerType {
 
 pub fn clean_polyline(mut pline: Polyline<f64>) -> Polyline<f64> {
     pline.remove_repeat_pos(1e-5);
-    if pline.is_closed() && pline.vertex_count() > 1 {
-        if let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1)) {
-            if (first.x - last.x).abs() < 1e-5 && (first.y - last.y).abs() < 1e-5 {
-                pline.remove(pline.vertex_count() - 1);
-            }
-        }
+    if pline.is_closed()
+        && pline.vertex_count() > 1
+        && let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1))
+        && (first.x - last.x).abs() < 1e-5
+        && (first.y - last.y).abs() < 1e-5
+    {
+        pline.remove(pline.vertex_count() - 1);
     }
     pline
 }
@@ -208,11 +209,7 @@ impl GerberConverter {
     /// The signed offset to pass to `parallel_offset`.
     fn outward_offset(poly: &Polyline<f64>, is_hole: bool, distance: f64) -> f64 {
         let ccw = poly.area() > 0.0;
-        if is_hole == ccw {
-            distance
-        } else {
-            -distance
-        }
+        if is_hole == ccw { distance } else { -distance }
     }
 
     /// Axis-aligned rectangle covering `sketch`'s bounds grown by `margin` on every side.
@@ -909,44 +906,41 @@ impl GerberConverter {
         // the origin could miss the copper entirely).
         let mut board: Option<Sketch<()>> = None;
 
-        if params.use_board_outline {
-            if let Some(dir) = &params.directory {
-                let path = PathBuf::from(dir);
-                if let Ok(entries) = fs::read_dir(path) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if !path.is_file() {
-                            continue;
-                        }
-                        let name = path
-                            .file_name()
-                            .map(|n| n.to_string_lossy())
-                            .unwrap_or_default()
-                            .to_lowercase();
-                        let ext = path
-                            .extension()
-                            .map(|e| e.to_string_lossy().to_lowercase())
-                            .unwrap_or_default();
+        if params.use_board_outline
+            && let Some(dir) = &params.directory
+        {
+            let path = PathBuf::from(dir);
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_file() {
+                        continue;
+                    }
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default()
+                        .to_lowercase();
+                    let ext = path
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
 
-                        if ext == "gko"
-                            || ext == "gm1"
-                            || name.contains("edge.cuts")
-                            || name.contains("outline")
-                        {
-                            if let Ok(content) = fs::read_to_string(&path) {
-                                if let Ok(sketches) = Self::parse_gerber_to_sketches(&content) {
-                                    if !sketches.is_empty() {
-                                        let mut merged_outline = sketches[0].clone();
-                                        for s in sketches.iter().skip(1) {
-                                            merged_outline = merged_outline.union(s);
-                                        }
-                                        board = Some(merged_outline);
-                                        debug!("Using board outline from file: {:?}", path);
-                                        break;
-                                    }
-                                }
-                            }
+                    if (ext == "gko"
+                        || ext == "gm1"
+                        || name.contains("edge.cuts")
+                        || name.contains("outline"))
+                        && let Ok(content) = fs::read_to_string(&path)
+                        && let Ok(sketches) = Self::parse_gerber_to_sketches(&content)
+                        && !sketches.is_empty()
+                    {
+                        let mut merged_outline = sketches[0].clone();
+                        for s in sketches.iter().skip(1) {
+                            merged_outline = merged_outline.union(s);
                         }
+                        board = Some(merged_outline);
+                        debug!("Using board outline from file: {:?}", path);
+                        break;
                     }
                 }
             }

@@ -9,7 +9,7 @@ use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gcodekit5_communication::firmware::grbl::settings::SettingsManager;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
-use gcodekit5_core::{shared, Shared, SharedOption, ThreadSafe};
+use gcodekit5_core::{Shared, SharedOption, ThreadSafe, shared};
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Entry, Grid, Label, ListBoxRow, Orientation, ResponseType};
@@ -52,29 +52,29 @@ impl ConfigSettingsView {
         // Persist to matching device profile (best-effort) so other tooling can use settings.
         // Avoid rewriting the profiles file for every single settings line: persist once when we
         // have a reasonable number of settings loaded.
-        if self.last_persisted_settings_count.get() == 0 && count >= 10 {
-            if let Some(dm) = self.device_manager.borrow().as_ref() {
-                if let Some(port) = status.port_name.as_deref() {
-                    let mut candidate = dm
-                        .get_active_profile()
-                        .filter(|p| p.port == port || p.port == "Auto")
-                        .or_else(|| dm.get_all_profiles().into_iter().find(|p| p.port == port));
+        if self.last_persisted_settings_count.get() == 0
+            && count >= 10
+            && let Some(dm) = self.device_manager.borrow().as_ref()
+            && let Some(port) = status.port_name.as_deref()
+        {
+            let mut candidate = dm
+                .get_active_profile()
+                .filter(|p| p.port == port || p.port == "Auto")
+                .or_else(|| dm.get_all_profiles().into_iter().find(|p| p.port == port));
 
-                    if let Some(mut profile) = candidate.take() {
-                        profile.grbl_settings = status.grbl_settings.clone();
+            if let Some(mut profile) = candidate.take() {
+                profile.grbl_settings = status.grbl_settings.clone();
 
-                        if let Some(max_s) = device_status::get_grbl_setting_numeric(30) {
-                            profile.max_s_value = max_s;
-                        }
+                if let Some(max_s) = device_status::get_grbl_setting_numeric(30) {
+                    profile.max_s_value = max_s;
+                }
 
-                        if let Some(laser) = device_status::get_grbl_setting_numeric(32) {
-                            profile.has_laser = laser >= 1.0;
-                        }
+                if let Some(laser) = device_status::get_grbl_setting_numeric(32) {
+                    profile.has_laser = laser >= 1.0;
+                }
 
-                        if dm.save_profile(profile).is_ok() {
-                            self.last_persisted_settings_count.set(count);
-                        }
-                    }
+                if dm.save_profile(profile).is_ok() {
+                    self.last_persisted_settings_count.set(count);
                 }
             }
         }
@@ -117,10 +117,9 @@ impl ConfigSettingsView {
                 let communicator_clone = self.communicator.clone();
 
                 // Position in the console log (stable while old lines are trimmed).
-                let start_log_pos = if let Some(ref console) = *self.device_console.borrow() {
-                    console.log_position()
-                } else {
-                    0
+                let start_log_pos = match *self.device_console.borrow() {
+                    Some(ref console) => console.log_position(),
+                    _ => 0,
                 };
 
                 let attempt_count = shared(0);
@@ -132,15 +131,13 @@ impl ConfigSettingsView {
                     // Only look at output that arrived after `$$` was sent; older `$n=`
                     // lines (previous reads, another device) would otherwise be parsed as
                     // current values.
-                    let (new_text, log_pos) =
-                        if let Some(ref console) = *device_console_clone.borrow() {
-                            (
-                                console.log_text_since(start_log_pos),
-                                console.log_position(),
-                            )
-                        } else {
-                            (String::new(), 0)
-                        };
+                    let (new_text, log_pos) = match *device_console_clone.borrow() {
+                        Some(ref console) => (
+                            console.log_text_since(start_log_pos),
+                            console.log_position(),
+                        ),
+                        _ => (String::new(), 0),
+                    };
                     let new_text = new_text.as_str();
 
                     // `$$` output streams in over several polls: wait until settings lines
@@ -157,20 +154,20 @@ impl ConfigSettingsView {
                         let mut count = 0;
                         for line in new_text.lines() {
                             let line = line.trim();
-                            if line.starts_with('$') && line.contains('=') {
-                                if let Some((number, value)) =
+                            if line.starts_with('$')
+                                && line.contains('=')
+                                && let Some((number, value)) =
                                     SettingsManager::parse_setting_line(line)
-                                {
-                                    let mut manager = manager_clone.borrow_mut();
-                                    if let Some(setting) = manager.get_setting(number) {
-                                        let mut updated = setting.clone();
-                                        updated.value = value.clone();
-                                        updated.numeric_value =
-                                            crate::device_status::get_grbl_setting_numeric(number)
-                                                .or_else(|| value.parse::<f64>().ok());
-                                        manager.set_setting(updated);
-                                        count += 1;
-                                    }
+                            {
+                                let mut manager = manager_clone.borrow_mut();
+                                if let Some(setting) = manager.get_setting(number) {
+                                    let mut updated = setting.clone();
+                                    updated.value = value.clone();
+                                    updated.numeric_value =
+                                        crate::device_status::get_grbl_setting_numeric(number)
+                                            .or_else(|| value.parse::<f64>().ok());
+                                    manager.set_setting(updated);
+                                    count += 1;
                                 }
                             }
                         }

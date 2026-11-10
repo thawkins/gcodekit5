@@ -1,9 +1,9 @@
 //! Regression tests for core fixes: imperial mixed-fraction sign handling,
 //! G10/G92 work offsets from probe results.
 
-use gcodekit5_core::probe::{ProbeReport, ProbeRoutine};
-use gcodekit5_core::units::{parse_length, MeasurementSystem};
 use gcodekit5_core::Position;
+use gcodekit5_core::probe::{ProbeReport, ProbeRoutine};
+use gcodekit5_core::units::{MeasurementSystem, parse_length};
 
 #[test]
 fn test_units_negative_mixed_fraction() {

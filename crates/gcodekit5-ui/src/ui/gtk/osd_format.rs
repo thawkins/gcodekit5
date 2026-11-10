@@ -3,7 +3,7 @@
 //! Formats machine status values (coordinates, feed rate, spindle speed)
 //! for on-screen display overlays in the visualizer view.
 
-use gcodekit5_core::units::{format_length, get_unit_label, MeasurementSystem};
+use gcodekit5_core::units::{MeasurementSystem, format_length, get_unit_label};
 
 use crate::t;
 

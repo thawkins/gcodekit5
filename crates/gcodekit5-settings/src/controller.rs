@@ -5,7 +5,7 @@
 
 use crate::persistence::SettingsPersistence;
 use crate::view_model::{SettingValue, SettingsCategory, SettingsDialog};
-use gcodekit5_core::{shared, Shared, SharedVec};
+use gcodekit5_core::{Shared, SharedVec, shared};
 use std::rc::Rc;
 
 /// Callback invoked with `(setting_id, new_value)` after a setting changes.

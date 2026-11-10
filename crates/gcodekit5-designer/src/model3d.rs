@@ -14,7 +14,7 @@
 
 use crate::model::Point;
 use crate::model::{DesignPath as PathShape, Shape};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nalgebra::{Matrix4, Point3, Vector3};
 use std::collections::HashMap;
 use tracing::debug;

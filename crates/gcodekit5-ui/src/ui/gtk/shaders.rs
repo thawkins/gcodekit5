@@ -4,7 +4,7 @@
 //! the 3D renderer for toolpath visualization and grid rendering.
 
 use glow::{
-    Context, HasContext, NativeProgram, NativeShader, NativeUniformLocation, FRAGMENT_SHADER,
+    Context, FRAGMENT_SHADER, HasContext, NativeProgram, NativeShader, NativeUniformLocation,
     VERTEX_SHADER,
 };
 use std::rc::Rc;
@@ -211,17 +211,19 @@ unsafe fn compile_shader(
     source: &str,
     shader_type: u32,
 ) -> Result<NativeShader, String> {
-    let shader = gl
-        .create_shader(shader_type)
-        .map_err(|e| format!("Cannot create shader: {}", e))?;
-    gl.shader_source(shader, source);
-    gl.compile_shader(shader);
+    unsafe {
+        let shader = gl
+            .create_shader(shader_type)
+            .map_err(|e| format!("Cannot create shader: {}", e))?;
+        gl.shader_source(shader, source);
+        gl.compile_shader(shader);
 
-    if !gl.get_shader_compile_status(shader) {
-        let log = gl.get_shader_info_log(shader);
-        gl.delete_shader(shader);
-        return Err(log);
+        if !gl.get_shader_compile_status(shader) {
+            let log = gl.get_shader_info_log(shader);
+            gl.delete_shader(shader);
+            return Err(log);
+        }
+
+        Ok(shader)
     }
-
-    Ok(shader)
 }

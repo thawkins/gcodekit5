@@ -9,8 +9,16 @@ static INIT: Once = Once::new();
 
 pub fn init(lang: Option<String>) {
     INIT.call_once(|| {
-        if let Some(l) = lang {
-            if l != "system" && !l.is_empty() {
+        if let Some(l) = lang
+            && l != "system"
+            && !l.is_empty()
+        {
+            // SAFETY: `init` runs once (Once), from the application's startup
+            // handler on the main thread, before the application starts any
+            // thread of its own, so nothing reads the environment concurrently.
+            // gettext reads LANGUAGE to pick the translation.
+            #[allow(unsafe_code)]
+            unsafe {
                 std::env::set_var("LANGUAGE", &l);
                 // Also set LANG as fallback, though LANGUAGE takes precedence for gettext
                 std::env::set_var("LANG", format!("{}.UTF-8", l));

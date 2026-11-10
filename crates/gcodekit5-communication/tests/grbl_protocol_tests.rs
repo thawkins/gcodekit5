@@ -53,8 +53,8 @@ fn test_malformed_axis_token_rejects_the_report() {
 #[test]
 fn test_grblhal_and_fluidnc_are_grbl_family() {
     // Audit B-10: these banners were detected as Unknown, hiding the GRBL match.
-    use gcodekit5_communication::firmware::protocol_registry::detect_protocol;
     use gcodekit5_communication::firmware::ControllerProtocol;
+    use gcodekit5_communication::firmware::protocol_registry::detect_protocol;
     for name in ["grblHAL", "GrblHal", "FluidNC"] {
         assert_eq!(
             ControllerProtocol::from_name(name),

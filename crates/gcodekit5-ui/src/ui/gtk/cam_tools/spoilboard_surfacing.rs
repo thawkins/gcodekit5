@@ -11,11 +11,11 @@ use serde_json;
 use std::cell::Cell;
 use std::rc::Rc;
 
+use super::CamToolsView;
 use super::common::{
     create_dimension_row, load_preset_json, preset_length, save_preset_json,
     set_paned_initial_fraction,
 };
-use super::CamToolsView;
 use crate::device_status;
 use crate::t;
 use crate::ui::gtk::help_browser;
@@ -379,39 +379,39 @@ impl SpoilboardSurfacingTool {
         let settings_clone = settings.clone();
 
         dialog.pick_open(None::<&gtk4::Window>, move |file| {
-            if let Some(path) = file.path() {
-                if let Some(params) = load_preset_json::<serde_json::Value>(&path) {
-                    {
-                        let system = settings_clone
-                            .persistence
-                            .borrow()
-                            .config()
-                            .ui
-                            .measurement_system;
-                        if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
-                            w_clone.0.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
-                            w_clone.1.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("tool_diameter").and_then(|v| v.as_f64()) {
-                            w_clone.2.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-                            w_clone.3.set_text(v);
-                        }
-                        if let Some(v) = params.get("spindle_speed").and_then(|v| v.as_str()) {
-                            w_clone.4.set_text(v);
-                        }
-                        if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
-                            w_clone.5.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("stepover_percent").and_then(|v| v.as_str()) {
-                            w_clone.6.set_text(v);
-                        }
-                        if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
-                            w_clone.7.set_text(&units::format_length(v as f32, system));
-                        }
+            if let Some(path) = file.path()
+                && let Some(params) = load_preset_json::<serde_json::Value>(&path)
+            {
+                {
+                    let system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                        w_clone.0.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                        w_clone.1.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("tool_diameter").and_then(|v| v.as_f64()) {
+                        w_clone.2.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                        w_clone.3.set_text(v);
+                    }
+                    if let Some(v) = params.get("spindle_speed").and_then(|v| v.as_str()) {
+                        w_clone.4.set_text(v);
+                    }
+                    if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
+                        w_clone.5.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("stepover_percent").and_then(|v| v.as_str()) {
+                        w_clone.6.set_text(v);
+                    }
+                    if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
+                        w_clone.7.set_text(&units::format_length(v as f32, system));
                     }
                 }
             }

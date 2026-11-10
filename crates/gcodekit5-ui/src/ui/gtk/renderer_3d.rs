@@ -7,7 +7,7 @@
 use gcodekit5_visualizer::gcode::arc;
 use gcodekit5_visualizer::{GCodeCommand, Point3D, Visualizer};
 use glow::{
-    Context, HasContext, NativeBuffer, NativeVertexArray, ARRAY_BUFFER, FLOAT, STATIC_DRAW,
+    ARRAY_BUFFER, Context, FLOAT, HasContext, NativeBuffer, NativeVertexArray, STATIC_DRAW,
 };
 use std::rc::Rc;
 

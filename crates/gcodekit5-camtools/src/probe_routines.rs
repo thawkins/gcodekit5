@@ -69,7 +69,7 @@
 //!
 //! Depends on `gcodekit5-core` for the routine, report and position types.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use gcodekit5_core::{Corner, Position, ProbeReport, ProbeResult, ProbeRoutine};
 use gcodekit5_core::{ProbeAxis as Axis, ProbeDirection as Direction};
 use serde::{Deserialize, Serialize};
@@ -481,10 +481,10 @@ impl ProbeRoutineEngine {
         if !(o.plate_thickness.is_finite() && o.plate_thickness >= 0.0) {
             return Err(anyhow!("Plate thickness must be zero or positive"));
         }
-        if let Some(wcs) = o.set_wcs {
-            if wcs_p_number(wcs).is_none() {
-                return Err(anyhow!("Target WCS must be G54..G59"));
-            }
+        if let Some(wcs) = o.set_wcs
+            && wcs_p_number(wcs).is_none()
+        {
+            return Err(anyhow!("Target WCS must be G54..G59"));
         }
         Ok(())
     }

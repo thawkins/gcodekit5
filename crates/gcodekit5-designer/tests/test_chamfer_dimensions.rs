@@ -101,7 +101,7 @@ fn hole_stats(shape: &gcodekit5_designer::model::Shape) -> (usize, f64) {
 fn test_offset_keeps_holes_and_moves_them() {
     // Audit C-04: offsetting a shape with a hole filled the hole in.
     use gcodekit5_designer::model::{DesignCircle, Point, Shape};
-    use gcodekit5_designer::ops::{perform_boolean, perform_offset, BooleanOp};
+    use gcodekit5_designer::ops::{BooleanOp, perform_boolean, perform_offset};
     let outer = Shape::Circle(DesignCircle::new(Point::new(0.0, 0.0), 20.0));
     let inner = Shape::Circle(DesignCircle::new(Point::new(0.0, 0.0), 8.0));
     let donut = perform_boolean(&outer, &inner, BooleanOp::Difference);

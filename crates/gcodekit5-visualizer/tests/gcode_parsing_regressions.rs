@@ -148,20 +148,22 @@ fn test_visualizer_dwell_and_g92_do_not_move() {
         .filter(|c| matches!(c, GCodeCommand::Move { .. }))
         .count();
     assert_eq!(moves, 1);
-    assert!(vis
-        .commands()
-        .iter()
-        .any(|c| matches!(c, GCodeCommand::Dwell { duration, .. } if approx(*duration, 1.5))));
+    assert!(
+        vis.commands()
+            .iter()
+            .any(|c| matches!(c, GCodeCommand::Dwell { duration, .. } if approx(*duration, 1.5)))
+    );
     assert!(approx(vis.current_pos.x, 0.0));
 }
 
 #[test]
 fn test_visualizer_g18_arc_is_tessellated() {
     let vis = parse("G18\nG0 X0 Z0\nG2 X10 Z0 I5 K0");
-    assert!(!vis
-        .commands()
-        .iter()
-        .any(|c| matches!(c, GCodeCommand::Arc { .. })));
+    assert!(
+        !vis.commands()
+            .iter()
+            .any(|c| matches!(c, GCodeCommand::Arc { .. }))
+    );
     assert!(vis.commands().len() > 3);
     assert!(approx(vis.current_pos.x, 10.0));
 }

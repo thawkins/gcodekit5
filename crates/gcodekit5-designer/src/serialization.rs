@@ -734,17 +734,20 @@ impl DesignFile {
                 Shape::Text(s)
             }
             "path" => {
-                if let Some(mut path_shape) = PathShape::from_svg_path(&data.path_data) {
-                    path_shape.laser_params = laser_params;
-                    path_shape.parametric_source = data.parametric_source.clone();
-                    Shape::Path(path_shape)
-                } else {
-                    // Fallback...
-                    let mut rect = Rectangle::new(data.x, data.y, data.width, data.height);
-                    rect.corner_radius = data.corner_radius;
-                    rect.is_slot = data.is_slot;
-                    rect.laser_params = laser_params;
-                    Shape::Rectangle(rect)
+                match PathShape::from_svg_path(&data.path_data) {
+                    Some(mut path_shape) => {
+                        path_shape.laser_params = laser_params;
+                        path_shape.parametric_source = data.parametric_source.clone();
+                        Shape::Path(path_shape)
+                    }
+                    _ => {
+                        // Fallback...
+                        let mut rect = Rectangle::new(data.x, data.y, data.width, data.height);
+                        rect.corner_radius = data.corner_radius;
+                        rect.is_slot = data.is_slot;
+                        rect.laser_params = laser_params;
+                        Shape::Rectangle(rect)
+                    }
                 }
             }
             "gear" => {

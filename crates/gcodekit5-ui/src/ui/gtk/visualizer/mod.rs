@@ -12,7 +12,7 @@ mod gl_loader;
 
 use crate::t;
 use crate::ui::gtk::common::spacing;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_core::constants as core_constants;
 use gcodekit5_designer::stock_removal::StockMaterial;
 use gcodekit5_devicedb::DeviceManager;
@@ -22,8 +22,8 @@ use gcodekit5_visualizer::{Camera3D, Visualizer};
 use crate::ui::gtk::osd_format::format_length_with_unit;
 use crate::ui::gtk::shaders::StockRemovalShaderProgram;
 use crate::ui::gtk::status_bar::StatusBar;
-use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::DesignerState;
+use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_settings::controller::SettingsController;
 use gcodekit5_visualizer::visualizer::{StockSimulator3D, StockZeroReference};
 use glam::Vec3;
@@ -77,8 +77,8 @@ pub enum RunPreviewResult {
 
 use crate::ui::gtk::nav_cube::NavCube;
 use crate::ui::gtk::renderer_3d::{
-    generate_axis_data, generate_bounds_data, generate_grid_data, generate_tool_marker_data,
-    generate_tool_marker_data_with_color, generate_vertex_data, RenderBuffers,
+    RenderBuffers, generate_axis_data, generate_bounds_data, generate_grid_data,
+    generate_tool_marker_data, generate_tool_marker_data_with_color, generate_vertex_data,
 };
 use crate::ui::gtk::shaders::ShaderProgram;
 use glow::HasContext;
@@ -88,13 +88,13 @@ use tracing::debug;
 
 use gl_loader::load_gl_func;
 
-use gcodekit5_core::{shared, shared_none, thread_safe_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none, thread_safe_none};
 use gtk4::prelude::{BoxExt, ButtonExt, CheckButtonExt, WidgetExt};
 use gtk4::{
-    accessible::Property as AccessibleProperty, Adjustment, Box, Button, CheckButton, DrawingArea,
-    Entry, EventControllerScroll, EventControllerScrollFlags, Expander, GLArea, GestureDrag, Grid,
-    Image, Label, ListBox, ListBoxRow, Orientation, Overlay, Paned, Revealer, Scrollbar,
-    SelectionMode, Spinner, Stack,
+    Adjustment, Box, Button, CheckButton, DrawingArea, Entry, EventControllerScroll,
+    EventControllerScrollFlags, Expander, GLArea, GestureDrag, Grid, Image, Label, ListBox,
+    ListBoxRow, Orientation, Overlay, Paned, Revealer, Scrollbar, SelectionMode, Spinner, Stack,
+    accessible::Property as AccessibleProperty,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -1213,23 +1213,23 @@ impl GcodeVisualizer {
             let gl_area_fit_nav = gl_area.clone();
             let device_manager_fit_nav = device_manager.clone();
             nav_fit_device_btn.connect_clicked(move |_| {
-                if let Some(manager) = device_manager_fit_nav.as_ref() {
-                    if let Some(profile) = manager.get_active_profile() {
-                        let min_x = profile.x_axis.min as f32;
-                        let max_x = profile.x_axis.max as f32;
-                        let min_y = profile.y_axis.min as f32;
-                        let max_y = profile.y_axis.max as f32;
-                        let min_z = profile.z_axis.min as f32;
-                        let max_z = profile.z_axis.max as f32;
+                if let Some(manager) = device_manager_fit_nav.as_ref()
+                    && let Some(profile) = manager.get_active_profile()
+                {
+                    let min_x = profile.x_axis.min as f32;
+                    let max_x = profile.x_axis.max as f32;
+                    let min_y = profile.y_axis.min as f32;
+                    let max_y = profile.y_axis.max as f32;
+                    let min_z = profile.z_axis.min as f32;
+                    let max_z = profile.z_axis.max as f32;
 
-                        let mut cam = cam_fit_nav.borrow_mut();
-                        cam.fit_to_bounds(
-                            Vec3::new(min_x, min_y, min_z),
-                            Vec3::new(max_x, max_y, max_z),
-                        );
+                    let mut cam = cam_fit_nav.borrow_mut();
+                    cam.fit_to_bounds(
+                        Vec3::new(min_x, min_y, min_z),
+                        Vec3::new(max_x, max_y, max_z),
+                    );
 
-                        gl_area_fit_nav.queue_render();
-                    }
+                    gl_area_fit_nav.queue_render();
                 }
             });
         }
@@ -2314,40 +2314,37 @@ impl GcodeVisualizer {
 
                         // 3. Verificar si el renderizado está listo
                         // Atomic load (no RefCell borrow across threads)
-                        if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst) {
-                            if let Some(mut guard) = result_arc_poll.try_lock() {
-                                if let Some(result_simulator) = guard.take() {
-                                    if sim_cancel_flag_poll
-                                        .load(std::sync::atomic::Ordering::SeqCst)
-                                    {
-                                        *sim_running_poll.borrow_mut() = false;
-                                        sim_panel_toggle_poll.set_visible(false);
-                                        if let Some(sb) = sb_poll.as_ref() {
-                                            sb.set_progress(0.0, "", "");
-                                            sb.set_cancel_action(None);
-                                        }
-                                        return glib::ControlFlow::Break;
-                                    }
-
-                                    // Asignar el simulador
-                                    *result_3d_ref.borrow_mut() = Some(result_simulator);
-                                    *pending_flag.borrow_mut() = true;
-                                    *sim_running_poll.borrow_mut() = false;
-
-                                    // Ocultar panel de progreso
-                                    sim_panel_toggle_poll.set_visible(false);
-                                    if let Some(sb) = sb_poll.as_ref() {
-                                        sb.set_progress(0.0, "", "");
-                                        sb.set_cancel_action(None);
-                                    }
-
-                                    // Forzar renderizado
-                                    gl_ref.queue_render();
-
-                                    // Stop the poller now
-                                    return glib::ControlFlow::Break;
+                        if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst)
+                            && let Some(mut guard) = result_arc_poll.try_lock()
+                            && let Some(result_simulator) = guard.take()
+                        {
+                            if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
+                                *sim_running_poll.borrow_mut() = false;
+                                sim_panel_toggle_poll.set_visible(false);
+                                if let Some(sb) = sb_poll.as_ref() {
+                                    sb.set_progress(0.0, "", "");
+                                    sb.set_cancel_action(None);
                                 }
+                                return glib::ControlFlow::Break;
                             }
+
+                            // Asignar el simulador
+                            *result_3d_ref.borrow_mut() = Some(result_simulator);
+                            *pending_flag.borrow_mut() = true;
+                            *sim_running_poll.borrow_mut() = false;
+
+                            // Ocultar panel de progreso
+                            sim_panel_toggle_poll.set_visible(false);
+                            if let Some(sb) = sb_poll.as_ref() {
+                                sb.set_progress(0.0, "", "");
+                                sb.set_cancel_action(None);
+                            }
+
+                            // Forzar renderizado
+                            gl_ref.queue_render();
+
+                            // Stop the poller now
+                            return glib::ControlFlow::Break;
                         }
 
                         glib::ControlFlow::Continue
@@ -2382,28 +2379,28 @@ impl GcodeVisualizer {
         let stock_material_width = stock_material.clone();
         // Stock parameter changes - update values only, don't trigger simulation
         stock_width_entry.connect_changed(move |entry| {
-            if let Ok(width) = entry.text().parse::<f32>() {
-                if let Some(ref mut stock) = *stock_material_width.borrow_mut() {
-                    stock.width = width;
-                }
+            if let Ok(width) = entry.text().parse::<f32>()
+                && let Some(ref mut stock) = *stock_material_width.borrow_mut()
+            {
+                stock.width = width;
             }
         });
 
         let stock_material_height = stock_material.clone();
         stock_height_entry.connect_changed(move |entry| {
-            if let Ok(height) = entry.text().parse::<f32>() {
-                if let Some(ref mut stock) = *stock_material_height.borrow_mut() {
-                    stock.height = height;
-                }
+            if let Ok(height) = entry.text().parse::<f32>()
+                && let Some(ref mut stock) = *stock_material_height.borrow_mut()
+            {
+                stock.height = height;
             }
         });
 
         let stock_material_thickness = stock_material.clone();
         stock_thickness_entry.connect_changed(move |entry| {
-            if let Ok(thickness) = entry.text().parse::<f32>() {
-                if let Some(ref mut stock) = *stock_material_thickness.borrow_mut() {
-                    stock.thickness = thickness;
-                }
+            if let Ok(thickness) = entry.text().parse::<f32>()
+                && let Some(ref mut stock) = *stock_material_thickness.borrow_mut()
+            {
+                stock.thickness = thickness;
             }
         });
 
@@ -2616,8 +2613,8 @@ impl GcodeVisualizer {
                 }
 
                 // Update bounds buffer
-                if let Some(manager) = &device_manager_3d {
-                    if let Some(profile) = manager.get_active_profile() {
+                if let Some(manager) = &device_manager_3d
+                    && let Some(profile) = manager.get_active_profile() {
                         let min_x = profile.x_axis.min as f32;
                         let max_x = profile.x_axis.max as f32;
                         let min_y = profile.y_axis.min as f32;
@@ -2629,7 +2626,6 @@ impl GcodeVisualizer {
                             generate_bounds_data(min_x, max_x, min_y, max_y, min_z, max_z);
                         state.bounds_buffers.update(&bounds_data);
                     }
-                }
 
                 // Matrices
                 let cam = camera_3d.borrow();
@@ -2893,12 +2889,11 @@ impl GcodeVisualizer {
             let mut cam = camera_drag.borrow_mut();
 
             // Check for Shift key
-            let is_shift = if let Some(event) = gesture.current_event() {
-                event
+            let is_shift = match gesture.current_event() {
+                Some(event) => event
                     .modifier_state()
-                    .contains(gtk4::gdk::ModifierType::SHIFT_MASK)
-            } else {
-                false
+                    .contains(gtk4::gdk::ModifierType::SHIFT_MASK),
+                _ => false,
             };
 
             if is_shift {
@@ -3297,15 +3292,15 @@ impl GcodeVisualizer {
 
     /// Copy the designer's stock dimensions into the stock-simulation fields.
     pub fn sync_stock_from_designer(&self) {
-        if let Some(state) = self.designer_state.as_ref() {
-            if let Some(stock) = &state.borrow().stock_material {
-                self.stock_width_entry
-                    .set_text(&format!("{:.1}", stock.width));
-                self.stock_height_entry
-                    .set_text(&format!("{:.1}", stock.height));
-                self.stock_thickness_entry
-                    .set_text(&format!("{:.1}", stock.thickness));
-            }
+        if let Some(state) = self.designer_state.as_ref()
+            && let Some(stock) = &state.borrow().stock_material
+        {
+            self.stock_width_entry
+                .set_text(&format!("{:.1}", stock.width));
+            self.stock_height_entry
+                .set_text(&format!("{:.1}", stock.height));
+            self.stock_thickness_entry
+                .set_text(&format!("{:.1}", stock.thickness));
         }
     }
 }

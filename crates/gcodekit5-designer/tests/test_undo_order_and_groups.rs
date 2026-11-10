@@ -1,9 +1,9 @@
 //! Undo/redo regression tests for draw order, group membership, multi-shape
 //! transactions and property setters that previously bypassed the undo stack.
 
+use gcodekit5_designer::DesignerState;
 use gcodekit5_designer::commands::{DesignerCommand, RemoveShape};
 use gcodekit5_designer::model::{DesignRectangle, DesignerShape, Shape};
-use gcodekit5_designer::DesignerState;
 
 /// Adds an `n`-shape design (10 mm squares spaced 20 mm apart) and returns the ids.
 fn state_with_rects(n: usize) -> (DesignerState, Vec<u64>) {

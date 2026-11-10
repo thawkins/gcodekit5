@@ -66,13 +66,13 @@ fn test_pocket_depth_falls_back_to_start_depth() {
 fn test_ramped_contour_descends_at_most_step_down_per_lap() {
     // 25 x 25 mm square: a 100 mm contour. At 3 degrees a full lap would drop ~5.2 mm.
     let rect = DesignRectangle::new(0.0, 0.0, 25.0, 25.0);
-    let mut gen = ToolpathGenerator::new();
-    gen.set_feed_rate(500.0);
-    gen.set_start_depth(0.0);
-    gen.set_cut_depth(3.0);
-    gen.set_ramp_angle(3.0);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_feed_rate(500.0);
+    generator.set_start_depth(0.0);
+    generator.set_cut_depth(3.0);
+    generator.set_ramp_angle(3.0);
     let step_down = 1.0;
-    let toolpaths = gen.generate_rectangle_contour(&rect, step_down);
+    let toolpaths = generator.generate_rectangle_contour(&rect, step_down);
     assert!(toolpaths.len() >= 4, "expected 3 ramp laps + cleanup");
 
     let mut previous_floor = 0.0_f64;
@@ -112,10 +112,11 @@ fn test_ramped_contour_descends_at_most_step_down_per_lap() {
 
     // Final cleanup lap at full depth.
     let last = toolpaths.last().expect("toolpaths");
-    assert!(last
-        .segments
-        .iter()
-        .all(|s| s.z_depth == Some(-3.0) && s.start_z == Some(-3.0)));
+    assert!(
+        last.segments
+            .iter()
+            .all(|s| s.z_depth == Some(-3.0) && s.start_z == Some(-3.0))
+    );
 }
 
 fn limits() -> MachineLimits {
@@ -138,9 +139,9 @@ fn cut(z: f64, from: Point, to: Point) -> Toolpath {
 
 #[test]
 fn test_boundary_violation_ignores_normal_negative_z_cut() {
-    let gen = ToolpathToGcode::new(Units::MM, 10.0).with_machine_limits(limits());
+    let generator = ToolpathToGcode::new(Units::MM, 10.0).with_machine_limits(limits());
     let tp = cut(-3.0, Point::new(10.0, 10.0), Point::new(20.0, 20.0));
-    assert!(!gen.has_boundary_violation(&tp));
+    assert!(!generator.has_boundary_violation(&tp));
     let mut whole = Toolpath::new(3.0, -7.0);
     whole.add_segment(ToolpathSegment::new(
         ToolpathSegmentType::LinearMove,
@@ -149,23 +150,31 @@ fn test_boundary_violation_ignores_normal_negative_z_cut() {
         1000.0,
         12000,
     ));
-    assert!(!gen.has_boundary_violation(&whole));
+    assert!(!generator.has_boundary_violation(&whole));
 }
 
 #[test]
 fn test_boundary_violation_checks_xy_limits() {
-    let gen = ToolpathToGcode::new(Units::MM, 10.0).with_machine_limits(limits());
+    let generator = ToolpathToGcode::new(Units::MM, 10.0).with_machine_limits(limits());
     let tp = cut(-1.0, Point::new(10.0, 10.0), Point::new(120.0, 20.0));
-    assert!(gen.has_boundary_violation(&tp));
+    assert!(generator.has_boundary_violation(&tp));
 }
 
 #[test]
 fn test_boundary_violation_checks_z_against_configured_floor() {
-    let gen = ToolpathToGcode::new(Units::MM, 10.0)
+    let generator = ToolpathToGcode::new(Units::MM, 10.0)
         .with_machine_limits(limits())
         .with_z_min_limit(0.0);
-    assert!(!gen.has_boundary_violation(&cut(2.0, Point::new(1.0, 1.0), Point::new(5.0, 5.0))));
-    assert!(gen.has_boundary_violation(&cut(-0.5, Point::new(1.0, 1.0), Point::new(5.0, 5.0))));
+    assert!(!generator.has_boundary_violation(&cut(
+        2.0,
+        Point::new(1.0, 1.0),
+        Point::new(5.0, 5.0)
+    )));
+    assert!(generator.has_boundary_violation(&cut(
+        -0.5,
+        Point::new(1.0, 1.0),
+        Point::new(5.0, 5.0)
+    )));
 }
 
 #[test]
@@ -196,7 +205,7 @@ fn laser_segment(from: Point, to: Point, power: u32) -> ToolpathSegment {
 
 #[test]
 fn test_laser_power_changes_are_emitted_per_segment() {
-    let gen = ToolpathToGcode::new(Units::MM, 5.0).with_laser_2d();
+    let generator = ToolpathToGcode::new(Units::MM, 5.0).with_laser_2d();
     let mut tp = Toolpath::new(0.1, 0.0);
     tp.add_segment(ToolpathSegment::new(
         ToolpathSegmentType::RapidMove,
@@ -222,9 +231,9 @@ fn test_laser_power_changes_are_emitted_per_segment() {
     ));
 
     // Collinear segments with different power must not be merged by the optimiser.
-    let optimized = gen.optimize_toolpath_for_laser(&tp);
+    let optimized = generator.optimize_toolpath_for_laser(&tp);
     for path in [&tp, &optimized] {
-        let body = gen.generate_body(path, 10);
+        let body = generator.generate_body(path, 10);
         let s_words: Vec<&str> = body
             .lines()
             .map(|l| l.split(';').next().unwrap_or(""))
@@ -339,15 +348,15 @@ fn grbl_rejected_arcs(gcode: &str) -> Vec<String> {
 fn test_small_rotated_arcs_pass_grbl_radius_check() {
     // Audit C-02: 0.01 mm rounding of X/Y/I/J made GRBL reject most small
     // rotated arcs (272 of 360 rotations at r = 1.5 mm).
-    let mut gen = ToolpathGenerator::new();
-    gen.set_start_depth(10.0);
-    gen.set_cut_depth(1.0);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_start_depth(10.0);
+    generator.set_cut_depth(1.0);
     let out = ToolpathToGcode::new(Units::MM, 15.0);
     for deg in 0..360 {
         let mut rect = DesignRectangle::new(1.234, 5.678, 20.0, 10.0);
         rect.corner_radius = 1.5;
         rect.rotation = deg as f64;
-        let toolpaths = gen.generate_rectangle_contour(&rect, 1.0);
+        let toolpaths = generator.generate_rectangle_contour(&rect, 1.0);
         let gcode = out.generate(&toolpaths[0]);
         let rejected = grbl_rejected_arcs(&gcode);
         assert!(rejected.is_empty(), "rotation {deg}: {rejected:?}");
@@ -365,11 +374,11 @@ fn test_ramp_on_dense_path_never_drops_more_than_step_down() {
         })
         .collect();
     let path = gcodekit5_designer::model::DesignPath::from_points(&points, true);
-    let mut gen = ToolpathGenerator::new();
-    gen.set_start_depth(20.0);
-    gen.set_cut_depth(20.0);
-    gen.set_ramp_angle(3.0);
-    let toolpaths = gen.generate_path_contour(&path, 1.0);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_start_depth(20.0);
+    generator.set_cut_depth(20.0);
+    generator.set_ramp_angle(3.0);
+    let toolpaths = generator.generate_path_contour(&path, 1.0);
 
     let mut previous = 20.0_f64;
     for tp in &toolpaths {

@@ -14,8 +14,8 @@ pub mod types;
 pub mod units;
 
 pub use core::{
-    message::{Message, MessageLevel},
     OverrideState,
+    message::{Message, MessageLevel},
 };
 
 pub use data::{
@@ -37,9 +37,9 @@ pub use gcode::{
 
 // Re-export type aliases for convenience
 pub use types::{
-    shared, shared_none, shared_some, thread_safe, thread_safe_deque, thread_safe_map,
-    thread_safe_none, thread_safe_rw, thread_safe_some, thread_safe_vec, Callback, CellCallback,
-    CellDataCallback, CellDataCallback2, DataCallback, ProgressCallback, ResultCallback, Shared,
-    SharedHashMap, SharedOption, SharedVec, ThreadSafe, ThreadSafeDeque, ThreadSafeMap,
-    ThreadSafeOption, ThreadSafeRw, ThreadSafeRwMap, ThreadSafeVec, UiCallback, UiDataCallback,
+    Callback, CellCallback, CellDataCallback, CellDataCallback2, DataCallback, ProgressCallback,
+    ResultCallback, Shared, SharedHashMap, SharedOption, SharedVec, ThreadSafe, ThreadSafeDeque,
+    ThreadSafeMap, ThreadSafeOption, ThreadSafeRw, ThreadSafeRwMap, ThreadSafeVec, UiCallback,
+    UiDataCallback, shared, shared_none, shared_some, thread_safe, thread_safe_deque,
+    thread_safe_map, thread_safe_none, thread_safe_rw, thread_safe_some, thread_safe_vec,
 };

@@ -3,7 +3,7 @@
 //! A circular design shape defined by center point and radius.
 //! Supports rotation and CSG boolean operations.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 

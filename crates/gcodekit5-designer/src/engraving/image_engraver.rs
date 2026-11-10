@@ -104,12 +104,11 @@ pub struct ImageEngraver {
 impl ImageEngraver {
     /// Check if a horizontal line (row) has any pixel that will produce laser power
     fn is_row_empty(&self, y: u32) -> bool {
-        let result = (0..self.image.width()).all(|x| {
+        (0..self.image.width()).all(|x| {
             let intensity = self.image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
             power == 0
-        });
-        result
+        })
     }
 
     /// Get only rows that have content to engrave (actual laser power > 0)

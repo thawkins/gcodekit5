@@ -413,17 +413,18 @@ impl Canvas {
 
     /// Removes a shape and returns it (used for undo/redo).
     pub fn remove_shape_return(&mut self, id: u64) -> Option<DrawingObject> {
-        if let Some(obj) = self.shape_store.remove(id) {
-            let (min_x, min_y, max_x, max_y) = obj.get_total_bounds();
-            self.spatial_manager
-                .remove_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
+        match self.shape_store.remove(id) {
+            Some(obj) => {
+                let (min_x, min_y, max_x, max_y) = obj.get_total_bounds();
+                self.spatial_manager
+                    .remove_bounds(id, &Bounds::new(min_x, min_y, max_x, max_y));
 
-            if self.selection_manager.selected_id() == Some(id) {
-                self.selection_manager.set_selected_id(None);
+                if self.selection_manager.selected_id() == Some(id) {
+                    self.selection_manager.set_selected_id(None);
+                }
+                Some(obj)
             }
-            Some(obj)
-        } else {
-            None
+            _ => None,
         }
     }
 
@@ -463,12 +464,12 @@ impl Canvas {
 
     /// Checks if point is inside currently selected shape (primary selection only)
     pub fn is_point_in_selected(&self, point: &Point) -> bool {
-        if let Some(id) = self.selection_manager.selected_id() {
-            if let Some(obj) = self.shape_store.get(id) {
-                // Calculate tolerance based on zoom (5 pixels on screen)
-                let tolerance = 5.0 / self.viewport.zoom();
-                return obj.contains_point(point, tolerance);
-            }
+        if let Some(id) = self.selection_manager.selected_id()
+            && let Some(obj) = self.shape_store.get(id)
+        {
+            // Calculate tolerance based on zoom (5 pixels on screen)
+            let tolerance = 5.0 / self.viewport.zoom();
+            return obj.contains_point(point, tolerance);
         }
         false
     }
@@ -645,14 +646,14 @@ impl Canvas {
         }
 
         // If there is a current selection, find the next one.
-        if let Some(current_id) = self.selection_manager.selected_id() {
-            if let Some(pos) = objects_at_point.iter().position(|&id| id == current_id) {
-                // Select the next one (or go back to the first one)
-                let next_idx = (pos + 1) % objects_at_point.len();
-                let next_id = objects_at_point[next_idx];
-                self.select_shape(next_id, false);
-                return Some(next_id);
-            }
+        if let Some(current_id) = self.selection_manager.selected_id()
+            && let Some(pos) = objects_at_point.iter().position(|&id| id == current_id)
+        {
+            // Select the next one (or go back to the first one)
+            let next_idx = (pos + 1) % objects_at_point.len();
+            let next_id = objects_at_point[next_idx];
+            self.select_shape(next_id, false);
+            return Some(next_id);
         }
 
         // If there is no current selection, select the first one.

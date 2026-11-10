@@ -86,12 +86,15 @@ impl PropertiesPanel {
         new_value: f32,
         system: gcodekit5_core::units::MeasurementSystem,
     ) {
-        if let Ok(current_parsed) = units::parse_length(&entry.text(), system) {
-            if (current_parsed as f64 - new_value as f64).abs() > 1e-6 {
+        match units::parse_length(&entry.text(), system) {
+            Ok(current_parsed) => {
+                if (current_parsed as f64 - new_value as f64).abs() > 1e-6 {
+                    entry.set_text(&units::format_length(new_value, system));
+                }
+            }
+            _ => {
                 entry.set_text(&units::format_length(new_value, system));
             }
-        } else {
-            entry.set_text(&units::format_length(new_value, system));
         }
     }
 
@@ -161,7 +164,7 @@ impl PropertiesPanel {
                 .filter(|s| s.selected)
                 .collect();
 
-            let data = if selected.is_empty() {
+            if selected.is_empty() {
                 None
             } else if selected.len() == 1 {
                 let obj = &selected[0];
@@ -250,8 +253,7 @@ impl PropertiesPanel {
                     false,
                     laser_summary.map(LaserSelection::Summary),
                 ))
-            };
-            data
+            }
         };
 
         if let Some((
@@ -605,11 +607,11 @@ impl PropertiesPanel {
                             self.font_family_combo.model().and_downcast::<StringList>()
                         {
                             for i in 0..model.n_items() {
-                                if let Some(item) = model.string(i) {
-                                    if item == text_shape.font_family {
-                                        self.font_family_combo.set_selected(i);
-                                        break;
-                                    }
+                                if let Some(item) = model.string(i)
+                                    && item == text_shape.font_family
+                                {
+                                    self.font_family_combo.set_selected(i);
+                                    break;
                                 }
                             }
                         }
@@ -895,10 +897,9 @@ impl PropertiesPanel {
             if let (Ok(cur_w), Ok(cur_h)) = (
                 units::parse_length(&self.width_entry.text(), system),
                 units::parse_length(&self.height_entry.text(), system),
-            ) {
-                if cur_h > 0.0 {
-                    *self.aspect_ratio.borrow_mut() = cur_w as f64 / cur_h as f64;
-                }
+            ) && cur_h > 0.0
+            {
+                *self.aspect_ratio.borrow_mut() = cur_w as f64 / cur_h as f64;
             }
 
             *self.updating.borrow_mut() = false;

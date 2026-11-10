@@ -9,7 +9,7 @@ use std::sync::Arc;
 use gcodekit5_visualizer::gcode::arc::arc_sweep;
 use gcodekit5_visualizer::gcode::processors::{ArcExpander, PatternRemover};
 use gcodekit5_visualizer::visualizer::{
-    detect_stock_zero_reference, is_content_replacement, StockZeroReference, ToolpathCache,
+    StockZeroReference, ToolpathCache, detect_stock_zero_reference, is_content_replacement,
 };
 use gcodekit5_visualizer::{
     CommandProcessor, DecimalProcessor, FileStreamReader, GCodeCommand, GcodeCommand, GcodeState,

@@ -29,7 +29,7 @@
 //! ```
 
 use crate::probe_routines::{ProbeOptions, ProbeRoutineEngine};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use gcodekit5_core::{Position, ProbeReport, ProbeRoutine};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

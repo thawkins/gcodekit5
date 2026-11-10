@@ -8,7 +8,7 @@
 //! - Boss Center (4-point external)
 //! - Tool Length measurement
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
@@ -20,21 +20,21 @@ use libadwaita::{ActionRow, PreferencesGroup};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use super::CamToolsView;
 use super::common::{
     poll_connection_status, set_paned_initial_fraction, show_load_warnings, write_preset_file,
 };
-use super::CamToolsView;
 use crate::device_status;
 use crate::t;
 use crate::ui::gtk::machine_control::MachineControlView;
 use gcodekit5_camtools::cam_presets::ProbePreset;
 use gcodekit5_camtools::comment_processor::strip_comments;
 use gcodekit5_camtools::probe_routines::{
-    defaults as probe_defaults, ProbeOptions, ProbeRoutineEngine,
+    ProbeOptions, ProbeRoutineEngine, defaults as probe_defaults,
 };
 use gcodekit5_camtools::wcs_service::{WcsUpdateConfig, WcsUpdateService};
-use gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report_in;
 use gcodekit5_communication::Communicator;
+use gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report_in;
 use gcodekit5_core::{
     Corner, Position, ProbeAxis as Axis, ProbeDirection as Direction, ProbeReport, ProbeRoutine,
 };

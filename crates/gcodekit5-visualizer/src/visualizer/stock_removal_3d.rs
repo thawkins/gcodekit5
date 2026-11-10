@@ -412,11 +412,7 @@ impl StockZeroReference {
     /// # Arguments
     /// * `index` - Selector index as returned by [`StockZeroReference::index`].
     pub fn from_index(index: u32) -> Self {
-        if index == 1 {
-            Self::Bottom
-        } else {
-            Self::Top
-        }
+        if index == 1 { Self::Bottom } else { Self::Top }
     }
 }
 

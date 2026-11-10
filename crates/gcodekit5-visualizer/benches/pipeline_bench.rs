@@ -1,7 +1,7 @@
 //! Performance benchmarks for the G-code processing pipeline,
 //! state updates, and file statistics.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use std::sync::Arc;
 

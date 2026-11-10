@@ -4,7 +4,7 @@
 use gcodekit5_communication::firmware::grbl::status_parser::{
     BufferRxState, FeedSpindleState, MachinePosition, WorkCoordinateOffset, WorkPosition,
 };
-use gcodekit5_core::{thread_safe_rw, ThreadSafeRw};
+use gcodekit5_core::{ThreadSafeRw, thread_safe_rw};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};

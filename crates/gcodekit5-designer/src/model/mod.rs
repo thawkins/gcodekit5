@@ -586,11 +586,7 @@ fn normalize_degrees(angle: f64) -> f64 {
     } else if a > 180.0 {
         a -= 360.0;
     }
-    if a.abs() < 1e-9 {
-        0.0
-    } else {
-        a
-    }
+    if a.abs() < 1e-9 { 0.0 } else { a }
 }
 
 /// Builds the render transform `R(rotation) · F` about `center` for a parametric

@@ -10,9 +10,9 @@
 //! - The validator, stats calculator and optimizer must treat GRBL system commands (`$H`,
 //!   `$X`, `$$`, `$J=...`) as commands, not as G-code words with unparsable values.
 
-use gcodekit5_camtools::comment_processor::{system_command, SystemCommand};
+use gcodekit5_camtools::comment_processor::{SystemCommand, system_command};
 use gcodekit5_camtools::drill_press::{DrillPressGenerator, DrillPressParameters};
-use gcodekit5_camtools::job_preamble::{travel_z_line, HOMED_TRAVEL_Z_MACHINE};
+use gcodekit5_camtools::job_preamble::{HOMED_TRAVEL_Z_MACHINE, travel_z_line};
 use gcodekit5_camtools::laser_engraver::{BitmapImageEngraver, EngravingParameters};
 use gcodekit5_camtools::optimizer::GCodeOptimizer;
 use gcodekit5_camtools::spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
@@ -53,11 +53,7 @@ fn z_moves(gcode: &str) -> Vec<ZMove<'_>> {
 
 /// Machine Z reached by a move, given the G54 Z offset (machine Z of work Z0).
 fn machine_z(m: &ZMove<'_>, g54_z_offset: f32) -> f32 {
-    if m.machine {
-        m.z
-    } else {
-        m.z + g54_z_offset
-    }
+    if m.machine { m.z } else { m.z + g54_z_offset }
 }
 
 /// `true` for a cutting / focus height move (measured from the work Z0 the user set): a feed
@@ -288,9 +284,11 @@ fn test_no_homing_preamble_without_homing() {
         assert!(!gcode.contains("G53"), "{name}: G53 without homing");
     }
     // Without homing, surfacing still travels at a positive work safe height.
-    assert!(z_moves(&surfacing(false))
-        .iter()
-        .any(|m| !m.machine && m.z > 0.0));
+    assert!(
+        z_moves(&surfacing(false))
+            .iter()
+            .any(|m| !m.machine && m.z > 0.0)
+    );
 }
 
 #[test]

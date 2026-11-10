@@ -29,12 +29,12 @@ pub use features::{
 
 pub use setup::{Camera, CameraType, Color, Light, LightType, Renderer, Scene, Vector3};
 pub use stock_removal_3d::{
-    detect_stock_zero_reference, generate_surface_mesh, StockSimulator3D, StockZeroReference,
-    ToolpathSegment, ToolpathSegmentType, VoxelGrid,
+    StockSimulator3D, StockZeroReference, ToolpathSegment, ToolpathSegmentType, VoxelGrid,
+    detect_stock_zero_reference, generate_surface_mesh,
 };
 pub use toolpath_cache::ToolpathCache;
 pub use toolpath_rendering::{
     ArcSegment, LineSegment, MovementType, PathSegment, Toolpath, ToolpathStats,
 };
 pub use viewport::Bounds;
-pub use visualizer::{is_content_replacement, GCodeCommand, Point3D, Visualizer};
+pub use visualizer::{GCodeCommand, Point3D, Visualizer, is_content_replacement};

@@ -7,9 +7,9 @@
 mod grbl_settings;
 mod operations;
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
-use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_communication::SerialCommunicator;
+use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
@@ -73,7 +73,7 @@ use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::device_info::DeviceInfoView;
 use crate::ui::gtk::help_browser;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, ThreadSafe};
+use gcodekit5_core::{Shared, SharedOption, ThreadSafe, shared, shared_none};
 
 /// Setting categories offered by the category filter (also the filter ids).
 pub(crate) const SETTING_CATEGORIES: &[&str] = &[
@@ -389,19 +389,19 @@ impl ConfigSettingsView {
                     })
                     .collect();
 
-                if let Some(setting) = filtered_settings.get(index as usize) {
-                    if !setting.read_only {
-                        let view_for_refresh = view_clone.clone();
-                        Self::show_edit_dialog(
-                            &view_clone.container,
-                            setting,
-                            view_clone.communicator.clone(),
-                            view_clone.settings_manager.clone(),
-                            move || {
-                                view_for_refresh.refresh_display();
-                            },
-                        );
-                    }
+                if let Some(setting) = filtered_settings.get(index as usize)
+                    && !setting.read_only
+                {
+                    let view_for_refresh = view_clone.clone();
+                    Self::show_edit_dialog(
+                        &view_clone.container,
+                        setting,
+                        view_clone.communicator.clone(),
+                        view_clone.settings_manager.clone(),
+                        move || {
+                            view_for_refresh.refresh_display();
+                        },
+                    );
                 }
             }
         });

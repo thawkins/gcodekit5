@@ -21,7 +21,7 @@ pub mod repetier;
 pub mod sender;
 
 pub use protocol_registry::{
-    protocol_profile, ProtocolProfile, SenderKind, FALLBACK_PROFILE, PROTOCOLS,
+    FALLBACK_PROFILE, PROTOCOLS, ProtocolProfile, SenderKind, protocol_profile,
 };
 
 pub use sender::Sender;

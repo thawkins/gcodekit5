@@ -4,14 +4,14 @@
 //! generation. Uses the font manager for font loading and supports
 //! bold, italic, font size, and letter spacing.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
 use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
-use rusttype::{point as rt_point, Scale};
+use rusttype::{Scale, point as rt_point};
 
 use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
 use crate::font_manager;

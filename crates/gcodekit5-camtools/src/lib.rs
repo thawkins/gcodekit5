@@ -55,13 +55,13 @@ pub use laser_engraver::{
 };
 pub use optimizer::GCodeOptimizer;
 pub use probe_routines::{
-    defaults as probe_defaults, ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput,
+    ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput, defaults as probe_defaults,
 };
 pub use speeds_feeds::{
-    calculate_speeds_feeds, CalculationInput, CalculationResult, DeviceLimits,
-    DeviceRecommendations, FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors,
-    OperationType, SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
-    SpeedsFeedsMaterialService, SpeedsFeedsToolService,
+    CalculationInput, CalculationResult, DeviceLimits, DeviceRecommendations,
+    FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors, OperationType,
+    SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
+    SpeedsFeedsMaterialService, SpeedsFeedsToolService, calculate_speeds_feeds,
 };
 pub use spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
 pub use spoilboard_surfacing::{SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters};

@@ -67,10 +67,11 @@ impl MachineControlView {
 
         {
             let state = self.continuous_jog.lock();
-            if let Some((a, s, _)) = state.active {
-                if a == axis && s.signum() == signed.signum() {
-                    return;
-                }
+            if let Some((a, s, _)) = state.active
+                && a == axis
+                && s.signum() == signed.signum()
+            {
+                return;
             }
         }
         self.stop_continuous_jog();

@@ -174,18 +174,18 @@ impl DocumentHandles {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Open Design File"));
 
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -274,16 +274,16 @@ impl DocumentHandles {
                         *current_file.borrow_mut() = Some(path.clone());
 
                         // --- SAVE PATH ---
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
-                                settings_ref_mut
-                                    .config_mut()
-                                    .file_processing
-                                    .output_directory = path.clone();
+                        if let Some(ref settings) = settings_persistence_clone
+                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+                        {
+                            settings_ref_mut
+                                .config_mut()
+                                .file_processing
+                                .output_directory = path.clone();
 
-                                // (Windows/Linux/macOS)
-                                settings_ref_mut.persist_or_log();
-                            }
+                            // (Windows/Linux/macOS)
+                            settings_ref_mut.persist_or_log();
                         } // ---------------------------
 
                         drop(state);
@@ -325,27 +325,26 @@ impl DesignerView {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
 
         // Set initial directory from settings
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
         // Check STL import setting for STL support
         let enable_stl_import = if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                settings_ref.config().ui.enable_stl_import
-            } else {
-                false
+            match settings.try_borrow() {
+                Ok(settings_ref) => settings_ref.config().ui.enable_stl_import,
+                _ => false,
             }
         } else {
             false
@@ -422,22 +421,21 @@ impl DesignerView {
 
 
                         // --- SAVE THE PATH ON IMPORT ---
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
+                        if let Some(ref settings) = settings_persistence_clone
+                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
 
                                 settings_ref_mut.config_mut().file_processing.output_directory = path.clone();
 
                                 settings_ref_mut.persist_or_log();
                             }
-                        }
 
                         // --- CHECK STL IMPORT ---
                         let enable_stl_import = if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(settings_ref) = settings.try_borrow() {
+                            match settings.try_borrow() { Ok(settings_ref) => {
                                 settings_ref.config().ui.enable_stl_import
-                            } else {
+                            } _ => {
                                 false
-                            }
+                            }}
                         } else {
                             false
                         };
@@ -618,18 +616,18 @@ impl DesignerView {
         dialog.set_initial_name(Some("design.gckd"));
 
         // Set initial directory from settings
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -661,15 +659,15 @@ impl DesignerView {
                     path.set_extension("gckd");
                 }
 
-                if let Some(ref settings) = settings_persistence_clone {
-                    if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
-                        settings_ref_mut
-                            .config_mut()
-                            .file_processing
-                            .output_directory = path.clone();
+                if let Some(ref settings) = settings_persistence_clone
+                    && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+                {
+                    settings_ref_mut
+                        .config_mut()
+                        .file_processing
+                        .output_directory = path.clone();
 
-                        settings_ref_mut.persist_or_log();
-                    }
+                    settings_ref_mut.persist_or_log();
                 }
 
                 match save_design(&canvas.state, &path) {
@@ -707,18 +705,18 @@ impl DesignerView {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Export G-Code"));
 
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -758,8 +756,8 @@ impl DesignerView {
                             path.clone()
                         };
 
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
+                        if let Some(ref settings) = settings_persistence_clone
+                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
                                 settings_ref_mut
                                     .config_mut()
                                     .file_processing
@@ -767,7 +765,6 @@ impl DesignerView {
 
                                 settings_ref_mut.persist_or_log();
                             }
-                        }
 
                         if path.extension().is_none() {
                             path.set_extension("nc");
@@ -857,18 +854,18 @@ impl DesignerView {
         filter.add_pattern("*.svg");
         dialog.add_filter(&filter);
 
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 

@@ -4,7 +4,7 @@
 //! integration to Tools, Materials, and Devices databases.
 
 use crate::ui::gtk::common::dialog_window::DialogWindow;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, CheckButton, Label, ListBox, ListBoxRow, Orientation, Paned, ResponseType,
@@ -24,8 +24,8 @@ use crate::ui::tools_manager_backend::ToolsManagerBackend;
 use gcodekit5_camtools::speeds_feeds::{CalculationInput, OperationType, SpeedsFeedsCalculator};
 use gcodekit5_core::data::materials::Material;
 use gcodekit5_core::data::tools::Tool;
-use gcodekit5_devicedb::model::DeviceProfile;
 use gcodekit5_devicedb::DeviceManager;
+use gcodekit5_devicedb::model::DeviceProfile;
 use gcodekit5_settings::SettingsController;
 use std::sync::Arc;
 
@@ -964,14 +964,12 @@ impl ToolSelectionDialog {
             let tools_map = tools_map.clone();
             let on_select_clone = on_select_clone.clone();
             move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(id) = selected_id.borrow().as_ref() {
-                        if let Some(tool) = tools_map.borrow().get(id) {
-                            if let Some(ref on_select) = *on_select_clone.borrow() {
-                                on_select(tool);
-                            }
-                        }
-                    }
+                if response == ResponseType::Accept
+                    && let Some(id) = selected_id.borrow().as_ref()
+                    && let Some(tool) = tools_map.borrow().get(id)
+                    && let Some(ref on_select) = *on_select_clone.borrow()
+                {
+                    on_select(tool);
                 }
                 dialog.close();
             }
@@ -1162,12 +1160,11 @@ impl MaterialSelectionDialog {
             let selected_id = selected_id.clone();
             let materials_map = materials_map.clone();
             move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(id) = selected_id.borrow().as_ref() {
-                        if let Some(material) = materials_map.borrow().get(id) {
-                            on_select(material);
-                        }
-                    }
+                if response == ResponseType::Accept
+                    && let Some(id) = selected_id.borrow().as_ref()
+                    && let Some(material) = materials_map.borrow().get(id)
+                {
+                    on_select(material);
                 }
                 dialog.close();
             }

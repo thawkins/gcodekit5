@@ -7,7 +7,7 @@
 
 use crate::model::DeviceProfile;
 use anyhow::{Context, Result};
-use gcodekit5_core::{thread_safe, thread_safe_rw, ThreadSafe, ThreadSafeRw, ThreadSafeRwMap};
+use gcodekit5_core::{ThreadSafe, ThreadSafeRw, ThreadSafeRwMap, thread_safe, thread_safe_rw};
 use std::fs;
 use std::path::PathBuf;
 
@@ -255,10 +255,10 @@ impl DeviceManager {
         // If active profile was deleted, clear active selection
         {
             let mut active_lock = self.active_profile_id.write();
-            if let Some(active) = &*active_lock {
-                if active == id {
-                    *active_lock = None;
-                }
+            if let Some(active) = &*active_lock
+                && active == id
+            {
+                *active_lock = None;
             }
         }
 

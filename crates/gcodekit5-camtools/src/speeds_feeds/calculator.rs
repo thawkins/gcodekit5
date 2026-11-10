@@ -639,17 +639,17 @@ impl SpeedsFeedsCalculator {
         }
 
         // Tool RPM limit
-        if let Some(tool_max_rpm) = input.tool.limits.max_rpm_rating {
-            if final_rpm > tool_max_rpm {
-                warnings.push(format!(
-                    "RPM {} exceeds tool rating {}, clamped",
-                    final_rpm, tool_max_rpm
-                ));
-                if unclamped_rpm.is_none() {
-                    unclamped_rpm = Some(final_rpm);
-                }
-                final_rpm = tool_max_rpm;
+        if let Some(tool_max_rpm) = input.tool.limits.max_rpm_rating
+            && final_rpm > tool_max_rpm
+        {
+            warnings.push(format!(
+                "RPM {} exceeds tool rating {}, clamped",
+                final_rpm, tool_max_rpm
+            ));
+            if unclamped_rpm.is_none() {
+                unclamped_rpm = Some(final_rpm);
             }
+            final_rpm = tool_max_rpm;
         }
 
         // Keep the chip load constant when the spindle speed was changed by a limit:

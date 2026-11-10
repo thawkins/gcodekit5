@@ -711,19 +711,18 @@ impl ToolpathGenerator {
                     current_pos = p_to;
                 }
                 lyon::path::Event::End { close, .. } => {
-                    if close {
-                        if let Some(first) = first_point {
-                            if current_pos.distance_to(&first) > 0.001 {
-                                segments.push(ToolpathSegment::new(
-                                    ToolpathSegmentType::LinearMove,
-                                    current_pos,
-                                    first,
-                                    feed_rate,
-                                    spindle_speed,
-                                ));
-                                current_pos = first;
-                            }
-                        }
+                    if close
+                        && let Some(first) = first_point
+                        && current_pos.distance_to(&first) > 0.001
+                    {
+                        segments.push(ToolpathSegment::new(
+                            ToolpathSegmentType::LinearMove,
+                            current_pos,
+                            first,
+                            feed_rate,
+                            spindle_speed,
+                        ));
+                        current_pos = first;
                     }
                     first_point = None;
                 }
@@ -1026,17 +1025,17 @@ impl ToolpathGenerator {
             last_position = builder.current_point;
 
             // Cerrar el contorno si es necesario
-            if let Some(first_point) = builder.start_point_opt() {
-                if last_position.distance_to(&first_point) > 0.001 {
-                    all_segments.push(ToolpathSegment::new(
-                        ToolpathSegmentType::LinearMove,
-                        last_position,
-                        first_point,
-                        feed_rate,
-                        spindle_speed,
-                    ));
-                    last_position = first_point;
-                }
+            if let Some(first_point) = builder.start_point_opt()
+                && last_position.distance_to(&first_point) > 0.001
+            {
+                all_segments.push(ToolpathSegment::new(
+                    ToolpathSegmentType::LinearMove,
+                    last_position,
+                    first_point,
+                    feed_rate,
+                    spindle_speed,
+                ));
+                last_position = first_point;
             }
 
             caret_x += advance;
@@ -1135,14 +1134,15 @@ impl ToolpathGenerator {
         }
 
         let op = PocketOperation::new("rect_pocket".to_string(), pocket_depth, self.tool_diameter);
-        let mut gen = PocketGenerator::new(op);
-        gen.operation.set_start_depth(self.start_depth);
-        gen.operation.set_ramp_angle(self.ramp_angle);
-        gen.operation.raster_fill_ratio = self.raster_fill_ratio;
+        let mut generator = PocketGenerator::new(op);
+        generator.operation.set_start_depth(self.start_depth);
+        generator.operation.set_ramp_angle(self.ramp_angle);
+        generator.operation.raster_fill_ratio = self.raster_fill_ratio;
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-        gen.operation
+        generator
+            .operation
             .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
-        gen.generate_rectangular_pocket(rect, step_down)
+        generator.generate_rectangular_pocket(rect, step_down)
     }
 
     pub fn generate_circle_pocket(
@@ -1157,14 +1157,15 @@ impl ToolpathGenerator {
             pocket_depth,
             self.tool_diameter,
         );
-        let mut gen = PocketGenerator::new(op);
-        gen.operation.set_start_depth(self.start_depth);
-        gen.operation.set_ramp_angle(self.ramp_angle);
-        gen.operation.raster_fill_ratio = self.raster_fill_ratio;
+        let mut generator = PocketGenerator::new(op);
+        generator.operation.set_start_depth(self.start_depth);
+        generator.operation.set_ramp_angle(self.ramp_angle);
+        generator.operation.raster_fill_ratio = self.raster_fill_ratio;
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-        gen.operation
+        generator
+            .operation
             .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
-        gen.generate_circular_pocket(circle, step_down)
+        generator.generate_circular_pocket(circle, step_down)
     }
 
     /// Builds a [`PocketGenerator`] configured from this generator's settings.
@@ -1174,15 +1175,16 @@ impl ToolpathGenerator {
             pocket_depth,
             self.tool_diameter,
         );
-        let mut gen = PocketGenerator::new(op);
-        gen.operation.set_start_depth(self.start_depth);
-        gen.operation.set_ramp_angle(self.ramp_angle);
+        let mut generator = PocketGenerator::new(op);
+        generator.operation.set_start_depth(self.start_depth);
+        generator.operation.set_ramp_angle(self.ramp_angle);
         let effective_step_in = if step_in > 0.0 { step_in } else { self.step_in };
-        gen.operation
+        generator
+            .operation
             .set_parameters(effective_step_in, self.feed_rate, self.spindle_speed);
-        gen.operation.set_strategy(self.pocket_strategy);
-        gen.operation.raster_fill_ratio = self.raster_fill_ratio;
-        gen
+        generator.operation.set_strategy(self.pocket_strategy);
+        generator.operation.raster_fill_ratio = self.raster_fill_ratio;
+        generator
     }
 
     pub fn generate_polyline_pocket(
@@ -1448,17 +1450,18 @@ impl ToolpathGenerator {
                 pocket_depth,
                 self.tool_diameter,
             );
-            let mut gen = PocketGenerator::new(op);
-            gen.operation.set_start_depth(self.start_depth);
-            gen.operation.set_ramp_angle(self.ramp_angle);
-            gen.operation
+            let mut generator = PocketGenerator::new(op);
+            generator.operation.set_start_depth(self.start_depth);
+            generator.operation.set_ramp_angle(self.ramp_angle);
+            generator
+                .operation
                 .set_parameters(stepover, feed_rate, spindle_speed);
-            gen.operation.set_strategy(self.pocket_strategy);
-            gen.operation.raster_fill_ratio = self.raster_fill_ratio;
+            generator.operation.set_strategy(self.pocket_strategy);
+            generator.operation.raster_fill_ratio = self.raster_fill_ratio;
 
             let holes: Vec<Vec<Point>> = hole_idxs.iter().map(|&h| contours[h].clone()).collect();
             let pocket_toolpaths =
-                gen.generate_polygon_pocket_with_holes(contour, &holes, step_down);
+                generator.generate_polygon_pocket_with_holes(contour, &holes, step_down);
             all_toolpaths.extend(pocket_toolpaths);
         }
 
@@ -1481,12 +1484,11 @@ impl ToolpathGenerator {
                     // Si tenemos un contorno en progreso, guardarlo
                     if !current.is_empty() && current.len() >= 3 {
                         // Cerrar el contorno
-                        if let Some(first) = current.first() {
-                            if let Some(last) = current.last() {
-                                if last.distance_to(first) > 0.001 {
-                                    current.push(*first);
-                                }
-                            }
+                        if let Some(first) = current.first()
+                            && let Some(last) = current.last()
+                            && last.distance_to(first) > 0.001
+                        {
+                            current.push(*first);
                         }
                         contours.push(current.clone());
                         current.clear();
@@ -1516,10 +1518,10 @@ impl ToolpathGenerator {
                             seg.start.x + t * (seg.end.x - seg.start.x),
                             seg.start.y + t * (seg.end.y - seg.start.y),
                         );
-                        if let Some(last) = current.last() {
-                            if last.distance_to(&p) > 0.001 {
-                                current.push(p);
-                            }
+                        if let Some(last) = current.last()
+                            && last.distance_to(&p) > 0.001
+                        {
+                            current.push(p);
                         }
                     }
                 }
@@ -1528,12 +1530,11 @@ impl ToolpathGenerator {
 
         // Guardar el último contorno
         if !current.is_empty() && current.len() >= 3 {
-            if let Some(first) = current.first() {
-                if let Some(last) = current.last() {
-                    if last.distance_to(first) > 0.001 {
-                        current.push(*first);
-                    }
-                }
+            if let Some(first) = current.first()
+                && let Some(last) = current.last()
+                && last.distance_to(first) > 0.001
+            {
+                current.push(*first);
             }
             contours.push(current);
         }

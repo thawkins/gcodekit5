@@ -2,7 +2,7 @@
 //! Tab creation methods for the device manager window.
 
 use super::*;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 
 impl DeviceManagerWindow {
     pub(crate) fn create_general_tab() -> (ScrolledWindow, Entry, Entry, DropDown, DropDown) {

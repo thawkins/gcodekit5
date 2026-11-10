@@ -74,12 +74,15 @@ fn setup_length_entry(
     let apply_state = state.clone();
     connect_entry_commit(entry, state, updating, has_focus, move |entry| {
         let system = measurement_system.get();
-        if let Ok(val) = units::parse_length(&entry.text(), system) {
-            entry.remove_css_class("entry-invalid");
-            setter(&mut apply_state.borrow_mut(), val as f64);
-            redraw(&redraw_callback);
-        } else {
-            entry.add_css_class("entry-invalid");
+        match units::parse_length(&entry.text(), system) {
+            Ok(val) => {
+                entry.remove_css_class("entry-invalid");
+                setter(&mut apply_state.borrow_mut(), val as f64);
+                redraw(&redraw_callback);
+            }
+            _ => {
+                entry.add_css_class("entry-invalid");
+            }
         }
     });
 }

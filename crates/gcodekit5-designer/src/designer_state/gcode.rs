@@ -1,13 +1,13 @@
 //! G-code generation for designer state
 
 use super::DesignerState;
+use crate::ToolpathToGcode;
 use crate::canvas::DrawingObject;
 use crate::designer_state::MachineMode;
 use crate::gcode_gen::MachineLimits;
 use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
-use crate::ToolpathToGcode;
 use gcodekit5_core::Units;
 
 /// Comment block added when a toolpath leaves the machine's working area.
@@ -321,10 +321,10 @@ impl DesignerState {
 
             // Keep shape-embedded laser params in sync with the effective
             // per-object/global choice so 2D toolpath generation cannot drift.
-            if gcode_gen.is_laser_2d {
-                if let Some(params) = effective_params {
-                    Self::apply_laser_params_to_shape(&mut effective_shape, params);
-                }
+            if gcode_gen.is_laser_2d
+                && let Some(params) = effective_params
+            {
+                Self::apply_laser_params_to_shape(&mut effective_shape, params);
             }
 
             // ============================================================

@@ -47,8 +47,8 @@ mod service;
 
 // Re-export calculator types
 pub use calculator::{
-    calculate_speeds_feeds, CalculationInput, CalculationResult, GeometryAdjustments,
-    MaterialSpeedFactors, OperationType, SpeedsFeedsCalculator,
+    CalculationInput, CalculationResult, GeometryAdjustments, MaterialSpeedFactors, OperationType,
+    SpeedsFeedsCalculator, calculate_speeds_feeds,
 };
 
 // Re-export service types

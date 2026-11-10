@@ -9,8 +9,8 @@ pub mod settings;
 pub mod status_parser;
 pub use error_decoder::{decode_alarm, decode_error, format_alarm, format_error};
 pub use override_sequencer::{
-    apply_override_step, is_valid_override_target, next_override_step, OverrideStepCodes,
-    FEED_OVERRIDE_CODES, MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+    FEED_OVERRIDE_CODES, MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, OverrideStepCodes,
+    SPINDLE_OVERRIDE_CODES, apply_override_step, is_valid_override_target, next_override_step,
 };
 pub use settings::{Setting, SettingsManager};
 pub use status_parser::{

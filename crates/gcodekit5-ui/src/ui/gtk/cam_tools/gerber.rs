@@ -1,6 +1,6 @@
 //! Gerber to G-Code Converter Tool
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
@@ -15,14 +15,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tracing::warn;
 
+use super::CamToolsView;
 use super::common::{
     create_dimension_row, set_paned_initial_fraction, track_measurement_system, write_preset_file,
 };
-use super::CamToolsView;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
 use gcodekit5_core::units;
-use gcodekit5_core::{shared, SharedHashMap};
+use gcodekit5_core::{SharedHashMap, shared};
 use gcodekit5_settings::SettingsController;
 
 pub struct GerberTool {

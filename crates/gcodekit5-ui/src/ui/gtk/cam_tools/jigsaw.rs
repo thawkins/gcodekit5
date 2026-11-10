@@ -9,8 +9,8 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use super::CamToolsView;
+use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
@@ -359,11 +359,10 @@ impl JigsawTool {
                                 designer_rc.canvas.notify_model_changed();
 
                                 // Switch to Designer tab so user can edit imported paths
-                                if let Some(parent) = designer_rc.widget.parent() {
-                                    if let Ok(parent_stack) = parent.downcast::<gtk4::Stack>() {
+                                if let Some(parent) = designer_rc.widget.parent()
+                                    && let Ok(parent_stack) = parent.downcast::<gtk4::Stack>() {
                                         parent_stack.set_visible_child_name("designer");
                                     }
-                                }
                             }
                         }
                         Err(e) => {

@@ -16,10 +16,10 @@
 
 use std::collections::VecDeque;
 
-use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_communication::ConnectionDriver;
+use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_core::units::{
-    format_feed_rate, get_unit_label, parse_feed_rate, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, get_unit_label, parse_feed_rate,
 };
 
 /// Usable size of GRBL's serial RX buffer in bytes (the buffer is 128 bytes; one slot is

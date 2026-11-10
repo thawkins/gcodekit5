@@ -4,7 +4,7 @@
 //! homing, work coordinate setting, spindle/laser control,
 //! and job execution (start/pause/stop).
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_communication::firmware::grbl::status_parser::{
     FeedSpindleState, OverrideState, StatusParser, WorkCoordinateOffset,
 };
@@ -12,15 +12,15 @@ use gcodekit5_communication::{
     Communicator, ConnectionDriver, ConnectionParams, SerialCommunicator,
 };
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
 };
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, pango::EllipsizeMode, Align, Box, Button,
-    CheckButton, DropDown, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned,
-    PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
+    Align, Box, Button, CheckButton, DropDown, EventControllerKey, Grid, Image, Label, Orientation,
+    Overlay, Paned, PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
+    accessible::Property as AccessibleProperty, pango::EllipsizeMode,
 };
 use std::cell::Cell;
 
@@ -29,7 +29,7 @@ use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
-use crate::ui::gtk::machine_control::continuous_jog::{numpad_jog, ContinuousJogState};
+use crate::ui::gtk::machine_control::continuous_jog::{ContinuousJogState, numpad_jog};
 use crate::ui::gtk::machine_control::direct_sender::{DirectSender, JobOutcome, SenderEvent};
 use crate::ui::gtk::machine_control::grbl_stream::{
     format_probe_move, jog_step_presets, nearest_jog_step_preset, parse_jog_feed,
@@ -37,10 +37,10 @@ use crate::ui::gtk::machine_control::grbl_stream::{
 use crate::ui::gtk::machine_control::status_report::QuickProbeState;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
-use gcodekit5_communication::firmware::repetier::RepetierSender;
 use gcodekit5_communication::firmware::Sender;
+use gcodekit5_communication::firmware::repetier::RepetierSender;
 use gcodekit5_core::{
-    thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption,
+    ThreadSafe, ThreadSafeDeque, ThreadSafeOption, thread_safe, thread_safe_deque, thread_safe_none,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -1244,28 +1244,27 @@ impl MachineControlView {
             ];
 
             controller.on_setting_changed(move |key, value| {
-                if let Some(axis) = key.strip_prefix("invert_") {
-                    if let Some(axis) = axis.chars().next() {
-                        device_status::set_jog_inverted(axis.to_ascii_uppercase(), value == "true");
-                    }
+                if let Some(axis) = key.strip_prefix("invert_")
+                    && let Some(axis) = axis.chars().next()
+                {
+                    device_status::set_jog_inverted(axis.to_ascii_uppercase(), value == "true");
                 }
 
-                if key == "jog_increment_linear" {
-                    if let Ok(step) = value.parse::<f32>() {
-                        let units = *units_clone.lock();
-                        let step_mm = Self::populate_step_presets(&step_combo_clone, units, step);
-                        *jog_step_mm_clone.lock() = step_mm;
-                    }
+                if key == "jog_increment_linear"
+                    && let Ok(step) = value.parse::<f32>()
+                {
+                    let units = *units_clone.lock();
+                    let step_mm = Self::populate_step_presets(&step_combo_clone, units, step);
+                    *jog_step_mm_clone.lock() = step_mm;
                 }
 
-                if key == "jog_feed_rate" {
-                    if let Ok(feed) = value.parse::<f32>() {
-                        if feed > 0.0 {
-                            *jog_feed_mm_per_min_clone.lock() = feed;
-                            jog_feed_entry_clone
-                                .set_text(&format_feed_rate(feed, *feed_units_clone.lock()));
-                        }
-                    }
+                if key == "jog_feed_rate"
+                    && let Ok(feed) = value.parse::<f32>()
+                    && feed > 0.0
+                {
+                    *jog_feed_mm_per_min_clone.lock() = feed;
+                    jog_feed_entry_clone
+                        .set_text(&format_feed_rate(feed, *feed_units_clone.lock()));
                 }
 
                 if key == "measurement_system" {
@@ -1468,10 +1467,10 @@ impl MachineControlView {
         {
             let jog_step_mm = view.jog_step_mm.clone();
             view.step_combo.connect_changed(move |c| {
-                if let Some(id) = c.active_id() {
-                    if let Ok(v) = id.parse::<f32>() {
-                        *jog_step_mm.lock() = v;
-                    }
+                if let Some(id) = c.active_id()
+                    && let Ok(v) = id.parse::<f32>()
+                {
+                    *jog_step_mm.lock() = v;
                 }
             });
         }
@@ -1716,20 +1715,20 @@ impl MachineControlView {
             let console_entry_release = console_entry.clone();
             let view_release = view.clone();
             controller.connect_key_released(move |_, key, _, _| {
-                if let Some(entry) = console_entry_release.as_ref() {
-                    if entry.has_focus() {
-                        return;
-                    }
+                if let Some(entry) = console_entry_release.as_ref()
+                    && entry.has_focus()
+                {
+                    return;
                 }
                 if key.to_unicode().and_then(numpad_jog).is_some() {
                     view_release.stop_continuous_jog();
                 }
             });
             controller.connect_key_pressed(move |_, key, _, _| {
-                if let Some(entry) = console_entry.as_ref() {
-                    if entry.has_focus() {
-                        return glib::Propagation::Proceed;
-                    }
+                if let Some(entry) = console_entry.as_ref()
+                    && entry.has_focus()
+                {
+                    return glib::Propagation::Proceed;
                 }
 
                 let Some(ch) = key.to_unicode() else {
@@ -2316,15 +2315,9 @@ impl MachineControlView {
                 // Realtime commands (feed hold, resume, status) are safe during a
                 // job; any other line would corrupt the job's ack accounting.
                 let realtime = matches!(cmd.as_str(), "!" | "~" | "?");
-                if !realtime {
-                    if let Some(reason) = device_status::manual_command_blocked() {
-                        console_clone.append_log(&format!(
-                            "{} {}\n",
-                            t!("Command not sent:"),
-                            reason
-                        ));
-                        return;
-                    }
+                if !realtime && let Some(reason) = device_status::manual_command_blocked() {
+                    console_clone.append_log(&format!("{} {}\n", t!("Command not sent:"), reason));
+                    return;
                 }
 
                 // Send command (only log it as sent if it actually went out)

@@ -4,14 +4,14 @@
 //! preventing buffer overflow with a safe 10-line window and processing
 //! Resend requests in real-time by rolling back the file pointer.
 
-use crate::communication::Communicator;
-use crate::firmware::repetier::processor::RepetierEvent;
-use crate::firmware::Sender;
 use crate::SerialCommunicator;
+use crate::communication::Communicator;
+use crate::firmware::Sender;
+use crate::firmware::repetier::processor::RepetierEvent;
 use gcodekit5_core::ThreadSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender as MpscSender, TryRecvError};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, Sender as MpscSender, TryRecvError, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -135,16 +135,14 @@ impl RepetierSender {
 
                 if local_streaming && !local_paused {
                     // Check the communicator's flow control status
-                    let (flow_paused, flow_stopped, connected) =
-                        if let Some(comm) = communicator.try_lock() {
-                            (
-                                comm.repetier_is_paused(),
-                                comm.repetier_is_stopped(),
-                                comm.is_connected(),
-                            )
-                        } else {
-                            (false, false, true)
-                        };
+                    let (flow_paused, flow_stopped, connected) = match communicator.try_lock() {
+                        Some(comm) => (
+                            comm.repetier_is_paused(),
+                            comm.repetier_is_stopped(),
+                            comm.is_connected(),
+                        ),
+                        _ => (false, false, true),
+                    };
 
                     if !connected {
                         fail_job(

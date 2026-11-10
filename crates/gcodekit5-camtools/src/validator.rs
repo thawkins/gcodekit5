@@ -11,7 +11,7 @@
 //! of a `$J=` jog is checked with the normal word checks (it must also carry a feed rate, as
 //! GRBL requires).
 
-use crate::comment_processor::{system_command, words, SystemCommand, Word};
+use crate::comment_processor::{SystemCommand, Word, system_command, words};
 
 /// Validation error
 #[derive(Debug, Clone)]
@@ -127,13 +127,13 @@ impl GCodeValidator {
                 'Z' => Some((self.config.min_z, self.config.max_z)),
                 _ => None,
             };
-            if let Some((min, max)) = range {
-                if word.value < min || word.value > max {
-                    messages.push(format!(
-                        "{} {} out of range [{}, {}]",
-                        word.letter, word.value, min, max
-                    ));
-                }
+            if let Some((min, max)) = range
+                && (word.value < min || word.value > max)
+            {
+                messages.push(format!(
+                    "{} {} out of range [{}, {}]",
+                    word.letter, word.value, min, max
+                ));
             }
             if word.letter == 'F' && word.value <= 0.0 {
                 messages.push(format!("Feed rate must be positive, got {}", word.value));
