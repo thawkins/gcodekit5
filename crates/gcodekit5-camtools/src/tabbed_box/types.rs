@@ -175,10 +175,11 @@ impl Point {
 }
 
 pub fn push_unique_point(path: &mut Vec<Point>, point: Point) {
-    if let Some(last) = path.last() {
-        if (point.x - last.x).abs() < 0.01 && (point.y - last.y).abs() < 0.01 {
-            return;
-        }
+    if let Some(last) = path.last()
+        && (point.x - last.x).abs() < 0.01
+        && (point.y - last.y).abs() < 0.01
+    {
+        return;
     }
     path.push(point);
 }

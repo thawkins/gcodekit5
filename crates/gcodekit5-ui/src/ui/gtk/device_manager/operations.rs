@@ -152,11 +152,14 @@ impl DeviceManagerWindow {
     }
 
     pub(crate) fn start_create_new(&self) {
-        if let Ok(id) = self.controller.create_new_profile() {
-            self.load_devices();
-            self.load_device_for_edit(&id);
-        } else {
-            self.load_devices();
+        match self.controller.create_new_profile() {
+            Ok(id) => {
+                self.load_devices();
+                self.load_device_for_edit(&id);
+            }
+            _ => {
+                self.load_devices();
+            }
         }
     }
 
@@ -540,38 +543,38 @@ impl DeviceManagerWindow {
         };
 
         // Update dimensions from $130, $131, $132 (X/Y/Z max travel)
-        if let Some(x_max) = status.grbl_settings.get(&130) {
-            if let Ok(val) = x_max.parse::<f64>() {
-                model.x_max = format!("{:.2}", val);
-            }
+        if let Some(x_max) = status.grbl_settings.get(&130)
+            && let Ok(val) = x_max.parse::<f64>()
+        {
+            model.x_max = format!("{:.2}", val);
         }
-        if let Some(y_max) = status.grbl_settings.get(&131) {
-            if let Ok(val) = y_max.parse::<f64>() {
-                model.y_max = format!("{:.2}", val);
-            }
+        if let Some(y_max) = status.grbl_settings.get(&131)
+            && let Ok(val) = y_max.parse::<f64>()
+        {
+            model.y_max = format!("{:.2}", val);
         }
-        if let Some(z_max) = status.grbl_settings.get(&132) {
-            if let Ok(val) = z_max.parse::<f64>() {
-                model.z_max = format!("{:.2}", val);
-            }
+        if let Some(z_max) = status.grbl_settings.get(&132)
+            && let Ok(val) = z_max.parse::<f64>()
+        {
+            model.z_max = format!("{:.2}", val);
         }
 
         // Update max spindle speed from $30 (Max spindle speed, RPM)
-        if let Some(max_rpm) = status.grbl_settings.get(&30) {
-            if let Ok(val) = max_rpm.parse::<u32>() {
-                model.max_spindle_speed_rpm = val.to_string();
-                model.max_s_value = format!("{:.0}", val as f32);
-                if val > 0 {
-                    model.has_spindle = true;
-                }
+        if let Some(max_rpm) = status.grbl_settings.get(&30)
+            && let Ok(val) = max_rpm.parse::<u32>()
+        {
+            model.max_spindle_speed_rpm = val.to_string();
+            model.max_s_value = format!("{:.0}", val as f32);
+            if val > 0 {
+                model.has_spindle = true;
             }
         }
 
         // Check for laser mode from $32 (Laser mode enable)
-        if let Some(laser_mode) = status.grbl_settings.get(&32) {
-            if let Ok(val) = laser_mode.parse::<u32>() {
-                model.has_laser = val == 1;
-            }
+        if let Some(laser_mode) = status.grbl_settings.get(&32)
+            && let Ok(val) = laser_mode.parse::<u32>()
+        {
+            model.has_laser = val == 1;
         }
 
         // Reload the updated model into the form
@@ -594,6 +597,10 @@ impl DeviceManagerWindow {
             return;
         };
 
-        crate::ui::gtk::common::dialog::show_info("Device Information Updated", "Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.", Some(&window));
+        crate::ui::gtk::common::dialog::show_info(
+            "Device Information Updated",
+            "Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.",
+            Some(&window),
+        );
     }
 }

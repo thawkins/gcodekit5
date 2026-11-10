@@ -9,8 +9,8 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Trait for reading G-Code streams from various sources
 pub trait GcodeStreamReader: Send + Sync {

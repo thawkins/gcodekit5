@@ -14,7 +14,7 @@ resolver = "2"
 
 [workspace.package]
 version = "1.2.0-beta.2"
-edition = "2021"
+edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
 authors = ["GCodeKit Contributors"]
@@ -32,6 +32,7 @@ tempfile = "3.8"
 
 [package]
 name = "gcodekit5-design"
+autotests = false
 version.workspace = true
 edition.workspace = true
 description = "A Rust-based Universal G-Code Sender for Laser and CNC machines with support for GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers"
@@ -90,3 +91,7 @@ mutants = "0.0.3"
 
 [patch.crates-io]
 core2 = { git = "https://github.com/bbqsrc/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

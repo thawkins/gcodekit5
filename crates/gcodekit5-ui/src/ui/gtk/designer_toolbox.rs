@@ -7,7 +7,7 @@ use crate::t;
 use crate::ui::gtk::common::dialog_window::DialogWindow;
 use crate::ui::gtk::fast_shape_gallery::FastShapeGallery;
 use gcodekit5_core::units::MeasurementSystem;
-use gcodekit5_core::{shared, thread_safe, Shared, SharedVec, ThreadSafe};
+use gcodekit5_core::{Shared, SharedVec, ThreadSafe, shared, thread_safe};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::stock_removal::StockMaterial;
@@ -292,10 +292,10 @@ impl DesignerToolbox {
         let gallery_clone = fast_shape_gallery.clone();
         let fast_shapes_btn_clone = fast_shapes_btn.clone();
         fast_shapes_btn.connect_clicked(move |_| {
-            if let Some(root) = fast_shapes_btn_clone.root() {
-                if let Ok(win) = root.downcast::<gtk4::Window>() {
-                    gallery_clone.show(&win);
-                }
+            if let Some(root) = fast_shapes_btn_clone.root()
+                && let Ok(win) = root.downcast::<gtk4::Window>()
+            {
+                gallery_clone.show(&win);
             }
         });
 
@@ -743,10 +743,10 @@ impl DesignerToolbox {
             let dlg = stock_settings_dialog.clone();
             let btn = stock_settings_btn.clone();
             stock_settings_btn.connect_clicked(move |_| {
-                if let Some(root) = btn.root() {
-                    if let Ok(win) = root.downcast::<gtk4::Window>() {
-                        dlg.set_transient_for(Some(&win));
-                    }
+                if let Some(root) = btn.root()
+                    && let Ok(win) = root.downcast::<gtk4::Window>()
+                {
+                    dlg.set_transient_for(Some(&win));
                 }
                 dlg.present();
             });

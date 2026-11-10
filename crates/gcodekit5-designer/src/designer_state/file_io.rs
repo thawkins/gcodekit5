@@ -86,10 +86,10 @@ impl DesignerState {
         }
 
         // Restore default properties
-        if let Some(default_props) = &design.default_properties {
-            if let Ok(obj) = DesignFile::to_drawing_object(default_props, 0) {
-                self.default_properties_shape = obj;
-            }
+        if let Some(default_props) = &design.default_properties
+            && let Ok(obj) = DesignFile::to_drawing_object(default_props, 0)
+        {
+            self.default_properties_shape = obj;
         }
 
         // Restore tool settings

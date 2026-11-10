@@ -7,7 +7,7 @@
 use gcodekit5_visualizer::gcode::arc;
 use gcodekit5_visualizer::{GCodeCommand, Point3D, Visualizer};
 use glow::{
-    Context, HasContext, NativeBuffer, NativeVertexArray, ARRAY_BUFFER, FLOAT, STATIC_DRAW,
+    ARRAY_BUFFER, Context, FLOAT, HasContext, NativeBuffer, NativeVertexArray, STATIC_DRAW,
 };
 use std::rc::Rc;
 
@@ -24,6 +24,7 @@ impl RenderBuffers {
         // SAFETY: GL context is valid (Rc-shared from GLArea). Creating VAO/VBO
         // are standard GL resource allocation calls that cannot cause UB if the
         // context is current.
+        #[allow(unsafe_code)]
         unsafe {
             let vao = gl
                 .create_vertex_array()
@@ -47,6 +48,7 @@ impl RenderBuffers {
         // slice as u8 for buffer upload; this is safe because the pointer and
         // length are derived from a valid slice and f32 has no alignment issues
         // when viewed as bytes.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.bind_vertex_array(Some(self.vao));
             self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
@@ -89,6 +91,7 @@ impl RenderBuffers {
     pub fn update_mesh(&mut self, vertex: &[f32]) {
         // SAFETY: GL context is valid. The from_raw_parts reinterprets f32 as u8
         // for GL buffer upload; pointer and length come from a valid slice.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.bind_vertex_array(Some(self.vao));
             self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
@@ -138,6 +141,7 @@ impl RenderBuffers {
         if self.vertex_count > 0 {
             // SAFETY: GL context is valid; VAO was successfully created in new()
             // and configured in update(). draw_arrays reads from bound buffers.
+            #[allow(unsafe_code)]
             unsafe {
                 self.gl.bind_vertex_array(Some(self.vao));
                 self.gl.draw_arrays(self.draw_mode, 0, self.vertex_count);
@@ -151,6 +155,7 @@ impl Drop for RenderBuffers {
     fn drop(&mut self) {
         // SAFETY: GL context is valid; VAO and VBO handles are owned by this
         // struct and will not be used after deletion.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.delete_vertex_array(self.vao);
             self.gl.delete_buffer(self.vbo);

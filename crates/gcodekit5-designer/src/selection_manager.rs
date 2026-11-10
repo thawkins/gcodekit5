@@ -4,9 +4,9 @@
 //! Tracks primary and multi-selection, handles point-based and rectangle-based
 //! selection, and maintains selection highlight state.
 
+use crate::Point;
 use crate::shape_store::ShapeStore;
 use crate::spatial_index::{Bounds, SpatialIndex};
-use crate::Point;
 use std::collections::{HashMap, HashSet};
 
 /// Manages shape selection state and selection operations.
@@ -325,10 +325,10 @@ impl SelectionManager {
                 // Check for intersection
                 if sx1 < rx + rw && sx2 > rx && sy1 < ry + rh && sy2 > ry {
                     obj.selected = true;
-                    if let Some(gid) = obj.group_id {
-                        if !groups_to_select.contains(&gid) {
-                            groups_to_select.push(gid);
-                        }
+                    if let Some(gid) = obj.group_id
+                        && !groups_to_select.contains(&gid)
+                    {
+                        groups_to_select.push(gid);
                     }
                     // If we just selected something and there was no primary selection, set it
                     if self.selected_id.is_none() {
@@ -341,10 +341,10 @@ impl SelectionManager {
         // Select all members of intersected groups
         if !groups_to_select.is_empty() {
             for obj in store.iter_mut() {
-                if let Some(gid) = obj.group_id {
-                    if groups_to_select.contains(&gid) {
-                        obj.selected = true;
-                    }
+                if let Some(gid) = obj.group_id
+                    && groups_to_select.contains(&gid)
+                {
+                    obj.selected = true;
                 }
             }
         }

@@ -3,7 +3,7 @@
 //! A right isosceles triangle design shape defined by width, height, and center.
 //! Supports rotation and CSG boolean operations.
 
-use lyon::math::{point, Point as LyonPoint, Transform};
+use lyon::math::{Point as LyonPoint, Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 

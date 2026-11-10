@@ -15,11 +15,11 @@ use std::time::{Duration, Instant};
 
 use gcodekit5_core::shared;
 use gcodekit5_core::units::MeasurementSystem;
-use gcodekit5_devicedb::model::DeviceProfile;
 use gcodekit5_devicedb::DeviceManager;
+use gcodekit5_devicedb::model::DeviceProfile;
 use gcodekit5_settings::{SettingsController, SettingsDialog, SettingsPersistence};
-use gcodekit5_ui::ui::gtk::cam_tools::common::{load_preset_json, preset_length, save_preset_json};
 use gcodekit5_ui::ui::gtk::cam_tools::SpeedsFeedsTool;
+use gcodekit5_ui::ui::gtk::cam_tools::common::{load_preset_json, preset_length, save_preset_json};
 use gcodekit5_ui::ui::gtk::designer_toolbox::{build_once, fill_entry_from_model};
 use gcodekit5_ui::ui::gtk::status_bar::StatusBar;
 use gtk4::prelude::*;

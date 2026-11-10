@@ -11,20 +11,16 @@
 //! - Event callbacks for connection state changes
 //! - Configurable connection parameters
 
-pub mod buffered;
 pub mod serial;
 pub mod tcp;
 
-use crate::firmware::repetier::processor::RepetierEvent;
 use crate::firmware::ControllerProtocol;
+use crate::firmware::repetier::processor::RepetierEvent;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
 
-pub use buffered::{
-    BufferedCommand, BufferedCommunicatorConfig, BufferedCommunicatorWrapper, CommandStatus,
-};
-pub use serial::{list_ports, SerialPortInfo};
+pub use serial::{SerialPortInfo, list_ports};
 pub use tcp::TcpConnectionInfo;
 
 /// Connection driver type
@@ -432,10 +428,10 @@ impl SerialCommunicator {
     /// Drops a port whose connection is gone, so `is_connected()` is false,
     /// and tells listeners. Returns the error to report.
     fn drop_dead_port(&mut self, e: &std::io::Error) -> gcodekit5_core::Error {
-        if let Some(mut port) = self.port.take() {
-            if let Err(close_err) = port.close() {
-                tracing::debug!("Error closing dead port: {}", close_err);
-            }
+        if let Some(mut port) = self.port.take()
+            && let Err(close_err) = port.close()
+        {
+            tracing::debug!("Error closing dead port: {}", close_err);
         }
         let msg = format!("Connection lost: {}", e);
         tracing::warn!("{}", msg);
@@ -671,8 +667,8 @@ impl Communicator for SerialCommunicator {
         self.configured_protocol = ControllerProtocol::Unknown;
         self.detected_protocol = ControllerProtocol::Unknown;
 
-        if let Some(mut port) = self.port.take() {
-            match port.close() {
+        match self.port.take() {
+            Some(mut port) => match port.close() {
                 Ok(()) => {
                     self.notify_listeners(
                         CommunicatorEvent::Disconnected,
@@ -685,9 +681,8 @@ impl Communicator for SerialCommunicator {
                     self.notify_listeners(CommunicatorEvent::Error, &msg);
                     Err(gcodekit5_core::Error::other(msg))
                 }
-            }
-        } else {
-            Ok(())
+            },
+            _ => Ok(()),
         }
     }
 
@@ -733,7 +728,7 @@ impl Communicator for SerialCommunicator {
                     while !bytes_to_send.is_empty() {
                         match port.write(bytes_to_send) {
                             Ok(0) => {
-                                return Err(gcodekit5_core::Error::other("Full port".to_string()))
+                                return Err(gcodekit5_core::Error::other("Full port".to_string()));
                             }
                             Ok(n) => bytes_to_send = &bytes_to_send[n..],
                             Err(e) => return Err(self.write_failed(e)),
@@ -758,7 +753,7 @@ impl Communicator for SerialCommunicator {
                     while !bytes_to_send.is_empty() {
                         match port.write(bytes_to_send) {
                             Ok(0) => {
-                                return Err(gcodekit5_core::Error::other("Full port".to_string()))
+                                return Err(gcodekit5_core::Error::other("Full port".to_string()));
                             }
                             Ok(n) => bytes_to_send = &bytes_to_send[n..],
                             Err(e) => return Err(self.write_failed(e)),
@@ -818,13 +813,12 @@ impl Communicator for SerialCommunicator {
                         // If something has already been detected, detection is
                         // not performed again (prevents overwriting due to
                         // false positives from subsequent messages).
-                        if self.detected_protocol == ControllerProtocol::Unknown {
-                            if let Some(detected) =
+                        if self.detected_protocol == ControllerProtocol::Unknown
+                            && let Some(detected) =
                                 crate::firmware::protocol_registry::detect_protocol(&incoming_text)
-                            {
-                                tracing::debug!("Auto-detected protocol: {:?}.", detected);
-                                self.detected_protocol = detected;
-                            }
+                        {
+                            tracing::debug!("Auto-detected protocol: {:?}.", detected);
+                            self.detected_protocol = detected;
                         }
 
                         // ─── Operating mode based on configuration ───

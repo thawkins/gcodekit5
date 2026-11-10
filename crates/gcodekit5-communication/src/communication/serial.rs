@@ -215,12 +215,12 @@ pub fn is_valid_cnc_port_name(port_name: &str) -> bool {
 fn uart_placeholder_present(port_name: &str) -> bool {
     #[cfg(target_os = "linux")]
     {
-        if let Some(dev) = port_name.strip_prefix("/dev/") {
-            if dev.starts_with("ttyS") {
-                let type_path = format!("/sys/class/tty/{dev}/type");
-                if let Ok(t) = std::fs::read_to_string(type_path) {
-                    return t.trim() != "0";
-                }
+        if let Some(dev) = port_name.strip_prefix("/dev/")
+            && dev.starts_with("ttyS")
+        {
+            let type_path = format!("/sys/class/tty/{dev}/type");
+            if let Ok(t) = std::fs::read_to_string(type_path) {
+                return t.trim() != "0";
             }
         }
     }
@@ -326,7 +326,7 @@ impl RealSerialPort {
                     return Err(Error::other(format!(
                         "Invalid data bits: {}",
                         params.data_bits
-                    )))
+                    )));
                 }
             })
             .stop_bits(match params.stop_bits {
@@ -336,7 +336,7 @@ impl RealSerialPort {
                     return Err(Error::other(format!(
                         "Invalid stop bits: {}",
                         params.stop_bits
-                    )))
+                    )));
                 }
             })
             .parity(to_serialport_parity(params.parity))

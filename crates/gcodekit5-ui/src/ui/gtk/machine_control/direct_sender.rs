@@ -5,14 +5,14 @@
 //! the job runs and reports progress, status and the outcome to the UI over a channel.
 
 use super::grbl_stream::{
-    classify_response, CharCountWindow, GrblResponseLine, ResponseLineSplitter,
+    CharCountWindow, GrblResponseLine, ResponseLineSplitter, classify_response,
 };
 use crate::t;
 use gcodekit5_communication::firmware::Sender;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
 use gcodekit5_core::ThreadSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 

@@ -7,15 +7,15 @@
 use gcodekit5_communication::Communicator;
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, Align, Box, Button, CheckButton, Expander, Image,
-    Label, ListBox, ListBoxRow, Orientation, PolicyType, ScrolledWindow, Separator,
+    Align, Box, Button, CheckButton, Expander, Image, Label, ListBox, ListBoxRow, Orientation,
+    PolicyType, ScrolledWindow, Separator, accessible::Property as AccessibleProperty,
 };
 
 use crate::device_status;
 use crate::t;
-use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
 use gcodekit5_communication::SerialCommunicator;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, ThreadSafe};
+use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
+use gcodekit5_core::{Shared, SharedOption, ThreadSafe, shared, shared_none};
 use std::rc::Rc;
 
 #[derive(Clone)]

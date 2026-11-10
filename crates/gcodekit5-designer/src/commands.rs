@@ -249,19 +249,19 @@ impl DesignerCommand {
             }
             DesignerCommand::ResizeShape(cmd) => {
                 // If we stored shapes, swap them
-                if let Some(new_shape) = &cmd.new_shape {
-                    if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let old_bounds = Bounds::new(x1, y1, x2, y2);
+                if let Some(new_shape) = &cmd.new_shape
+                    && let Some(obj) = canvas.get_shape_mut(cmd.id)
+                {
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
+                    let old_bounds = Bounds::new(x1, y1, x2, y2);
 
-                        obj.shape = new_shape.clone();
+                    obj.shape = new_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
-                        let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
+                    let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
-                        canvas.remove_from_index(cmd.id, &old_bounds);
-                        canvas.insert_into_index(cmd.id, &new_bounds);
-                    }
+                    canvas.remove_from_index(cmd.id, &old_bounds);
+                    canvas.insert_into_index(cmd.id, &new_bounds);
                 }
             }
             DesignerCommand::ChangeProperty(cmd) => {
@@ -351,19 +351,19 @@ impl DesignerCommand {
                 }
             }
             DesignerCommand::ResizeShape(cmd) => {
-                if let Some(old_shape) = &cmd.old_shape {
-                    if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let old_bounds = Bounds::new(x1, y1, x2, y2);
+                if let Some(old_shape) = &cmd.old_shape
+                    && let Some(obj) = canvas.get_shape_mut(cmd.id)
+                {
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
+                    let old_bounds = Bounds::new(x1, y1, x2, y2);
 
-                        obj.shape = old_shape.clone();
+                    obj.shape = old_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
-                        let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
+                    let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
-                        canvas.remove_from_index(cmd.id, &old_bounds);
-                        canvas.insert_into_index(cmd.id, &new_bounds);
-                    }
+                    canvas.remove_from_index(cmd.id, &old_bounds);
+                    canvas.insert_into_index(cmd.id, &new_bounds);
                 }
             }
             DesignerCommand::ChangeProperty(cmd) => {
@@ -405,10 +405,13 @@ impl DesignerCommand {
                 // Remove pasted shapes
                 cmd.objects.clear();
                 for id in &cmd.ids {
-                    if let Some(obj) = canvas.remove_shape_return(*id) {
-                        cmd.objects.push(Some(obj));
-                    } else {
-                        cmd.objects.push(None); // Should not happen
+                    match canvas.remove_shape_return(*id) {
+                        Some(obj) => {
+                            cmd.objects.push(Some(obj));
+                        }
+                        _ => {
+                            cmd.objects.push(None); // Should not happen
+                        }
                     }
                 }
             }

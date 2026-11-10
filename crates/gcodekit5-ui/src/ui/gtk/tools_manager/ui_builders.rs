@@ -4,7 +4,7 @@
 //! including tool list, detail forms, and action buttons.
 
 use super::*;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gtk4::{Grid, WrapMode};
 
 impl ToolsManagerView {

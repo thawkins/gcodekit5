@@ -4,7 +4,7 @@
 //! integration to Tools, Materials, and Devices databases.
 
 use crate::ui::gtk::common::dialog_window::DialogWindow;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, CheckButton, Label, ListBox, ListBoxRow, Orientation, Paned, ResponseType,
@@ -24,8 +24,8 @@ use crate::ui::tools_manager_backend::ToolsManagerBackend;
 use gcodekit5_camtools::speeds_feeds::{CalculationInput, OperationType, SpeedsFeedsCalculator};
 use gcodekit5_core::data::materials::Material;
 use gcodekit5_core::data::tools::Tool;
-use gcodekit5_devicedb::model::DeviceProfile;
 use gcodekit5_devicedb::DeviceManager;
+use gcodekit5_devicedb::model::DeviceProfile;
 use gcodekit5_settings::SettingsController;
 use std::sync::Arc;
 
@@ -928,6 +928,9 @@ impl ToolSelectionDialog {
 
                 // Store tool_id on the ListBoxRow
                 let tool_id = tool.id.0.clone();
+                // SAFETY: rows only ever store "tool_id" as a String (set when the row is built),
+                // and it is read back as a String.
+                #[allow(unsafe_code)]
                 unsafe {
                     row.set_data("tool_id", tool_id.clone());
                 }
@@ -950,6 +953,9 @@ impl ToolSelectionDialog {
             move |_, row| {
                 if let Some(r) = row {
                     // Retrieve tool_id directly from the ListBoxRow
+                    // SAFETY: rows only ever store "tool_id" as a String (set when the row is
+                    // built), and it is read back as a String.
+                    #[allow(unsafe_code)]
                     let tool_id: Option<String> =
                         unsafe { r.data::<String>("tool_id").map(|d| d.as_ref().clone()) };
                     *selected_id.borrow_mut() = tool_id;
@@ -977,14 +983,12 @@ impl ToolSelectionDialog {
             let tools_map = tools_map.clone();
             let on_select_clone = on_select_clone.clone();
             move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(id) = selected_id.borrow().as_ref() {
-                        if let Some(tool) = tools_map.borrow().get(id) {
-                            if let Some(ref on_select) = *on_select_clone.borrow() {
-                                on_select(tool);
-                            }
-                        }
-                    }
+                if response == ResponseType::Accept
+                    && let Some(id) = selected_id.borrow().as_ref()
+                    && let Some(tool) = tools_map.borrow().get(id)
+                    && let Some(ref on_select) = *on_select_clone.borrow()
+                {
+                    on_select(tool);
                 }
                 dialog.close();
             }
@@ -1130,6 +1134,9 @@ impl MaterialSelectionDialog {
 
                 // Store material_id on the ListBoxRow
                 let material_id = material.id.0.clone();
+                // SAFETY: rows only ever store "material_id" as a String (set when the row is
+                // built), and it is read back as a String.
+                #[allow(unsafe_code)]
                 unsafe {
                     row.set_data("material_id", material_id.clone());
                 }
@@ -1150,6 +1157,9 @@ impl MaterialSelectionDialog {
             let selected_id = selected_id.clone();
             move |_, row| {
                 if let Some(r) = row {
+                    // SAFETY: rows only ever store "material_id" as a String (set when the row is
+                    // built), and it is read back as a String.
+                    #[allow(unsafe_code)]
                     let material_id: Option<String> =
                         unsafe { r.data::<String>("material_id").map(|d| d.as_ref().clone()) };
                     *selected_id.borrow_mut() = material_id;
@@ -1175,12 +1185,11 @@ impl MaterialSelectionDialog {
             let selected_id = selected_id.clone();
             let materials_map = materials_map.clone();
             move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(id) = selected_id.borrow().as_ref() {
-                        if let Some(material) = materials_map.borrow().get(id) {
-                            on_select(material);
-                        }
-                    }
+                if response == ResponseType::Accept
+                    && let Some(id) = selected_id.borrow().as_ref()
+                    && let Some(material) = materials_map.borrow().get(id)
+                {
+                    on_select(material);
                 }
                 dialog.close();
             }

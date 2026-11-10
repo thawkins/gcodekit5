@@ -68,31 +68,27 @@ impl MachineControlView {
 
             let upper = line.to_ascii_uppercase();
 
-            if !found_f {
-                if let Some(idx) = upper.find('F') {
-                    let rest = &upper[idx + 1..];
-                    let val_str: String = rest
-                        .chars()
-                        .take_while(|c| c.is_ascii_digit() || *c == '.')
-                        .collect();
-                    if let Ok(val) = val_str.parse::<f32>() {
-                        device_status::update_commanded_feed_rate(val);
-                        found_f = true;
-                    }
+            if !found_f && let Some(idx) = upper.find('F') {
+                let rest = &upper[idx + 1..];
+                let val_str: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                if let Ok(val) = val_str.parse::<f32>() {
+                    device_status::update_commanded_feed_rate(val);
+                    found_f = true;
                 }
             }
 
-            if !found_s {
-                if let Some(idx) = upper.find('S') {
-                    let rest = &upper[idx + 1..];
-                    let val_str: String = rest
-                        .chars()
-                        .take_while(|c| c.is_ascii_digit() || *c == '.')
-                        .collect();
-                    if let Ok(val) = val_str.parse::<f32>() {
-                        device_status::update_commanded_spindle_speed(val);
-                        found_s = true;
-                    }
+            if !found_s && let Some(idx) = upper.find('S') {
+                let rest = &upper[idx + 1..];
+                let val_str: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                if let Ok(val) = val_str.parse::<f32>() {
+                    device_status::update_commanded_spindle_speed(val);
+                    found_s = true;
                 }
             }
         }

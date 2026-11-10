@@ -544,35 +544,35 @@ impl DesignerCanvas {
             dialog.connect_response(move |d, resp| {
                 if resp == ResponseType::Ok {
                     let text = entry_clone.text().trim().to_string();
-                    if !text.is_empty() {
-                        if let Some((x, y)) = *canvas.text_tool_pending_pos.borrow() {
-                            let family = font_combo_clone
-                                .selected_item()
-                                .and_downcast::<gtk4::StringObject>()
-                                .map(|s| s.string().to_string())
-                                .unwrap_or_else(|| "Sans".to_string());
-                            let bold = bold_clone.is_active();
-                            let italic = italic_clone.is_active();
-                            let size_mm = parse_font_points_mm(&size_entry_clone.text())
-                                .unwrap_or_else(|| pt_to_mm(20.0));
+                    if !text.is_empty()
+                        && let Some((x, y)) = *canvas.text_tool_pending_pos.borrow()
+                    {
+                        let family = font_combo_clone
+                            .selected_item()
+                            .and_downcast::<gtk4::StringObject>()
+                            .map(|s| s.string().to_string())
+                            .unwrap_or_else(|| "Sans".to_string());
+                        let bold = bold_clone.is_active();
+                        let italic = italic_clone.is_active();
+                        let size_mm = parse_font_points_mm(&size_entry_clone.text())
+                            .unwrap_or_else(|| pt_to_mm(20.0));
 
-                            *canvas.text_tool_last_font_family.borrow_mut() = family.clone();
-                            *canvas.text_tool_last_bold.borrow_mut() = bold;
-                            *canvas.text_tool_last_italic.borrow_mut() = italic;
-                            *canvas.text_tool_last_size_mm.borrow_mut() = size_mm;
+                        *canvas.text_tool_last_font_family.borrow_mut() = family.clone();
+                        *canvas.text_tool_last_bold.borrow_mut() = bold;
+                        *canvas.text_tool_last_italic.borrow_mut() = italic;
+                        *canvas.text_tool_last_size_mm.borrow_mut() = size_mm;
 
-                            let mut state = canvas.state.borrow_mut();
-                            let mut shape = TextShape::new(text, x, y, size_mm);
-                            shape.font_family = family;
-                            shape.bold = bold;
-                            shape.italic = italic;
-                            let id = state.add_shape_with_undo(Shape::Text(shape));
-                            state.canvas.deselect_all();
-                            state.canvas.select_shape(id, false);
-                            drop(state);
+                        let mut state = canvas.state.borrow_mut();
+                        let mut shape = TextShape::new(text, x, y, size_mm);
+                        shape.font_family = family;
+                        shape.bold = bold;
+                        shape.italic = italic;
+                        let id = state.add_shape_with_undo(Shape::Text(shape));
+                        state.canvas.deselect_all();
+                        state.canvas.select_shape(id, false);
+                        drop(state);
 
-                            canvas.notify_model_changed();
-                        }
+                        canvas.notify_model_changed();
                     }
                 }
 
@@ -593,10 +593,10 @@ impl DesignerCanvas {
         if let Some((dialog, entry, font_combo, bold_check, italic_check, size_entry)) =
             self.text_tool_dialog.borrow().as_ref()
         {
-            if let Some(root) = self.widget.root() {
-                if let Ok(win) = root.downcast::<gtk4::Window>() {
-                    dialog.set_transient_for(Some(&win));
-                }
+            if let Some(root) = self.widget.root()
+                && let Ok(win) = root.downcast::<gtk4::Window>()
+            {
+                dialog.set_transient_for(Some(&win));
             }
 
             // Restore last-used values
@@ -604,13 +604,12 @@ impl DesignerCanvas {
             let mut family_idx = 0;
             if let Some(model) = font_combo.model().and_downcast::<gtk4::StringList>() {
                 for i in 0..model.n_items() {
-                    if let Some(obj) = model.item(i) {
-                        if let Ok(s) = obj.downcast::<gtk4::StringObject>() {
-                            if s.string() == family {
-                                family_idx = i;
-                                break;
-                            }
-                        }
+                    if let Some(obj) = model.item(i)
+                        && let Ok(s) = obj.downcast::<gtk4::StringObject>()
+                        && s.string() == family
+                    {
+                        family_idx = i;
+                        break;
                     }
                 }
             }
@@ -720,13 +719,12 @@ impl DesignerCanvas {
                         None
                     };
 
-                    if let Some(bounds) = bounds_opt {
-                        if self
+                    if let Some(bounds) = bounds_opt
+                        && self
                             .get_resize_handle_at(canvas_x, canvas_y, &bounds, zoom)
                             .is_some()
-                        {
-                            return;
-                        }
+                    {
+                        return;
                     }
                 }
 
@@ -932,55 +930,55 @@ impl DesignerCanvas {
                             (None, None, false)
                         }
                     } else if let Some(selected_id) = state.canvas.selection_manager.selected_id() {
-                        if let Some(obj) = state.canvas.shapes().find(|s| s.id == selected_id) {
-                            let bounds = Self::selection_bounds(&obj.shape);
-                            (Some(selected_id), Some(bounds), false)
-                        } else {
-                            (None, None, false)
+                        match state.canvas.shapes().find(|s| s.id == selected_id) {
+                            Some(obj) => {
+                                let bounds = Self::selection_bounds(&obj.shape);
+                                (Some(selected_id), Some(bounds), false)
+                            }
+                            _ => (None, None, false),
                         }
                     } else {
                         (None, None, false)
                     }
                 };
 
-                if let (Some(selected_id), Some(bounds)) = (selected_id_opt, bounds_opt) {
-                    if let Some(handle) =
+                if let (Some(selected_id), Some(bounds)) = (selected_id_opt, bounds_opt)
+                    && let Some(handle) =
                         self.get_resize_handle_at(canvas_x, canvas_y, &bounds, zoom)
-                    {
-                        // Start resizing
-                        *self.active_resize_handle.borrow_mut() = Some((handle, selected_id));
-                        let (min_x, min_y, max_x, max_y) = bounds;
-                        *self.resize_original_bounds.borrow_mut() =
-                            Some((min_x, min_y, max_x - min_x, max_y - min_y));
+                {
+                    // Start resizing
+                    *self.active_resize_handle.borrow_mut() = Some((handle, selected_id));
+                    let (min_x, min_y, max_x, max_y) = bounds;
+                    *self.resize_original_bounds.borrow_mut() =
+                        Some((min_x, min_y, max_x - min_x, max_y - min_y));
 
-                        // Anchor drag start to the exact handle position to avoid introducing
-                        // an initial offset from where inside the handle box the user clicked.
-                        let handle_start = match handle {
-                            ResizeHandle::TopLeft => (min_x, max_y),
-                            ResizeHandle::TopRight => (max_x, max_y),
-                            ResizeHandle::BottomLeft => (min_x, min_y),
-                            ResizeHandle::BottomRight => (max_x, min_y),
-                        };
+                    // Anchor drag start to the exact handle position to avoid introducing
+                    // an initial offset from where inside the handle box the user clicked.
+                    let handle_start = match handle {
+                        ResizeHandle::TopLeft => (min_x, max_y),
+                        ResizeHandle::TopRight => (max_x, max_y),
+                        ResizeHandle::BottomLeft => (min_x, min_y),
+                        ResizeHandle::BottomRight => (max_x, min_y),
+                    };
 
-                        // Snapshot original shapes so resizing doesn't compound on each drag update.
-                        // This matters for group resize and for path/text scaling.
-                        let originals: Vec<(u64, Shape)> = {
-                            let state = self.state.borrow();
-                            state
-                                .canvas
-                                .shapes()
-                                .filter(|s| s.selected)
-                                .map(|s| (s.id, s.shape.clone()))
-                                .collect()
-                        };
-                        *self.resize_original_shapes.borrow_mut() = Some(originals);
+                    // Snapshot original shapes so resizing doesn't compound on each drag update.
+                    // This matters for group resize and for path/text scaling.
+                    let originals: Vec<(u64, Shape)> = {
+                        let state = self.state.borrow();
+                        state
+                            .canvas
+                            .shapes()
+                            .filter(|s| s.selected)
+                            .map(|s| (s.id, s.shape.clone()))
+                            .collect()
+                    };
+                    *self.resize_original_shapes.borrow_mut() = Some(originals);
 
-                        *self.creation_start.borrow_mut() = Some(handle_start);
-                        if is_group_resize {
-                            // For group resize, we keep moving behavior the same but scale on drag updates.
-                        }
-                        return;
+                    *self.creation_start.borrow_mut() = Some(handle_start);
+                    if is_group_resize {
+                        // For group resize, we keep moving behavior the same but scale on drag updates.
                     }
+                    return;
                 }
 
                 // Check if clicking on a selected shape for moving
@@ -1065,79 +1063,82 @@ impl DesignerCanvas {
             // If in select mode, handle resizing or moving
             if tool == DesignerTool::Select {
                 // Check if we're resizing
-                if let Some((handle, shape_id)) = *self.active_resize_handle.borrow() {
-                    self.apply_resize(handle, shape_id, current_x, current_y, shift_pressed);
-                // Modification for SNAP while moving
-                } else {
-                    // 1. Obtener datos de zoom y estado de selección haciendo un préstamo inmutable rápido y soltándolo de inmediato
-                    let (has_selection, zoom) = {
-                        let state = self.state.borrow();
-                        (
-                            state.canvas.selection_manager.selected_id().is_some(),
-                            state.canvas.zoom(),
-                        )
-                    };
-
-                    if has_selection {
-                        // 2. Calcular la posición absoluta actual del cursor en el canvas basada en el inicio
-                        let raw_current_x = start.0 + (offset_x / zoom);
-                        let raw_current_y = start.1 - (offset_y / zoom);
-
-                        // 3. Aplicar la restricción de Shift si está presionado (restringir a un solo eje)
-                        let (constrained_x, constrained_y) = if shift_pressed {
-                            let total_dx = raw_current_x - start.0;
-                            let total_dy = raw_current_y - start.1;
-
-                            if total_dx.abs() > total_dy.abs() {
-                                (raw_current_x, start.1) // Solo movimiento en X
-                            } else {
-                                (start.0, raw_current_y) // Solo movimiento en Y
-                            }
-                        } else {
-                            (raw_current_x, raw_current_y)
+                match *self.active_resize_handle.borrow() {
+                    Some((handle, shape_id)) => {
+                        self.apply_resize(handle, shape_id, current_x, current_y, shift_pressed);
+                        // Modification for SNAP while moving
+                    }
+                    _ => {
+                        // 1. Obtener datos de zoom y estado de selección haciendo un préstamo inmutable rápido y soltándolo de inmediato
+                        let (has_selection, zoom) = {
+                            let state = self.state.borrow();
+                            (
+                                state.canvas.selection_manager.selected_id().is_some(),
+                                state.canvas.zoom(),
+                            )
                         };
 
-                        // 4. Aplicar el SNAP a la posición absoluta destino (aquí snap_canvas_point hará su borrow sin conflictos)
-                        let (snapped_dest_x, snapped_dest_y) =
-                            self.snap_canvas_point(constrained_x, constrained_y);
+                        if has_selection {
+                            // 2. Calcular la posición absoluta actual del cursor en el canvas basada en el inicio
+                            let raw_current_x = start.0 + (offset_x / zoom);
+                            let raw_current_y = start.1 - (offset_y / zoom);
 
-                        // 5. Calcular el punto donde nos encontrábamos en el frame anterior
-                        let last_offset = *self.last_drag_offset.borrow();
-                        let raw_last_x = start.0 + (last_offset.0 / zoom);
-                        let raw_last_y = start.1 - (last_offset.1 / zoom);
+                            // 3. Aplicar la restricción de Shift si está presionado (restringir a un solo eje)
+                            let (constrained_x, constrained_y) = if shift_pressed {
+                                let total_dx = raw_current_x - start.0;
+                                let total_dy = raw_current_y - start.1;
 
-                        let (constrained_last_x, constrained_last_y) = if shift_pressed {
-                            let total_dx = raw_last_x - start.0;
-                            let total_dy = raw_last_y - start.1;
-                            if total_dx.abs() > total_dy.abs() {
-                                (raw_last_x, start.1)
+                                if total_dx.abs() > total_dy.abs() {
+                                    (raw_current_x, start.1) // Solo movimiento en X
+                                } else {
+                                    (start.0, raw_current_y) // Solo movimiento en Y
+                                }
                             } else {
-                                (start.0, raw_last_y)
+                                (raw_current_x, raw_current_y)
+                            };
+
+                            // 4. Aplicar el SNAP a la posición absoluta destino (aquí snap_canvas_point hará su borrow sin conflictos)
+                            let (snapped_dest_x, snapped_dest_y) =
+                                self.snap_canvas_point(constrained_x, constrained_y);
+
+                            // 5. Calcular el punto donde nos encontrábamos en el frame anterior
+                            let last_offset = *self.last_drag_offset.borrow();
+                            let raw_last_x = start.0 + (last_offset.0 / zoom);
+                            let raw_last_y = start.1 - (last_offset.1 / zoom);
+
+                            let (constrained_last_x, constrained_last_y) = if shift_pressed {
+                                let total_dx = raw_last_x - start.0;
+                                let total_dy = raw_last_y - start.1;
+                                if total_dx.abs() > total_dy.abs() {
+                                    (raw_last_x, start.1)
+                                } else {
+                                    (start.0, raw_last_y)
+                                }
+                            } else {
+                                (raw_last_x, raw_last_y)
+                            };
+                            let (snapped_last_x, snapped_last_y) =
+                                self.snap_canvas_point(constrained_last_x, constrained_last_y);
+
+                            // 6. El delta incremental es la diferencia entre los puntos con SNAP
+                            let delta_x = snapped_dest_x - snapped_last_x;
+                            let delta_y = snapped_dest_y - snapped_last_y;
+
+                            // 7. Abrimos el préstamo mutable de forma aislada y segura para mover el objeto
+                            {
+                                let mut state = self.state.borrow_mut();
+                                state.canvas.move_selected(delta_x, delta_y);
                             }
-                        } else {
-                            (raw_last_x, raw_last_y)
-                        };
-                        let (snapped_last_x, snapped_last_y) =
-                            self.snap_canvas_point(constrained_last_x, constrained_last_y);
 
-                        // 6. El delta incremental es la diferencia entre los puntos con SNAP
-                        let delta_x = snapped_dest_x - snapped_last_x;
-                        let delta_y = snapped_dest_y - snapped_last_y;
+                            {
+                                let mut applied = self.drag_applied_move.borrow_mut();
+                                applied.0 += delta_x;
+                                applied.1 += delta_y;
+                            }
 
-                        // 7. Abrimos el préstamo mutable de forma aislada y segura para mover el objeto
-                        {
-                            let mut state = self.state.borrow_mut();
-                            state.canvas.move_selected(delta_x, delta_y);
+                            // 8. Actualizar el último offset de arrastre
+                            *self.last_drag_offset.borrow_mut() = (offset_x, offset_y);
                         }
-
-                        {
-                            let mut applied = self.drag_applied_move.borrow_mut();
-                            applied.0 += delta_x;
-                            applied.1 += delta_y;
-                        }
-
-                        // 8. Actualizar el último offset de arrastre
-                        *self.last_drag_offset.borrow_mut() = (offset_x, offset_y);
                     }
                 }
             } else if tool == DesignerTool::Pan {
@@ -1272,19 +1273,21 @@ impl DesignerCanvas {
                             let mut commands = Vec::new();
 
                             for (id, old_shape) in originals {
-                                if let Some(obj) = state.canvas.get_shape(id) {
-                                    if obj.selected {
-                                        commands.push(gcodekit5_designer::commands::DesignerCommand::ResizeShape(
-                                        gcodekit5_designer::commands::ResizeShape {
-                                            id,
-                                            handle: 0, // Not used in undo/redo
-                                            dx: 0.0,   // Not used in undo/redo
-                                            dy: 0.0,   // Not used in undo/redo
-                                            old_shape: Some(old_shape),
-                                            new_shape: Some(obj.shape.clone()),
-                                        }
-                                    ));
-                                    }
+                                if let Some(obj) = state.canvas.get_shape(id)
+                                    && obj.selected
+                                {
+                                    commands.push(
+                                        gcodekit5_designer::commands::DesignerCommand::ResizeShape(
+                                            gcodekit5_designer::commands::ResizeShape {
+                                                id,
+                                                handle: 0, // Not used in undo/redo
+                                                dx: 0.0,   // Not used in undo/redo
+                                                dy: 0.0,   // Not used in undo/redo
+                                                old_shape: Some(old_shape),
+                                                new_shape: Some(obj.shape.clone()),
+                                            },
+                                        ),
+                                    );
                                 }
                             }
 

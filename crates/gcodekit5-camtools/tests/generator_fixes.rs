@@ -2,8 +2,8 @@
 //! panel labels, Gerber aperture/rubout/drill fixes, the comment-aware G-code utilities and
 //! unit-aware CAM presets.
 
-use gcodekit5_camtools::cam_presets::{BitmapEngravingPreset, ProbePreset, PRESET_FORMAT_VERSION};
-use gcodekit5_camtools::comment_processor::{strip_comments, words, CommentMode, CommentProcessor};
+use gcodekit5_camtools::cam_presets::{BitmapEngravingPreset, PRESET_FORMAT_VERSION, ProbePreset};
+use gcodekit5_camtools::comment_processor::{CommentMode, CommentProcessor, strip_comments, words};
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
 use gcodekit5_camtools::laser_engraver::{
     BitmapImageEngraver, EngravingParameters, ImageTransformations,
@@ -155,9 +155,11 @@ fn test_tabbed_box_homing_optional_and_never_above_z0() {
         ..Default::default()
     });
     assert!(homed.contains("$H"));
-    assert!(!homed
-        .lines()
-        .any(|l| l.starts_with("G10") && l.contains('Z')));
+    assert!(
+        !homed
+            .lines()
+            .any(|l| l.starts_with("G10") && l.contains('Z'))
+    );
     for z in z_moves(&homed) {
         assert!(z <= 0.0, "Z{z} above work zero after homing");
     }
@@ -176,9 +178,11 @@ fn test_spoilboard_grid_does_not_change_machine_settings() {
     })
     .generate()
     .expect("grid");
-    assert!(!gcode
-        .lines()
-        .any(|l| l.trim_start().starts_with('$') && l.contains('=')));
+    assert!(
+        !gcode
+            .lines()
+            .any(|l| l.trim_start().starts_with('$') && l.contains('='))
+    );
 }
 
 // ---- Item 6: M4 for laser cutting ----
@@ -468,11 +472,13 @@ fn test_bitmap_preset_legacy_text_and_polarity_converted() {
 #[test]
 fn test_presets_report_invalid_files() {
     assert!(BitmapEngravingPreset::from_json("not json", MeasurementSystem::Metric).is_err());
-    assert!(BitmapEngravingPreset::from_json(
-        r#"{"format_version":2,"units":"in"}"#,
-        MeasurementSystem::Metric
-    )
-    .is_err());
+    assert!(
+        BitmapEngravingPreset::from_json(
+            r#"{"format_version":2,"units":"in"}"#,
+            MeasurementSystem::Metric
+        )
+        .is_err()
+    );
     assert!(ProbePreset::from_json(r#"{"format_version":2,"safe_height":"x"}"#).is_err());
     assert!(ProbePreset::from_json(r#"{"format_version":99}"#).is_err());
 }

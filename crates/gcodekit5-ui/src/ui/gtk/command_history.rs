@@ -41,10 +41,10 @@ impl CommandHistory {
         }
 
         // Don't add duplicates of the most recent command
-        if let Some(last) = self.commands.back() {
-            if last == &command {
-                return;
-            }
+        if let Some(last) = self.commands.back()
+            && last == &command
+        {
+            return;
         }
 
         self.commands.push_back(command);
@@ -118,10 +118,10 @@ impl CommandHistory {
     pub fn load() -> Self {
         let path = Self::get_config_path();
 
-        if let Ok(contents) = fs::read_to_string(&path) {
-            if let Ok(history) = serde_json::from_str::<Self>(&contents) {
-                return history;
-            }
+        if let Ok(contents) = fs::read_to_string(&path)
+            && let Ok(history) = serde_json::from_str::<Self>(&contents)
+        {
+            return history;
         }
 
         Self::new()

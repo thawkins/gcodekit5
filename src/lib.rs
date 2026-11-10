@@ -2,6 +2,7 @@
 //!
 //! The application binary's library: logging set-up. The application itself
 //! is in the workspace crates (`gcodekit5-ui` starts the GTK application).
+#![deny(unsafe_code)]
 
 /// Initialize logging with the default configuration
 ///
@@ -11,9 +12,9 @@
 /// - UTF timestamps
 #[cfg_attr(test, mutants::skip)]
 pub fn init_logging() -> anyhow::Result<()> {
+    use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt;
     use tracing_subscriber::prelude::*;
-    use tracing_subscriber::EnvFilter;
 
     // RUST_LOG wins when set; otherwise log at INFO.
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));

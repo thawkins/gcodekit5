@@ -12,7 +12,7 @@ mod update;
 use crate::t;
 use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gcodekit5_core::units;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
+use gcodekit5_core::{Shared, SharedOption, SharedVec, shared, shared_none};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::font_manager;
 use gcodekit5_designer::model::{DesignerShape, Shape};

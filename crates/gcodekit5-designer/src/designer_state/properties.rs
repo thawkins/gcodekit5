@@ -365,21 +365,20 @@ impl DesignerState {
     pub fn set_selected_is_slot(&mut self, is_slot: bool) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::Rectangle(rect) = &obj.shape {
-                    if rect.is_slot != is_slot {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
-                            new_rect.is_slot = is_slot;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
+            if obj.selected
+                && let crate::model::Shape::Rectangle(rect) = &obj.shape
+                && rect.is_slot != is_slot
+            {
+                let mut new_obj = obj.clone();
+                if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
+                    new_rect.is_slot = is_slot;
                 }
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
             }
         }
         if !commands.is_empty() {
@@ -419,26 +418,24 @@ impl DesignerState {
     pub fn set_selected_gear_properties(&mut self, module: f64, teeth: usize, pressure_angle: f64) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::Gear(gear) = &obj.shape {
-                    if (gear.module - module).abs() > f64::EPSILON
-                        || gear.teeth != teeth
-                        || (gear.pressure_angle_deg - pressure_angle).abs() > f64::EPSILON
-                    {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
-                            new_gear.module = module;
-                            new_gear.teeth = teeth;
-                            new_gear.pressure_angle_deg = pressure_angle;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
+            if obj.selected
+                && let crate::model::Shape::Gear(gear) = &obj.shape
+                && ((gear.module - module).abs() > f64::EPSILON
+                    || gear.teeth != teeth
+                    || (gear.pressure_angle_deg - pressure_angle).abs() > f64::EPSILON)
+            {
+                let mut new_obj = obj.clone();
+                if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
+                    new_gear.module = module;
+                    new_gear.teeth = teeth;
+                    new_gear.pressure_angle_deg = pressure_angle;
                 }
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
             }
         }
         if !commands.is_empty() {
@@ -459,26 +456,24 @@ impl DesignerState {
     ) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::Sprocket(sprocket) = &obj.shape {
-                    if (sprocket.pitch - pitch).abs() > f64::EPSILON
-                        || sprocket.teeth != teeth
-                        || (sprocket.roller_diameter - roller_diameter).abs() > f64::EPSILON
-                    {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Sprocket(new_sprocket) = &mut new_obj.shape {
-                            new_sprocket.pitch = pitch;
-                            new_sprocket.teeth = teeth;
-                            new_sprocket.roller_diameter = roller_diameter;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
+            if obj.selected
+                && let crate::model::Shape::Sprocket(sprocket) = &obj.shape
+                && ((sprocket.pitch - pitch).abs() > f64::EPSILON
+                    || sprocket.teeth != teeth
+                    || (sprocket.roller_diameter - roller_diameter).abs() > f64::EPSILON)
+            {
+                let mut new_obj = obj.clone();
+                if let crate::model::Shape::Sprocket(new_sprocket) = &mut new_obj.shape {
+                    new_sprocket.pitch = pitch;
+                    new_sprocket.teeth = teeth;
+                    new_sprocket.roller_diameter = roller_diameter;
                 }
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
             }
         }
         if !commands.is_empty() {
@@ -795,17 +790,17 @@ impl DesignerState {
                     new_original.selected = true;
                     new_original.shape.translate(dx, dy);
 
-                    if is_circular {
-                        if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-                            let angle_step = params.angle_step();
-                            let angle_delta = if params.clockwise {
-                                -(i as f64) * angle_step
-                            } else {
-                                (i as f64) * angle_step
-                            };
+                    if is_circular
+                        && let crate::arrays::ArrayOperation::Circular(params) = &operation
+                    {
+                        let angle_step = params.angle_step();
+                        let angle_delta = if params.clockwise {
+                            -(i as f64) * angle_step
+                        } else {
+                            (i as f64) * angle_step
+                        };
 
-                            Self::apply_rotation_delta(&mut new_original.shape, angle_delta);
-                        }
+                        Self::apply_rotation_delta(&mut new_original.shape, angle_delta);
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -822,17 +817,17 @@ impl DesignerState {
 
                     new_obj.shape.translate(dx, dy);
 
-                    if is_circular {
-                        if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-                            let angle_step = params.angle_step();
-                            let angle_delta = if params.clockwise {
-                                -(i as f64) * angle_step
-                            } else {
-                                (i as f64) * angle_step
-                            };
+                    if is_circular
+                        && let crate::arrays::ArrayOperation::Circular(params) = &operation
+                    {
+                        let angle_step = params.angle_step();
+                        let angle_delta = if params.clockwise {
+                            -(i as f64) * angle_step
+                        } else {
+                            (i as f64) * angle_step
+                        };
 
-                            Self::apply_rotation_delta(&mut new_obj.shape, angle_delta);
-                        }
+                        Self::apply_rotation_delta(&mut new_obj.shape, angle_delta);
                     }
 
                     commands.push(DesignerCommand::AddShape(AddShape {

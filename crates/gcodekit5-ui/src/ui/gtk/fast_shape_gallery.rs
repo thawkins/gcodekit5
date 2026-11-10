@@ -4,7 +4,7 @@
 
 use crate::t;
 use crate::ui::gtk::common::dialog_window::DialogWindow;
-use gcodekit5_core::{shared_none, SharedOption};
+use gcodekit5_core::{SharedOption, shared_none};
 use gcodekit5_designer::model::{
     DesignGear, DesignPath, DesignSprocket, ParametricPathSource, Point, Shape,
 };
@@ -148,10 +148,10 @@ impl FastShapeGallery {
                 let shape = (template_clone.generator)(Point::new(0.0, 0.0));
 
                 // Call the callback if set
-                if let Some(callback_ref) = on_shape_selected.upgrade() {
-                    if let Some(callback) = callback_ref.borrow().as_ref() {
-                        callback(shape);
-                    }
+                if let Some(callback_ref) = on_shape_selected.upgrade()
+                    && let Some(callback) = callback_ref.borrow().as_ref()
+                {
+                    callback(shape);
                 }
 
                 dialog_clone.hide();

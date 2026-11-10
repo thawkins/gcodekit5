@@ -18,7 +18,7 @@ use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use gcodekit5_core::constants as core_constants;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
+use gcodekit5_core::{Shared, SharedOption, SharedVec, shared, shared_none};
 use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
 use gcodekit5_designer::model::{Point, Shape};
 use gcodekit5_designer::toolpath::Toolpath;
@@ -30,8 +30,8 @@ use gtk4::{
     CheckButton, DrawingArea, DropDown, Entry, EventControllerMotion, GestureClick, GestureDrag,
 };
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 pub(crate) const MM_PER_PT: f64 = 25.4 / 72.0;
 
@@ -60,15 +60,15 @@ pub(crate) fn parse_font_points_mm(s: &str) -> Option<f64> {
 pub(crate) fn compute_device_bbox(
     device_manager: &Option<Arc<DeviceManager>>,
 ) -> (f64, f64, f64, f64) {
-    if let Some(dm) = device_manager {
-        if let Some(profile) = dm.get_active_profile() {
-            return (
-                profile.x_axis.min,
-                profile.y_axis.min,
-                profile.x_axis.max,
-                profile.y_axis.max,
-            );
-        }
+    if let Some(dm) = device_manager
+        && let Some(profile) = dm.get_active_profile()
+    {
+        return (
+            profile.x_axis.min,
+            profile.y_axis.min,
+            profile.x_axis.max,
+            profile.y_axis.max,
+        );
     }
     (
         0.0,
@@ -719,11 +719,11 @@ impl DesignerCanvas {
         dialog.pick_open(parent.as_ref(), move |file| {
             if let Some(path) = file.path() {
                 // Persist the last-used directory so later dialogs default to it.
-                if let Some(controller) = settings_controller.as_ref() {
-                    if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
-                        persistence.config_mut().file_processing.output_directory = path.clone();
-                        persistence.persist_or_log();
-                    }
+                if let Some(controller) = settings_controller.as_ref()
+                    && let Ok(mut persistence) = controller.persistence.try_borrow_mut()
+                {
+                    persistence.config_mut().file_processing.output_directory = path.clone();
+                    persistence.persist_or_log();
                 }
                 canvas.process_imported_image(path);
             }

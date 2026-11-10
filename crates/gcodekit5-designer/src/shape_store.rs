@@ -103,13 +103,14 @@ impl ShapeStore {
     ///
     /// The removed `DrawingObject` if it existed, or `None` if not found.
     pub fn remove(&mut self, id: u64) -> Option<DrawingObject> {
-        if let Some(obj) = self.shapes.remove(&id) {
-            if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
-                self.draw_order.remove(pos);
+        match self.shapes.remove(&id) {
+            Some(obj) => {
+                if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
+                    self.draw_order.remove(pos);
+                }
+                Some(obj)
             }
-            Some(obj)
-        } else {
-            None
+            _ => None,
         }
     }
 
@@ -254,10 +255,10 @@ impl ShapeStore {
     ///
     /// * `id` - The ID of the shape to move forward
     pub fn bring_forward(&mut self, id: u64) {
-        if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
-            if pos < self.draw_order.len() - 1 {
-                self.draw_order.swap(pos, pos + 1);
-            }
+        if let Some(pos) = self.draw_order.iter().position(|&x| x == id)
+            && pos < self.draw_order.len() - 1
+        {
+            self.draw_order.swap(pos, pos + 1);
         }
     }
 
@@ -267,10 +268,10 @@ impl ShapeStore {
     ///
     /// * `id` - The ID of the shape to move backward
     pub fn send_backward(&mut self, id: u64) {
-        if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
-            if pos > 0 {
-                self.draw_order.swap(pos, pos - 1);
-            }
+        if let Some(pos) = self.draw_order.iter().position(|&x| x == id)
+            && pos > 0
+        {
+            self.draw_order.swap(pos, pos - 1);
         }
     }
     /// Sets the next ID to be generated.
@@ -390,10 +391,10 @@ impl ShapeStore {
         let mut groups: std::collections::HashMap<u64, Vec<usize>> =
             std::collections::HashMap::new();
         for (pos, &shape_id) in order.iter().enumerate() {
-            if let Some(obj) = self.shapes.get(&shape_id) {
-                if let Some(gid) = obj.group_id {
-                    groups.entry(gid).or_default().push(pos);
-                }
+            if let Some(obj) = self.shapes.get(&shape_id)
+                && let Some(gid) = obj.group_id
+            {
+                groups.entry(gid).or_default().push(pos);
             }
         }
 

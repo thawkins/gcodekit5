@@ -5,10 +5,10 @@
 //! keep the meaning of the GRBL-style input, and the streaming helpers must
 //! frame, acknowledge, rewind and shut down correctly.
 
-use gcodekit5_communication::firmware::repetier::processor::{RepetierEvent, RepetierProcessor};
-use gcodekit5_communication::firmware::repetier::RepetierSender;
-use gcodekit5_communication::firmware::Sender;
 use gcodekit5_communication::SerialCommunicator;
+use gcodekit5_communication::firmware::Sender;
+use gcodekit5_communication::firmware::repetier::RepetierSender;
+use gcodekit5_communication::firmware::repetier::processor::{RepetierEvent, RepetierProcessor};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -385,10 +385,10 @@ fn stream_to_fake_controller(program: &str, pen_mode: bool) -> String {
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        if let Ok(m) = rx.recv_timeout(Duration::from_millis(50)) {
-            if m.contains("Completed") {
-                break;
-            }
+        if let Ok(m) = rx.recv_timeout(Duration::from_millis(50))
+            && m.contains("Completed")
+        {
+            break;
         }
     }
     drop(sender);

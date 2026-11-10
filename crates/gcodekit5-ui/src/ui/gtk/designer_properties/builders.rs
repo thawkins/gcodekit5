@@ -1,7 +1,7 @@
 //! UI section builder methods for the properties panel.
 
 use super::*;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
@@ -20,8 +20,8 @@ impl PropertiesPanel {
         frame
     }
 
-    pub(crate) fn build_position_section(
-    ) -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
+    pub(crate) fn build_position_section()
+    -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)

@@ -81,15 +81,15 @@ impl SpeedsFeedsToolService {
             .into_iter()
             .filter(|tool| {
                 // Filter by diameter
-                if let Some(min) = self.min_diameter {
-                    if tool.diameter < min {
-                        return false;
-                    }
+                if let Some(min) = self.min_diameter
+                    && tool.diameter < min
+                {
+                    return false;
                 }
-                if let Some(max) = self.max_diameter {
-                    if tool.diameter > max {
-                        return false;
-                    }
+                if let Some(max) = self.max_diameter
+                    && tool.diameter > max
+                {
+                    return false;
                 }
 
                 // Filter by tool type
@@ -98,10 +98,10 @@ impl SpeedsFeedsToolService {
                 }
 
                 // Filter by material compatibility (if specified)
-                if let Some(ref material) = self.compatible_material {
-                    if !self.is_compatible(tool, material) {
-                        return false;
-                    }
+                if let Some(ref material) = self.compatible_material
+                    && !self.is_compatible(tool, material)
+                {
+                    return false;
                 }
 
                 true
@@ -308,22 +308,22 @@ impl SpeedsFeedsMaterialService {
                 }
 
                 // Filter by machinability
-                if let Some(min) = self.min_machinability {
-                    if material.machinability_rating < min {
-                        return false;
-                    }
+                if let Some(min) = self.min_machinability
+                    && material.machinability_rating < min
+                {
+                    return false;
                 }
-                if let Some(max) = self.max_machinability {
-                    if material.machinability_rating > max {
-                        return false;
-                    }
+                if let Some(max) = self.max_machinability
+                    && material.machinability_rating > max
+                {
+                    return false;
                 }
 
                 // Filter by cutting params availability
-                if let Some(ref tool_type) = self.has_cutting_params {
-                    if material.get_cutting_params(tool_type).is_none() {
-                        return false;
-                    }
+                if let Some(ref tool_type) = self.has_cutting_params
+                    && material.get_cutting_params(tool_type).is_none()
+                {
+                    return false;
                 }
 
                 true

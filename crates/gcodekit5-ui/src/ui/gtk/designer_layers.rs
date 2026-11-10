@@ -601,50 +601,50 @@ impl LayersPanel {
                             .iter()
                             .position(|&id| id == shape_id_for_move);
 
-                        if let Some(current_idx) = current_pos {
-                            if current_idx != target_idx {
-                                if state_mut
-                                    .canvas
-                                    .shape_store
-                                    .would_split_group(shape_id_for_move, target_idx)
-                                {
-                                    // Rechazar: restaurar el valor original
-                                    let original = (current_idx + 1).to_string();
-                                    entry.set_text(&original);
-                                    drop(state_mut);
-
-                                    // Resolver el parent aquí, en el momento del click
-                                    let parent = list_box_clone
-                                        .root()
-                                        .and_then(|r| r.downcast::<gtk4::Window>().ok());
-                                    show_cannot_reorder_dialog(parent.as_ref());
-                                    return;
-                                }
-
-                                // Hacer:
-                                let before = state_mut.canvas.shape_store.draw_order().clone();
-                                state_mut
-                                    .canvas
-                                    .shape_store
-                                    .move_to_position(shape_id_for_move, target_idx);
-                                let after = state_mut.canvas.shape_store.draw_order().clone();
-                                // Deshacer para que el comando lo aplique
-                                state_mut.canvas.shape_store.apply_order(before.clone());
-                                state_mut.push_command(DesignerCommand::Reorder(Reorder {
-                                    before,
-                                    after,
-                                    name: "Reorder".to_string(),
-                                }));
-
-                                state_mut.is_modified = true;
-                                state_mut.gcode_generated = false;
+                        if let Some(current_idx) = current_pos
+                            && current_idx != target_idx
+                        {
+                            if state_mut
+                                .canvas
+                                .shape_store
+                                .would_split_group(shape_id_for_move, target_idx)
+                            {
+                                // Rechazar: restaurar el valor original
+                                let original = (current_idx + 1).to_string();
+                                entry.set_text(&original);
                                 drop(state_mut);
-                                Self::refresh_list_box(
-                                    &list_box_clone,
-                                    &state_for_refresh,
-                                    &canvas_for_refresh,
-                                );
+
+                                // Resolver el parent aquí, en el momento del click
+                                let parent = list_box_clone
+                                    .root()
+                                    .and_then(|r| r.downcast::<gtk4::Window>().ok());
+                                show_cannot_reorder_dialog(parent.as_ref());
+                                return;
                             }
+
+                            // Hacer:
+                            let before = state_mut.canvas.shape_store.draw_order().clone();
+                            state_mut
+                                .canvas
+                                .shape_store
+                                .move_to_position(shape_id_for_move, target_idx);
+                            let after = state_mut.canvas.shape_store.draw_order().clone();
+                            // Deshacer para que el comando lo aplique
+                            state_mut.canvas.shape_store.apply_order(before.clone());
+                            state_mut.push_command(DesignerCommand::Reorder(Reorder {
+                                before,
+                                after,
+                                name: "Reorder".to_string(),
+                            }));
+
+                            state_mut.is_modified = true;
+                            state_mut.gcode_generated = false;
+                            drop(state_mut);
+                            Self::refresh_list_box(
+                                &list_box_clone,
+                                &state_for_refresh,
+                                &canvas_for_refresh,
+                            );
                         }
                     } else {
                         // Número fuera de rango: restaurar

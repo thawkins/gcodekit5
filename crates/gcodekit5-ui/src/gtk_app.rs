@@ -27,14 +27,23 @@ use gcodekit5_settings::config::{StartupTab, Theme};
 use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Application, ApplicationWindow, Box as GtkBox, CssProvider, Orientation, PopoverMenuBar,
-    Stack, StackSwitcher,
+    Application, ApplicationWindow, Box as GtkBox, CssProvider, Orientation, PopoverMenuBar, Stack,
+    StackSwitcher, glib,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::{debug, info};
 
 pub fn main() {
+    // The language preference is applied before GLib or GTK starts: it sets
+    // LANGUAGE/LANG, which must happen while this is the only thread.
+    let language = gcodekit5_settings::SettingsManager::config_file_path()
+        .ok()
+        .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
+        .map(|p| p.config().ui.language.clone())
+        .unwrap_or_else(|| "system".to_string());
+    i18n::init(Some(language));
+
     crate::glib_log_filter::install();
 
     let app = Application::builder()
@@ -42,14 +51,6 @@ pub fn main() {
         .build();
 
     app.connect_startup(|_| {
-        // Load settings early to get language preference
-        let language = gcodekit5_settings::SettingsManager::config_file_path()
-            .ok()
-            .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
-            .map(|p| p.config().ui.language.clone())
-            .unwrap_or_else(|| "system".to_string());
-
-        i18n::init(Some(language));
         if let Err(e) = libadwaita::init() {
             tracing::error!("Failed to initialize LibAdwaita: {}", e);
             std::process::exit(1);
@@ -60,10 +61,10 @@ pub fn main() {
         // 'a'. Select GTK's "simple" input method, which restores the classic
         // behaviour, unless the user configured one with GTK_IM_MODULE (e.g. ibus
         // for Japanese/Chinese), which GTK applies instead of this setting.
-        if std::env::var_os("GTK_IM_MODULE").is_none() {
-            if let Some(settings) = gtk4::Settings::default() {
-                settings.set_gtk_im_module(Some("simple"));
-            }
+        if std::env::var_os("GTK_IM_MODULE").is_none()
+            && let Some(settings) = gtk4::Settings::default()
+        {
+            settings.set_gtk_im_module(Some("simple"));
         }
         load_resources();
         load_css();
@@ -287,19 +288,16 @@ pub fn main() {
             let mut last_title = String::new();
 
             glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
-                let title = if let Some(name) = stack_for_title.visible_child_name() {
-                    if name.as_str() == "designer" {
+                let title = match stack_for_title.visible_child_name() { Some(name)
+                    if name.as_str() == "designer" => {
                         format!(
                             "{} - {}",
                             t!("GCodeKit5"),
                             designer_for_title.window_title_suffix()
                         )
-                    } else {
-                        t!("GCodeKit5")
-                    }
-                } else {
+                    } _ => {
                     t!("GCodeKit5")
-                };
+                }};
 
                 if title != last_title {
                     window_for_title.set_title(Some(&title));
@@ -763,11 +761,10 @@ pub fn main() {
         let designer_clone = designer.clone();
         let import_action = gio::SimpleAction::new("file_import", None);
         import_action.connect_activate(move |_, _| {
-            if let Some(name) = stack_clone.visible_child_name() {
-                if name.as_str() == "designer" {
+            if let Some(name) = stack_clone.visible_child_name()
+                && name.as_str() == "designer" {
                     designer_clone.import_file()
                 }
-            }
         });
         app.add_action(&import_action);
 
@@ -784,11 +781,10 @@ pub fn main() {
         let designer_clone_gcode = designer.clone();
         let stack_clone_gcode = stack.clone();
         export_gcode_action.connect_activate(move |_, _| {
-            if let Some(name) = stack_clone_gcode.visible_child_name() {
-                if name.as_str() == "designer" {
+            if let Some(name) = stack_clone_gcode.visible_child_name()
+                && name.as_str() == "designer" {
                     designer_clone_gcode.export_gcode()
                 }
-            }
         });
         app.add_action(&export_gcode_action);
 
@@ -796,11 +792,10 @@ pub fn main() {
         let designer_clone_svg = designer.clone();
         let stack_clone_svg = stack.clone();
         export_svg_action.connect_activate(move |_, _| {
-            if let Some(name) = stack_clone_svg.visible_child_name() {
-                if name.as_str() == "designer" {
+            if let Some(name) = stack_clone_svg.visible_child_name()
+                && name.as_str() == "designer" {
                     designer_clone_svg.export_svg()
                 }
-            }
         });
         app.add_action(&export_svg_action);
 
@@ -841,11 +836,10 @@ pub fn main() {
             right_align_labels(about_dialog.upcast_ref::<gtk4::Widget>());
 
             fn mark_about_title(root: &gtk4::Widget) {
-                if let Ok(label) = root.clone().downcast::<gtk4::Label>() {
-                    if label.text() == "GCodeKit5 Design" {
+                if let Ok(label) = root.clone().downcast::<gtk4::Label>()
+                    && label.text() == "GCodeKit5 Design" {
                         label.add_css_class("gk-about-title");
                     }
-                }
 
                 let mut child = root.first_child();
                 while let Some(w) = child {
@@ -1040,11 +1034,10 @@ pub fn main() {
                 let enable_editor_actions = is_designer || is_editor || is_machine;
 
                 let set_enabled = |action_name: &str, enabled: bool| {
-                    if let Some(action) = app_clone.lookup_action(action_name) {
-                        if let Some(simple_action) = action.downcast_ref::<gio::SimpleAction>() {
+                    if let Some(action) = app_clone.lookup_action(action_name)
+                        && let Some(simple_action) = action.downcast_ref::<gio::SimpleAction>() {
                             simple_action.set_enabled(enabled);
                         }
-                    }
                 };
 
                 // Edit actions - ahora también en machine
@@ -1141,13 +1134,12 @@ pub fn main() {
             window.connect_close_request(move |win| {
                 if !win.is_maximized() {
                     let (width, height) = (win.default_width(), win.default_height());
-                    if width > 0 && height > 0 {
-                        if let Ok(mut p) = persistence.try_borrow_mut() {
+                    if width > 0 && height > 0
+                        && let Ok(mut p) = persistence.try_borrow_mut() {
                             p.config_mut().ui.window_width = width as u32;
                             p.config_mut().ui.window_height = height as u32;
                             p.persist_or_log();
                         }
-                    }
                 }
                 glib::Propagation::Proceed
             });
@@ -1241,11 +1233,10 @@ pub fn main() {
                 right_align_labels(about_dialog.upcast_ref::<gtk4::Widget>());
 
                 fn mark_about_title(root: &gtk4::Widget) {
-                    if let Ok(label) = root.clone().downcast::<gtk4::Label>() {
-                        if label.text() == "GCodeKit5 Design" {
+                    if let Ok(label) = root.clone().downcast::<gtk4::Label>()
+                        && label.text() == "GCodeKit5 Design" {
                             label.add_css_class("gk-about-title");
                         }
-                    }
 
                     let mut child = root.first_child();
                     while let Some(w) = child {

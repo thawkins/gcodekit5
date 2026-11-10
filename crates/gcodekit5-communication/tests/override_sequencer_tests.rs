@@ -1,8 +1,8 @@
 //! Tests for step-by-step GRBL feed/spindle override sequencing.
 
 use gcodekit5_communication::firmware::grbl::{
-    apply_override_step, is_valid_override_target, next_override_step, FEED_OVERRIDE_CODES,
-    MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+    FEED_OVERRIDE_CODES, MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+    apply_override_step, is_valid_override_target, next_override_step,
 };
 
 /// Drives `current` to `target` the way the controller/UI does: one step, then the

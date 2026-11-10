@@ -25,10 +25,10 @@ use crate::device_status;
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, parse_feed_rate, parse_length, FeedRateUnits,
-    MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
+    parse_feed_rate, parse_length,
 };
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gcodekit5_settings::controller::SettingsController;
 
 #[derive(Clone)]

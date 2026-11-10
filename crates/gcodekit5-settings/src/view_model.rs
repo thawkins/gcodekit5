@@ -207,13 +207,12 @@ impl SettingsDialog {
 
     /// Update setting value
     pub fn update_setting(&mut self, id: &str, value: SettingValue) -> bool {
-        if let Some(setting) = self.settings.get_mut(id) {
-            if !matches!(setting.value, SettingValue::Enum(_, ref options) if !options.contains(&value.as_str()))
-            {
-                setting.value = value;
-                self.has_unsaved_changes = true;
-                return true;
-            }
+        if let Some(setting) = self.settings.get_mut(id)
+            && !matches!(setting.value, SettingValue::Enum(_, ref options) if !options.contains(&value.as_str()))
+        {
+            setting.value = value;
+            self.has_unsaved_changes = true;
+            return true;
         }
         false
     }
@@ -225,12 +224,12 @@ impl SettingsDialog {
 
     /// Update keyboard shortcut
     pub fn update_shortcut(&mut self, action_id: &str, keys: impl Into<String>) -> bool {
-        if let Some(shortcut) = self.shortcuts.get_mut(action_id) {
-            if shortcut.customizable {
-                shortcut.keys = keys.into();
-                self.has_unsaved_changes = true;
-                return true;
-            }
+        if let Some(shortcut) = self.shortcuts.get_mut(action_id)
+            && shortcut.customizable
+        {
+            shortcut.keys = keys.into();
+            self.has_unsaved_changes = true;
+            return true;
         }
         false
     }
@@ -298,7 +297,7 @@ impl SettingsDialog {
                         Err(_) => continue,
                     },
                     SettingValue::Path(_) => SettingValue::Path(value),
-                    SettingValue::Enum(_, ref options) => {
+                    SettingValue::Enum(_, options) => {
                         if options.contains(&value) {
                             SettingValue::Enum(value, options.clone())
                         } else {

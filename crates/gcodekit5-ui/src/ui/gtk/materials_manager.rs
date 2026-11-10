@@ -4,7 +4,7 @@
 //! operations for material definitions including feed rates,
 //! spindle speeds, and depth-of-cut parameters per tool type.
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box, Button, CheckButton, DropDown, Entry, Frame, Grid, Image, Label, ListBox,
@@ -18,7 +18,7 @@ use crate::ui::gtk::help_browser;
 use crate::ui::materials_manager_backend;
 use crate::ui::materials_manager_backend::MaterialsManagerBackend;
 use gcodekit5_core::data::materials::{Material, MaterialCategory, MaterialId};
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 
 #[derive(Clone)]
 pub struct MaterialsManagerView {
@@ -655,6 +655,7 @@ impl MaterialsManagerView {
             // SAFETY: row.data() retrieves a pointer previously stored via
             // set_data() with the same key. The type matches (String) and the
             // data remains valid while the row exists.
+            #[allow(unsafe_code)]
             let id = unsafe {
                 row.data::<String>("material-id")
                     .map(|p| p.as_ref().clone())
@@ -727,11 +728,10 @@ impl MaterialsManagerView {
         // Category filter
         if let Some(cat_id) = self.category_filter.active_id() {
             let cat_id = cat_id.to_string();
-            if cat_id != "all" {
-                if let Some(category) = materials_manager_backend::category_id_to_category(&cat_id)
-                {
-                    materials.retain(|m| m.category == category);
-                }
+            if cat_id != "all"
+                && let Some(category) = materials_manager_backend::category_id_to_category(&cat_id)
+            {
+                materials.retain(|m| m.category == category);
             }
         }
 
@@ -780,6 +780,7 @@ impl MaterialsManagerView {
             row.set_child(Some(&row_box));
             // SAFETY: set_data stores a String keyed by "material-id". The data
             // is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data("material-id", material.id.0.clone());
             }
@@ -1119,16 +1120,24 @@ impl MaterialsManagerView {
                 let backend = self.backend.clone();
                 let view = Rc::new(self.clone());
 
-                crate::ui::gtk::common::dialog::show_question("Delete Material?", &format!("Are you sure you want to delete '{}' ({} )?\n\nThis action cannot be undone.", mat_name, mat_id.0), Some(&window), move |response| {
-                    if response == ResponseType::Yes {
-                        let mut backend_mut = backend.borrow_mut();
-                        backend_mut.remove_material(&mat_id);
-                        drop(backend_mut);
+                crate::ui::gtk::common::dialog::show_question(
+                    "Delete Material?",
+                    &format!(
+                        "Are you sure you want to delete '{}' ({} )?\n\nThis action cannot be undone.",
+                        mat_name, mat_id.0
+                    ),
+                    Some(&window),
+                    move |response| {
+                        if response == ResponseType::Yes {
+                            let mut backend_mut = backend.borrow_mut();
+                            backend_mut.remove_material(&mat_id);
+                            drop(backend_mut);
 
-                        view.load_materials();
-                        view.cancel_edit();
-                    }
-});
+                            view.load_materials();
+                            view.cancel_edit();
+                        }
+                    },
+                );
             }
         }
     }

@@ -285,10 +285,10 @@ impl StatusParser {
         // If not found, try extracting from FS: field (format: "FS:feed,spindle")
         if let Some(fs_str) = Self::extract_field(status_line, "FS:") {
             let parts: Vec<&str> = fs_str.split(',').collect();
-            if parts.len() >= 2 {
-                if let Some(spindle_str) = parts.get(1) {
-                    return spindle_str.trim().parse::<u32>().ok();
-                }
+            if parts.len() >= 2
+                && let Some(spindle_str) = parts.get(1)
+            {
+                return spindle_str.trim().parse::<u32>().ok();
             }
         }
 
@@ -384,16 +384,16 @@ impl StatusParser {
         };
 
         // Derive missing coordinate space when possible.
-        if full.wpos.is_none() {
-            if let (Some(mpos), Some(wco)) = (full.mpos, full.wco) {
-                full.wpos = Some(Self::wpos_from_mpos_wco(mpos, wco));
-            }
+        if full.wpos.is_none()
+            && let (Some(mpos), Some(wco)) = (full.mpos, full.wco)
+        {
+            full.wpos = Some(Self::wpos_from_mpos_wco(mpos, wco));
         }
 
-        if full.mpos.is_none() {
-            if let (Some(wpos), Some(wco)) = (full.wpos, full.wco) {
-                full.mpos = Some(Self::mpos_from_wpos_wco(wpos, wco));
-            }
+        if full.mpos.is_none()
+            && let (Some(wpos), Some(wco)) = (full.wpos, full.wco)
+        {
+            full.mpos = Some(Self::mpos_from_wpos_wco(wpos, wco));
         }
 
         full

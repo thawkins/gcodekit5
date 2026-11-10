@@ -7,8 +7,8 @@
 //! line-by-line job queue, tracks quick probes and requests status reports.
 
 use super::grbl_stream::{
-    classify_response, network_driver_for, parse_probe_report, GrblResponseLine,
-    ResponseLineSplitter,
+    GrblResponseLine, ResponseLineSplitter, classify_response, network_driver_for,
+    parse_probe_report,
 };
 use super::status_report::QuickProbeState;
 use super::*;
@@ -72,25 +72,25 @@ impl MachineControlView {
             .as_ref()
             .and_then(|dm| dm.get_active_profile());
 
-        if let Some(profile) = profile.as_ref() {
-            if let Some(driver) = network_driver_for(&profile.connection_type) {
-                let host = profile.tcp_host.trim().to_string();
-                let label = format!("{host}:{}", profile.tcp_port);
-                let mut params = ConnectionParams {
-                    driver,
-                    port: host,
-                    network_port: profile.tcp_port,
-                    ..Default::default()
-                };
-                if profile.timeout_ms > 0 {
-                    params.timeout_ms = profile.timeout_ms;
-                }
-                return Some(ConnectionTarget {
-                    params,
-                    label,
-                    network: true,
-                });
+        if let Some(profile) = profile.as_ref()
+            && let Some(driver) = network_driver_for(&profile.connection_type)
+        {
+            let host = profile.tcp_host.trim().to_string();
+            let label = format!("{host}:{}", profile.tcp_port);
+            let mut params = ConnectionParams {
+                driver,
+                port: host,
+                network_port: profile.tcp_port,
+                ..Default::default()
+            };
+            if profile.timeout_ms > 0 {
+                params.timeout_ms = profile.timeout_ms;
             }
+            return Some(ConnectionTarget {
+                params,
+                label,
+                network: true,
+            });
         }
 
         if self.port_combo.active_id().as_deref() == Some("none") {
@@ -222,10 +222,10 @@ impl MachineControlView {
     fn disconnect(&self) {
         // A running job would otherwise keep writing to a port that is going away.
         let sender = self.active_sender.borrow().clone();
-        if let Some(sender) = sender.as_ref() {
-            if sender.is_streaming() {
-                sender.stop();
-            }
+        if let Some(sender) = sender.as_ref()
+            && sender.is_streaming()
+        {
+            sender.stop();
         }
         self.stop_continuous_jog();
 
@@ -288,10 +288,10 @@ impl MachineControlView {
         if let Some(sender) = sender.as_ref() {
             sender.stop();
         }
-        if let Some(mut comm) = self.communicator.try_lock() {
-            if comm.is_connected() {
-                let _ = comm.disconnect();
-            }
+        if let Some(mut comm) = self.communicator.try_lock()
+            && comm.is_connected()
+        {
+            let _ = comm.disconnect();
         }
         self.log(reason);
         self.apply_disconnected_state();
@@ -443,11 +443,11 @@ impl MachineControlView {
             let view = self.clone();
             let delay = std::time::Duration::from_millis(250 + i as u64 * 300);
             glib::timeout_add_local_once(delay, move || {
-                if let Some(mut comm) = view.communicator.try_lock() {
-                    if comm.is_connected() {
-                        view.log(&format!("> {}", cmd));
-                        let _ = comm.send_command(cmd);
-                    }
+                if let Some(mut comm) = view.communicator.try_lock()
+                    && comm.is_connected()
+                {
+                    view.log(&format!("> {}", cmd));
+                    let _ = comm.send_command(cmd);
                 }
             });
         }
@@ -517,11 +517,11 @@ impl MachineControlView {
                 return glib::ControlFlow::Break;
             }
 
-            if let Ok(bytes) = comm.receive() {
-                if !bytes.is_empty() {
-                    for line in splitter.push(&bytes) {
-                        view.handle_poll_line(&line, &mut comm, &mut firmware_detected);
-                    }
+            if let Ok(bytes) = comm.receive()
+                && !bytes.is_empty()
+            {
+                for line in splitter.push(&bytes) {
+                    view.handle_poll_line(&line, &mut comm, &mut firmware_detected);
                 }
             }
 
@@ -577,26 +577,25 @@ impl MachineControlView {
                         .and_then(|(_, v)| v.split_whitespace().next())
                 });
             let detected = comm.detected_protocol();
-            if let Some(version) = version {
-                if detected != ControllerProtocol::Unknown {
-                    device_status::update_firmware_info(
-                        detected.to_string(),
-                        version.to_string(),
-                        None,
-                    );
-                    *firmware_detected = true;
-                }
+            if let Some(version) = version
+                && detected != ControllerProtocol::Unknown
+            {
+                device_status::update_firmware_info(
+                    detected.to_string(),
+                    version.to_string(),
+                    None,
+                );
+                *firmware_detected = true;
             }
         }
 
         // Capture `$$` settings lines for Device Config / CAM.
-        if line.starts_with('$') && line.contains('=') {
-            if let Some((n, v)) =
+        if line.starts_with('$') && line.contains('=')
+            && let Some((n, v)) =
                 gcodekit5_communication::firmware::grbl::settings::SettingsManager::parse_setting_line(line)
             {
                 device_status::update_grbl_setting(n, v);
             }
-        }
 
         let kind = classify_response(line);
         let is_ack = kind == GrblResponseLine::Ok;

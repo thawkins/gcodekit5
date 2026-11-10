@@ -222,7 +222,7 @@ fn test_probe_z_touch_plate_thickness_compensated() {
     // G10 L20 writes the plate thickness into G55 at the trigger point.
     assert_eq!(run.wcs_sets.len(), 1);
     assert!(run.wcs_sets[0].0.starts_with("G10 L20 P2 Z1.500"));
-    assert!(close(run.wcs_sets[0].1 .2, -28.5));
+    assert!(close(run.wcs_sets[0].1.2, -28.5));
 
     let result =
         ProbeRoutineEngine::compute_result_with(&report_from(routine, &run.reports), &options)
@@ -381,9 +381,11 @@ fn test_probe_boss_requires_probe_depth() {
         probe_depth: 0.0,
         ..ProbeOptions::default()
     };
-    assert!(ProbeRoutineEngine::with_options(boss(20.0), options)
-        .generate(Position::default())
-        .is_err());
+    assert!(
+        ProbeRoutineEngine::with_options(boss(20.0), options)
+            .generate(Position::default())
+            .is_err()
+    );
 }
 
 #[test]
@@ -392,9 +394,11 @@ fn test_probe_rejects_negative_compensation() {
         tip_radius: -1.0,
         ..ProbeOptions::default()
     };
-    assert!(ProbeRoutineEngine::with_options(bore(20.0), options)
-        .generate(Position::default())
-        .is_err());
+    assert!(
+        ProbeRoutineEngine::with_options(bore(20.0), options)
+            .generate(Position::default())
+            .is_err()
+    );
 }
 
 #[test]
@@ -406,9 +410,11 @@ fn test_probe_parameter_validation() {
         slow_feed: 25.0,
         backoff: 2.0,
     };
-    assert!(ProbeRoutineEngine::new(routine)
-        .generate(Position::new(0.0, 0.0, 0.0))
-        .is_err());
+    assert!(
+        ProbeRoutineEngine::new(routine)
+            .generate(Position::new(0.0, 0.0, 0.0))
+            .is_err()
+    );
 }
 
 #[test]
@@ -606,9 +612,11 @@ fn test_probe_tool_length_relative_from_any_start() {
         .expect("generate");
     assert_eq!(code_only(&a.gcode), code_only(&b.gcode));
     // The setter location is only a comment: no absolute XY move to it.
-    assert!(!code_only(&a.gcode)
-        .iter()
-        .any(|l| l.contains("X300") || l.contains("Y10.000")));
+    assert!(
+        !code_only(&a.gcode)
+            .iter()
+            .any(|l| l.contains("X300") || l.contains("Y10.000"))
+    );
     assert!(a.gcode.contains("G38.2 Z-30.000 F100.0"), "{}", a.gcode);
 
     // Setter surface: this tool triggers at machine Z-60, 10 mm lower than the reference

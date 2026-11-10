@@ -1,13 +1,13 @@
 //! Performance benchmarks for the G-code processing pipeline,
 //! state updates, and file statistics.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use std::sync::Arc;
 
 use gcodekit5_visualizer::{
-    BoundingBox, CommandProcessor, CommentProcessor, DecimalProcessor, EmptyLineRemoverProcessor,
-    GcodeCommand, GcodeState, ProcessorPipeline, WhitespaceProcessor,
+    CommandProcessor, CommentProcessor, DecimalProcessor, EmptyLineRemoverProcessor, GcodeCommand,
+    GcodeState, ProcessorPipeline, WhitespaceProcessor,
 };
 
 // ---------------------------------------------------------------------------
@@ -122,23 +122,6 @@ fn bench_pipeline_batch_1000(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
-// BoundingBox update benchmarks
-// ---------------------------------------------------------------------------
-
-fn bench_bounding_box_updates(c: &mut Criterion) {
-    c.bench_function("bounding_box_1000_updates", |b| {
-        b.iter(|| {
-            let mut bb = BoundingBox::new();
-            for i in 0..1000 {
-                let v = i as f32 * 0.1;
-                bb.update(v, v * 1.5, v * 0.5);
-            }
-            black_box(&bb);
-        });
-    });
-}
-
-// ---------------------------------------------------------------------------
 // Individual processor benchmarks
 // ---------------------------------------------------------------------------
 
@@ -183,16 +166,10 @@ criterion_group!(
     bench_pipeline_batch_100,
     bench_pipeline_batch_1000,
 );
-criterion_group!(util_benches, bench_bounding_box_updates,);
 criterion_group!(
     processor_benches,
     bench_whitespace_processor,
     bench_comment_processor,
     bench_decimal_processor,
 );
-criterion_main!(
-    state_benches,
-    pipeline_benches,
-    util_benches,
-    processor_benches
-);
+criterion_main!(state_benches, pipeline_benches, processor_benches);

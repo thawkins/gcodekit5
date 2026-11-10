@@ -7,7 +7,7 @@
 use crate::device_status;
 use crate::ui::console_panel::{ConsolePanel, MessageLevel};
 use gcodekit5_communication::CommunicatorListener;
-use gcodekit5_core::{thread_safe, thread_safe_vec, DataCallback, ThreadSafe, ThreadSafeVec};
+use gcodekit5_core::{DataCallback, ThreadSafe, ThreadSafeVec, thread_safe, thread_safe_vec};
 use std::sync::Arc;
 
 /// Message type for device communication
@@ -298,17 +298,17 @@ impl CommunicatorListener for ConsoleListener {
             }
 
             for token in clean_line.split_whitespace() {
-                if let Some(first_char) = token.chars().next() {
-                    if token.len() > 1 {
-                        if first_char == 'F' || first_char == 'f' {
-                            if let Ok(val) = token[1..].parse::<f32>() {
-                                device_status::update_commanded_feed_rate(val);
-                            }
-                        } else if first_char == 'S' || first_char == 's' {
-                            if let Ok(val) = token[1..].parse::<f32>() {
-                                device_status::update_commanded_spindle_speed(val);
-                            }
+                if let Some(first_char) = token.chars().next()
+                    && token.len() > 1
+                {
+                    if first_char == 'F' || first_char == 'f' {
+                        if let Ok(val) = token[1..].parse::<f32>() {
+                            device_status::update_commanded_feed_rate(val);
                         }
+                    } else if (first_char == 'S' || first_char == 's')
+                        && let Ok(val) = token[1..].parse::<f32>()
+                    {
+                        device_status::update_commanded_spindle_speed(val);
                     }
                 }
             }

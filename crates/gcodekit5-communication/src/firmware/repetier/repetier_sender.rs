@@ -4,14 +4,14 @@
 //! preventing buffer overflow with a safe 10-line window and processing
 //! Resend requests in real-time by rolling back the file pointer.
 
-use crate::communication::Communicator;
-use crate::firmware::repetier::processor::RepetierEvent;
-use crate::firmware::Sender;
 use crate::SerialCommunicator;
+use crate::communication::Communicator;
+use crate::firmware::Sender;
+use crate::firmware::repetier::processor::RepetierEvent;
 use gcodekit5_core::ThreadSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender as MpscSender, TryRecvError};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, Sender as MpscSender, TryRecvError, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,6 @@ const SEND_RETRY_LIMIT: Duration = Duration::from_secs(2);
 #[derive(Clone)]
 pub struct RepetierSender {
     tx_control: MpscSender<SenderCommand>,
-    communicator: ThreadSafe<SerialCommunicator>,
     is_streaming: ThreadSafe<bool>,
     /// Pen-plotter mode: rewrite laser on/off as pen down/up Z moves.
     pen_mode: Arc<AtomicBool>,
@@ -53,7 +52,6 @@ impl RepetierSender {
 
         // Clones for the struct. The `move` closure below takes ownership of
         // the originals, so we save copies here.
-        let communicator_for_struct = communicator.clone();
         let is_streaming_for_struct = is_streaming.clone();
         let pen_mode = Arc::new(AtomicBool::new(false));
         let pen_mode_for_struct = Arc::clone(&pen_mode);
@@ -137,16 +135,14 @@ impl RepetierSender {
 
                 if local_streaming && !local_paused {
                     // Check the communicator's flow control status
-                    let (flow_paused, flow_stopped, connected) =
-                        if let Some(comm) = communicator.try_lock() {
-                            (
-                                comm.repetier_is_paused(),
-                                comm.repetier_is_stopped(),
-                                comm.is_connected(),
-                            )
-                        } else {
-                            (false, false, true)
-                        };
+                    let (flow_paused, flow_stopped, connected) = match communicator.try_lock() {
+                        Some(comm) => (
+                            comm.repetier_is_paused(),
+                            comm.repetier_is_stopped(),
+                            comm.is_connected(),
+                        ),
+                        _ => (false, false, true),
+                    };
 
                     if !connected {
                         fail_job(
@@ -292,7 +288,6 @@ impl RepetierSender {
         (
             Self {
                 tx_control,
-                communicator: communicator_for_struct,
                 is_streaming: is_streaming_for_struct,
                 pen_mode: pen_mode_for_struct,
             },

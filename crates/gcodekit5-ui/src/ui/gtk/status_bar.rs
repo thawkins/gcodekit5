@@ -4,7 +4,7 @@
 //! machine status, current position, and progress information.
 
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
 };
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
@@ -12,7 +12,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use crate::t;
-use gcodekit5_core::{shared_none, SharedOption};
+use gcodekit5_core::{SharedOption, shared_none};
 use gtk4::pango::EllipsizeMode; // Importación de tu macro de traducción
 
 #[derive(Clone)]

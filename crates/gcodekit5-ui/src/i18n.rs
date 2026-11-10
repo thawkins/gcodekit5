@@ -9,8 +9,16 @@ static INIT: Once = Once::new();
 
 pub fn init(lang: Option<String>) {
     INIT.call_once(|| {
-        if let Some(l) = lang {
-            if l != "system" && !l.is_empty() {
+        if let Some(l) = lang
+            && l != "system"
+            && !l.is_empty()
+        {
+            // SAFETY: `gtk_app::main` calls `init` first, before GLib, GTK or
+            // the application exist, so no other thread is running and nothing
+            // reads the environment concurrently (`Once` keeps it to one call).
+            // gettext reads LANGUAGE to pick the translation.
+            #[allow(unsafe_code)]
+            unsafe {
                 std::env::set_var("LANGUAGE", &l);
                 // Also set LANG as fallback, though LANGUAGE takes precedence for gettext
                 std::env::set_var("LANG", format!("{}.UTF-8", l));

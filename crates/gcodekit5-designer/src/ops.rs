@@ -19,12 +19,13 @@ pub enum BooleanOp {
 
 pub fn clean_polyline(mut pline: Polyline) -> Polyline {
     pline.remove_repeat_pos(1e-5);
-    if pline.is_closed() && pline.vertex_count() > 1 {
-        if let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1)) {
-            if (first.x - last.x).abs() < 1e-5 && (first.y - last.y).abs() < 1e-5 {
-                pline.remove(pline.vertex_count() - 1);
-            }
-        }
+    if pline.is_closed()
+        && pline.vertex_count() > 1
+        && let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1))
+        && (first.x - last.x).abs() < 1e-5
+        && (first.y - last.y).abs() < 1e-5
+    {
+        pline.remove(pline.vertex_count() - 1);
     }
     pline
 }

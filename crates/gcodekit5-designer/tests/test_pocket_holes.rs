@@ -33,11 +33,11 @@ fn nested_squares_path(squares: &[Square]) -> DesignPath {
 }
 
 fn generator(strategy: PocketStrategy) -> ToolpathGenerator {
-    let mut gen = ToolpathGenerator::new();
-    gen.set_feed_rate(100.0);
-    gen.set_cut_depth(1.0);
-    gen.set_pocket_strategy(strategy);
-    gen
+    let mut pocket_gen = ToolpathGenerator::new();
+    pocket_gen.set_feed_rate(100.0);
+    pocket_gen.set_cut_depth(1.0);
+    pocket_gen.set_pocket_strategy(strategy);
+    pocket_gen
 }
 
 fn cutting_segments(toolpaths: &[Toolpath]) -> Vec<&ToolpathSegment> {
@@ -126,8 +126,8 @@ fn assert_clearance(cuts: &[&ToolpathSegment], outer: Square, holes: &[Square], 
 #[test]
 fn test_path_pocket_square_ring_leaves_hole_uncut() {
     let path = nested_squares_path(&[(0.0, 40.0), (10.0, 30.0)]);
-    let gen = generator(PocketStrategy::ContourParallel);
-    let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
+    let pocket_gen = generator(PocketStrategy::ContourParallel);
+    let toolpaths = pocket_gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
     let cuts = cutting_segments(&toolpaths);
     assert!(!cuts.is_empty(), "expected pocket cuts in the ring");
 
@@ -180,8 +180,8 @@ fn test_path_pocket_ring_respects_holes_for_every_strategy() {
     ];
     for strategy in strategies {
         let path = nested_squares_path(&[(0.0, 40.0), (10.0, 30.0)]);
-        let gen = generator(strategy);
-        let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
+        let pocket_gen = generator(strategy);
+        let toolpaths = pocket_gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
         let cuts = cutting_segments(&toolpaths);
         assert!(!cuts.is_empty(), "{strategy:?}: expected pocket cuts");
         assert_clearance(&cuts, (0.0, 40.0), &[(10.0, 30.0)], 3.175 / 2.0);
@@ -202,8 +202,8 @@ fn test_path_pocket_nested_island_in_hole_is_pocketed() {
             bidirectional: true,
         },
     ] {
-        let gen = generator(strategy);
-        let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
+        let pocket_gen = generator(strategy);
+        let toolpaths = pocket_gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
         let cuts = cutting_segments(&toolpaths);
 
         // The island (20..40) is pocketed again.
@@ -233,9 +233,9 @@ fn test_path_pocket_nested_island_in_hole_is_pocketed() {
 #[test]
 fn test_path_pocket_holes_keep_multipass_depths() {
     let path = nested_squares_path(&[(0.0, 40.0), (10.0, 30.0)]);
-    let mut gen = generator(PocketStrategy::ContourParallel);
-    gen.set_start_depth(0.0);
-    let toolpaths = gen.generate_path_pocket(&path, 2.0, 0.5, 0.0);
+    let mut pocket_gen = generator(PocketStrategy::ContourParallel);
+    pocket_gen.set_start_depth(0.0);
+    let toolpaths = pocket_gen.generate_path_pocket(&path, 2.0, 0.5, 0.0);
     let depths: Vec<f64> = toolpaths.iter().map(|tp| tp.depth).collect();
     assert_eq!(
         depths.len(),
@@ -252,8 +252,8 @@ fn test_path_pocket_holes_keep_multipass_depths() {
 
 #[test]
 fn test_text_pocket_leaves_letter_counter_uncut() {
-    use gcodekit5_designer::model::DesignerShape;
     use gcodekit5_designer::TextShape;
+    use gcodekit5_designer::model::DesignerShape;
 
     // A large "O": its counter (the inside of the letter) is a hole in the glyph and
     // must not be pocketed. The letter's centre lies in the middle of the counter.
@@ -261,12 +261,12 @@ fn test_text_pocket_leaves_letter_counter_uncut() {
     let (x1, y1, x2, y2) = text.bounds();
     let (cx, cy) = ((x1 + x2) / 2.0, (y1 + y2) / 2.0);
 
-    let mut gen = ToolpathGenerator::new();
-    gen.set_tool_diameter(1.0);
-    gen.set_feed_rate(500.0);
-    gen.set_cut_depth(1.0);
-    gen.set_step_in(0.4);
-    let toolpaths = gen.generate_text_pocket_toolpath(&text, 1.0);
+    let mut pocket_gen = ToolpathGenerator::new();
+    pocket_gen.set_tool_diameter(1.0);
+    pocket_gen.set_feed_rate(500.0);
+    pocket_gen.set_cut_depth(1.0);
+    pocket_gen.set_step_in(0.4);
+    let toolpaths = pocket_gen.generate_text_pocket_toolpath(&text, 1.0);
 
     let cuts: Vec<_> = toolpaths
         .iter()
@@ -295,12 +295,12 @@ fn test_raster_ring_pocket_bounds_retract_count() {
     // keep the retracts per pass to a small constant.
     for bidirectional in [true, false] {
         let path = nested_squares_path(&[(0.0, 40.0), (10.0, 30.0)]);
-        let mut gen = generator(PocketStrategy::Raster {
+        let mut pocket_gen = generator(PocketStrategy::Raster {
             angle: 0.0,
             bidirectional,
         });
-        gen.set_start_depth(0.0);
-        let toolpaths = gen.generate_path_pocket(&path, 2.0, 1.0, 1.0);
+        pocket_gen.set_start_depth(0.0);
+        let toolpaths = pocket_gen.generate_path_pocket(&path, 2.0, 1.0, 1.0);
         assert_eq!(toolpaths.len(), 2, "expected two depth passes");
 
         for tp in &toolpaths {
@@ -331,14 +331,14 @@ fn test_raster_large_ring_pocket_orders_spans_quickly() {
     // 4 s for the whole pocket in the test profile); indexing the spans by scanline only
     // examines the adjacent scanlines for each connected link.
     let path = nested_squares_path(&[(0.0, 400.0), (100.0, 300.0)]);
-    let mut gen = generator(PocketStrategy::Raster {
+    let mut pocket_gen = generator(PocketStrategy::Raster {
         angle: 0.0,
         bidirectional: true,
     });
-    gen.set_start_depth(0.0);
+    pocket_gen.set_start_depth(0.0);
 
     let started = std::time::Instant::now();
-    let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.01);
+    let toolpaths = pocket_gen.generate_path_pocket(&path, 1.0, 1.0, 0.01);
     let elapsed = started.elapsed();
 
     assert_eq!(toolpaths.len(), 1, "expected a single depth pass");

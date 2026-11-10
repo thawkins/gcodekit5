@@ -4,9 +4,9 @@
 //! Used for imported SVG/DXF paths and boolean operation results.
 //! Supports serialization via SVG path data.
 
-use lyon::math::{point, Transform};
-use lyon::path::iterator::*;
+use lyon::math::{Transform, point};
 use lyon::path::Path;
+use lyon::path::iterator::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use csgrs::io::svg::{FromSVG, ToSVG};
@@ -130,18 +130,16 @@ impl DesignPath {
                     prev_point = Some(to);
                 }
                 lyon::path::Event::End { close, .. } => {
-                    if close {
-                        if let (Some(from), Some(to)) = (prev_point, first_point) {
-                            let dist = distance_to_line_segment(
-                                from.x as f64,
-                                from.y as f64,
-                                to.x as f64,
-                                to.y as f64,
-                                point.x,
-                                point.y,
-                            );
-                            min_distance = min_distance.min(dist);
-                        }
+                    if close && let (Some(from), Some(to)) = (prev_point, first_point) {
+                        let dist = distance_to_line_segment(
+                            from.x as f64,
+                            from.y as f64,
+                            to.x as f64,
+                            to.y as f64,
+                            point.x,
+                            point.y,
+                        );
+                        min_distance = min_distance.min(dist);
                     }
                     prev_point = None;
                     first_point = None;

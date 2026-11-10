@@ -294,7 +294,7 @@ impl ToolpathToGcode {
         let mut current_z = initial_z;
         // State tracking to avoid redundant commands
         let mut laser_on = false; // Initially OFF
-                                  // Laser power (S) currently in effect; re-emitted whenever a segment's power differs.
+        // Laser power (S) currently in effect; re-emitted whenever a segment's power differs.
         let mut laser_power: Option<u32> = None;
         let mut last_feed_rate: Option<f64> = None;
         let mut last_point: Option<(f64, f64)> = None;

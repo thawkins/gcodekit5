@@ -527,15 +527,15 @@ fn translate_jog(body: &str, relative_now: bool, inch_now: bool) -> Vec<String> 
         lines.push(distance.to_string());
     }
     lines.push(format!("G1 {} {}", axes.join(" "), feed));
-    if let Some(distance) = distance {
-        if (distance == "G91") != relative_now {
-            lines.push(if relative_now { "G91" } else { "G90" }.to_string());
-        }
+    if let Some(distance) = distance
+        && (distance == "G91") != relative_now
+    {
+        lines.push(if relative_now { "G91" } else { "G90" }.to_string());
     }
-    if let Some(units) = units {
-        if (units == "G20") != inch_now {
-            lines.push(if inch_now { "G20" } else { "G21" }.to_string());
-        }
+    if let Some(units) = units
+        && (units == "G20") != inch_now
+    {
+        lines.push(if inch_now { "G20" } else { "G21" }.to_string());
     }
     lines
 }

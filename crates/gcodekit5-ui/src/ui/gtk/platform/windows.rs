@@ -9,6 +9,8 @@
 //! parented to the application window on Windows.
 
 #![cfg(target_os = "windows")]
+// Win32 FFI module: every unsafe block below carries its own SAFETY comment.
+#![allow(unsafe_code)]
 
 use raw_window_handle::{
     HasDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32DisplayHandle,

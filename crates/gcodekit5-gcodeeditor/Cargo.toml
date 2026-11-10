@@ -1,5 +1,6 @@
 [package]
 name = "gcodekit5-gcodeeditor"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,3 +16,7 @@ tracing = { workspace = true }
 
 [features]
 slint_legacy_tests = []
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::words::{code_number, parse_line, strip_comments, Word};
+use super::words::{Word, code_number, parse_line, strip_comments};
 use super::{CommandNumberGenerator, GcodeCommand};
 
 /// G-Code parser with modal state tracking

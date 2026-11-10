@@ -200,9 +200,11 @@ fn test_spoilboard_zero_stepover_or_spacing_errors_instead_of_hanging() {
         safe_z: 5.0,
         home_before_job: false,
     };
-    assert!(SpoilboardSurfacingGenerator::new(surfacing)
-        .generate()
-        .is_err());
+    assert!(
+        SpoilboardSurfacingGenerator::new(surfacing)
+            .generate()
+            .is_err()
+    );
 
     let grid = SpoilboardGridParameters {
         width: 100.0,
@@ -232,9 +234,11 @@ fn test_spoilboard_surfacing_keeps_z_work_offset() {
     let gcode = SpoilboardSurfacingGenerator::new(params)
         .generate()
         .expect("regression test setup should succeed");
-    assert!(!gcode
-        .lines()
-        .any(|l| l.starts_with("G10") && l.contains("Z0")));
+    assert!(
+        !gcode
+            .lines()
+            .any(|l| l.starts_with("G10") && l.contains("Z0"))
+    );
 }
 
 #[test]

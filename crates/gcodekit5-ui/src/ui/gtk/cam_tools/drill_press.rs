@@ -3,19 +3,19 @@
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, Align, Box, Button, CheckButton, Entry, Image,
-    Label, Orientation, Paned, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, Entry, Image, Label, Orientation, Paned, ScrolledWindow,
+    Stack, accessible::Property as AccessibleProperty,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
 use std::cell::Cell;
 use std::rc::Rc;
 
+use super::CamToolsView;
 use super::common::{
     create_dimension_row, load_preset_json, preset_length, save_preset_json,
     set_paned_initial_fraction,
 };
-use super::CamToolsView;
 use crate::device_status;
 use crate::t;
 use crate::ui::gtk::help_browser;
@@ -545,11 +545,11 @@ impl DrillPressTool {
         let settings_clone = settings.clone();
 
         dialog.pick_open(None::<&gtk4::Window>, move |file| {
-            if let Some(path) = file.path() {
-                if let Some(params) = load_preset_json::<DrillPressParameters>(&path) {
-                    Self::apply_params(&w_clone, &params, &settings_clone);
-                    home_before_clone.set_active(params.home_before_job);
-                }
+            if let Some(path) = file.path()
+                && let Some(params) = load_preset_json::<DrillPressParameters>(&path)
+            {
+                Self::apply_params(&w_clone, &params, &settings_clone);
+                home_before_clone.set_active(params.home_before_job);
             }
         });
     }

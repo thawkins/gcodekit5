@@ -64,11 +64,7 @@ impl DesignerState {
 
         let new_id = if let Some(id) = selected_id {
             if let Some(pos) = ids.iter().position(|&x| x == id) {
-                if pos > 0 {
-                    ids[pos - 1]
-                } else {
-                    ids[0]
-                }
+                if pos > 0 { ids[pos - 1] } else { ids[0] }
             } else {
                 ids[0]
             }

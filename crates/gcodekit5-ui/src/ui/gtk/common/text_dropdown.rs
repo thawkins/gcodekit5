@@ -16,7 +16,7 @@
 use gio::prelude::*;
 use glib::{BoxedAnyObject, GString, SignalHandlerId};
 use gtk4::prelude::*;
-use gtk4::{DropDown, Label, ListItem, SignalListItemFactory, INVALID_LIST_POSITION};
+use gtk4::{DropDown, INVALID_LIST_POSITION, Label, ListItem, SignalListItemFactory};
 
 /// One drop-down entry: an optional stable id and the displayed text.
 #[derive(Debug, Clone)]

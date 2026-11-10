@@ -635,10 +635,10 @@ impl DxfParser {
                         }
                         "SPLINE" => {
                             i += 1;
-                            if let Ok(spline_entity) = Self::parse_spline(&lines, &mut i) {
-                                if !spline_entity.vertices.is_empty() {
-                                    file.add_entity(DxfEntity::Polyline(spline_entity));
-                                }
+                            if let Ok(spline_entity) = Self::parse_spline(&lines, &mut i)
+                                && !spline_entity.vertices.is_empty()
+                            {
+                                file.add_entity(DxfEntity::Polyline(spline_entity));
                             }
                         }
                         // ACIS-based solids (3DSOLID/BODY/REGION) are not parseable without a CAD kernel; track and discard.
@@ -871,8 +871,8 @@ impl DxfParser {
                     }
                 }
                 "42" => {
-                    if let (Some(bulge_val), Some(last_bulge)) =
-                        (parse_opt::<f64>(value), bulges.last_mut())
+                    if let Some(bulge_val) = parse_opt::<f64>(value)
+                        && let Some(last_bulge) = bulges.last_mut()
                     {
                         *last_bulge = bulge_val;
                     }

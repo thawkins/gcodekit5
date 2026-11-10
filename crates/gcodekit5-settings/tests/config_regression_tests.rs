@@ -1,6 +1,9 @@
 //! Regression tests for settings persistence: tolerant loading of partial
 //! config files and real factory-default restoration.
 
+// Rust 2024 makes `std::env::set_var` unsafe; tests may opt in for it.
+#![allow(unsafe_code)]
+
 use gcodekit5_core::shared;
 use gcodekit5_settings::{
     Config, SettingValue, SettingsController, SettingsDialog, SettingsPersistence,
@@ -191,9 +194,15 @@ fn test_second_preferences_save_keeps_folder_picked_after_first_save() {
     // #88 review: the first save left the dialog's old folder as its baseline,
     // so a second save still restored it over the folder a file dialog chose.
     // nextest runs each test in its own process, so pointing the config
-    // directory at a temporary folder does not leak into other tests.
+    // directory at a temporary folder does not leak into other tests; the
+    // binary-wide lock covers an in-process `cargo test` run.
+    let _env = crate::global_env_lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    std::env::set_var("XDG_CONFIG_HOME", dir.path());
+    // SAFETY: the binary-wide env lock is held and this test starts no thread
+    // that reads the environment.
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+    }
 
     let persistence = shared(SettingsPersistence::new());
     persistence

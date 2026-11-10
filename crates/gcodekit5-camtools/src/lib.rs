@@ -21,12 +21,12 @@
 //! - **Job Preamble**: Optional homing preamble shared by the laser generators
 //! - **CAM Presets**: Unit-aware saved parameter files for the bitmap and probe tools
 //! - **Statistics**: G-Code statistics and analysis
+#![deny(unsafe_code)]
 
 pub mod arc_expander;
 pub mod cam_presets;
 pub mod comment_processor;
 pub mod drill_press;
-pub mod error;
 pub mod gerber;
 pub mod hatch_generator;
 pub mod jigsaw_puzzle;
@@ -48,9 +48,6 @@ pub mod wcs_service;
 pub use arc_expander::ArcExpander;
 pub use comment_processor::CommentProcessor;
 pub use drill_press::{DrillPressGenerator, DrillPressParameters};
-pub use error::{
-    CamToolError, CamToolResult, FileFormatError, FileFormatResult, ParameterError, ParameterResult,
-};
 pub use gerber::{GerberConverter, GerberLayerType, GerberParameters};
 pub use jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 pub use laser_engraver::{
@@ -59,13 +56,13 @@ pub use laser_engraver::{
 };
 pub use optimizer::GCodeOptimizer;
 pub use probe_routines::{
-    defaults as probe_defaults, ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput,
+    ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput, defaults as probe_defaults,
 };
 pub use speeds_feeds::{
-    calculate_speeds_feeds, CalculationInput, CalculationResult, DeviceLimits,
-    DeviceRecommendations, FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors,
-    OperationType, SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
-    SpeedsFeedsMaterialService, SpeedsFeedsToolService,
+    CalculationInput, CalculationResult, DeviceLimits, DeviceRecommendations,
+    FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors, OperationType,
+    SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
+    SpeedsFeedsMaterialService, SpeedsFeedsToolService, calculate_speeds_feeds,
 };
 pub use spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
 pub use spoilboard_surfacing::{SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters};

@@ -18,7 +18,7 @@ use crate::model::{
     DesignRectangle as Rectangle, DesignerShape, Point, Shape,
 };
 use crate::model3d::{Mesh3D, Model3DImporter};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use lyon::math::{point, vector};
 use lyon::path::Path;
 
@@ -265,10 +265,10 @@ impl SvgImporter {
             if hidden_from.is_none() && SVG_NON_RENDERED.contains(&tag.name.as_str()) {
                 hidden_from = Some(stack.len());
             }
-            if hidden_from.is_none() {
-                if let Some(shape) = Self::element_to_shape(tag, &ctm) {
-                    imported_shapes.push(shape);
-                }
+            if hidden_from.is_none()
+                && let Some(shape) = Self::element_to_shape(tag, &ctm)
+            {
+                imported_shapes.push(shape);
             }
 
             if tag.kind == TagKind::Start {

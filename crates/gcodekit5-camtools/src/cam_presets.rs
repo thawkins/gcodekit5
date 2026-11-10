@@ -17,7 +17,7 @@
 //!
 //! Depends on `serde_json` and `gcodekit5-core` (unit parsing).
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use gcodekit5_core::units::{self, MeasurementSystem};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

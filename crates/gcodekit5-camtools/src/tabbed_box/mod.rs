@@ -262,18 +262,10 @@ impl TabbedBoxMaker {
 
                 let bulge_dir = if y2 < y1 {
                     // tip -> base (Right side)
-                    if positive {
-                        1.0
-                    } else {
-                        -1.0
-                    }
+                    if positive { 1.0 } else { -1.0 }
                 } else {
                     // base -> tip (Left side)
-                    if positive {
-                        -1.0
-                    } else {
-                        1.0
-                    }
+                    if positive { -1.0 } else { 1.0 }
                 };
 
                 path.push(Point::new(x + dimple_h * bulge_dir, mid_y));
@@ -746,10 +738,10 @@ impl TabbedBoxMaker {
         let half_kerf = kerf / 2.0;
         let slot_depth = height / 2.0;
         let slot_width = self.t - kerf; // Slot is a hole, so subtract kerf? No, hole needs to be wider?
-                                        // If we want a hole of size T, we cut T-kerf? No.
-                                        // If we cut a line, the kerf makes the hole wider.
-                                        // So if we want hole T, we draw T-kerf.
-                                        // Yes.
+        // If we want a hole of size T, we cut T-kerf? No.
+        // If we cut a line, the kerf makes the hole wider.
+        // So if we want hole T, we draw T-kerf.
+        // Yes.
 
         // Bottom edge (0)
         if let Some(&c) = edge_chars.first() {

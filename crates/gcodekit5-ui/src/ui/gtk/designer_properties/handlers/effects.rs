@@ -117,18 +117,21 @@ fn setup_effect_handler(
                 return;
             }
             let system = measurement_system.get();
-            if let Ok(dist) = units::parse_length(&entry_c.text(), system).map(f64::from) {
-                entry_c.remove_css_class("entry-invalid");
-                let designer_state = state.borrow();
-                *preview.borrow_mut() = designer_state
-                    .canvas
-                    .shapes()
-                    .filter(|s| s.selected)
-                    .map(|s| (effect.preview)(&s.shape, dist))
-                    .collect();
-            } else {
-                entry_c.add_css_class("entry-invalid");
-                preview.borrow_mut().clear();
+            match units::parse_length(&entry_c.text(), system).map(f64::from) {
+                Ok(dist) => {
+                    entry_c.remove_css_class("entry-invalid");
+                    let designer_state = state.borrow();
+                    *preview.borrow_mut() = designer_state
+                        .canvas
+                        .shapes()
+                        .filter(|s| s.selected)
+                        .map(|s| (effect.preview)(&s.shape, dist))
+                        .collect();
+                }
+                _ => {
+                    entry_c.add_css_class("entry-invalid");
+                    preview.borrow_mut().clear();
+                }
             }
             redraw();
         });

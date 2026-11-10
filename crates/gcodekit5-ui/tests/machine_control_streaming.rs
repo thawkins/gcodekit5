@@ -2,14 +2,14 @@
 //! character-counting flow control, response line splitting/classification, probe
 //! reports, axis detection, jog step presets and jog feed validation.
 
-use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_communication::ConnectionDriver;
+use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_core::units::{FeedRateUnits, MeasurementSystem};
 use gcodekit5_ui::ui::gtk::machine_control::grbl_stream::{
+    CharCountWindow, GRBL_RX_BUFFER_BYTES, GrblResponseLine, ResponseLineSplitter,
     classify_response, format_probe_move, jog_step_choices, jog_step_presets, line_cost,
     nearest_jog_step_preset, network_driver_for, parse_jog_feed, parse_probe_report,
-    reported_axis_count, CharCountWindow, GrblResponseLine, ResponseLineSplitter,
-    GRBL_RX_BUFFER_BYTES,
+    reported_axis_count,
 };
 
 #[test]

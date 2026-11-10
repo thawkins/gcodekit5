@@ -26,7 +26,7 @@ pub use spoilboard_grid::SpoilboardGridTool;
 pub use spoilboard_surfacing::SpoilboardSurfacingTool;
 pub use tabbed_box::TabbedBoxMaker;
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use common::set_paned_initial_fraction;
 
 use gtk4::prelude::*;
@@ -175,15 +175,15 @@ impl CamToolsView {
                     icon: "camera-photo-symbolic",
                     category: "engraving",
                 },
-/*
-                Tool {
-                    page: "laser_vector",
-                    title: t!("Laser Vector Engraver"),
-                    desc: t!("Convert SVG and DXF vector files to G-code"),
-                    icon: "insert-image-symbolic",
-                    category: "engraving",
-                },
-*/
+                /*
+                                Tool {
+                                    page: "laser_vector",
+                                    title: t!("Laser Vector Engraver"),
+                                    desc: t!("Convert SVG and DXF vector files to G-code"),
+                                    icon: "insert-image-symbolic",
+                                    category: "engraving",
+                                },
+                */
                 Tool {
                     page: "feeds",
                     title: t!("Speeds and Feeds Calculator"),
@@ -212,20 +212,23 @@ impl CamToolsView {
                     icon: "media-floppy-symbolic",
                     category: "generators",
                 },
-                                  Tool {
-                                      page: "drill_press",
-                                      title: t!("Drill Press"),
-                                      desc: t!("Emulate a drill press with peck drilling and helical cycles"),
-                                      icon: "input-mouse-symbolic",
-                                      category: "generators",
-                                  },
-                                  Tool {
-                                      page: "probe_routines",
-                                      title: t!("Probe Tools"),
-                                      desc: t!("Touch probe routines for WCS setup: Z-touch, edge find, corner find, bore/boss center, tool length"),
-                                      icon: "input-touchpad-symbolic",
-                                      category: "maintenance",
-                                  },            ]
+                Tool {
+                    page: "drill_press",
+                    title: t!("Drill Press"),
+                    desc: t!("Emulate a drill press with peck drilling and helical cycles"),
+                    icon: "input-mouse-symbolic",
+                    category: "generators",
+                },
+                Tool {
+                    page: "probe_routines",
+                    title: t!("Probe Tools"),
+                    desc: t!(
+                        "Touch probe routines for WCS setup: Z-touch, edge find, corner find, bore/boss center, tool length"
+                    ),
+                    icon: "input-touchpad-symbolic",
+                    category: "maintenance",
+                },
+            ]
         }
 
         fn apply_filters(list: &gtk4::ListBox, query: &str, category: &str) {
@@ -237,6 +240,7 @@ impl CamToolsView {
                 let Ok(row) = w.downcast::<gtk4::ListBoxRow>() else {
                     continue;
                 };
+                #[allow(unsafe_code)]
                 let idx = unsafe {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
@@ -311,6 +315,7 @@ impl CamToolsView {
             row.set_selectable(true);
             // SAFETY: set_data stores a u32 keyed by "camtool-index". The data
             // is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data("camtool-index", idx as u32);
             }
@@ -397,15 +402,16 @@ impl CamToolsView {
                 if let Some(row) = row {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
+                    #[allow(unsafe_code)]
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
                     };
-                    if let Some(idx) = idx {
-                        if let Some(tool) = get_tools().get(idx) {
-                            details_title.set_text(&tool.title);
-                            details_desc.set_text(&tool.desc);
-                        }
+                    if let Some(idx) = idx
+                        && let Some(tool) = get_tools().get(idx)
+                    {
+                        details_title.set_text(&tool.title);
+                        details_desc.set_text(&tool.desc);
                     }
                     open_btn.set_sensitive(true);
                 } else {
@@ -424,14 +430,15 @@ impl CamToolsView {
                 if let Some(row) = list_for_click.selected_row() {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
+                    #[allow(unsafe_code)]
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
                     };
-                    if let Some(idx) = idx {
-                        if let Some(tool) = get_tools().get(idx) {
-                            stack_for_click.set_visible_child_name(tool.page);
-                        }
+                    if let Some(idx) = idx
+                        && let Some(tool) = get_tools().get(idx)
+                    {
+                        stack_for_click.set_visible_child_name(tool.page);
                     }
                 }
             });
@@ -440,14 +447,15 @@ impl CamToolsView {
             list.connect_row_activated(move |_, row| {
                 // SAFETY: row.data() retrieves a u32 previously stored via
                 // set_data("camtool-index", ...). Type and key match.
+                #[allow(unsafe_code)]
                 let idx = unsafe {
                     row.data::<u32>("camtool-index")
                         .map(|p| *p.as_ref() as usize)
                 };
-                if let Some(idx) = idx {
-                    if let Some(tool) = tools.get(idx) {
-                        stack_for_activate.set_visible_child_name(tool.page);
-                    }
+                if let Some(idx) = idx
+                    && let Some(tool) = tools.get(idx)
+                {
+                    stack_for_activate.set_visible_child_name(tool.page);
                 }
             });
         }

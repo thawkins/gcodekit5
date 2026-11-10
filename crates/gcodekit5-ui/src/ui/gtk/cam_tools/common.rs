@@ -3,8 +3,8 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Entry, Label, Orientation, Paned};
-use libadwaita::prelude::*;
 use libadwaita::ActionRow;
+use libadwaita::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

@@ -101,10 +101,10 @@ pub fn parse_words(code: &str) -> Vec<Word> {
         }
 
         // All consumed bytes are ASCII, so `start..i` is a valid char boundary range.
-        if let Ok(value) = code[start..i].parse::<f64>() {
-            if value.is_finite() {
-                words.push(Word { letter, value });
-            }
+        if let Ok(value) = code[start..i].parse::<f64>()
+            && value.is_finite()
+        {
+            words.push(Word { letter, value });
         }
     }
 

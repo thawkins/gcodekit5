@@ -1,13 +1,13 @@
 //! G-code generation for designer state
 
 use super::DesignerState;
+use crate::ToolpathToGcode;
 use crate::canvas::DrawingObject;
 use crate::designer_state::MachineMode;
 use crate::gcode_gen::MachineLimits;
 use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
-use crate::ToolpathToGcode;
 use gcodekit5_core::Units;
 
 /// Comment block added when a toolpath leaves the machine's working area.
@@ -321,10 +321,10 @@ impl DesignerState {
 
             // Keep shape-embedded laser params in sync with the effective
             // per-object/global choice so 2D toolpath generation cannot drift.
-            if gcode_gen.is_laser_2d {
-                if let Some(params) = effective_params {
-                    Self::apply_laser_params_to_shape(&mut effective_shape, params);
-                }
+            if gcode_gen.is_laser_2d
+                && let Some(params) = effective_params
+            {
+                Self::apply_laser_params_to_shape(&mut effective_shape, params);
             }
 
             // ============================================================
@@ -755,11 +755,11 @@ impl DesignerState {
                 } else {
                     // CNC mode without optimization
                     for toolpath in toolpaths {
-                        if let Some(speed) = toolpath.segments.first().map(|s| s.spindle_speed) {
-                            if speed != spindle_speed {
-                                gcode.push_str(&format!("S{}        ; Spindle speed\n", speed));
-                                spindle_speed = speed;
-                            }
+                        if let Some(speed) = toolpath.segments.first().map(|s| s.spindle_speed)
+                            && speed != spindle_speed
+                        {
+                            gcode.push_str(&format!("S{}        ; Spindle speed\n", speed));
+                            spindle_speed = speed;
                         }
                         let (body_gcode, final_z) =
                             gcode_gen.generate_body_continuing(toolpath, line_number, current_z);

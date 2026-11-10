@@ -6,8 +6,8 @@ use super::connect_entry_commit;
 use gcodekit5_core::{Shared, SharedOption};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::{DesignSprocket, ParametricPathSource, Shape};
-use gtk4::prelude::*;
 use gtk4::Entry;
+use gtk4::prelude::*;
 use std::rc::Rc;
 
 /// Setup gear pressure angle entry handler
@@ -423,16 +423,15 @@ pub fn setup_timing_pulley_pitch_handler(
                         .shapes()
                         .find(|s| s.selected)
                         .and_then(|s| {
-                            if let Shape::Path(path) = &s.shape {
-                                if let Some(ParametricPathSource::TimingPulley {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
                                     teeth,
                                     belt_width,
                                     hole_radius,
                                     ..
                                 }) = path.parametric_source.clone()
-                                {
-                                    return Some((teeth, belt_width, hole_radius));
-                                }
+                            {
+                                return Some((teeth, belt_width, hole_radius));
                             }
                             None
                         })
@@ -488,16 +487,15 @@ pub fn setup_timing_pulley_teeth_handler(
                         .shapes()
                         .find(|s| s.selected)
                         .and_then(|s| {
-                            if let Shape::Path(path) = &s.shape {
-                                if let Some(ParametricPathSource::TimingPulley {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
                                     pitch,
                                     belt_width,
                                     hole_radius,
                                     ..
                                 }) = path.parametric_source.clone()
-                                {
-                                    return Some((pitch, belt_width, hole_radius));
-                                }
+                            {
+                                return Some((pitch, belt_width, hole_radius));
                             }
                             None
                         })
@@ -553,16 +551,15 @@ pub fn setup_timing_pulley_belt_width_handler(
                         .shapes()
                         .find(|s| s.selected)
                         .and_then(|s| {
-                            if let Shape::Path(path) = &s.shape {
-                                if let Some(ParametricPathSource::TimingPulley {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
                                     pitch,
                                     teeth,
                                     hole_radius,
                                     ..
                                 }) = path.parametric_source.clone()
-                                {
-                                    return Some((pitch, teeth, hole_radius));
-                                }
+                            {
+                                return Some((pitch, teeth, hole_radius));
                             }
                             None
                         })
@@ -618,16 +615,15 @@ pub fn setup_timing_pulley_hole_radius_handler(
                         .shapes()
                         .find(|s| s.selected)
                         .and_then(|s| {
-                            if let Shape::Path(path) = &s.shape {
-                                if let Some(ParametricPathSource::TimingPulley {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
                                     pitch,
                                     teeth,
                                     belt_width,
                                     ..
                                 }) = path.parametric_source.clone()
-                                {
-                                    return Some((pitch, teeth, belt_width));
-                                }
+                            {
+                                return Some((pitch, teeth, belt_width));
                             }
                             None
                         })

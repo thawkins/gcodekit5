@@ -10,7 +10,7 @@ use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use crate::ui::gtk::osd_format::format_zoom_center_cursor;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
 use gcodekit5_designer::engraving::image_engraver;
 use gcodekit5_designer::model::{DesignerShape, Shape};
@@ -27,8 +27,8 @@ use gtk4::{
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tracing::error;
 
 // Complex type due to GTK widget and callback fields.
@@ -280,10 +280,11 @@ impl DesignerView {
                 // Ensure viewport knows the correct size before fitting
                 let width = canvas_run.widget.width() as f64;
                 let height = canvas_run.widget.height() as f64;
-                if width > 0.0 && height > 0.0 {
-                    if let Ok(mut state) = canvas_run.state.try_borrow_mut() {
-                        state.canvas.set_canvas_size(width, height);
-                    }
+                if width > 0.0
+                    && height > 0.0
+                    && let Ok(mut state) = canvas_run.state.try_borrow_mut()
+                {
+                    state.canvas.set_canvas_size(width, height);
                 }
 
                 // Always fit to device on initialization as per user request
@@ -903,24 +904,21 @@ impl DesignerView {
         let state = self.canvas.state.borrow();
         let selected = state.canvas.selection_manager.selected_id();
 
-        if let Some(id) = selected {
-            if let Some(obj) = state.canvas.get_shape(id) {
-                if let Shape::RasterImage(ref img) = obj.shape {
-                    let original_offset_x = img.center.x - img.width_mm / 2.0;
-                    let original_offset_y = img.center.y - img.height_mm / 2.0;
+        if let Some(id) = selected
+            && let Some(obj) = state.canvas.get_shape(id)
+            && let Shape::RasterImage(ref img) = obj.shape
+        {
+            let original_offset_x = img.center.x - img.width_mm / 2.0;
+            let original_offset_y = img.center.y - img.height_mm / 2.0;
 
-                    let effective_offset_x =
-                        original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
-                    let effective_offset_y =
-                        original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
+            let effective_offset_x = original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
+            let effective_offset_y = original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
 
-                    let dx = effective_offset_x - original_offset_x;
-                    let dy = effective_offset_y - original_offset_y;
+            let dx = effective_offset_x - original_offset_x;
+            let dy = effective_offset_y - original_offset_y;
 
-                    let (x1, y1, x2, y2) = base_bounds;
-                    return Some((x1 + dx, y1 + dy, x2 + dx, y2 + dy));
-                }
-            }
+            let (x1, y1, x2, y2) = base_bounds;
+            return Some((x1 + dx, y1 + dy, x2 + dx, y2 + dy));
         }
 
         Some(base_bounds)

@@ -3,7 +3,7 @@
 //! Markdown files are loaded from GResources and displayed with inline images.
 
 use crate::t;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use gio::prelude::*;
 use gtk4::gdk_pixbuf::PixbufLoader;
 use gtk4::prelude::*;
@@ -402,25 +402,24 @@ fn process_line_with_links(
 
             if abs_bracket_end + 1 < line.len()
                 && &line[abs_bracket_end + 1..abs_bracket_end + 2] == "("
+                && let Some(paren_end) = line[abs_bracket_end + 2..].find(')')
             {
-                if let Some(paren_end) = line[abs_bracket_end + 2..].find(')') {
-                    let abs_paren_end = abs_bracket_end + 2 + paren_end;
+                let abs_paren_end = abs_bracket_end + 2 + paren_end;
 
-                    let link_target = &line[abs_bracket_end + 2..abs_paren_end];
+                let link_target = &line[abs_bracket_end + 2..abs_paren_end];
 
-                    if link_target.starts_with("help:") {
-                        let topic_id = link_target.strip_prefix("help:").unwrap_or("");
+                if link_target.starts_with("help:") {
+                    let topic_id = link_target.strip_prefix("help:").unwrap_or("");
 
-                        // Crear tag para este link
-                        let tag = create_link_tag(buffer, topic_id);
+                    // Crear tag para este link
+                    let tag = create_link_tag(buffer, topic_id);
 
-                        // Insertar texto del link con tag
-                        let mut iter = buffer.end_iter();
-                        buffer.insert_with_tags(&mut iter, link_text, &[&tag]);
+                    // Insertar texto del link con tag
+                    let mut iter = buffer.end_iter();
+                    buffer.insert_with_tags(&mut iter, link_text, &[&tag]);
 
-                        pos = abs_paren_end + 1;
-                        continue;
-                    }
+                    pos = abs_paren_end + 1;
+                    continue;
                 }
             }
         }
@@ -454,15 +453,15 @@ fn setup_link_navigation(view: &TextView, stack: &Stack) {
             // Obtener todos los tags en esta posición
             let tags = iter.tags();
             for tag in tags {
-                if let Some(tag_name) = tag.name() {
-                    if tag_name.starts_with("link-") {
-                        let topic_id = tag_name.strip_prefix("link-").unwrap_or("");
-                        if let Some(child) = stack_clone.child_by_name(topic_id) {
-                            stack_clone.set_visible_child(&child);
-                        }
-                        gesture.set_state(gtk4::EventSequenceState::Claimed);
-                        return;
+                if let Some(tag_name) = tag.name()
+                    && tag_name.starts_with("link-")
+                {
+                    let topic_id = tag_name.strip_prefix("link-").unwrap_or("");
+                    if let Some(child) = stack_clone.child_by_name(topic_id) {
+                        stack_clone.set_visible_child(&child);
                     }
+                    gesture.set_state(gtk4::EventSequenceState::Claimed);
+                    return;
                 }
             }
         }
@@ -485,12 +484,13 @@ fn strip_markdown_links(text: &str) -> String {
             let abs_end = abs_start + 1 + bracket_end;
             let link_text = &remaining[abs_start + 1..abs_end];
 
-            if remaining.len() > abs_end + 1 && &remaining[abs_end + 1..abs_end + 2] == "(" {
-                if let Some(paren_end) = remaining[abs_end + 2..].find(')') {
-                    result.push_str(link_text);
-                    last_pos = abs_end + 2 + paren_end + 1;
-                    continue;
-                }
+            if remaining.len() > abs_end + 1
+                && &remaining[abs_end + 1..abs_end + 2] == "("
+                && let Some(paren_end) = remaining[abs_end + 2..].find(')')
+            {
+                result.push_str(link_text);
+                last_pos = abs_end + 2 + paren_end + 1;
+                continue;
             }
         }
 
@@ -795,10 +795,15 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
     });
 
     // Seleccionar página inicial
-    if let Some(child) = stack.child_by_name(initial_topic) {
-        stack.set_visible_child(&child);
-    } else if let Some(first) = first_page {
-        stack.set_visible_child(&first);
+    match stack.child_by_name(initial_topic) {
+        Some(child) => {
+            stack.set_visible_child(&child);
+        }
+        _ => {
+            if let Some(first) = first_page {
+                stack.set_visible_child(&first);
+            }
+        }
     }
 
     // Organizar en la ventana
@@ -891,13 +896,12 @@ fn clean_html_tags(text: &str) -> String {
     }
 
     // Limpiar espacios múltiples y líneas vacías excesivas
-    let cleaned = result
+
+    result
         .lines()
         .filter(|line| !line.trim().is_empty())
         .collect::<Vec<_>>()
-        .join("\n");
-
-    cleaned
+        .join("\n")
 }
 
 // Procesar una línea de markdown/HTML

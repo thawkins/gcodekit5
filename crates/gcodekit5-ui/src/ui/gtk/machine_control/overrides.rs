@@ -7,8 +7,8 @@
 
 use super::*;
 use gcodekit5_communication::firmware::grbl::{
-    next_override_step, OverrideStepCodes, FEED_OVERRIDE_CODES, MAX_OVERRIDE_PERCENT,
-    MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+    FEED_OVERRIDE_CODES, MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, OverrideStepCodes,
+    SPINDLE_OVERRIDE_CODES, next_override_step,
 };
 use std::time::{Duration, Instant};
 

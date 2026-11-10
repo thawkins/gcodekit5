@@ -139,7 +139,7 @@ fn test_line_render_and_hit_test_use_endpoints() {
 
 #[test]
 fn test_gcode_no_duplicate_line_numbers_and_g01_after_arc() {
-    let gen = ToolpathToGcode::with_line_numbers(Units::MM, 5.0, true);
+    let generator = ToolpathToGcode::with_line_numbers(Units::MM, 5.0, true);
     let mut tp = Toolpath::new(3.0, -1.0);
     tp.add_segment(ToolpathSegment::new(
         ToolpathSegmentType::RapidMove,
@@ -163,7 +163,7 @@ fn test_gcode_no_duplicate_line_numbers_and_g01_after_arc() {
         500.0,
         1000,
     ));
-    let body = gen.generate_body(&tp, 10);
+    let body = generator.generate_body(&tp, 10);
     for line in body.lines() {
         assert_eq!(
             line.matches('N').count(),
@@ -184,10 +184,11 @@ fn test_gcode_no_duplicate_line_numbers_and_g01_after_arc() {
 }
 
 fn path_contour_has_arc(path: &DesignPath) -> bool {
-    let mut gen = ToolpathGenerator::new();
-    gen.set_feed_rate(100.0);
-    gen.set_cut_depth(1.0);
-    gen.generate_path_contour(path, 1.0)
+    let mut generator = ToolpathGenerator::new();
+    generator.set_feed_rate(100.0);
+    generator.set_cut_depth(1.0);
+    generator
+        .generate_path_contour(path, 1.0)
         .iter()
         .flat_map(|tp| tp.segments.iter())
         .any(|s| {
@@ -384,10 +385,10 @@ fn test_path_pocket_does_not_join_separate_contours() {
     }
     let path = DesignPath::from_lyon_path(&b.build());
 
-    let mut gen = ToolpathGenerator::new();
-    gen.set_feed_rate(100.0);
-    gen.set_cut_depth(1.0);
-    let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_feed_rate(100.0);
+    generator.set_cut_depth(1.0);
+    let toolpaths = generator.generate_path_pocket(&path, 1.0, 1.0, 0.0);
 
     let cuts: Vec<_> = toolpaths
         .iter()

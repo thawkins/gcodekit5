@@ -1,6 +1,6 @@
 //! Bitmap Image Engraving Tool
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
@@ -13,10 +13,10 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
+use super::CamToolsView;
 use super::common::{
     create_dimension_row, set_paned_initial_fraction, show_load_warnings, write_preset_file,
 };
-use super::CamToolsView;
 use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::cam_presets::BitmapEngravingPreset;
@@ -421,8 +421,10 @@ impl BitmapEngravingTool {
                         let _ = tx.send(texture_result);
                     });
 
-                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                        if let Ok(texture_result) = rx.try_recv() {
+                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || match rx
+                        .try_recv()
+                    {
+                        Ok(texture_result) => {
                             spinner.stop();
                             spinner.set_visible(false);
 
@@ -430,9 +432,8 @@ impl BitmapEngravingTool {
                                 preview_img.set_paintable(Some(&texture));
                             }
                             glib::ControlFlow::Break
-                        } else {
-                            glib::ControlFlow::Continue
                         }
+                        _ => glib::ControlFlow::Continue,
                     });
                 }
             });
@@ -562,23 +563,24 @@ impl BitmapEngravingTool {
                 }
 
                 // Check for result
-                if let Ok(result) = result_rx.try_recv() {
-                    progress_window_clone.close();
+                match result_rx.try_recv() {
+                    Ok(result) => {
+                        progress_window_clone.close();
 
-                    match result {
-                        Ok(gcode) => {
-                            on_gen_clone(gcode);
+                        match result {
+                            Ok(gcode) => {
+                                on_gen_clone(gcode);
+                            }
+                            Err(e) => {
+                                CamToolsView::show_error_dialog(
+                                    &t!("Engraving Generation Failed"),
+                                    &format!("{}: {}", t!("Failed to generate engraving"), e),
+                                );
+                            }
                         }
-                        Err(e) => {
-                            CamToolsView::show_error_dialog(
-                                &t!("Engraving Generation Failed"),
-                                &format!("{}: {}", t!("Failed to generate engraving"), e),
-                            );
-                        }
+                        glib::ControlFlow::Break
                     }
-                    glib::ControlFlow::Break
-                } else {
-                    glib::ControlFlow::Continue
+                    _ => glib::ControlFlow::Continue,
                 }
             });
         });
@@ -847,16 +849,17 @@ impl BitmapEngravingTool {
         });
 
         glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-            if let Ok(texture_result) = rx.try_recv() {
-                spinner.stop();
-                spinner.set_visible(false);
+            match rx.try_recv() {
+                Ok(texture_result) => {
+                    spinner.stop();
+                    spinner.set_visible(false);
 
-                if let Ok(texture) = texture_result {
-                    preview_img.set_paintable(Some(&texture));
+                    if let Ok(texture) = texture_result {
+                        preview_img.set_paintable(Some(&texture));
+                    }
+                    glib::ControlFlow::Break
                 }
-                glib::ControlFlow::Break
-            } else {
-                glib::ControlFlow::Continue
+                _ => glib::ControlFlow::Continue,
             }
         });
     }

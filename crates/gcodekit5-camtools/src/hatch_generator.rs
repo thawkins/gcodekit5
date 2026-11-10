@@ -4,7 +4,7 @@
 
 use lyon::algorithms::aabb::bounding_box;
 use lyon::algorithms::path::iterator::PathIterator;
-use lyon::math::{point, Angle, Transform};
+use lyon::math::{Angle, Transform, point};
 use lyon::path::Path;
 
 /// Generate hatch lines for a given path

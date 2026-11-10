@@ -80,6 +80,17 @@
 
 ### Removed
 - The Device Config "Restore" button (E2-06): it reported restoring settings but did nothing
+## [Unreleased] - 2026-11-10 (structural changes)
+
+### Removed
+- **Unused async controller layer** (#83, owner decision): the TinyG, g2core, Smoothieware, FluidNC and grblHAL controllers, the event bus, message/event dispatchers, controller traits, the G-code validator, the buffered communicator and the connection watcher, with tokio and async-trait (about 8,500 lines)
+- **Other code only its own tests used**: the visualizer `utils` module (file I/O, export, backup, phase 6/7 helpers), unused error modules, settings presets, and the UI's duplicate editor engine (about 7,600 lines). Tests that covered only deleted code were removed and are listed in the commit messages
+
+### Changed
+- **Edition 2024** for every crate
+- **`#![deny(unsafe_code)]`** at every crate root; the UI's OpenGL, GObject-data, Win32 and environment calls carry scoped allows with SAFETY comments
+- **One test binary per crate** (`tests/all.rs`)
+
 ## [Unreleased] - 2026-11-10 (duplication and decomposition)
 
 ### Changed

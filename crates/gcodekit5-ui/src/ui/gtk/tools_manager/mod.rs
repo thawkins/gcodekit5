@@ -7,7 +7,7 @@
 mod event_handlers;
 mod ui_builders;
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
@@ -21,10 +21,10 @@ use std::rc::Rc;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::help_browser;
 use crate::ui::gtk::platform;
-use crate::ui::tools_manager_backend::{string_to_tool_material, ToolsManagerBackend};
+use crate::ui::tools_manager_backend::{ToolsManagerBackend, string_to_tool_material};
 
 use gcodekit5_core::data::tools::{ShankType, Tool, ToolCoating, ToolId, ToolMaterial, ToolType};
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gcodekit5_settings::SettingsController;
 
 pub(crate) const ROW_TOOL_ID_KEY: &str = "gcodekit5-tool-id";
@@ -417,6 +417,7 @@ impl ToolsManagerView {
         while let Some(w) = child {
             let next = w.next_sibling();
             if let Ok(row) = w.downcast::<ListBoxRow>() {
+                #[allow(unsafe_code)]
                 let stored = unsafe {
                     // SAFETY: row.data() retrieves a String previously stored
                     // via set_data() with the same key. Type and key match.
@@ -451,29 +452,29 @@ impl ToolsManagerView {
             });
         }
 
-        if let Some(type_id) = self.type_filter.active_id() {
-            if type_id.as_str() != "all" {
-                tools.retain(|tool| {
-                    let tool_type_str = match tool.tool_type {
-                        ToolType::EndMillFlat => "endmill_flat",
-                        ToolType::EndMillBall => "endmill_ball",
-                        ToolType::EndMillCornerRadius => "endmill_cr",
-                        ToolType::VBit => "vbit",
-                        ToolType::DrillBit => "drill",
-                        ToolType::SpotDrill => "spot",
-                        ToolType::EngravingBit => "engraving",
-                        ToolType::ChamferTool => "chamfer",
-                        ToolType::Specialty => "specialty",
-                    };
-                    tool_type_str == type_id.as_str()
-                });
-            }
+        if let Some(type_id) = self.type_filter.active_id()
+            && type_id.as_str() != "all"
+        {
+            tools.retain(|tool| {
+                let tool_type_str = match tool.tool_type {
+                    ToolType::EndMillFlat => "endmill_flat",
+                    ToolType::EndMillBall => "endmill_ball",
+                    ToolType::EndMillCornerRadius => "endmill_cr",
+                    ToolType::VBit => "vbit",
+                    ToolType::DrillBit => "drill",
+                    ToolType::SpotDrill => "spot",
+                    ToolType::EngravingBit => "engraving",
+                    ToolType::ChamferTool => "chamfer",
+                    ToolType::Specialty => "specialty",
+                };
+                tool_type_str == type_id.as_str()
+            });
         }
 
-        if let Some(mat_id) = self.material_filter.active_id() {
-            if mat_id.as_str() != "all" {
-                tools.retain(|tool| tool.material.to_string() == mat_id.as_str());
-            }
+        if let Some(mat_id) = self.material_filter.active_id()
+            && mat_id.as_str() != "all"
+        {
+            tools.retain(|tool| tool.material.to_string() == mat_id.as_str());
         }
 
         let dia_min_txt = self.dia_min.text().to_string();
@@ -505,6 +506,7 @@ impl ToolsManagerView {
             let row = ListBoxRow::new();
             // SAFETY: set_data stores a String keyed by ROW_TOOL_ID_KEY. The
             // data is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data(ROW_TOOL_ID_KEY, tool.id.0.clone());
             }
@@ -594,10 +596,13 @@ impl ToolsManagerView {
         if let Some(tool) = backend.get_tool(&ToolId(tool_id.to_string())) {
             *self.is_creating.borrow_mut() = false;
             *self.selected_tool.borrow_mut() = Some(tool.clone());
-            if let Ok(mut last) = self.last_selected_tool_id.try_borrow_mut() {
-                *last = Some(tool.id.0.clone());
-            } else {
-                tracing::warn!("last_selected_tool_id already borrowed; skipping update");
+            match self.last_selected_tool_id.try_borrow_mut() {
+                Ok(mut last) => {
+                    *last = Some(tool.id.0.clone());
+                }
+                _ => {
+                    tracing::warn!("last_selected_tool_id already borrowed; skipping update");
+                }
             }
 
             self.edit_id.set_text(&tool.id.0);
@@ -842,20 +847,12 @@ impl ToolsManagerView {
 
         let manufacturer = {
             let text = self.edit_manufacturer.text().trim().to_string();
-            if text.is_empty() {
-                None
-            } else {
-                Some(text)
-            }
+            if text.is_empty() { None } else { Some(text) }
         };
 
         let part_number = {
             let text = self.edit_part_number.text().trim().to_string();
-            if text.is_empty() {
-                None
-            } else {
-                Some(text)
-            }
+            if text.is_empty() { None } else { Some(text) }
         };
 
         let description = Self::read_text_view(&self.edit_description);
@@ -1045,16 +1042,24 @@ impl ToolsManagerView {
                 let backend = self.backend.clone();
                 let view = self.clone();
 
-                crate::ui::gtk::common::dialog::show_question("Delete Tool?", &format!("Are you sure you want to delete tool '{}' (id: {})?\n\nThis action cannot be undone.", tool.name, tool.id.0), Some(&window), move |response| {
-                    if response == gtk4::ResponseType::Yes {
-                        let mut backend_mut = backend.borrow_mut();
-                        backend_mut.remove_tool(&tool_id);
-                        drop(backend_mut);
+                crate::ui::gtk::common::dialog::show_question(
+                    "Delete Tool?",
+                    &format!(
+                        "Are you sure you want to delete tool '{}' (id: {})?\n\nThis action cannot be undone.",
+                        tool.name, tool.id.0
+                    ),
+                    Some(&window),
+                    move |response| {
+                        if response == gtk4::ResponseType::Yes {
+                            let mut backend_mut = backend.borrow_mut();
+                            backend_mut.remove_tool(&tool_id);
+                            drop(backend_mut);
 
-                        view.load_tools();
-                        view.cancel_edit();
-                    }
-});
+                            view.load_tools();
+                            view.cancel_edit();
+                        }
+                    },
+                );
             }
         }
     }
@@ -1191,19 +1196,24 @@ impl ToolsManagerView {
         let backend = self.backend.clone();
         let view = self.clone();
 
-        crate::ui::gtk::common::dialog::show_question("Reset custom tools?", "This will delete all custom/imported tools and remove local custom tools storage.\n\nContinue?", Some(&window), move |resp| {
-            if resp == gtk4::ResponseType::Yes {
-                let mut backend = backend.borrow_mut();
-                match backend.reset_custom_tools() {
-                    Ok(_) => {
-                        view.cancel_edit();
-                        view.load_tools();
-                        view.show_info_dialog("Reset Complete", "Custom tools removed.");
+        crate::ui::gtk::common::dialog::show_question(
+            "Reset custom tools?",
+            "This will delete all custom/imported tools and remove local custom tools storage.\n\nContinue?",
+            Some(&window),
+            move |resp| {
+                if resp == gtk4::ResponseType::Yes {
+                    let mut backend = backend.borrow_mut();
+                    match backend.reset_custom_tools() {
+                        Ok(_) => {
+                            view.cancel_edit();
+                            view.load_tools();
+                            view.show_info_dialog("Reset Complete", "Custom tools removed.");
+                        }
+                        Err(e) => view.show_error_dialog("Reset Failed", &e.to_string()),
                     }
-                    Err(e) => view.show_error_dialog("Reset Failed", &e.to_string()),
                 }
-            }
-});
+            },
+        );
     }
 
     fn show_info_dialog(&self, title: &str, message: &str) {
