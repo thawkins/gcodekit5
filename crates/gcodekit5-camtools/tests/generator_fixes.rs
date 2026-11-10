@@ -494,3 +494,16 @@ fn test_probe_preset_round_trip_and_legacy() {
     assert_eq!(loaded.preset.safe_height, 7.5);
     assert_eq!(loaded.warnings.len(), 1);
 }
+
+#[test]
+fn test_gerber_zero_length_single_quadrant_draw_paints_the_aperture() {
+    // #90 review: a zero-length G74 arc was skipped, deleting a pad.
+    let gerber = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\nG74*\nG03*\n\
+                  X10000000Y10000000D02*\nX10000000Y10000000I0J0D01*\nM02*\n";
+    let gcode = GerberConverter::generate(&copper_params(), gerber).expect("gerber");
+    let near_pad = xy_moves(&gcode)
+        .into_iter()
+        .filter(|&(x, y)| (x - 10.0).hypot(y - 10.0) < 1.0)
+        .count();
+    assert!(near_pad > 0, "no isolation around the pad:\n{gcode}");
+}
