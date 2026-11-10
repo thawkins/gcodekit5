@@ -51,7 +51,45 @@ pub struct VoxelGrid {
     voxels: Vec<u8>, // 255 = material present, 0 = removed
 }
 
+/// Largest grid the stock simulation allocates (one byte per voxel):
+/// 1 GiB. A full 1220 x 2440 x 18 mm sheet at 0.19 mm needs about 15.7 GB.
+pub const MAX_STOCK_VOXELS: u64 = 1 << 30;
+
 impl VoxelGrid {
+    /// Checks that a stock of `width x height x depth` mm can be simulated at
+    /// `resolution` mm per voxel.
+    ///
+    /// # Errors
+    /// A message when a dimension is not a positive finite number, or the
+    /// grid would exceed [`MAX_STOCK_VOXELS`].
+    pub fn check_dimensions(
+        width: f32,
+        height: f32,
+        depth: f32,
+        resolution: f32,
+    ) -> Result<(), String> {
+        for (name, value) in [("width", width), ("height", height), ("thickness", depth)] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(format!(
+                    "Stock {name} must be a positive number (got {value})"
+                ));
+            }
+        }
+        let cells = |v: f32| (v / resolution).ceil() as u64;
+        let total = cells(width)
+            .saturating_mul(cells(height))
+            .saturating_mul(cells(depth));
+        if total > MAX_STOCK_VOXELS {
+            return Err(format!(
+                "Stock {width} x {height} x {depth} mm is too large to simulate \
+                 ({:.1} GB at {resolution} mm resolution; the limit is {:.1} GB)",
+                total as f64 / 1e9,
+                MAX_STOCK_VOXELS as f64 / 1e9
+            ));
+        }
+        Ok(())
+    }
+
     pub fn new(width: f32, height: f32, depth: f32, resolution: f32) -> Self {
         let w = (width / resolution).ceil() as usize;
         let h = (height / resolution).ceil() as usize;
@@ -108,16 +146,17 @@ impl VoxelGrid {
         let r_grid = (radius / self.resolution).ceil() as i32;
         let r_sq = (radius / self.resolution).powi(2);
 
-        let min_x = (cx - r_grid).max(0) as usize;
-        let max_x = (cx + r_grid).min(self.width as i32 - 1) as usize;
-        let min_y = (cy - r_grid).max(0) as usize;
-        let max_y = (cy + r_grid).min(self.height as i32 - 1) as usize;
-        let min_z = (cz - r_grid).max(0) as usize;
-        let max_z = (cz + r_grid).min(self.depth as i32 - 1) as usize;
+        let (Some(xs), Some(ys), Some(zs)) = (
+            grid_span(cx, r_grid, self.width),
+            grid_span(cy, r_grid, self.height),
+            grid_span(cz, r_grid, self.depth),
+        ) else {
+            return;
+        };
 
-        for z in min_z..=max_z {
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
+        for z in zs {
+            for y in ys.clone() {
+                for x in xs.clone() {
                     let dx = x as f32 - center.x / self.resolution;
                     let dy = y as f32 - center.y / self.resolution;
                     let dz = z as f32 - center.z / self.resolution;
@@ -136,10 +175,13 @@ impl VoxelGrid {
         let r_grid = (radius / self.resolution).ceil() as i32;
         let r_sq = (radius / self.resolution).powi(2);
 
-        let min_x = (cx - r_grid).max(0) as usize;
-        let max_x = (cx + r_grid).min(self.width as i32 - 1) as usize;
-        let min_y = (cy - r_grid).max(0) as usize;
-        let max_y = (cy + r_grid).min(self.height as i32 - 1) as usize;
+        // A tool entirely off the grid removes nothing.
+        let (Some(xs), Some(ys)) = (
+            grid_span(cx, r_grid, self.width),
+            grid_span(cy, r_grid, self.height),
+        ) else {
+            return;
+        };
 
         // The circular base at Z removes everything above that base level.
         let min_z = (base_center.z / self.resolution).ceil().max(0.0) as usize;
@@ -147,8 +189,8 @@ impl VoxelGrid {
             return;
         }
 
-        for y in min_y..=max_y {
-            for x in min_x..=max_x {
+        for y in ys {
+            for x in xs.clone() {
                 let dx = x as f32 - base_center.x / self.resolution;
                 let dy = y as f32 - base_center.y / self.resolution;
                 if dx * dx + dy * dy <= r_sq {
@@ -159,6 +201,18 @@ impl VoxelGrid {
             }
         }
     }
+}
+
+/// The grid cells `center - r ..= center + r` clipped to `0 .. len`, or
+/// `None` when the span lies entirely outside the grid (or the grid is
+/// empty). Computed in `i32` so a span left of the grid cannot wrap to a
+/// huge `usize` range.
+fn grid_span(center: i32, r: i32, len: usize) -> Option<std::ops::RangeInclusive<usize>> {
+    let lo = center.saturating_sub(r).max(0);
+    let hi = center
+        .saturating_add(r)
+        .min(i32::try_from(len).unwrap_or(i32::MAX) - 1);
+    (hi >= lo).then_some(lo as usize..=hi as usize)
 }
 
 // ---

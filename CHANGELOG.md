@@ -1,3 +1,13 @@
+## [Unreleased] - 2026-11-10 (visualizer and stock simulation)
+
+### Fixed
+- **Stock simulation hang** (#77, D-01): a cut left of or below the stock origin, or a zero-size stock, no longer makes the simulation loop forever
+- **Stock simulation memory** (E1-06): the unused second voxel grid is gone, and a stock too large to simulate (over 1 GB of voxels, e.g. a full 1220 x 2440 mm sheet) is refused with a message instead of aborting the app
+- **Probe moves** (D-02): G38.2-G38.5 moves are drawn as travel and never simulated as cuts
+- **3D view scrollbar** (E1-01): the vertical scrollbar uses one sign convention, so loading a file no longer jumps the view to mirrored Y
+- **Copy cursor coordinates** (E1-03): copies the right-clicked point instead of 0,0
+- **Context menu leak** (E1-02): the 2D view's right-click menu is released when it closes
+
 ## [Unreleased] - 2026-11-10 (homing keeps the work zero)
 
 ### Fixed
