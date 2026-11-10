@@ -29,6 +29,7 @@ nalgebra = "0.33.3"
 smallvec = { version = "1.13", features = ["const_generics"] }
 
 [dev-dependencies]
+csgrs = "0.20.1"
 tempfile = "3.10"
 proptest = "1.4"
 criterion = { version = "0.8", features = ["html_reports"] }

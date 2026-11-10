@@ -557,8 +557,12 @@ impl DesignerState {
         gcode: &mut String,
         gcode_gen: &ToolpathToGcode,
         shape_toolpaths: &[(DrawingObject, Vec<crate::Toolpath>, bool)],
+        header_speed: u32,
     ) {
         let mut line_number = 10;
+        // The header starts the CNC spindle at `header_speed`; a later shape
+        // that asks for another speed gets an `S` word before it cuts.
+        let mut spindle_speed = header_speed;
 
         // ------ Loop Shape --------
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
@@ -750,6 +754,12 @@ impl DesignerState {
                 } else {
                     // CNC mode without optimization
                     for toolpath in toolpaths {
+                        if let Some(speed) = toolpath.segments.first().map(|s| s.spindle_speed)
+                            && speed != spindle_speed
+                        {
+                            gcode.push_str(&format!("S{}        ; Spindle speed\n", speed));
+                            spindle_speed = speed;
+                        }
                         let (body_gcode, final_z) =
                             gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
                         gcode.push_str(&body_gcode);
@@ -780,26 +790,17 @@ impl DesignerState {
             .sum();
 
         // Use settings from first toolpath if available, or defaults
-        let (header_speed, header_feed, header_diam) =
-            if let Some((_, tps, _)) = shape_toolpaths.first() {
-                if let Some(first) = tps.first() {
-                    let s = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.spindle_speed)
-                        .unwrap_or(3000);
-                    let f = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.feed_rate)
-                        .unwrap_or(100.0);
-                    (s, f, first.tool_diameter)
-                } else {
-                    (3000, 100.0, 3.175)
-                }
-            } else {
-                (3000, 100.0, 3.175)
-            };
+        // Taken from the first toolpath that cuts anything: a shape can yield
+        // empty toolpaths (e.g. a pocket smaller than the cutter).
+        let (header_speed, header_feed, header_diam) = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .find_map(|tp| {
+                tp.segments
+                    .first()
+                    .map(|seg| (seg.spindle_speed, seg.feed_rate, tp.tool_diameter))
+            })
+            .unwrap_or((3000, 100.0, 3.175));
         // The header reports the deepest Z any pass reaches.
         let header_depth = shape_toolpaths
             .iter()
@@ -824,7 +825,7 @@ impl DesignerState {
             gcode.push_str(LIMIT_WARNING);
         }
 
-        self.emit_shapes_gcode(&mut gcode, &gcode_gen, &shape_toolpaths);
+        self.emit_shapes_gcode(&mut gcode, &gcode_gen, &shape_toolpaths, header_speed);
 
         gcode.push_str(&gcode_gen.generate_footer());
 
