@@ -1,3 +1,52 @@
+## [Unreleased] - 2026-11-10 (Designer G-code correctness)
+
+### Fixed
+- **Spindle start** (#75, C-01): Designer CNC programs now start the spindle with `M3 S<rpm>` after the header and stop it with `M5` after the final Z raise; the cutter no longer plunges with the spindle stopped
+- **Arc precision** (C-02): coordinates are written with 3 decimals and arc `I`/`J` are taken from the rounded start point, so GRBL no longer rejects small rotated arcs with error:33
+- **Ramp entry on dense paths** (C-03): when the ramp lap cap is reached, the remaining depth is cut in flat laps one step-down apart instead of one full-depth plunge
+- **Offset keeps holes** (C-04): offsetting a shape with holes (gears, boolean results) moves the holes with the outline instead of filling them in
+- **Header depth** (C-07): the header prints `; Final Z` (deepest cut) instead of a "Cut depth" that was the first pass Z
+## [Unreleased] - 2026-11-10 (serial disconnect and status parsing)
+
+### Fixed
+- **USB unplug detected** (#73, B-01): a serial hang-up (`BrokenPipe`) on read or write now drops the port and reports "Connection lost", instead of being read as "no data" forever
+- **grblHAL and FluidNC** (B-10): profiles and banners for these controllers map to the GRBL protocol, so they get `$I`/`$$` on connect and protocol mismatch checks work
+- **Corrupt status reports** (B-11): a malformed axis value rejects the whole position instead of shifting the following values onto the wrong axes
+- **Inch reports** (B-22): with `$13=1`, status positions, work offsets, feed and probe results are converted from inches to mm
+
+### Removed
+- `TcpCommunicator` (B-16): unused; TCP connections go through `SerialCommunicator`
+## [Unreleased] - 2026-11-10 (Repetier protocol fixes)
+
+### Fixed
+- **Repetier translation** (#72): only an exact `M4` becomes `M3` (`M400`, `M42` pass through); `G28 Z0` keeps its axis words and `G28.1` is unchanged; `G10 L20 P1 X0.5 Y20` becomes `G92 X0.5 Y20` with all axes and values; jogs keep their axes and feed and restore `G90` (and `G21` after an inch jog); user line numbers (`N10 G1 X5`) are replaced instead of dropping the line; parameter-only lines (`F`, `S`, `E`) are sent; untranslatable lines are reported as skipped
+- **Repetier streaming**: replies split across reads are reassembled before parsing, so acks and `Resend:` requests are no longer missed; resend requests rewind to the matching job line; stale acks are cleared when a job starts; a lost connection stops the job with an error; the sender thread exits when the sender is dropped
+- **Repetier pen mode is now a per-machine option** (B-21): `M3`/`M4`/`M5` are rewritten as pen-down/up Z moves only when "Pen Mode" is ticked on the device profile's Capabilities tab (new `pen_mode` profile field, off by default). Before, every Repetier job was rewritten, which dropped `S` words and broke spindle machines
+- **Repetier status**: the synthesized status reports Run/Idle from flow control and a position tracked from sent moves and `X:/Y:/Z:` reports instead of a fixed 0,0,0
+
+### Changed
+- `gcodekit5-communication` tests build as one `tests/all.rs` binary (`autotests = false`); 21 Repetier regression tests added
+## [Unreleased] - 2026-11-10 (machine-control busy guard and Stop)
+
+### Changed
+- **Stop keeps the position** (#74, E2-10): Stop sends feed hold (`!`), waits until the controller reports the hold complete (up to 10 s), then soft-resets. Before, the immediate reset raised "reset while in motion" and the machine had to be rehomed. E-Stop still resets at once
+
+### Fixed
+- **Console during a job** (E2-01): console lines other than `!`, `~` and `?` are refused while a job streams; before, their `ok`/`error` corrupted the job's accounting or stopped it
+- **Device Config during a job** (E2-02): Retrieve (`$$`) and setting edits (`$n=v`) are refused while a job streams or the machine is not Idle/Alarm; an edit updates the page only after the controller was sent the value, and a failure is shown
+- **Pause state** (E2-03): resuming from the controller's cycle-start button or a console `~` re-enables Pause
+- **Device manager** (E2-11): delete and set-active failures are shown, and the panel's axis count changes only when set-active succeeds
+## [Unreleased] - 2026-11-10 (settings integrity and Preferences wiring)
+
+### Fixed
+- **Settings never lost** (#76, A-01/E2-04): a config.json that fails to load is no longer overwritten unseen. The defaults are used, a warning is shown, and the file is copied to `config.json.bak-<seconds>` before the first save. Saves are atomic (temp file + rename)
+- **One config directory** (A-03): config.json uses the platform config directory (`$XDG_CONFIG_HOME` on Linux), like the device, tool and material files; no save falls back to the current directory
+- **`RUST_LOG` works** (A-04): it now sets the log level; INFO is the default only when it is unset
+- **Remembered folder kept** (E2-05): saving Preferences no longer restores the folder from when the dialog was filled
+- **Save errors logged** (E2-15): all background settings saves go through one helper that logs failures
+
+### Changed
+- **Preferences that now take effect** (A-02): Machine > Jog Step and Jog Feed Rate set the panel's starting jog step and feed (the feed was fixed at 2000 mm/min); Machine > Invert X/Y/Z/A/B/C reverse that axis's jog direction; window width/height set the start size and are saved on close; Show Status Bar hides the status bar; File Processing > Preserve Comments (off by default) removes comments from jobs before streaming; Max Line Length (default 256) refuses a job with a longer line
 ## [Unreleased] - 2026-11-10 (visualizer and stock simulation)
 
 ### Fixed

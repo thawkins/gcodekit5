@@ -282,13 +282,7 @@ impl DocumentHandles {
                                     .output_directory = path.clone();
 
                                 // (Windows/Linux/macOS)
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
                         } // ---------------------------
 
@@ -427,10 +421,7 @@ impl DesignerView {
 
                                 settings_ref_mut.config_mut().file_processing.output_directory = path.clone();
 
-                                let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                                .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
                         }
 
@@ -671,9 +662,7 @@ impl DesignerView {
                             .file_processing
                             .output_directory = path.clone();
 
-                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-                        let _ = settings_ref_mut.save_to_file(&config_path);
+                        settings_ref_mut.persist_or_log();
                     }
                 }
 
@@ -766,12 +755,7 @@ impl DesignerView {
                                     .file_processing
                                     .output_directory = folder_to_save;
 
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
                         }
 

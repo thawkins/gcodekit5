@@ -25,7 +25,6 @@ use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::DesignerState;
 use gcodekit5_settings::controller::SettingsController;
-use gcodekit5_settings::manager::SettingsManager;
 use gcodekit5_visualizer::visualizer::{StockSimulator3D, StockZeroReference};
 use glam::Vec3;
 
@@ -1928,10 +1927,7 @@ impl GcodeVisualizer {
                         .ui
                         .panel_visibility
                         .insert("visualizer_sidebar".to_string(), false);
-                    if let Ok(path) = SettingsManager::config_file_path() {
-                        let _ = SettingsManager::ensure_config_dir();
-                        let _ = p.save_to_file(&path);
-                    }
+                    p.persist_or_log();
                 }
             });
         }
@@ -1979,10 +1975,7 @@ impl GcodeVisualizer {
                             .ui
                             .panel_visibility
                             .insert("visualizer_sidebar".to_string(), true);
-                        if let Ok(path) = SettingsManager::config_file_path() {
-                            let _ = SettingsManager::ensure_config_dir();
-                            let _ = p.save_to_file(&path);
-                        }
+                        p.persist_or_log();
                     }
                 }
 
@@ -2021,10 +2014,7 @@ impl GcodeVisualizer {
             {
                 let mut p = settings_persist.persistence.borrow_mut();
                 p.config_mut().ui.visualizer_sidebar_position = Some(pos);
-                if let Ok(path) = SettingsManager::config_file_path() {
-                    let _ = SettingsManager::ensure_config_dir();
-                    let _ = p.save_to_file(&path);
-                }
+                p.persist_or_log();
             }
         });
 
