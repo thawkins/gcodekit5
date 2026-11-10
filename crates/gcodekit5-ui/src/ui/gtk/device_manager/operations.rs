@@ -484,7 +484,10 @@ impl DeviceManagerWindow {
             Some(&window),
             move |resp| {
                 if resp == ResponseType::Yes {
-                    let _ = view.controller.delete_profile(&model.id);
+                    if let Err(e) = view.controller.delete_profile(&model.id) {
+                        tracing::warn!(error = %e, "Failed to delete device profile");
+                        view.show_error_dialog("Delete failed", &e.to_string());
+                    }
                     view.load_devices();
                     view.cancel_edit();
                 }
@@ -495,7 +498,13 @@ impl DeviceManagerWindow {
     pub(crate) fn set_as_active(&self) {
         let id_opt = self.selected_device.borrow().as_ref().map(|d| d.id.clone());
         if let Some(id) = id_opt {
-            let _ = self.controller.set_active_profile(&id);
+            // Only switch the panel's axis count once the active device is saved,
+            // so the two cannot disagree.
+            if let Err(e) = self.controller.set_active_profile(&id) {
+                tracing::warn!(error = %e, "Failed to set the active device profile");
+                self.show_error_dialog("Set active failed", &e.to_string());
+                return;
+            }
             if let Some(profile) = self.selected_device.borrow().as_ref() {
                 let num: u8 = profile.num_axes.trim().parse().unwrap_or(3);
                 crate::device_status::set_active_num_axes(num);
