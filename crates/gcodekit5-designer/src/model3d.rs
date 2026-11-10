@@ -15,6 +15,8 @@
 use crate::model::Point;
 use crate::model::{DesignPath as PathShape, Shape};
 use anyhow::{anyhow, Result};
+use csgrs::sketch::Sketch;
+use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Point3, Vector3};
 use std::collections::HashMap;
 use tracing::debug;
@@ -233,7 +235,10 @@ impl Mesh3D {
             // Recalculate normal after transformation
             let edge1 = triangle.vertices[1] - triangle.vertices[0];
             let edge2 = triangle.vertices[2] - triangle.vertices[0];
-            triangle.normal = edge1.cross(&edge2).normalize();
+            triangle.normal = edge1
+                .cross(&edge2)
+                .try_normalize(f32::EPSILON)
+                .unwrap_or_else(Vector3::zeros);
         }
 
         self.calculate_bounds();
@@ -270,9 +275,10 @@ impl Mesh3D {
     pub fn project_shadow_z(&self) -> Result<Vec<Shape>> {
         debug!("Projecting 3D mesh to 2D shadow along Z-axis");
 
-        // The outline of the projection is the boundary of the triangles that
-        // face up (or, for a mesh with none, down): an edge used by exactly one
-        // of them. Interior edges and face diagonals are shared and dropped.
+        // The outline of each surface patch facing up (or, for a mesh with
+        // none, down) is its boundary: the edges used by exactly one of its
+        // triangles. Edges are keyed in 3D, so two parts stacked at different
+        // heights keep their own outlines instead of cancelling out.
         let facing_up: Vec<&Triangle3D> = self
             .triangles
             .iter()
@@ -287,42 +293,77 @@ impl Mesh3D {
             facing_up
         };
 
-        let key = |p: Point| ((p.x * 1e6).round() as i64, (p.y * 1e6).round() as i64);
-        let mut edge_use: HashMap<EdgeKey, (Point, Point, usize)> = HashMap::new();
-        for triangle in facing {
-            let v: Vec<Point> = triangle
-                .vertices
-                .iter()
-                .map(|p| Point::new(p.x as f64, p.y as f64))
-                .collect();
-            for (a, b) in [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+        let key = |p: &Point3<f32>| {
+            (
+                (f64::from(p.x) * 1e6).round() as i64,
+                (f64::from(p.y) * 1e6).round() as i64,
+                (f64::from(p.z) * 1e6).round() as i64,
+            )
+        };
+        // Triangles that share an edge belong to the same patch.
+        let mut patch_of = UnionFind::new(facing.len());
+        let mut edge_use: HashMap<EdgeKey3, (Point, Point, usize, usize)> = HashMap::new();
+        for (index, triangle) in facing.iter().enumerate() {
+            let v = &triangle.vertices;
+            for (a, b) in [(&v[0], &v[1]), (&v[1], &v[2]), (&v[2], &v[0])] {
                 let (ka, kb) = (key(a), key(b));
                 if ka == kb {
                     continue;
                 }
                 let edge_key = if ka < kb { (ka, kb) } else { (kb, ka) };
-                edge_use.entry(edge_key).or_insert((a, b, 0)).2 += 1;
+                let to_2d = |p: &Point3<f32>| Point::new(f64::from(p.x), f64::from(p.y));
+                let entry = edge_use
+                    .entry(edge_key)
+                    .or_insert((to_2d(a), to_2d(b), 0, index));
+                entry.2 += 1;
+                patch_of.union(entry.3, index);
             }
         }
-        let mut boundary: Vec<(EdgeKey, (Point, Point))> = edge_use
+        let mut boundary: Vec<(EdgeKey3, (Point, Point), usize)> = edge_use
             .into_iter()
-            .filter(|(_, (_, _, count))| *count == 1)
-            .map(|(k, (a, b, _))| (k, (a, b)))
+            .filter(|(_, (_, _, count, _))| *count == 1)
+            .map(|(k, (a, b, _, triangle))| (k, (a, b), patch_of.find(triangle)))
             .collect();
         // Deterministic order, so the same mesh gives the same shapes.
-        boundary.sort_by_key(|(k, _)| *k);
-        let edge_segments: Vec<(Point, Point)> = boundary.into_iter().map(|(_, seg)| seg).collect();
+        boundary.sort_by_key(|(k, _, _)| *k);
 
-        debug!("Collected {} edge segments", edge_segments.len());
+        debug!("Collected {} edge segments", boundary.len());
 
-        // Build contour paths from edge segments
-        let contours = build_contours_from_segments(&edge_segments)?;
+        let mut slot_of_patch: HashMap<usize, usize> = HashMap::new();
+        let mut patches: Vec<Vec<(Point, Point)>> = Vec::new();
+        for (_, segment, patch) in boundary {
+            let slot = *slot_of_patch.entry(patch).or_insert_with(|| {
+                patches.push(Vec::new());
+                patches.len() - 1
+            });
+            patches[slot].push(segment);
+        }
 
-        debug!("Built {} contour paths", contours.len());
+        if patches.len() <= 1 {
+            let segments = patches.pop().unwrap_or_default();
+            let contours = build_contours_from_segments(&segments)?;
+            debug!("Built {} contour paths", contours.len());
+            return Ok(contours.into_iter().map(Shape::Path).collect());
+        }
 
-        let shapes: Vec<Shape> = contours.into_iter().map(Shape::Path).collect();
-
-        Ok(shapes)
+        // Several patches can overlap in XY (stacked or overlapping parts):
+        // the shadow is the union of their areas. A patch's area is the
+        // even-odd fill of its loops, so a hole stays a hole.
+        let mut shadow: Sketch<()> = Sketch::new();
+        for segments in &patches {
+            let mut area: Sketch<()> = Sketch::new();
+            for (points, closed) in chain_segments(segments) {
+                if closed && points.len() >= 3 {
+                    let ring: Vec<[f64; 2]> = points.iter().map(|p| [p.x, p.y]).collect();
+                    area = area.xor(&Sketch::polygon(&ring, None));
+                }
+            }
+            shadow = shadow.union(&area);
+        }
+        debug!("Merged {} surface patches into one shadow", patches.len());
+        let mut path = PathShape::from_csg(shadow);
+        path.closed = true;
+        Ok(vec![Shape::Path(path)])
     }
 
     /// Slice the mesh at a specific Z height and return 2D contour paths
@@ -358,19 +399,59 @@ impl Mesh3D {
     }
 }
 
-/// An undirected edge between two points quantised to 1e-6 (smaller end first).
-type EdgeKey = ((i64, i64), (i64, i64));
+/// An undirected 3D edge between two points quantised to 1e-6 (smaller end first).
+type EdgeKey3 = ((i64, i64, i64), (i64, i64, i64));
+
+/// Disjoint sets over `0..n`, used to group triangles into surface patches.
+struct UnionFind {
+    parent: Vec<usize>,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        Self {
+            parent: (0..n).collect(),
+        }
+    }
+
+    fn find(&mut self, mut i: usize) -> usize {
+        while self.parent[i] != i {
+            self.parent[i] = self.parent[self.parent[i]];
+            i = self.parent[i];
+        }
+        i
+    }
+
+    fn union(&mut self, a: usize, b: usize) {
+        let (ra, rb) = (self.find(a), self.find(b));
+        if ra != rb {
+            self.parent[rb] = ra;
+        }
+    }
+}
 
 /// Build contour paths from a collection of line segments
 /// This function attempts to connect segments into closed loops
 pub fn build_contours_from_segments(segments: &[(Point, Point)]) -> Result<Vec<PathShape>> {
-    if segments.is_empty() {
-        return Ok(vec![]);
-    }
+    Ok(chain_segments(segments)
+        .into_iter()
+        .map(|(points, closed)| PathShape::from_points(&points, closed))
+        .collect())
+}
 
-    // Endpoints are matched within 1e-6; index them by that grid so each
-    // extension is a lookup instead of a scan of every segment (the scan made
-    // a 20 000-triangle import take about 26 s).
+/// Chains segments whose endpoints are within 1e-6 into polylines.
+///
+/// # Returns
+/// Each chain's points (at least two) and whether it closes on its start.
+fn chain_segments(segments: &[(Point, Point)]) -> Vec<(Vec<Point>, bool)> {
+    const TOLERANCE: f64 = 1e-6;
+    let near = |a: Point, b: Point| (a.x - b.x).abs() < TOLERANCE && (a.y - b.y).abs() < TOLERANCE;
+
+    // Index endpoints by a 1e-6 grid so each extension is a lookup instead of
+    // a scan of every segment (the scan made a 20 000-triangle import take
+    // about 26 s). Two points within the tolerance can round into
+    // neighbouring cells, so a lookup searches the 3 x 3 cells around it and
+    // compares the real coordinates.
     let key = |p: Point| ((p.x * 1e6).round() as i64, (p.y * 1e6).round() as i64);
     let mut by_endpoint: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (index, &(a, b)) in segments.iter().enumerate() {
@@ -381,47 +462,47 @@ pub fn build_contours_from_segments(segments: &[(Point, Point)]) -> Result<Vec<P
     }
 
     let mut used = vec![false; segments.len()];
-    let mut contours = Vec::new();
+    let mut chains = Vec::new();
 
     for (i, &(start, end)) in segments.iter().enumerate() {
         if used[i] {
             continue;
         }
 
-        // Start a new contour and extend it with the first unused segment
-        // (in input order) that touches its end.
-        let mut contour_points = vec![start];
+        // Start a new chain and extend it with the first unused segment (in
+        // input order) that touches its end.
+        let mut points = vec![start];
         let mut current_end = end;
         used[i] = true;
 
-        while let Some(j) = by_endpoint
-            .get(&key(current_end))
-            .and_then(|list| list.iter().copied().find(|&j| !used[j]))
-        {
+        loop {
+            let (cx, cy) = key(current_end);
+            let next = (-1..=1)
+                .flat_map(|dx| (-1..=1).map(move |dy| (cx + dx, cy + dy)))
+                .filter_map(|cell| by_endpoint.get(&cell))
+                .flatten()
+                .copied()
+                .filter(|&j| !used[j])
+                .filter(|&j| near(segments[j].0, current_end) || near(segments[j].1, current_end))
+                .min();
+            let Some(j) = next else { break };
             let (seg_start, seg_end) = segments[j];
-            current_end = if key(seg_start) == key(current_end) {
+            current_end = if near(seg_start, current_end) {
                 seg_end
             } else {
                 seg_start
             };
-            contour_points.push(current_end);
+            points.push(current_end);
             used[j] = true;
         }
 
-        // Check if the contour closes back to the start
-        let tolerance = 1e-6;
-        let is_closed = contour_points.len() > 2
-            && (current_end.x - start.x).abs() < tolerance
-            && (current_end.y - start.y).abs() < tolerance;
-
-        // Only add contours with multiple points
-        if contour_points.len() > 1 {
-            let path = PathShape::from_points(&contour_points, is_closed);
-            contours.push(path);
+        let closed = points.len() > 2 && near(current_end, start);
+        if points.len() > 1 {
+            chains.push((points, closed));
         }
     }
 
-    Ok(contours)
+    chains
 }
 
 /// Supported 3D file formats

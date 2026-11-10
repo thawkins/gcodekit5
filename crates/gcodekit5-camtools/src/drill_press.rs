@@ -71,6 +71,7 @@ impl DrillPressGenerator {
             ("peck depth", p.peck_depth),
             ("plunge rate", p.plunge_rate),
             ("feed rate", p.feed_rate),
+            ("spindle speed", p.spindle_speed),
             ("safe Z", p.safe_z),
             ("X", p.x),
             ("Y", p.y),

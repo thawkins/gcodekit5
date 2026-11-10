@@ -40,6 +40,8 @@ pub struct ImportedDesign {
     /// Entity types found in the source file that were parsed but discarded
     /// (e.g. ACIS solids), mapped to occurrence count
     pub unsupported_entities: Vec<(String, usize)>,
+    /// Values that were not numbers and were replaced by a default (DXF)
+    pub replaced_numbers: usize,
     /// Per-shape (elevation, thickness) in mm, aligned by index with `shapes`;
     /// (0.0, 0.0) when the source entity carried no Z metadata
     pub z_metadata: Vec<(f64, f64)>,
@@ -314,6 +316,7 @@ impl SvgImporter {
             layer_count,
             mesh_3d: None,
             unsupported_entities: Vec::new(),
+            replaced_numbers: 0,
             z_metadata: Vec::new(),
         })
     }
@@ -490,6 +493,7 @@ impl DxfImporter {
             layer_count: dxf_file.layer_names().len(),
             mesh_3d: None,
             unsupported_entities,
+            replaced_numbers: dxf_file.replaced_numbers,
             z_metadata,
         })
     }
@@ -817,6 +821,7 @@ impl StlImporter {
             layer_count: 1, // STL shadow projection creates a single layer
             mesh_3d: Some(mesh),
             unsupported_entities: Vec::new(),
+            replaced_numbers: 0,
             z_metadata: Vec::new(),
         })
     }
@@ -844,6 +849,7 @@ impl StlImporter {
             layer_count: 1, // Single slice creates one layer
             mesh_3d: Some(mesh),
             unsupported_entities: Vec::new(),
+            replaced_numbers: 0,
             z_metadata: Vec::new(),
         })
     }
