@@ -33,7 +33,8 @@ impl MachineControlView {
             self.apply_machine_state(&state);
         }
 
-        let full_status = StatusParser::parse_full(line);
+        let full_status =
+            StatusParser::parse_full(line).into_mm(device_status::reports_in_inches());
         let units = *self.current_units.lock();
         let unit_label = get_unit_label(units);
 
