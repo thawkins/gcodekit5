@@ -26,6 +26,14 @@ pub(crate) enum LaserSelection {
 /// `(use_global, feed_rate, power_percent, passes)`.
 type ResolvedLaser = (bool, f64, f64, u32);
 
+/// Selection values the shape section shows besides the shape itself.
+struct ShapeSectionValues {
+    start_depth: f64,
+    rot: f64,
+    lock_aspect: bool,
+    fillet: f64,
+}
+
 impl LaserSummary {
     pub fn from_slice(
         params: &[gcodekit5_designer::model::LaserParams],
@@ -298,120 +306,7 @@ impl PropertiesPanel {
 
             self.update_dimensions_ui(&self.width_entry, &self.height_entry, w, h, rot, system);
 
-            match laser_params_opt {
-                Some(LaserSelection::Single(params)) => {
-                    // Leer en tiempo real el estado global de la máquina
-                    let global_settings = self.state.borrow().tool_settings.clone();
-
-                    // Calcular los valores a mostrar
-                    let display_feed = if params.use_global {
-                        global_settings.feed_rate
-                    } else {
-                        params.feed_rate
-                    };
-
-                    let display_power = if params.use_global {
-                        (global_settings.spindle_speed as f64) / 10.0
-                    } else {
-                        params.power_percent
-                    };
-
-                    let display_passes = if params.use_global {
-                        (global_settings.step_down as u32).max(1)
-                    } else {
-                        params.passes
-                    };
-
-                    // Solo actualizar si el valor ha cambiado y NO hay foco
-                    if !*self.has_focus.borrow() {
-                        self.laser_feed_rate_entry
-                            .set_text(&display_feed.to_string());
-                        self.laser_power_entry.set_text(&display_power.to_string());
-                        self.laser_passes_entry
-                            .set_text(&display_passes.to_string());
-                        self.laser_use_global_check.set_active(params.use_global);
-
-                        self.laser_feed_rate_entry.set_sensitive(!params.use_global);
-                        self.laser_power_entry.set_sensitive(!params.use_global);
-                        self.laser_passes_entry.set_sensitive(!params.use_global);
-                    }
-                    self.laser_use_global_check.set_active(params.use_global);
-
-                    // Deshabilitar campos si es global
-                    self.laser_feed_rate_entry.set_sensitive(!params.use_global);
-                    self.laser_power_entry.set_sensitive(!params.use_global);
-                    self.laser_passes_entry.set_sensitive(!params.use_global);
-
-                    let display_passes = if params.use_global {
-                        (global_settings.step_down as u32).max(1)
-                    } else {
-                        params.passes
-                    };
-
-                    // Asignar feed_rate a la caja de texto
-                    if let Ok(current) = self.laser_feed_rate_entry.text().parse::<f64>() {
-                        if (current - display_feed).abs() > 1e-6 {
-                            self.laser_feed_rate_entry
-                                .set_text(&display_feed.to_string());
-                        }
-                    } else {
-                        self.laser_feed_rate_entry
-                            .set_text(&display_feed.to_string());
-                    }
-
-                    // Asignar power a la caja de texto
-                    if let Ok(current) = self.laser_power_entry.text().parse::<f64>() {
-                        if (current - display_power).abs() > 1e-6 {
-                            self.laser_power_entry.set_text(&display_power.to_string());
-                        }
-                    } else {
-                        self.laser_power_entry.set_text(&display_power.to_string());
-                    }
-
-                    // Asignar passes a la caja de texto
-                    if let Ok(current) = self.laser_passes_entry.text().parse::<u32>() {
-                        if current != display_passes {
-                            self.laser_passes_entry
-                                .set_text(&display_passes.to_string());
-                        }
-                    } else {
-                        self.laser_passes_entry
-                            .set_text(&display_passes.to_string());
-                    }
-
-                    // Forzar al Checkbox visual a ponerse en su sitio
-                    if self.laser_use_global_check.is_active() != params.use_global {
-                        self.laser_use_global_check.set_active(params.use_global);
-                    }
-
-                    // Deshabilitar los campos si es global
-                    self.laser_feed_rate_entry.set_sensitive(!params.use_global);
-                    self.laser_power_entry.set_sensitive(!params.use_global);
-                    self.laser_passes_entry.set_sensitive(!params.use_global);
-                }
-                Some(LaserSelection::Summary(sum)) => {
-                    let enabled = sum.any_override;
-                    self.laser_feed_rate_entry.set_sensitive(enabled);
-                    self.laser_power_entry.set_sensitive(enabled);
-                    self.laser_passes_entry.set_sensitive(enabled);
-
-                    self.laser_use_global_check.set_active(sum.all_use_global);
-
-                    match sum.feed_rate {
-                        Some(v) => self.laser_feed_rate_entry.set_text(&v.to_string()),
-                        None => self.laser_feed_rate_entry.set_text("---"),
-                    }
-                    match sum.power_percent {
-                        Some(v) => self.laser_power_entry.set_text(&v.to_string()),
-                        None => self.laser_power_entry.set_text("---"),
-                    }
-                    match sum.passes {
-                        Some(v) => self.laser_passes_entry.set_text(&v.to_string()),
-                        None => self.laser_passes_entry.set_text("---"),
-                    }
-                }
-                None => {}
-            }
+            self.refresh_laser_override(laser_params_opt);
 
             // Update header with shape ID(s)
             if ids.len() == 1 {
@@ -446,400 +341,17 @@ impl PropertiesPanel {
             self.laser_override_frame
                 .set_visible(is_laser && !is_raster);
 
-            if let Some(shape) = shape_opt {
-                // Single selection - show shape-specific properties
-                self.rotation_entry.set_tooltip_text(Some(&t!(
-                    "Rotation angle (degrees). Applied on Enter or when leaving the field."
-                )));
-                self.pos_frame.set_visible(true);
-                self.size_frame.set_visible(true);
-                self.rot_frame.set_visible(true);
-                // Reset frames that only some shape kinds show; the match below
-                // re-enables the relevant ones.
-                self.image_engraving_frame.set_visible(false);
-                self.path_frame.set_visible(false);
-                // --- Object Center
-                let (x1, y1, x2, y2) = shape.bounds();
-                let center_x = (x1 + x2) / 2.0;
-                let center_y = (y1 + y2) / 2.0;
-
-                self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
-                self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
-                if is_laser {
-                    self.pos_z_entry.set_text("0");
-                } else {
-                    self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
-                }
-
-                // Don't overwrite the forced lock state applied by update_dimensions_ui
-                // for rotated objects, otherwise the checkbox reverts to unchecked while
-                // the entries stay disabled.
-                if rot.abs() <= 0.01 {
-                    self.lock_aspect_ratio.set_active(lock_aspect);
-                }
-
-                // Shape-specific properties
-                match &shape {
-                    Shape::RasterImage(r) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.ops_frame.set_visible(false);
-                        self.cam_frame.set_visible(false);
-                        self.image_engraving_frame.set_visible(true);
-
-                        self.image_feed_rate_entry
-                            .set_text(&r.feed_rate.to_string());
-                        self.image_travel_rate_entry
-                            .set_text(&r.travel_rate.to_string());
-                        self.image_min_power_entry
-                            .set_text(&r.min_power.to_string());
-                        self.image_max_power_entry
-                            .set_text(&r.max_power.to_string());
-                        self.image_ppi_entry.set_text(&r.ppi.to_string());
-                        self.image_scan_direction_combo
-                            .set_active_id(Some(&r.scan_direction));
-                        self.image_bidirectional_check.set_active(r.bidirectional);
-                        self.image_invert_check.set_active(r.invert);
-                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
-                        if !*self.has_focus.borrow() {
-                            self.image_halftone_threshold_entry
-                                .set_text(&r.halftone_threshold.to_string());
-                        }
-                        // Force lock aspect ratio and disable the button so it cannot be changed
-                        self.lock_aspect_ratio.set_active(true);
-                        self.lock_aspect_ratio.set_sensitive(false);
-                        // No rotation
-                        self.rotation_entry.set_text("0.0");
-                        self.rot_frame.set_visible(false);
-                        self.laser_override_frame.set_visible(false);
-                    }
-
-                    Shape::Rectangle(r) => {
-                        // Disable input X and Y
-                        self.pos_x_entry.set_sensitive(true);
-                        self.pos_y_entry.set_sensitive(true);
-                        self.corner_frame.set_visible(true);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.set_entry_text_if_changed(
-                            &self.corner_radius_entry,
-                            r.corner_radius as f32,
-                            system,
-                        );
-                        self.is_slot_check.set_sensitive(true);
-                        self.is_slot_check.set_active(r.is_slot);
-                        self.rotation_entry.set_text(&format!("{:.1}", r.rotation));
-                        self.rotation_entry.set_sensitive(true);
-                        self.set_entry_text_if_changed(&self.width_entry, r.width as f32, system);
-                        self.set_entry_text_if_changed(&self.height_entry, r.height as f32, system);
-                    }
-
-                    Shape::Circle(_) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.rotation_entry.set_text("0.0");
-                        self.rot_frame.set_visible(false);
-                    }
-
-                    Shape::Ellipse(e) => {
-                        let has_rotation = e.rotation.abs() > f64::EPSILON;
-                        self.rotation_entry.set_text(&format!("{:.1}", e.rotation));
-                        if has_rotation {
-                            self.width_entry.set_sensitive(false);
-                            self.height_entry.set_sensitive(false);
-                            self.width_entry
-                                .set_text(&units::format_length((e.rx * 2.0) as f32, system));
-                            self.height_entry
-                                .set_text(&units::format_length((e.ry * 2.0) as f32, system));
-                        } else {
-                            self.width_entry.set_sensitive(true);
-                            self.height_entry.set_sensitive(true);
-                            self.set_entry_text_if_changed(
-                                &self.width_entry,
-                                (e.rx * 2.0) as f32,
-                                system,
-                            );
-                            self.set_entry_text_if_changed(
-                                &self.height_entry,
-                                (e.ry * 2.0) as f32,
-                                system,
-                            );
-                        }
-                        self.rotation_entry.set_sensitive(true);
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                    }
-
-                    Shape::Text(text_shape) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(true);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.text_entry.set_text(&text_shape.text);
-                        self.font_size_entry
-                            .set_text(&format_font_points(text_shape.font_size));
-                        self.font_bold_check.set_active(text_shape.bold);
-                        self.font_italic_check.set_active(text_shape.italic);
-
-                        // Set font family in dropdown
-                        // Note: no early return here, `updating` must be reset below.
-                        if let Some(model) =
-                            self.font_family_combo.model().and_downcast::<StringList>()
-                        {
-                            for i in 0..model.n_items() {
-                                if let Some(item) = model.string(i)
-                                    && item == text_shape.font_family
-                                {
-                                    self.font_family_combo.set_selected(i);
-                                    break;
-                                }
-                            }
-                        }
-                        self.rotation_entry.set_sensitive(true);
-                    }
-                    Shape::Polygon(p) => {
-                        let has_rotation = p.rotation.abs() > f64::EPSILON;
-                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
-
-                        if has_rotation {
-                            self.sides_entry.set_sensitive(false);
-                        } else {
-                            self.sides_entry.set_sensitive(true);
-                        }
-
-                        self.size_frame.set_visible(true);
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(true);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.sides_entry.set_text(&p.sides.to_string());
-                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
-                        self.rotation_entry.set_sensitive(true);
-                        self.height_entry.set_sensitive(false);
-                    }
-                    Shape::Gear(g) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(true);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.gear_module_entry.set_text(&format!("{:.2}", g.module));
-                        self.gear_teeth_entry.set_text(&g.teeth.to_string());
-                        // Ahora pressure_angle_deg ya está en grados
-                        self.gear_pressure_angle_entry
-                            .set_text(&format!("{:.1}", g.pressure_angle_deg));
-                        self.rotation_entry.set_text("0.0");
-                        self.rot_frame.set_visible(false);
-                    }
-                    Shape::Sprocket(s) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(true);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.sprocket_pitch_entry
-                            .set_text(&format!("{:.2}", s.pitch));
-                        self.sprocket_teeth_entry.set_text(&s.teeth.to_string());
-                        self.sprocket_roller_diameter_entry
-                            .set_text(&format!("{:.2}", s.roller_diameter));
-                        self.rotation_entry.set_text("0.0");
-                        self.rot_frame.set_visible(false);
-                    }
-
-                    Shape::Path(p) => {
-                        let has_rotation = p.rotation.abs() > f64::EPSILON;
-                        self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
-
-                        let (x1, y1, x2, y2) = shape.bounds();
-                        self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
-                        self.set_entry_text_if_changed(
-                            &self.height_entry,
-                            (y2 - y1) as f32,
-                            system,
-                        );
-                        self.corner_frame.set_visible(true);
-                        self.set_entry_text_if_changed(
-                            &self.corner_radius_entry,
-                            fillet as f32,
-                            system,
-                        );
-                        self.is_slot_check.set_active(false);
-                        self.is_slot_check.set_sensitive(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        let timing_params = match &p.parametric_source {
-                            Some(ParametricPathSource::TimingPulley {
-                                pitch,
-                                teeth,
-                                belt_width,
-                                hole_radius,
-                            }) => Some((*pitch, *teeth, *belt_width, *hole_radius)),
-                            _ => None,
-                        };
-                        self.timing_pulley_frame
-                            .set_visible(timing_params.is_some());
-                        self.path_frame.set_visible(true);
-                        self.path_closed_check.set_active(p.closed);
-
-                        if let Some((pitch, teeth, belt_width, hole_radius)) = timing_params {
-                            self.timing_pulley_pitch_entry
-                                .set_text(&format!("{:.2}", pitch));
-                            self.timing_pulley_teeth_entry.set_text(&teeth.to_string());
-                            self.timing_pulley_belt_width_entry
-                                .set_text(&format!("{:.2}", belt_width));
-                            self.timing_pulley_hole_radius_entry
-                                .set_text(&format!("{:.2}", hole_radius));
-                        }
-
-                        // No edit X Y
-                        self.pos_x_entry.set_sensitive(true);
-                        self.pos_y_entry.set_sensitive(true);
-                        self.width_entry.set_sensitive(!has_rotation);
-                        self.height_entry.set_sensitive(!has_rotation);
-                    }
-
-                    Shape::Triangle(tri) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-                        self.set_entry_text_if_changed(&self.width_entry, tri.width as f32, system);
-                        self.set_entry_text_if_changed(
-                            &self.height_entry,
-                            tri.height as f32,
-                            system,
-                        );
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", tri.rotation));
-
-                        // --- Laser Parameters
-                        self.set_entry_text_if_changed(
-                            &self.laser_feed_rate_entry,
-                            tri.laser_params.feed_rate as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_power_entry,
-                            tri.laser_params.power_percent as f32,
-                            system,
-                        );
-                        self.set_entry_text_if_changed(
-                            &self.laser_passes_entry,
-                            tri.laser_params.passes as f32,
-                            system,
-                        );
-                    }
-                    Shape::Line(line) => {
-                        self.corner_frame.set_visible(false);
-                        self.text_frame.set_visible(false);
-                        self.polygon_frame.set_visible(false);
-                        self.gear_frame.set_visible(false);
-                        self.sprocket_frame.set_visible(false);
-                        self.timing_pulley_frame.set_visible(false);
-                        self.path_frame.set_visible(false);
-
-                        // Posición y rotación
-                        let (x1, y1, x2, y2) = shape.bounds();
-                        let center_x = (x1 + x2) / 2.0;
-                        let center_y = (y1 + y2) / 2.0;
-                        self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
-                        self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
-                        self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
-                        self.set_entry_text_if_changed(
-                            &self.height_entry,
-                            (y2 - y1) as f32,
-                            system,
-                        );
-                        self.rotation_entry
-                            .set_text(&format!("{:.1}", line.rotation));
-                        self.rotation_entry.set_sensitive(true);
-                    }
-                }
-            } else {
-                // Multi-selection - hide shape-specific properties, show common props
-                self.pos_frame.set_visible(true);
-                self.size_frame.set_visible(true);
-                self.rot_frame.set_visible(true);
-                self.corner_frame.set_visible(false);
-                self.text_frame.set_visible(false);
-                self.polygon_frame.set_visible(false);
-                self.gear_frame.set_visible(false);
-                self.sprocket_frame.set_visible(false);
-                self.timing_pulley_frame.set_visible(false);
-                self.path_frame.set_visible(false);
-                self.image_engraving_frame.set_visible(false);
-
-                // Calculate bounding box of all selected shapes
-                let designer_state = self.state.borrow();
-                let mut min_x = f64::MAX;
-                let mut min_y = f64::MAX;
-                let mut max_x = f64::MIN;
-                let mut max_y = f64::MIN;
-
-                for shape in designer_state.canvas.shapes().filter(|s| s.selected) {
-                    let (x1, y1, x2, y2) = shape.shape.bounds();
-                    min_x = min_x.min(x1);
-                    min_y = min_y.min(y1);
-                    max_x = max_x.max(x2);
-                    max_y = max_y.max(y2);
-                }
-
-                drop(designer_state);
-
-                // Position entries are interpreted as the selection centre by the
-                // position handlers, so display the centre here too.
-                let center_x = (min_x + max_x) / 2.0;
-                let center_y = (min_y + max_y) / 2.0;
-                self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
-                self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
-                if is_laser {
-                    self.pos_z_entry.set_text("0");
-                } else {
-                    self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
-                }
-                self.set_entry_text_if_changed(&self.width_entry, (max_x - min_x) as f32, system);
-                self.set_entry_text_if_changed(&self.height_entry, (max_y - min_y) as f32, system);
-
-                // For a multi-selection the rotation entry is a relative angle: the
-                // committed value rotates the whole selection once, then resets to 0.
-                self.rotation_entry.set_text("0.0");
-                self.rotation_entry.set_sensitive(true);
-                self.rotation_entry.set_tooltip_text(Some(&t!(
-                    "Rotate the selection by this angle (degrees). Applied on Enter or when leaving the field."
-                )));
-            }
+            self.refresh_shape_section(
+                shape_opt.as_ref(),
+                ShapeSectionValues {
+                    start_depth,
+                    rot,
+                    lock_aspect,
+                    fillet,
+                },
+                system,
+                is_laser,
+            );
 
             // Update CAM properties (common to all shapes)
             let cam_enabled = !is_laser && !is_raster;
@@ -948,6 +460,523 @@ impl PropertiesPanel {
             self.raster_fill_entry.set_text("");
             self.lock_aspect_ratio.set_active(false);
             *self.updating.borrow_mut() = false;
+        }
+    }
+
+    /// Fills the laser override fields from the selection's laser settings.
+    fn refresh_laser_override(&self, laser_params_opt: Option<LaserSelection>) {
+        match laser_params_opt {
+            Some(LaserSelection::Single(params)) => {
+                // Leer en tiempo real el estado global de la máquina
+                let global_settings = self.state.borrow().tool_settings.clone();
+
+                // Calcular los valores a mostrar
+                let display_feed = if params.use_global {
+                    global_settings.feed_rate
+                } else {
+                    params.feed_rate
+                };
+
+                let display_power = if params.use_global {
+                    (global_settings.spindle_speed as f64) / 10.0
+                } else {
+                    params.power_percent
+                };
+
+                let display_passes = if params.use_global {
+                    (global_settings.step_down as u32).max(1)
+                } else {
+                    params.passes
+                };
+
+                // Solo actualizar si el valor ha cambiado y NO hay foco
+                if !*self.has_focus.borrow() {
+                    self.laser_feed_rate_entry
+                        .set_text(&display_feed.to_string());
+                    self.laser_power_entry.set_text(&display_power.to_string());
+                    self.laser_passes_entry
+                        .set_text(&display_passes.to_string());
+                    self.laser_use_global_check.set_active(params.use_global);
+
+                    self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                    self.laser_power_entry.set_sensitive(!params.use_global);
+                    self.laser_passes_entry.set_sensitive(!params.use_global);
+                }
+                self.laser_use_global_check.set_active(params.use_global);
+
+                // Deshabilitar campos si es global
+                self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                self.laser_power_entry.set_sensitive(!params.use_global);
+                self.laser_passes_entry.set_sensitive(!params.use_global);
+
+                let display_passes = if params.use_global {
+                    (global_settings.step_down as u32).max(1)
+                } else {
+                    params.passes
+                };
+
+                // Asignar feed_rate a la caja de texto
+                if let Ok(current) = self.laser_feed_rate_entry.text().parse::<f64>() {
+                    if (current - display_feed).abs() > 1e-6 {
+                        self.laser_feed_rate_entry
+                            .set_text(&display_feed.to_string());
+                    }
+                } else {
+                    self.laser_feed_rate_entry
+                        .set_text(&display_feed.to_string());
+                }
+
+                // Asignar power a la caja de texto
+                if let Ok(current) = self.laser_power_entry.text().parse::<f64>() {
+                    if (current - display_power).abs() > 1e-6 {
+                        self.laser_power_entry.set_text(&display_power.to_string());
+                    }
+                } else {
+                    self.laser_power_entry.set_text(&display_power.to_string());
+                }
+
+                // Asignar passes a la caja de texto
+                if let Ok(current) = self.laser_passes_entry.text().parse::<u32>() {
+                    if current != display_passes {
+                        self.laser_passes_entry
+                            .set_text(&display_passes.to_string());
+                    }
+                } else {
+                    self.laser_passes_entry
+                        .set_text(&display_passes.to_string());
+                }
+
+                // Forzar al Checkbox visual a ponerse en su sitio
+                if self.laser_use_global_check.is_active() != params.use_global {
+                    self.laser_use_global_check.set_active(params.use_global);
+                }
+
+                // Deshabilitar los campos si es global
+                self.laser_feed_rate_entry.set_sensitive(!params.use_global);
+                self.laser_power_entry.set_sensitive(!params.use_global);
+                self.laser_passes_entry.set_sensitive(!params.use_global);
+            }
+            Some(LaserSelection::Summary(sum)) => {
+                let enabled = sum.any_override;
+                self.laser_feed_rate_entry.set_sensitive(enabled);
+                self.laser_power_entry.set_sensitive(enabled);
+                self.laser_passes_entry.set_sensitive(enabled);
+
+                self.laser_use_global_check.set_active(sum.all_use_global);
+
+                match sum.feed_rate {
+                    Some(v) => self.laser_feed_rate_entry.set_text(&v.to_string()),
+                    None => self.laser_feed_rate_entry.set_text("---"),
+                }
+                match sum.power_percent {
+                    Some(v) => self.laser_power_entry.set_text(&v.to_string()),
+                    None => self.laser_power_entry.set_text("---"),
+                }
+                match sum.passes {
+                    Some(v) => self.laser_passes_entry.set_text(&v.to_string()),
+                    None => self.laser_passes_entry.set_text("---"),
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// Shows the frames and values for one selected shape (position, size,
+    /// rotation and the shape's own properties), or the multi-selection
+    /// state when `shape_opt` is `None`.
+    fn refresh_shape_section(
+        &self,
+        shape_opt: Option<&Shape>,
+        values: ShapeSectionValues,
+        system: units::MeasurementSystem,
+        is_laser: bool,
+    ) {
+        let ShapeSectionValues {
+            start_depth,
+            rot,
+            lock_aspect,
+            fillet,
+        } = values;
+        if let Some(shape) = shape_opt {
+            // Single selection - show shape-specific properties
+            self.rotation_entry.set_tooltip_text(Some(&t!(
+                "Rotation angle (degrees). Applied on Enter or when leaving the field."
+            )));
+            self.pos_frame.set_visible(true);
+            self.size_frame.set_visible(true);
+            self.rot_frame.set_visible(true);
+            // Reset frames that only some shape kinds show; the match below
+            // re-enables the relevant ones.
+            self.image_engraving_frame.set_visible(false);
+            self.path_frame.set_visible(false);
+            // --- Object Center
+            let (x1, y1, x2, y2) = shape.bounds();
+            let center_x = (x1 + x2) / 2.0;
+            let center_y = (y1 + y2) / 2.0;
+
+            self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
+            self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
+            if is_laser {
+                self.pos_z_entry.set_text("0");
+            } else {
+                self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
+            }
+
+            // Don't overwrite the forced lock state applied by update_dimensions_ui
+            // for rotated objects, otherwise the checkbox reverts to unchecked while
+            // the entries stay disabled.
+            if rot.abs() <= 0.01 {
+                self.lock_aspect_ratio.set_active(lock_aspect);
+            }
+
+            // Shape-specific properties
+            match &shape {
+                Shape::RasterImage(r) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.ops_frame.set_visible(false);
+                    self.cam_frame.set_visible(false);
+                    self.image_engraving_frame.set_visible(true);
+
+                    self.image_feed_rate_entry
+                        .set_text(&r.feed_rate.to_string());
+                    self.image_travel_rate_entry
+                        .set_text(&r.travel_rate.to_string());
+                    self.image_min_power_entry
+                        .set_text(&r.min_power.to_string());
+                    self.image_max_power_entry
+                        .set_text(&r.max_power.to_string());
+                    self.image_ppi_entry.set_text(&r.ppi.to_string());
+                    self.image_scan_direction_combo
+                        .set_active_id(Some(&r.scan_direction));
+                    self.image_bidirectional_check.set_active(r.bidirectional);
+                    self.image_invert_check.set_active(r.invert);
+                    self.image_dithering_combo.set_active_id(Some(&r.dithering));
+                    if !*self.has_focus.borrow() {
+                        self.image_halftone_threshold_entry
+                            .set_text(&r.halftone_threshold.to_string());
+                    }
+                    // Force lock aspect ratio and disable the button so it cannot be changed
+                    self.lock_aspect_ratio.set_active(true);
+                    self.lock_aspect_ratio.set_sensitive(false);
+                    // No rotation
+                    self.rotation_entry.set_text("0.0");
+                    self.rot_frame.set_visible(false);
+                    self.laser_override_frame.set_visible(false);
+                }
+
+                Shape::Rectangle(r) => {
+                    // Disable input X and Y
+                    self.pos_x_entry.set_sensitive(true);
+                    self.pos_y_entry.set_sensitive(true);
+                    self.corner_frame.set_visible(true);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.set_entry_text_if_changed(
+                        &self.corner_radius_entry,
+                        r.corner_radius as f32,
+                        system,
+                    );
+                    self.is_slot_check.set_sensitive(true);
+                    self.is_slot_check.set_active(r.is_slot);
+                    self.rotation_entry.set_text(&format!("{:.1}", r.rotation));
+                    self.rotation_entry.set_sensitive(true);
+                    self.set_entry_text_if_changed(&self.width_entry, r.width as f32, system);
+                    self.set_entry_text_if_changed(&self.height_entry, r.height as f32, system);
+                }
+
+                Shape::Circle(_) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.rotation_entry.set_text("0.0");
+                    self.rot_frame.set_visible(false);
+                }
+
+                Shape::Ellipse(e) => {
+                    let has_rotation = e.rotation.abs() > f64::EPSILON;
+                    self.rotation_entry.set_text(&format!("{:.1}", e.rotation));
+                    if has_rotation {
+                        self.width_entry.set_sensitive(false);
+                        self.height_entry.set_sensitive(false);
+                        self.width_entry
+                            .set_text(&units::format_length((e.rx * 2.0) as f32, system));
+                        self.height_entry
+                            .set_text(&units::format_length((e.ry * 2.0) as f32, system));
+                    } else {
+                        self.width_entry.set_sensitive(true);
+                        self.height_entry.set_sensitive(true);
+                        self.set_entry_text_if_changed(
+                            &self.width_entry,
+                            (e.rx * 2.0) as f32,
+                            system,
+                        );
+                        self.set_entry_text_if_changed(
+                            &self.height_entry,
+                            (e.ry * 2.0) as f32,
+                            system,
+                        );
+                    }
+                    self.rotation_entry.set_sensitive(true);
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                }
+
+                Shape::Text(text_shape) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(true);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.text_entry.set_text(&text_shape.text);
+                    self.font_size_entry
+                        .set_text(&format_font_points(text_shape.font_size));
+                    self.font_bold_check.set_active(text_shape.bold);
+                    self.font_italic_check.set_active(text_shape.italic);
+
+                    // Set font family in dropdown
+                    // Note: no early return here, `updating` must be reset below.
+                    if let Some(model) = self.font_family_combo.model().and_downcast::<StringList>()
+                    {
+                        for i in 0..model.n_items() {
+                            if let Some(item) = model.string(i)
+                                && item == text_shape.font_family
+                            {
+                                self.font_family_combo.set_selected(i);
+                                break;
+                            }
+                        }
+                    }
+                    self.rotation_entry.set_sensitive(true);
+                }
+                Shape::Polygon(p) => {
+                    let has_rotation = p.rotation.abs() > f64::EPSILON;
+                    self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
+
+                    if has_rotation {
+                        self.sides_entry.set_sensitive(false);
+                    } else {
+                        self.sides_entry.set_sensitive(true);
+                    }
+
+                    self.size_frame.set_visible(true);
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(true);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.sides_entry.set_text(&p.sides.to_string());
+                    self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
+                    self.rotation_entry.set_sensitive(true);
+                    self.height_entry.set_sensitive(false);
+                }
+                Shape::Gear(g) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(true);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.gear_module_entry.set_text(&format!("{:.2}", g.module));
+                    self.gear_teeth_entry.set_text(&g.teeth.to_string());
+                    // Ahora pressure_angle_deg ya está en grados
+                    self.gear_pressure_angle_entry
+                        .set_text(&format!("{:.1}", g.pressure_angle_deg));
+                    self.rotation_entry.set_text("0.0");
+                    self.rot_frame.set_visible(false);
+                }
+                Shape::Sprocket(s) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(true);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.sprocket_pitch_entry
+                        .set_text(&format!("{:.2}", s.pitch));
+                    self.sprocket_teeth_entry.set_text(&s.teeth.to_string());
+                    self.sprocket_roller_diameter_entry
+                        .set_text(&format!("{:.2}", s.roller_diameter));
+                    self.rotation_entry.set_text("0.0");
+                    self.rot_frame.set_visible(false);
+                }
+
+                Shape::Path(p) => {
+                    let has_rotation = p.rotation.abs() > f64::EPSILON;
+                    self.rotation_entry.set_text(&format!("{:.1}", p.rotation));
+
+                    let (x1, y1, x2, y2) = shape.bounds();
+                    self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
+                    self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
+                    self.corner_frame.set_visible(true);
+                    self.set_entry_text_if_changed(
+                        &self.corner_radius_entry,
+                        fillet as f32,
+                        system,
+                    );
+                    self.is_slot_check.set_active(false);
+                    self.is_slot_check.set_sensitive(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    let timing_params = match &p.parametric_source {
+                        Some(ParametricPathSource::TimingPulley {
+                            pitch,
+                            teeth,
+                            belt_width,
+                            hole_radius,
+                        }) => Some((*pitch, *teeth, *belt_width, *hole_radius)),
+                        _ => None,
+                    };
+                    self.timing_pulley_frame
+                        .set_visible(timing_params.is_some());
+                    self.path_frame.set_visible(true);
+                    self.path_closed_check.set_active(p.closed);
+
+                    if let Some((pitch, teeth, belt_width, hole_radius)) = timing_params {
+                        self.timing_pulley_pitch_entry
+                            .set_text(&format!("{:.2}", pitch));
+                        self.timing_pulley_teeth_entry.set_text(&teeth.to_string());
+                        self.timing_pulley_belt_width_entry
+                            .set_text(&format!("{:.2}", belt_width));
+                        self.timing_pulley_hole_radius_entry
+                            .set_text(&format!("{:.2}", hole_radius));
+                    }
+
+                    // No edit X Y
+                    self.pos_x_entry.set_sensitive(true);
+                    self.pos_y_entry.set_sensitive(true);
+                    self.width_entry.set_sensitive(!has_rotation);
+                    self.height_entry.set_sensitive(!has_rotation);
+                }
+
+                Shape::Triangle(tri) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+                    self.set_entry_text_if_changed(&self.width_entry, tri.width as f32, system);
+                    self.set_entry_text_if_changed(&self.height_entry, tri.height as f32, system);
+                    self.rotation_entry
+                        .set_text(&format!("{:.1}", tri.rotation));
+
+                    // --- Laser Parameters
+                    self.set_entry_text_if_changed(
+                        &self.laser_feed_rate_entry,
+                        tri.laser_params.feed_rate as f32,
+                        system,
+                    );
+                    self.set_entry_text_if_changed(
+                        &self.laser_power_entry,
+                        tri.laser_params.power_percent as f32,
+                        system,
+                    );
+                    self.set_entry_text_if_changed(
+                        &self.laser_passes_entry,
+                        tri.laser_params.passes as f32,
+                        system,
+                    );
+                }
+                Shape::Line(line) => {
+                    self.corner_frame.set_visible(false);
+                    self.text_frame.set_visible(false);
+                    self.polygon_frame.set_visible(false);
+                    self.gear_frame.set_visible(false);
+                    self.sprocket_frame.set_visible(false);
+                    self.timing_pulley_frame.set_visible(false);
+                    self.path_frame.set_visible(false);
+
+                    // Posición y rotación
+                    let (x1, y1, x2, y2) = shape.bounds();
+                    let center_x = (x1 + x2) / 2.0;
+                    let center_y = (y1 + y2) / 2.0;
+                    self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
+                    self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
+                    self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
+                    self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
+                    self.rotation_entry
+                        .set_text(&format!("{:.1}", line.rotation));
+                    self.rotation_entry.set_sensitive(true);
+                }
+            }
+        } else {
+            // Multi-selection - hide shape-specific properties, show common props
+            self.pos_frame.set_visible(true);
+            self.size_frame.set_visible(true);
+            self.rot_frame.set_visible(true);
+            self.corner_frame.set_visible(false);
+            self.text_frame.set_visible(false);
+            self.polygon_frame.set_visible(false);
+            self.gear_frame.set_visible(false);
+            self.sprocket_frame.set_visible(false);
+            self.timing_pulley_frame.set_visible(false);
+            self.path_frame.set_visible(false);
+            self.image_engraving_frame.set_visible(false);
+
+            // Calculate bounding box of all selected shapes
+            let designer_state = self.state.borrow();
+            let mut min_x = f64::MAX;
+            let mut min_y = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_y = f64::MIN;
+
+            for shape in designer_state.canvas.shapes().filter(|s| s.selected) {
+                let (x1, y1, x2, y2) = shape.shape.bounds();
+                min_x = min_x.min(x1);
+                min_y = min_y.min(y1);
+                max_x = max_x.max(x2);
+                max_y = max_y.max(y2);
+            }
+
+            drop(designer_state);
+
+            // Position entries are interpreted as the selection centre by the
+            // position handlers, so display the centre here too.
+            let center_x = (min_x + max_x) / 2.0;
+            let center_y = (min_y + max_y) / 2.0;
+            self.set_entry_text_if_changed(&self.pos_x_entry, center_x as f32, system);
+            self.set_entry_text_if_changed(&self.pos_y_entry, center_y as f32, system);
+            if is_laser {
+                self.pos_z_entry.set_text("0");
+            } else {
+                self.set_entry_text_if_changed(&self.pos_z_entry, start_depth as f32, system);
+            }
+            self.set_entry_text_if_changed(&self.width_entry, (max_x - min_x) as f32, system);
+            self.set_entry_text_if_changed(&self.height_entry, (max_y - min_y) as f32, system);
+
+            // For a multi-selection the rotation entry is a relative angle: the
+            // committed value rotates the whole selection once, then resets to 0.
+            self.rotation_entry.set_text("0.0");
+            self.rotation_entry.set_sensitive(true);
+            self.rotation_entry.set_tooltip_text(Some(&t!(
+                "Rotate the selection by this angle (degrees). Applied on Enter or when leaving the field."
+            )));
         }
     }
 
