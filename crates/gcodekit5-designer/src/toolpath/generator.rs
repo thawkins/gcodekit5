@@ -812,7 +812,24 @@ impl ToolpathGenerator {
                 while current_z - target_z > 0.001 {
                     loop_guard += 1;
 
+                    // Past the size cap, finish with flat laps one step-down apart
+                    // instead of ramping, so no lap ever drops more than `lap_step`.
                     if loop_guard * path_segment_count > max_segments || loop_guard > 1000 {
+                        while current_z - target_z > 0.001 {
+                            let lap_floor = (current_z - lap_step).max(target_z);
+                            let mut tp = Toolpath::new(self.tool_diameter, lap_floor);
+                            tp.segments = segments
+                                .iter()
+                                .map(|s| {
+                                    let mut ns = s.clone();
+                                    ns.start_z = Some(lap_floor);
+                                    ns.z_depth = Some(lap_floor);
+                                    ns
+                                })
+                                .collect();
+                            toolpaths.push(tp);
+                            current_z = lap_floor;
+                        }
                         break;
                     }
 

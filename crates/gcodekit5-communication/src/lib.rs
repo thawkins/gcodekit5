@@ -17,7 +17,6 @@ pub use communication::{
     BufferedCommand, BufferedCommunicatorConfig, BufferedCommunicatorWrapper, CommandStatus,
     Communicator, CommunicatorEvent, CommunicatorListener, CommunicatorListenerHandle,
     ConnectionDriver, ConnectionParams, NoOpCommunicator, SerialCommunicator, SerialParity,
-    TcpCommunicator,
 };
 
 pub use firmware::ControllerType;

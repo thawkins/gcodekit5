@@ -78,7 +78,7 @@ pub use gcodekit5_camtools::{
 pub use gcodekit5_communication::{
     list_ports, Communicator, CommunicatorEvent, CommunicatorListener, CommunicatorListenerHandle,
     ConnectionDriver, ConnectionParams, ControllerType, NoOpCommunicator, SerialCommunicator,
-    SerialParity, SerialPortInfo, TcpCommunicator, TcpConnectionInfo,
+    SerialParity, SerialPortInfo, TcpConnectionInfo,
 };
 
 pub use gcodekit5_ui::{

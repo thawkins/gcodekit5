@@ -480,15 +480,10 @@ impl DeviceInfoView {
     /// # Returns
     /// An error message if the command could not be sent.
     fn send_laser_mode(&self, value: &str) -> Result<(), String> {
-        let state = device_status::get_status().state;
-        let low = state.to_ascii_lowercase();
         // GRBL rejects `$` settings unless idle (or in alarm), and a line sent while a job
         // streams would corrupt the job's buffer accounting.
-        if !(low.is_empty() || low.starts_with("idle") || low.starts_with("alarm")) {
-            return Err(format!(
-                "{} ({state})",
-                t!("the machine must be idle to change $32")
-            ));
+        if let Some(reason) = device_status::settings_command_blocked() {
+            return Err(format!("{} {reason}", t!("cannot change $32:")));
         }
         let comm = self
             .communicator
