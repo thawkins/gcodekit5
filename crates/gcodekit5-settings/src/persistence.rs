@@ -24,6 +24,9 @@ macro_rules! t {
 #[derive(Debug, Clone)]
 pub struct SettingsPersistence {
     config: Config,
+    /// The config file on disk could not be loaded: copy it aside before the
+    /// first save replaces it.
+    backup_before_save: bool,
 }
 
 impl SettingsPersistence {
@@ -31,13 +34,87 @@ impl SettingsPersistence {
     pub fn new() -> Self {
         Self {
             config: Config::default(),
+            backup_before_save: false,
         }
     }
 
     /// Load settings from file
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let config = Config::load_from_file(path)?;
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            backup_before_save: false,
+        })
+    }
+
+    /// Loads the settings at `path`, or the defaults when there is no file.
+    ///
+    /// When the file exists but cannot be loaded, the defaults are used and
+    /// the file is copied aside (`<name>.bak-<seconds>`) before the first
+    /// save, so the user's settings are never overwritten unseen.
+    ///
+    /// # Returns
+    /// The settings, and the load error when the file could not be read.
+    pub fn load_or_default(path: &Path) -> (Self, Option<String>) {
+        if !path.exists() {
+            return (Self::new(), None);
+        }
+        match Self::load_from_file(path) {
+            Ok(persistence) => (persistence, None),
+            Err(e) => {
+                let mut persistence = Self::new();
+                persistence.backup_before_save = true;
+                (persistence, Some(e.to_string()))
+            }
+        }
+    }
+
+    /// Saves the settings to the standard config file
+    /// ([`crate::SettingsManager::config_file_path`]), creating its directory
+    /// and first backing up a file that failed to load.
+    ///
+    /// # Errors
+    /// Returns an error if the backup or the write fails; nothing is
+    /// overwritten when the backup fails.
+    pub fn persist(&mut self) -> Result<()> {
+        let path = crate::SettingsManager::config_file_path()?;
+        crate::SettingsManager::ensure_config_dir()?;
+        self.persist_to(&path)
+    }
+
+    /// [`Self::persist`] to an explicit file instead of the standard one.
+    ///
+    /// # Errors
+    /// Returns an error if the backup or the write fails.
+    pub fn persist_to(&mut self, path: &Path) -> Result<()> {
+        if self.backup_before_save && path.exists() {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_default();
+            let mut name = path.file_name().unwrap_or_default().to_os_string();
+            name.push(format!(".bak-{stamp}"));
+            let backup = path.with_file_name(name);
+            std::fs::copy(path, &backup).map_err(|e| {
+                gcodekit5_core::Error::other(format!(
+                    "Failed to back up {} to {}: {e}",
+                    path.display(),
+                    backup.display()
+                ))
+            })?;
+            tracing::warn!(backup = %backup.display(), "Backed up unreadable settings file");
+        }
+        self.backup_before_save = false;
+        self.save_to_file(path)
+    }
+
+    /// [`Self::persist`], logging a failure instead of returning it. For
+    /// background saves (remembered folders, panel sizes) with no one to
+    /// report to.
+    pub fn persist_or_log(&mut self) {
+        if let Err(e) = self.persist() {
+            tracing::warn!(error = %e, "Failed to save settings");
+        }
     }
 
     /// Save settings to file
@@ -685,9 +762,12 @@ impl SettingsPersistence {
             };
         }
 
+        // Only a folder the user changed in the dialog is applied: the dialog
+        // still holds the folder from when it was filled, and file dialogs
+        // update the remembered folder since then.
         if let Some(setting) = dialog.get_setting("default_directory") {
             let path_str = setting.value.as_str();
-            if !path_str.is_empty() {
+            if !path_str.is_empty() && path_str != setting.default.as_str() {
                 self.config.file_processing.output_directory = std::path::PathBuf::from(path_str);
             }
         }

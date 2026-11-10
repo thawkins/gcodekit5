@@ -199,6 +199,8 @@ pub struct MachineControlView {
     pub jog_feed_entry: gtk4::Entry,
     pub jog_feed_units: Label,
     pub jog_step_mm: ThreadSafe<f32>,
+    /// Preferences, read when a job is prepared.
+    settings_controller: Option<Rc<SettingsController>>,
     pub jog_feed_mm_per_min: ThreadSafe<f32>,
     pub current_feed_units: ThreadSafe<FeedRateUnits>,
     pub jog_x_pos: Button,
@@ -1193,16 +1195,33 @@ impl MachineControlView {
         };
         let current_feed_units = thread_safe(initial_feed_units);
 
-        // Populate jog UI from initial settings
+        // Populate jog UI from Preferences > Machine (jog step, jog feed and
+        // per-axis direction inversion).
         {
+            let (step_pref, feed_pref) = match &settings_controller {
+                Some(controller) => {
+                    let p = controller.persistence.borrow();
+                    let machine = &p.config().machine;
+                    for axis in ['X', 'Y', 'Z', 'A', 'B', 'C'] {
+                        let inverted = machine
+                            .axis_direction_invert
+                            .get(&axis.to_string())
+                            .copied()
+                            .unwrap_or(false);
+                        device_status::set_jog_inverted(axis, inverted);
+                    }
+                    (machine.jog_increment as f32, machine.jog_feed_rate as f32)
+                }
+                None => (1.0, 2000.0),
+            };
             let unit_label = get_unit_label(initial_units);
             step_label.set_text(&format!("{} ({unit_label}):", t!("Step")));
-            let step_mm = Self::populate_step_presets(&step_combo, initial_units, 1.0);
+            let step_mm = Self::populate_step_presets(&step_combo, initial_units, step_pref);
             *jog_step_mm.lock() = step_mm;
 
             jog_feed_units.set_text(&initial_feed_units.to_string());
-            jog_feed_entry.set_text(&format_feed_rate(2000.0, initial_feed_units));
-            *jog_feed_mm_per_min.lock() = 2000.0;
+            jog_feed_entry.set_text(&format_feed_rate(feed_pref, initial_feed_units));
+            *jog_feed_mm_per_min.lock() = feed_pref;
         }
 
         // Listen for unit changes
@@ -1225,6 +1244,30 @@ impl MachineControlView {
             ];
 
             controller.on_setting_changed(move |key, value| {
+                if let Some(axis) = key.strip_prefix("invert_") {
+                    if let Some(axis) = axis.chars().next() {
+                        device_status::set_jog_inverted(axis.to_ascii_uppercase(), value == "true");
+                    }
+                }
+
+                if key == "jog_increment_linear" {
+                    if let Ok(step) = value.parse::<f32>() {
+                        let units = *units_clone.lock();
+                        let step_mm = Self::populate_step_presets(&step_combo_clone, units, step);
+                        *jog_step_mm_clone.lock() = step_mm;
+                    }
+                }
+
+                if key == "jog_feed_rate" {
+                    if let Ok(feed) = value.parse::<f32>() {
+                        if feed > 0.0 {
+                            *jog_feed_mm_per_min_clone.lock() = feed;
+                            jog_feed_entry_clone
+                                .set_text(&format_feed_rate(feed, *feed_units_clone.lock()));
+                        }
+                    }
+                }
+
                 if key == "measurement_system" {
                     let new_units = match value {
                         "Imperial" => MeasurementSystem::Imperial,
@@ -1372,6 +1415,7 @@ impl MachineControlView {
             jog_feed_entry,
             jog_feed_units,
             jog_step_mm: jog_step_mm.clone(),
+            settings_controller: settings_controller.clone(),
             jog_feed_mm_per_min: jog_feed_mm_per_min.clone(),
             current_feed_units: current_feed_units.clone(),
             jog_x_pos,
@@ -1506,6 +1550,8 @@ impl MachineControlView {
             if !comm.is_connected() {
                 return;
             }
+            // Preferences > Machine > Invert reverses an axis's jog direction.
+            let delta = delta * device_status::jog_direction(axis);
             // G21 makes the jog explicitly metric: internal jog values are always mm and
             // mm/min, regardless of the controller's current G20/G21 modal state.
             let jog_cmd = format!("$J=G21 G91 {axis}{delta} F{feed_mm_per_min}\n");
@@ -1882,7 +1928,21 @@ impl MachineControlView {
 
                     return;
                 }
-                let content = view_clone.prepare_job_content(content);
+                let content = match view_clone.prepare_job_content(content) {
+                    Ok(content) => content,
+                    Err(reason) => {
+                        let parent = widget_for_dialog.root().and_downcast::<gtk4::Window>();
+                        crate::ui::gtk::common::dialog::show_error(
+                            &t!("Cannot Send G-Code"),
+                            &format!(
+                                "{reason}\n\n{}",
+                                t!("The limit is set in Preferences > File Processing > Max Line Length.")
+                            ),
+                            parent.as_ref(),
+                        );
+                        return;
+                    }
+                };
 
                 // Send is disabled while the job runs; Pause/Stop follow the job state.
                 view_clone.send_btn.set_sensitive(false);
@@ -2658,18 +2718,33 @@ impl MachineControlView {
         self.update_job_controls();
     }
 
-    /// Returns the job content to stream, prefixed with `G90` when a failed quick probe
-    /// left the controller in incremental mode.
-    fn prepare_job_content(&self, content: String) -> String {
-        if self.quick_probe.get() == QuickProbeState::NeedsAbsoluteRestore {
-            self.quick_probe.set(QuickProbeState::Idle);
-            self.log(&t!(
-                "Restoring absolute mode (G90) before the job (a probe failed)."
-            ));
-            format!("G90\n{content}")
-        } else {
-            content
-        }
+    /// Returns the job content to stream: comments handled and line length
+    /// checked per Preferences > File Processing, and prefixed with `G90` when a
+    /// failed quick probe left the controller in incremental mode.
+    ///
+    /// # Errors
+    /// Returns a message when a line is longer than the configured maximum.
+    fn prepare_job_content(&self, content: String) -> Result<String, String> {
+        let (preserve_comments, max_line_length) = match &self.settings_controller {
+            Some(controller) => {
+                let p = controller.persistence.borrow();
+                let file = &p.config().file_processing;
+                (file.preserve_comments, file.max_line_length as usize)
+            }
+            None => (true, 0),
+        };
+        let content = grbl_stream::prepare_program(&content, preserve_comments, max_line_length)?;
+        Ok(
+            if self.quick_probe.get() == QuickProbeState::NeedsAbsoluteRestore {
+                self.quick_probe.set(QuickProbeState::Idle);
+                self.log(&t!(
+                    "Restoring absolute mode (G90) before the job (a probe failed)."
+                ));
+                format!("G90\n{content}")
+            } else {
+                content
+            },
+        )
     }
 
     /// Get the current axis count

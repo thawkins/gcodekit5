@@ -1,3 +1,14 @@
+## [Unreleased] - 2026-11-10 (settings integrity and Preferences wiring)
+
+### Fixed
+- **Settings never lost** (#76, A-01/E2-04): a config.json that fails to load is no longer overwritten unseen. The defaults are used, a warning is shown, and the file is copied to `config.json.bak-<seconds>` before the first save. Saves are atomic (temp file + rename)
+- **One config directory** (A-03): config.json uses the platform config directory (`$XDG_CONFIG_HOME` on Linux), like the device, tool and material files; no save falls back to the current directory
+- **`RUST_LOG` works** (A-04): it now sets the log level; INFO is the default only when it is unset
+- **Remembered folder kept** (E2-05): saving Preferences no longer restores the folder from when the dialog was filled
+- **Save errors logged** (E2-15): all background settings saves go through one helper that logs failures
+
+### Changed
+- **Preferences that now take effect** (A-02): Machine > Jog Step and Jog Feed Rate set the panel's starting jog step and feed (the feed was fixed at 2000 mm/min); Machine > Invert X/Y/Z/A/B/C reverse that axis's jog direction; window width/height set the start size and are saved on close; Show Status Bar hides the status bar; File Processing > Preserve Comments (off by default) removes comments from jobs before streaming; Max Line Length (default 256) refuses a job with a longer line
 ## [Unreleased] - 2026-11-10 (machine-control busy guard and Stop)
 
 ### Changed

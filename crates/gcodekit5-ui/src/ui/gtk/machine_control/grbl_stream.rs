@@ -384,3 +384,55 @@ pub fn network_driver_for(connection_type: &str) -> Option<ConnectionDriver> {
         None
     }
 }
+
+/// Prepares a program for streaming according to Preferences > File
+/// Processing: removes comments (`(...)` and `;...`) unless
+/// `preserve_comments` is set, drops lines left empty, and rejects a line
+/// longer than `max_line_length` characters, which the controller would
+/// refuse (GRBL's line buffer is 80 characters, grblHAL's 256).
+///
+/// # Returns
+/// The program to send, or an error naming the first line that is too long.
+pub fn prepare_program(
+    content: &str,
+    preserve_comments: bool,
+    max_line_length: usize,
+) -> Result<String, String> {
+    let mut out = String::with_capacity(content.len());
+    for (index, raw) in content.lines().enumerate() {
+        let line = if preserve_comments {
+            raw.trim().to_string()
+        } else {
+            strip_gcode_comments(raw)
+        };
+        if line.is_empty() {
+            continue;
+        }
+        let length = line.chars().count();
+        if max_line_length > 0 && length > max_line_length {
+            return Err(format!(
+                "line {} has {length} characters; the maximum is {max_line_length}",
+                index + 1
+            ));
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// Removes `( ... )` and `; ...` comments from one G-code line and trims it.
+fn strip_gcode_comments(line: &str) -> String {
+    let line = line.split(';').next().unwrap_or_default();
+    let mut out = String::with_capacity(line.len());
+    let mut depth = 0usize;
+    for c in line.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}

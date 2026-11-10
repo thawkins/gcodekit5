@@ -57,16 +57,11 @@ fn running_app() -> Result<Application> {
 }
 
 fn get_current_language() -> String {
-    let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-        .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-
-    let language = if config_path.exists() {
-        gcodekit5_settings::SettingsPersistence::load_from_file(&config_path)
-            .map(|p| p.config().ui.language.clone())
-            .unwrap_or_else(|_| "system".to_string())
-    } else {
-        "system".to_string()
-    };
+    let language = gcodekit5_settings::SettingsManager::config_file_path()
+        .ok()
+        .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
+        .map(|p| p.config().ui.language.clone())
+        .unwrap_or_else(|| "system".to_string());
 
     if language == "system" {
         let locale = std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string());
