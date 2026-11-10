@@ -45,9 +45,6 @@ struct CalculatorState {
 
 impl Default for CalculatorState {
     fn default() -> Self {
-        // Try to load the device manager from config
-        let device_manager = Self::load_device_manager();
-
         Self {
             selected_tool: None,
             selected_material: None,
@@ -57,32 +54,19 @@ impl Default for CalculatorState {
             tool_stick_out: 25.0,
             coolant_enabled: true,
             conservative: false,
-            device_manager,
+            device_manager: None,
         }
     }
 }
 
 impl CalculatorState {
-    /// Load the device manager from the config file
-    fn load_device_manager() -> Option<Arc<DeviceManager>> {
-        let config_dir = dirs::config_dir()?;
-        let device_config_path = config_dir.join("gcodekit5").join("devices.json");
-
-        eprintln!(
-            "[SpeedsFeeds] Loading device manager from: {:?}",
-            device_config_path
-        );
-
-        let manager = Arc::new(DeviceManager::new(device_config_path.clone()));
-        match manager.load() {
-            Ok(_) => {
-                eprintln!("[SpeedsFeeds] Device manager loaded successfully");
-                Some(manager)
-            }
-            Err(e) => {
-                eprintln!("[SpeedsFeeds] Failed to load device manager: {:?}", e);
-                None
-            }
+    /// A fresh calculator that reads the active machine from `device_manager`,
+    /// the application's live device database (so a change of active device or
+    /// spindle in the Device Manager is seen at once).
+    fn with_device_manager(device_manager: Option<Arc<DeviceManager>>) -> Self {
+        Self {
+            device_manager,
+            ..Self::default()
         }
     }
 
@@ -126,8 +110,14 @@ pub struct SpeedsFeedsTool {
 }
 
 impl SpeedsFeedsTool {
-    pub fn new(stack: &Stack, _settings: Rc<SettingsController>) -> Self {
-        let state = Rc::new(RefCell::new(CalculatorState::default()));
+    pub fn new(
+        stack: &Stack,
+        _settings: Rc<SettingsController>,
+        device_manager: Option<Arc<DeviceManager>>,
+    ) -> Self {
+        let state = Rc::new(RefCell::new(CalculatorState::with_device_manager(
+            device_manager.clone(),
+        )));
         let result_labels = Rc::new(RefCell::new(None));
         let content_box = Box::new(Orientation::Vertical, 0);
 
@@ -763,7 +753,8 @@ impl SpeedsFeedsTool {
 
         let state_clone = state.clone();
         reset_btn.connect_clicked(move |_| {
-            *state_clone.borrow_mut() = CalculatorState::default();
+            let device_manager = state_clone.borrow().device_manager.clone();
+            *state_clone.borrow_mut() = CalculatorState::with_device_manager(device_manager);
         });
 
         right_panel

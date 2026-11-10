@@ -556,10 +556,4 @@ impl ConfigSettingsView {
             }
         });
     }
-
-    pub(crate) fn restore_to_device(&self) {
-        self.status_label
-            .set_text(&t!("Restoring settings to device..."));
-        // This would send settings to device via communicator
-    }
 }
