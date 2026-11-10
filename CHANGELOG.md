@@ -6,6 +6,16 @@
 - **Ramp entry on dense paths** (C-03): when the ramp lap cap is reached, the remaining depth is cut in flat laps one step-down apart instead of one full-depth plunge
 - **Offset keeps holes** (C-04): offsetting a shape with holes (gears, boolean results) moves the holes with the outline instead of filling them in
 - **Header depth** (C-07): the header prints `; Final Z` (deepest cut) instead of a "Cut depth" that was the first pass Z
+## [Unreleased] - 2026-11-10 (serial disconnect and status parsing)
+
+### Fixed
+- **USB unplug detected** (#73, B-01): a serial hang-up (`BrokenPipe`) on read or write now drops the port and reports "Connection lost", instead of being read as "no data" forever
+- **grblHAL and FluidNC** (B-10): profiles and banners for these controllers map to the GRBL protocol, so they get `$I`/`$$` on connect and protocol mismatch checks work
+- **Corrupt status reports** (B-11): a malformed axis value rejects the whole position instead of shifting the following values onto the wrong axes
+- **Inch reports** (B-22): with `$13=1`, status positions, work offsets, feed and probe results are converted from inches to mm
+
+### Removed
+- `TcpCommunicator` (B-16): unused; TCP connections go through `SerialCommunicator`
 ## [Unreleased] - 2026-11-10 (Repetier protocol fixes)
 
 ### Fixed

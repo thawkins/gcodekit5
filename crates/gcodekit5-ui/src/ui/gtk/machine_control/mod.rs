@@ -222,6 +222,9 @@ pub struct MachineControlView {
     pub active_sender: Rc<RefCell<Option<Rc<dyn Sender>>>>,
     /// Last Work Coordinate Offset reported (GRBL only sends WCO in some reports).
     pub(crate) last_wco: Rc<Cell<Option<WorkCoordinateOffset>>>,
+    /// The report units (`$13`) `last_wco` was read in; when they change the
+    /// cached offset is dropped until the controller sends a new one.
+    pub(crate) wco_in_inches: Rc<Cell<bool>>,
     /// Progress of a quick probe started from the panel.
     pub(crate) quick_probe: Rc<Cell<QuickProbeState>>,
     /// Bumped on every connect so a stale status poller stops itself.
@@ -1397,6 +1400,7 @@ impl MachineControlView {
             job_start_time: thread_safe_none(),
             active_sender: Rc::new(RefCell::new(None)),
             last_wco: Rc::new(Cell::new(None)),
+            wco_in_inches: Rc::new(Cell::new(false)),
             quick_probe: Rc::new(Cell::new(QuickProbeState::Idle)),
             poll_generation: Rc::new(Cell::new(0)),
             active_wcs: Rc::new(Cell::new(0)),
@@ -2239,7 +2243,10 @@ impl MachineControlView {
                         return;
                     }
                     match comm.send_command(&cmd) {
-                        Ok(_) => console_clone.append_log(&format!("> {}\n", cmd)),
+                        Ok(_) => {
+                            device_status::note_setting_sent(&cmd);
+                            console_clone.append_log(&format!("> {}\n", cmd))
+                        }
                         Err(e) => {
                             console_clone.append_log(&format!("{}: {}\n", t!("Error sending"), e))
                         }
