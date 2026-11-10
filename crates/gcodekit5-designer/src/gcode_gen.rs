@@ -200,9 +200,13 @@ impl ToolpathToGcode {
     }
 
     /// Generates the G-code header.
+    ///
+    /// In CNC mode the header ends by starting the spindle clockwise at
+    /// `spindle_speed` (`M3 S<rpm>`); laser output leaves the laser off and
+    /// switches it on per cut instead.
     pub fn generate_header(
         &self,
-        _spindle_speed: u32,
+        spindle_speed: u32,
         _feed_rate: f64,
         tool_diameter: f64,
         depth: f64,
@@ -247,7 +251,11 @@ impl ToolpathToGcode {
         gcode.push_str("G90         ; Absolute positioning\n");
         gcode.push_str("G21         ; Millimeter units\n");
         gcode.push_str("G17         ; XY plane\n");
-        gcode.push_str("M5          ; Laser OFF ->\n");
+        if self.is_laser_2d {
+            gcode.push_str("M5          ; Laser OFF ->\n");
+        } else {
+            gcode.push_str(&format!("M3 S{}     ; Spindle ON (CW)\n", spindle_speed));
+        }
 
         gcode
     }
@@ -664,6 +672,7 @@ impl ToolpathToGcode {
                 "G00 Z{:.2}   ; Raise tool to safe height\n",
                 self.safe_z
             ));
+            gcode.push_str("M5          ; Spindle OFF\n");
         }
 
         gcode.push_str("G00 X0 Y0   ; Return to origin\n");

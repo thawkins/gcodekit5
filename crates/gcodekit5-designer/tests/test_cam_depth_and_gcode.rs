@@ -252,3 +252,51 @@ fn test_generate_header_records_stock_z0_for_cnc_only() {
         .generate_header(500, 1000.0, 0.1, 0.0, 0.0);
     assert!(!laser.contains("Stock Z0"), "{laser}");
 }
+
+/// Returns the program lines without their `;` comments.
+fn gcode_words(gcode: &str) -> Vec<String> {
+    gcode
+        .lines()
+        .map(|l| l.split(';').next().unwrap_or("").trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+#[test]
+fn test_cnc_program_starts_spindle_before_cutting_and_stops_it_at_end() {
+    // Audit C-01: CNC output never started the spindle, so the cutter
+    // plunged into the stock while stopped.
+    let mut tp = Toolpath::new(3.0, -2.0);
+    tp.add_segment(ToolpathSegment::new(
+        ToolpathSegmentType::LinearMove,
+        Point::new(0.0, 0.0),
+        Point::new(10.0, 0.0),
+        1000.0,
+        12000,
+    ));
+    let gcode = ToolpathToGcode::new(Units::MM, 5.0).generate(&tp);
+    let lines = gcode_words(&gcode);
+
+    let m3 = lines.iter().position(|l| l == "M3 S12000");
+    let first_cut = lines
+        .iter()
+        .position(|l| l.starts_with("G01") || l.contains(" G01"));
+    assert!(m3.is_some(), "{gcode}");
+    assert!(m3 < first_cut, "spindle must start before cutting: {gcode}");
+
+    let m5 = lines.iter().rposition(|l| l == "M5");
+    let raise = lines.iter().rposition(|l| l.starts_with("G00 Z"));
+    let end = lines.iter().position(|l| l == "M30");
+    assert!(m5.is_some() && raise < m5 && m5 < end, "{gcode}");
+}
+
+#[test]
+fn test_laser_program_does_not_start_spindle() {
+    let gcode = ToolpathToGcode::new(Units::MM, 5.0)
+        .with_laser_2d()
+        .generate_header(500, 1000.0, 0.1, 0.0, 0.0);
+    assert!(
+        !gcode_words(&gcode).iter().any(|l| l.starts_with("M3")),
+        "{gcode}"
+    );
+}
