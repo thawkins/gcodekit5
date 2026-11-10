@@ -33,8 +33,13 @@ impl MachineControlView {
             self.apply_machine_state(&state);
         }
 
-        let full_status =
-            StatusParser::parse_full(line).into_mm(device_status::reports_in_inches());
+        let report_inches = device_status::reports_in_inches();
+        // A WCO cached before $13 was known (or before it changed) is in the
+        // wrong units: drop it and wait for the controller's next WCO.
+        if self.wco_in_inches.replace(report_inches) != report_inches {
+            self.last_wco.set(None);
+        }
+        let full_status = StatusParser::parse_full(line).into_mm(report_inches);
         let units = *self.current_units.lock();
         let unit_label = get_unit_label(units);
 
