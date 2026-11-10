@@ -229,6 +229,27 @@ pub fn get_grbl_setting_numeric(number: u16) -> Option<f64> {
     get_grbl_setting(number).and_then(|v| parse_numeric_prefix(&v))
 }
 
+/// Axes whose jog direction is reversed (Preferences > Machine > Invert).
+static JOG_INVERTED: Lazy<ThreadSafeRw<Vec<char>>> = Lazy::new(|| thread_safe_rw(Vec::new()));
+
+/// Sets whether jogging `axis` (X, Y, Z, A, B or C) runs in reverse.
+pub fn set_jog_inverted(axis: char, inverted: bool) {
+    let mut axes = JOG_INVERTED.write();
+    axes.retain(|a| *a != axis);
+    if inverted {
+        axes.push(axis);
+    }
+}
+
+/// `-1.0` when jogging `axis` is inverted, otherwise `1.0`.
+pub fn jog_direction(axis: char) -> f32 {
+    if JOG_INVERTED.read().contains(&axis) {
+        -1.0
+    } else {
+        1.0
+    }
+}
+
 /// Get a snapshot of the current device status
 pub fn get_status() -> GrblDeviceStatus {
     DEVICE_STATUS.read().clone()

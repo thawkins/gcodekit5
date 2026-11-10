@@ -108,7 +108,8 @@ pub fn init_logging() -> anyhow::Result<()> {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::EnvFilter;
 
-    let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
+    // RUST_LOG wins when set; otherwise log at INFO.
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     // In Windows GUI mode (release builds), log to a file instead of stdout
     #[cfg(all(target_os = "windows", not(debug_assertions)))]

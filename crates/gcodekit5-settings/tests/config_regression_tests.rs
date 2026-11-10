@@ -127,3 +127,61 @@ fn test_config_merge_ignores_unpopulated_ui_section() {
 
     assert_eq!(base.ui.window_width, 1024);
 }
+
+#[test]
+fn test_unreadable_config_is_backed_up_before_it_is_replaced() {
+    // Audit A-01: a config.json that failed to load was silently replaced by
+    // defaults on the next automatic save.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.json");
+    std::fs::write(&path, "{ not json").expect("write");
+
+    let (mut persistence, error) = SettingsPersistence::load_or_default(&path);
+    assert!(error.is_some(), "load error must be reported");
+
+    persistence.persist_to(&path).expect("save");
+    let backups: Vec<_> = std::fs::read_dir(dir.path())
+        .expect("read dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("config.json.bak-"))
+        .collect();
+    assert_eq!(backups.len(), 1, "{backups:?}");
+    let backup = std::fs::read_to_string(dir.path().join(&backups[0])).expect("backup");
+    assert_eq!(backup, "{ not json");
+    assert!(SettingsPersistence::load_from_file(&path).is_ok());
+
+    // Later saves do not back up again.
+    persistence.persist_to(&path).expect("second save");
+    let count = std::fs::read_dir(dir.path())
+        .expect("read dir")
+        .filter(|e| {
+            e.as_ref()
+                .is_ok_and(|e| e.file_name().to_string_lossy().contains(".bak-"))
+        })
+        .count();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn test_missing_config_loads_defaults_without_error() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_, error) = SettingsPersistence::load_or_default(&dir.path().join("config.json"));
+    assert!(error.is_none());
+}
+
+#[test]
+fn test_preferences_save_keeps_folder_remembered_by_file_dialogs() {
+    // Audit E2-05: saving Preferences restored the folder the dialog was
+    // filled with, undoing the folder a file dialog remembered since.
+    let mut persistence = SettingsPersistence::new();
+    persistence.config_mut().file_processing.output_directory = "/start".into();
+    let mut dialog = SettingsDialog::new();
+    persistence.populate_dialog(&mut dialog);
+    persistence.config_mut().file_processing.output_directory = "/picked".into();
+    persistence.load_from_dialog(&dialog).expect("load");
+    assert_eq!(
+        persistence.config().file_processing.output_directory,
+        std::path::PathBuf::from("/picked")
+    );
+}

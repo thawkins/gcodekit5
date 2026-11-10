@@ -23,3 +23,5 @@ mod machine_control_streaming;
 mod test_dialog_window;
 #[path = "test_glib_log_filter.rs"]
 mod test_glib_log_filter;
+#[path = "test_job_preferences.rs"]
+mod test_job_preferences;

@@ -25,7 +25,6 @@ use crate::ui::tools_manager_backend::{string_to_tool_material, ToolsManagerBack
 
 use gcodekit5_core::data::tools::{ShankType, Tool, ToolCoating, ToolId, ToolMaterial, ToolType};
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
-use gcodekit5_settings::manager::SettingsManager;
 use gcodekit5_settings::SettingsController;
 
 pub(crate) const ROW_TOOL_ID_KEY: &str = "gcodekit5-tool-id";
@@ -386,10 +385,7 @@ impl ToolsManagerView {
         {
             let mut p = self.settings_controller.persistence.borrow_mut();
             p.config_mut().ui.tools_sidebar_position = Some(pos);
-            if let Ok(path) = SettingsManager::config_file_path() {
-                let _ = SettingsManager::ensure_config_dir();
-                let _ = p.save_to_file(&path);
-            }
+            p.persist_or_log();
         }
     }
 
@@ -412,10 +408,7 @@ impl ToolsManagerView {
             p.config_mut().ui.tools_manager_selected_tool =
                 self.last_selected_tool_id.borrow().clone();
 
-            if let Ok(path) = SettingsManager::config_file_path() {
-                let _ = SettingsManager::ensure_config_dir();
-                let _ = p.save_to_file(&path);
-            }
+            p.persist_or_log();
         }
     }
 
