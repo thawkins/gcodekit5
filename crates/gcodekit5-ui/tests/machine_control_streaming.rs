@@ -132,6 +132,19 @@ fn test_probe_report_success_and_failure() {
     assert_eq!(parse_probe_report("ok"), None);
 }
 
+/// A quick probe completes only on an explicit `:1`; a report with no flag,
+/// an empty flag or any other value is not a probe result (PR #94 review).
+#[test]
+fn test_probe_report_without_explicit_flag_is_not_a_result() {
+    assert_eq!(parse_probe_report("[PRB:0.000,0.000,-1.234]"), None);
+    assert_eq!(parse_probe_report("[PRB:0.000,0.000,-1.234:]"), None);
+    assert_eq!(parse_probe_report("[PRB:0.000,0.000,-1.234:2]"), None);
+    assert_eq!(
+        parse_probe_report("[PRB:0.000,0.000,-1.234: 1 ]"),
+        Some(true)
+    );
+}
+
 #[test]
 fn test_reported_axis_count_from_position() {
     let mut pos = MachinePosition {

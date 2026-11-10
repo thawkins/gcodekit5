@@ -33,11 +33,7 @@ use std::rc::Rc;
 /// them back, so the two can never disagree.
 pub(crate) type SharedMeasurementSystem = Rc<Cell<units::MeasurementSystem>>;
 
-const MM_PER_PT: f64 = 25.4 / 72.0;
-
-fn mm_to_pt(mm: f64) -> f64 {
-    mm / MM_PER_PT
-}
+use crate::ui::gtk::designer_canvas::mm_to_pt;
 
 fn format_font_points(mm: f64) -> String {
     format!("{:.2}", mm_to_pt(mm))

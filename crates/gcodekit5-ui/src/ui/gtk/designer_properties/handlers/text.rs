@@ -8,11 +8,7 @@ use gtk4::prelude::*;
 use gtk4::{CheckButton, DropDown, Entry};
 use std::rc::Rc;
 
-const MM_PER_PT: f64 = 25.4 / 72.0;
-
-fn pt_to_mm(pt: f64) -> f64 {
-    pt * MM_PER_PT
-}
+use crate::ui::gtk::designer_canvas::pt_to_mm;
 
 fn parse_font_points_mm(s: &str) -> Option<f64> {
     let s = s.trim().trim_end_matches("pt").trim().replace(',', ".");

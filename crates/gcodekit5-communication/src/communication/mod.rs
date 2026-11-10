@@ -710,12 +710,12 @@ impl Communicator for SerialCommunicator {
                 }
 
                 if data == b"!" {
-                    tracing::debug!("⏸️  [REPETIER] Pausa solicitada. Streaming en hold.");
+                    tracing::debug!("[REPETIER] Pause requested; streaming on hold");
                     self.repetier_flow_paused = true;
                     return Ok(0);
                 }
                 if data == b"~" {
-                    tracing::debug!("▶️  [REPETIER] Resume solicitado. Streaming continúa.");
+                    tracing::debug!("[REPETIER] Resume requested; streaming continues");
                     self.repetier_flow_paused = false;
                     return Ok(0);
                 }
@@ -725,7 +725,7 @@ impl Communicator for SerialCommunicator {
                 // tal cual, sin pasar por el processor Repetier (que lo
                 // descartaría porque no encaja en su formato N<num>*ck).
                 if data == [0x18u8] {
-                    tracing::debug!("⏹️  [REPETIER] Reset universal (bypass processor).");
+                    tracing::debug!("[REPETIER] Soft reset (sent without the processor)");
                     self.repetier_flow_stopped = true;
 
                     // Enviar directo al puerto.
@@ -743,12 +743,12 @@ impl Communicator for SerialCommunicator {
                 }
 
                 if let Some(translated_bytes) = self.repetier_processor.process_outgoing(data) {
-                    // 🔎 TRAZA: mostramos el comando EXACTO que sale por el puerto USB.
-                    // Formato: "📤 [TX] N<num> <gcode> *<checksum>"
+                    // Trace: the exact command written to the port.
+                    // Format: "[TX] N<num> <gcode> *<checksum>"
                     for tx_line in translated_bytes.split(|&b| b == b'\n') {
                         if !tx_line.is_empty() {
                             tracing::debug!(
-                                "📤 [TX] {:?}",
+                                "[TX] {:?}",
                                 String::from_utf8_lossy(&translated_bytes)
                             );
                         }
@@ -778,14 +778,14 @@ impl Communicator for SerialCommunicator {
                     );
                     return Ok(data.len());
                 } else {
-                    tracing::debug!("🗑️  [TX-DESCARTADO] {:?}", cleaned);
+                    tracing::debug!("[TX-DROPPED] {:?}", cleaned);
                     return Ok(0);
                 }
             }
 
             match port.write(data) {
                 Ok(n) => {
-                    tracing::debug!("📤 [TX] (raw) {:?}", String::from_utf8_lossy(data));
+                    tracing::debug!("[TX] (raw) {:?}", String::from_utf8_lossy(data));
                     let sent_data = &data[..n];
                     let data_str = String::from_utf8_lossy(sent_data);
                     self.notify_listeners(CommunicatorEvent::DataSent, &data_str);
@@ -807,10 +807,7 @@ impl Communicator for SerialCommunicator {
 
                     if !data.is_empty() {
                         let incoming_text = String::from_utf8_lossy(&data);
-                        tracing::debug!(
-                            "📥 [RX] {}",
-                            incoming_text.trim_end().replace('\n', " | ")
-                        );
+                        tracing::debug!("[RX] {}", incoming_text.trim_end().replace('\n', " | "));
 
                         // ─── Auto-detection (informational only) ───
                         // Uses the PROTOCOLS table from protocol_registry to
@@ -825,7 +822,7 @@ impl Communicator for SerialCommunicator {
                             if let Some(detected) =
                                 crate::firmware::protocol_registry::detect_protocol(&incoming_text)
                             {
-                                tracing::debug!("🔒 Autodetección: {:?} capturado.", detected);
+                                tracing::debug!("Auto-detected protocol: {:?}.", detected);
                                 self.detected_protocol = detected;
                             }
                         }

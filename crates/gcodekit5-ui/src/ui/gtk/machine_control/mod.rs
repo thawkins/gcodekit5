@@ -1525,31 +1525,72 @@ impl MachineControlView {
 
         // Disable all controls initially (until connected)
         view.set_connection_controls(false);
-        // Setup jog button handlers
-        /// Returns true (and logs why) when a job is streaming, so manual motion /
-        /// offset commands are not interleaved with the job's G-code.
-        fn job_running(
-            is_streaming: &ThreadSafe<bool>,
-            console: &Option<Rc<DeviceConsoleView>>,
-        ) -> bool {
-            if *is_streaming.lock() {
-                if let Some(c) = console {
-                    c.append_log(&format!("{}\n", t!("Command ignored: a job is running.")));
-                }
-                return true;
-            }
-            if device_status::stop_pending() {
-                if let Some(c) = console {
-                    c.append_log(&format!(
-                        "{}\n",
-                        t!("Command ignored: the machine is stopping.")
-                    ));
-                }
-                return true;
-            }
-            false
+        Self::wire_jog_controls(&view);
+        Self::wire_job_controls(&view);
+        Self::wire_machine_state_controls(&view);
+        Self::wire_estop_probe_console(&view);
+
+        // Quick probe buttons (Milestone 6). Distances/feeds are fixed in mm (sent with
+        // G21); the log and tooltips show them in the display units.
+        for (btn, name, axis_move) in [
+            (&probe_z_btn, t!("Quick Z-touch probe"), PROBE_Z_MOVE),
+            (
+                &probe_x_neg_btn,
+                t!("Probe X- edge"),
+                ('X', -PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_x_pos_btn,
+                t!("Probe X+ edge"),
+                ('X', PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_y_neg_btn,
+                t!("Probe Y- edge"),
+                ('Y', -PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_y_pos_btn,
+                t!("Probe Y+ edge"),
+                ('Y', PROBE_EDGE_DISTANCE_MM),
+            ),
+        ] {
+            let view_probe = view.clone();
+            btn.connect_clicked(move |_| view_probe.start_quick_probe(&name, axis_move));
         }
 
+        // Setup override handlers
+        Self::setup_override_handlers(&view);
+
+        view
+    }
+
+    /// True (and logs why) when a job is streaming or a Stop is in progress,
+    /// so a manual command must not be sent.
+    fn job_running(
+        is_streaming: &ThreadSafe<bool>,
+        console: &Option<Rc<DeviceConsoleView>>,
+    ) -> bool {
+        if *is_streaming.lock() {
+            if let Some(c) = console {
+                c.append_log(&format!("{}\n", t!("Command ignored: a job is running.")));
+            }
+            return true;
+        }
+        if device_status::stop_pending() {
+            if let Some(c) = console {
+                c.append_log(&format!(
+                    "{}\n",
+                    t!("Command ignored: the machine is stopping.")
+                ));
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Connects the panel's handlers: jog buttons, numpad shortcuts and continuous jog.
+    fn wire_jog_controls(view: &Self) {
         fn send_jog(
             axis: char,
             delta: f32,
@@ -1768,7 +1809,10 @@ impl MachineControlView {
         view.refresh_btn.connect_clicked(move |_| {
             view_clone.refresh_ports();
         });
+    }
 
+    /// Connects the panel's handlers: send, pause, resume and stop of a job.
+    fn wire_job_controls(view: &Self) {
         // Transmission Controls
         {
             let communicator = view.communicator.clone();
@@ -2024,14 +2068,17 @@ impl MachineControlView {
                 sender.send_gcode(&content);
             });
         }
+    }
 
+    /// Connects the panel's handlers: home, unlock, reset, work coordinate systems and zeroing.
+    fn wire_machine_state_controls(view: &Self) {
         // Machine State Controls
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.home_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 if let Some(c) = console.as_ref() {
@@ -2108,7 +2155,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.x_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2132,7 +2179,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.y_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2156,7 +2203,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.z_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2188,7 +2235,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2211,7 +2258,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.zero_all_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let communicator = communicator.clone();
@@ -2249,7 +2296,7 @@ impl MachineControlView {
             let is_streaming = view.is_streaming.clone();
             let include_z_check = view.goto_zero_include_z.clone();
             view.goto_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 // Explicit G90: in G91 (e.g. left over from a console command) "G0 X0 Y0"
@@ -2268,42 +2315,16 @@ impl MachineControlView {
                 }
             });
         }
+    }
 
+    /// Connects the panel's handlers: e-stop, quick probes, the console and the connect button.
+    fn wire_estop_probe_console(view: &Self) {
         // E-Stop
         {
             let view_clone = view.clone();
             view.estop_btn.connect_clicked(move |_| {
                 view_clone.emergency_stop();
             });
-        }
-
-        // Quick probe buttons (Milestone 6). Distances/feeds are fixed in mm (sent with
-        // G21); the log and tooltips show them in the display units.
-        for (btn, name, axis_move) in [
-            (&probe_z_btn, t!("Quick Z-touch probe"), PROBE_Z_MOVE),
-            (
-                &probe_x_neg_btn,
-                t!("Probe X- edge"),
-                ('X', -PROBE_EDGE_DISTANCE_MM),
-            ),
-            (
-                &probe_x_pos_btn,
-                t!("Probe X+ edge"),
-                ('X', PROBE_EDGE_DISTANCE_MM),
-            ),
-            (
-                &probe_y_neg_btn,
-                t!("Probe Y- edge"),
-                ('Y', -PROBE_EDGE_DISTANCE_MM),
-            ),
-            (
-                &probe_y_pos_btn,
-                t!("Probe Y+ edge"),
-                ('Y', PROBE_EDGE_DISTANCE_MM),
-            ),
-        ] {
-            let view_probe = view.clone();
-            btn.connect_clicked(move |_| view_probe.start_quick_probe(&name, axis_move));
         }
 
         // Console Command Send
@@ -2380,11 +2401,6 @@ impl MachineControlView {
         let view_clone = view.clone();
         view.connect_btn
             .connect_clicked(move |_| view_clone.on_connect_clicked());
-
-        // Setup override handlers
-        Self::setup_override_handlers(&view);
-
-        view
     }
 
     // Update progress

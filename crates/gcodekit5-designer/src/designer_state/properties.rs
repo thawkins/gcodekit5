@@ -63,79 +63,66 @@ impl DesignerState {
         }
     }
 
-    /// Sets the step down for selected shapes.
-    pub fn set_selected_step_down(&mut self, step_down: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.step_down as f64 - step_down).abs() > f64::EPSILON {
+    /// Sets one `f32` property on every selected shape that differs from
+    /// `value`, as one undo step named `name`.
+    fn set_selected_f32(
+        &mut self,
+        value: f64,
+        name: &str,
+        get: fn(&DrawingObject) -> f32,
+        set: fn(&mut DrawingObject, f32),
+    ) {
+        let commands: Vec<DesignerCommand> = self
+            .canvas
+            .shapes()
+            .filter(|s| s.selected && (get(s) as f64 - value).abs() > f64::EPSILON)
+            .map(|obj| {
                 let mut new_obj = obj.clone();
-                new_obj.step_down = step_down as f32;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                set(&mut new_obj, value as f32);
+                DesignerCommand::ChangeProperty(ChangeProperty {
                     id: obj.id,
                     old_state: obj.clone(),
                     new_state: new_obj,
-                }));
-            }
-        }
+                })
+            })
+            .collect();
 
         if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+            self.push_command(DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
-                name: "Change Step Down".to_string(),
-            });
-            self.push_command(cmd);
+                name: name.to_string(),
+            }));
         }
+    }
+
+    /// Sets the step down for selected shapes.
+    pub fn set_selected_step_down(&mut self, step_down: f64) {
+        self.set_selected_f32(
+            step_down,
+            "Change Step Down",
+            |o| o.step_down,
+            |o, v| o.step_down = v,
+        );
     }
 
     /// Sets the step in for selected shapes.
     pub fn set_selected_step_in(&mut self, step_in: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.step_in as f64 - step_in).abs() > f64::EPSILON {
-                let mut new_obj = obj.clone();
-                new_obj.step_in = step_in as f32;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id: obj.id,
-                    old_state: obj.clone(),
-                    new_state: new_obj,
-                }));
-            }
-        }
-
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Change Step In".to_string(),
-            });
-            self.push_command(cmd);
-        }
+        self.set_selected_f32(
+            step_in,
+            "Change Step In",
+            |o| o.step_in,
+            |o, v| o.step_in = v,
+        );
     }
 
     /// Sets the ramp angle for selected shapes.
     pub fn set_selected_ramp_angle(&mut self, ramp_angle: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.ramp_angle as f64 - ramp_angle).abs() > f64::EPSILON {
-                let mut new_obj = obj.clone();
-                new_obj.ramp_angle = ramp_angle as f32;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id: obj.id,
-                    old_state: obj.clone(),
-                    new_state: new_obj,
-                }));
-            }
-        }
-
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Change Ramp Angle".to_string(),
-            });
-            self.push_command(cmd);
-        }
+        self.set_selected_f32(
+            ramp_angle,
+            "Change Ramp Angle",
+            |o| o.ramp_angle,
+            |o, v| o.ramp_angle = v,
+        );
     }
 
     /// Sets the start depth for selected shapes.

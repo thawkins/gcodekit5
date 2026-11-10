@@ -44,7 +44,9 @@ pub struct CamToolsView {
 
 impl CamToolsView {
     fn show_error_dialog(title: &str, message: &str) {
-        crate::ui::gtk::file_dialog::show_error_dialog(title, message, None);
+        // Parent the dialog on the active window, like the other pages.
+        let parent = gtk4::Application::default().active_window();
+        crate::ui::gtk::file_dialog::show_error_dialog(title, message, parent.as_ref());
     }
 
     pub fn new<F: Fn(String) + 'static>(

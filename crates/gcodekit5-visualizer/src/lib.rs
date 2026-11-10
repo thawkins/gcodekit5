@@ -1,6 +1,6 @@
-//! # GCodeKit4 Visualizer
+//! # GCodeKit5 Visualizer
 //!
-//! G-code visualization, parsing, and processing for GCodeKit4.
+//! G-code visualization, parsing, and processing for GCodeKit5.
 //! Includes parser, preprocessors, stream readers, and visualizer components.
 
 pub mod error;

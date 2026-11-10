@@ -2229,7 +2229,7 @@ impl GcodeVisualizer {
                     // ============================================================
                     let (progress_tx, progress_rx) = std::sync::mpsc::channel();
 
-                    // ✅ USAR Arc<AtomicBool> - SIN importar Borrow
+                    // Shared with the worker thread as Arc<AtomicBool>
                     let render_ready =
                         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                     let render_ready_clone = render_ready.clone();
@@ -2278,7 +2278,7 @@ impl GcodeVisualizer {
 
                         // Store in Arc
                         *result_arc_clone.lock() = Some(result_sim);
-                        // ✅ Usar store en lugar de borrow_mut
+                        // Atomic store (no RefCell borrow across threads)
                         render_ready_clone.store(true, std::sync::atomic::Ordering::SeqCst);
                     });
 
@@ -2321,7 +2321,7 @@ impl GcodeVisualizer {
                         }
 
                         // 3. Verificar si el renderizado está listo
-                        // ✅ Usar load en lugar de borrow
+                        // Atomic load (no RefCell borrow across threads)
                         if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst) {
                             if let Some(mut guard) = result_arc_poll.try_lock() {
                                 if let Some(result_simulator) = guard.take() {
@@ -2352,7 +2352,7 @@ impl GcodeVisualizer {
                                     // Forzar renderizado
                                     gl_ref.queue_render();
 
-                                    // ✅ Detener el poller AHORA
+                                    // Stop the poller now
                                     return glib::ControlFlow::Break;
                                 }
                             }
@@ -3242,7 +3242,7 @@ impl GcodeVisualizer {
             });
         drop(vis);
 
-        // ★ Synchronize stock with designer ★
+        // Synchronize stock with the designer
         self.sync_stock_from_designer();
 
         if reset == ViewReset::Keep {

@@ -1,6 +1,6 @@
-//! # GCodeKit4 UI
+//! # GCodeKit5 UI
 //!
-//! GTK-based user interface for GCodeKit4.
+//! GTK-based user interface for GCodeKit5.
 
 pub mod device_status;
 pub mod editor;

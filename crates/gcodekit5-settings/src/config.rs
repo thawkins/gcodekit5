@@ -1,4 +1,4 @@
-//! Configuration and settings management for GCodeKit4
+//! Configuration and settings management for GCodeKit5
 //!
 //! Provides configuration file handling, settings management, and validation.
 //! Supports JSON and TOML file formats stored in platform-specific directories.

@@ -1,4 +1,4 @@
-//! GCodeKit4 Settings Crate
+//! GCodeKit5 Settings Crate
 //!
 //! Handles application configuration, settings persistence, and UI view models.
 

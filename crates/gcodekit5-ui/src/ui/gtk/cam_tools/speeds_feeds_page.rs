@@ -667,104 +667,144 @@ impl SpeedsFeedsTool {
         let result_labels_clone = result_labels.clone();
         calculate_btn.connect_clicked(move |_| {
             let state = state_clone.borrow();
+            let (Some(tool), Some(material)) = (&state.selected_tool, &state.selected_material)
+            else {
+                return;
+            };
 
-                          if let (Some(tool), Some(material)) = (&state.selected_tool, &state.selected_material) {
-                              // Get active device or use defaults
-                              let active_device = state.get_active_device();
+            // Get active device or use defaults
+            let device_info = state.get_active_device();
+            let (max_rpm, has_spindle, spindle_power_kw) = device_info
+                .as_ref()
+                .map(|d| {
+                    (
+                        d.max_spindle_speed_rpm,
+                        d.has_spindle,
+                        d.cnc_spindle_watts as f32 / 1000.0,
+                    )
+                })
+                .unwrap_or((0, false, 0.0));
 
-                              // Store device info for later display (clone before we consume active_device)
-                              let device_info = active_device.clone();
+            // Check if spindle is configured
+            if !has_spindle {
+                let message = t!("The active device does not have a spindle configured. \
+                     Please configure a spindle in the Device Manager.");
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("No Spindle Configured"),
+                    &message,
+                    None,
+                );
+                return;
+            }
 
-                              let (max_rpm, has_spindle, spindle_power_kw) = active_device
-                                  .map(|d| (d.max_spindle_speed_rpm, d.has_spindle, d.cnc_spindle_watts as f32 / 1000.0))
-                                  .unwrap_or((0, false, 0.0));                // Check if spindle is configured
-                if !has_spindle {
-                    crate::ui::gtk::common::dialog::show_warning(&t!("No Spindle Configured"), &t!("The active device does not have a spindle configured. Please configure a spindle in the Device Manager."), None);
+            // Check required spindle parameters
+            let mut missing_params = Vec::new();
+            if max_rpm == 0 {
+                missing_params.push("Maximum Spindle RPM");
+            }
+            if spindle_power_kw == 0.0 {
+                missing_params.push("Spindle Power (watts)");
+            }
+            if !missing_params.is_empty() {
+                let message = format!(
+                    "The following spindle parameters are not configured:\n\n{}\n\n\
+                     Please configure these values in the Device Manager.",
+                    missing_params.join(", ")
+                );
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Spindle Configuration Required"),
+                    &message,
+                    None,
+                );
+                return;
+            }
 
-                    return;
-                }
+            // Create device profile for calculation using active device settings
+            let device = DeviceProfile {
+                max_spindle_speed_rpm: max_rpm,
+                max_feed_rate: 5000.0,
+                ..Default::default()
+            };
+            let input = CalculationInput {
+                material: material.clone(),
+                tool: tool.clone(),
+                device,
+                operation: state.operation,
+                depth_of_cut: state.depth_of_cut,
+                width_of_cut: state.width_of_cut,
+                tool_stick_out: state.tool_stick_out,
+                coolant_enabled: state.coolant_enabled,
+                conservative: state.conservative,
+            };
+            let result = SpeedsFeedsCalculator::calculate(&input);
 
-                // Check required spindle parameters
-                let mut missing_params = Vec::new();
-                if max_rpm == 0 {
-                    missing_params.push("Maximum Spindle RPM");
-                }
-                if spindle_power_kw == 0.0 {
-                    missing_params.push("Spindle Power (watts)");
-                }
+            // Clamp RPM to max device RPM if needed, and scale the feed with it.
+            let clamped_rpm = result.rpm.min(max_rpm);
+            let rpm_ratio = if result.rpm > 0 {
+                clamped_rpm as f32 / result.rpm as f32
+            } else {
+                1.0
+            };
+            let adjusted_feed_rate = result.feed_rate * rpm_ratio;
 
-                if !missing_params.is_empty() {
-                    let param_list = missing_params.join(", ");
-                    crate::ui::gtk::common::dialog::show_warning(&t!("Spindle Configuration Required"), &format!("The following spindle parameters are not configured:\n\n{}\n\nPlease configure these values in the Device Manager.", param_list), None);
+            let labels_ref = result_labels_clone.borrow();
+            let Some(labels) = labels_ref.as_ref() else {
+                return;
+            };
+            // Show clamped RPM with original in parentheses if clamped
+            if clamped_rpm != result.rpm {
+                labels
+                    .spindle_speed
+                    .set_label(&format!("{} (clamped from {})", clamped_rpm, result.rpm));
+                labels
+                    .feed_rate
+                    .set_label(&format!("{:.1} (adjusted)", adjusted_feed_rate));
+            } else {
+                labels.spindle_speed.set_label(&clamped_rpm.to_string());
+                labels
+                    .feed_rate
+                    .set_label(&format!("{:.1}", result.feed_rate));
+            }
+            labels
+                .surface_speed
+                .set_label(&format!("{:.1}", result.surface_speed_m_min));
+            labels
+                .chip_load
+                .set_label(&format!("{:.4}", result.chip_load_mm));
+            labels
+                .mrr
+                .set_label(&format!("{:.1}", result.material_removal_rate));
+            labels
+                .power
+                .set_label(&format!("{:.0}", result.power_required_kw * 1000.0));
+            labels
+                .deflection
+                .set_label(&format!("{:.4}", result.estimated_deflection_mm));
 
-                    return;
-                }
-
-                                                                                                          // Create device profile for calculation using active device settings
-                                                                                                          let device = DeviceProfile {
-                                                                                                              max_spindle_speed_rpm: max_rpm,
-                                                                                                              max_feed_rate: 5000.0,
-                                                                                                              ..Default::default()
-                                                                                                          };
-
-                                                                                                          let input = CalculationInput {                                      material: material.clone(),
-                                      tool: tool.clone(),
-                                      device: device.clone(),
-                                      operation: state.operation,
-                                      depth_of_cut: state.depth_of_cut,
-                                      width_of_cut: state.width_of_cut,
-                                      tool_stick_out: state.tool_stick_out,
-                                      coolant_enabled: state.coolant_enabled,
-                                      conservative: state.conservative,
-                                  };
-                                  let result = SpeedsFeedsCalculator::calculate(&input);
-                // Clamp RPM to max device RPM if needed
-                let clamped_rpm = if result.rpm > max_rpm {
-                    max_rpm
+            // Update device info section
+            if let Some(device) = &device_info {
+                labels.device_name.set_label(&device.name.to_string());
+                labels
+                    .device_rpm
+                    .set_label(&format!("Max RPM: {}", device.max_spindle_speed_rpm));
+                let power_text = if device.has_spindle && device.cnc_spindle_watts > 0.0 {
+                    format!(
+                        "Spindle: {:.1} kW",
+                        device.cnc_spindle_watts as f32 / 1000.0
+                    )
                 } else {
-                    result.rpm
+                    "Spindle: N/A".to_string()
                 };
-
-                // Calculate adjusted feed rate based on clamped RPM
-                let rpm_ratio = if result.rpm > 0 {
-                    clamped_rpm as f32 / result.rpm as f32
-                } else {
-                    1.0
-                };
-                let adjusted_feed_rate = result.feed_rate * rpm_ratio;
-
-                                  // Update the result labels
-                                  if let Some(labels) = result_labels_clone.borrow().as_ref() {
-                                      // Show clamped RPM with original in parentheses if clamped
-                                      if clamped_rpm != result.rpm {
-                                          labels.spindle_speed.set_label(&format!("{} (clamped from {})", clamped_rpm, result.rpm));
-                                          labels.feed_rate.set_label(&format!("{:.1} (adjusted)", adjusted_feed_rate));
-                                      } else {
-                                          labels.spindle_speed.set_label(&clamped_rpm.to_string());
-                                          labels.feed_rate.set_label(&format!("{:.1}", result.feed_rate));
-                                      }
-                                      labels.surface_speed.set_label(&format!("{:.1}", result.surface_speed_m_min));
-                                      labels.chip_load.set_label(&format!("{:.4}", result.chip_load_mm));
-                                      labels.mrr.set_label(&format!("{:.1}", result.material_removal_rate));
-                                      labels.power.set_label(&format!("{:.0}", result.power_required_kw * 1000.0));
-                                      labels.deflection.set_label(&format!("{:.4}", result.estimated_deflection_mm));
-
-                                                                              // Update device info section
-                                                                              if let Some(ref device) = device_info {
-                                                                                  labels.device_name.set_label(&device.name.to_string());
-                                                                                  labels.device_rpm.set_label(&format!("Max RPM: {}", device.max_spindle_speed_rpm));
-                                                                                                                                                                      let power_text = if device.has_spindle && device.cnc_spindle_watts > 0.0 {                                                                                      format!("Spindle: {:.1} kW", device.cnc_spindle_watts as f32 / 1000.0)
-                                                                                  } else {
-                                                                                      "Spindle: N/A".to_string()
-                                                                                  };
-                                                                                  labels.device_power.set_label(&power_text);
-                                                                                  labels.device_max_feed.set_label(&format!("Max Feed: {:.0} mm/min", device.max_feed_rate));
-                                                                              } else {
-                                                                                  labels.device_name.set_label(&t!("No device selected"));
-                                                                                  labels.device_rpm.set_label("");
-                                                                                  labels.device_power.set_label("");
-                                                                                  labels.device_max_feed.set_label("");
-                                                                              }                                  }            }
+                labels.device_power.set_label(&power_text);
+                labels
+                    .device_max_feed
+                    .set_label(&format!("Max Feed: {:.0} mm/min", device.max_feed_rate));
+            } else {
+                labels.device_name.set_label(&t!("No device selected"));
+                labels.device_rpm.set_label("");
+                labels.device_power.set_label("");
+                labels.device_max_feed.set_label("");
+            }
         });
 
         let state_clone = state.clone();
