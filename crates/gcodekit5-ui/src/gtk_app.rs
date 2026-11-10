@@ -35,6 +35,15 @@ use std::rc::Rc;
 use tracing::{debug, info};
 
 pub fn main() {
+    // The language preference is applied before GLib or GTK starts: it sets
+    // LANGUAGE/LANG, which must happen while this is the only thread.
+    let language = gcodekit5_settings::SettingsManager::config_file_path()
+        .ok()
+        .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
+        .map(|p| p.config().ui.language.clone())
+        .unwrap_or_else(|| "system".to_string());
+    i18n::init(Some(language));
+
     crate::glib_log_filter::install();
 
     let app = Application::builder()
@@ -42,14 +51,6 @@ pub fn main() {
         .build();
 
     app.connect_startup(|_| {
-        // Load settings early to get language preference
-        let language = gcodekit5_settings::SettingsManager::config_file_path()
-            .ok()
-            .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
-            .map(|p| p.config().ui.language.clone())
-            .unwrap_or_else(|| "system".to_string());
-
-        i18n::init(Some(language));
         if let Err(e) = libadwaita::init() {
             tracing::error!("Failed to initialize LibAdwaita: {}", e);
             std::process::exit(1);

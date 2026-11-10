@@ -13,9 +13,9 @@ pub fn init(lang: Option<String>) {
             && l != "system"
             && !l.is_empty()
         {
-            // SAFETY: `init` runs once (Once), from the application's startup
-            // handler on the main thread, before the application starts any
-            // thread of its own, so nothing reads the environment concurrently.
+            // SAFETY: `gtk_app::main` calls `init` first, before GLib, GTK or
+            // the application exist, so no other thread is running and nothing
+            // reads the environment concurrently (`Once` keeps it to one call).
             // gettext reads LANGUAGE to pick the translation.
             #[allow(unsafe_code)]
             unsafe {
