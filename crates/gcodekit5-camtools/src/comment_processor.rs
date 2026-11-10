@@ -20,14 +20,9 @@ pub enum CommentMode {
     Extract,
 }
 
-/// One G-code word: an address letter (upper-cased) and its numeric value.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Word {
-    /// Address letter, upper case (`'G'`, `'X'`, ...).
-    pub letter: char,
-    /// Numeric value of the word.
-    pub value: f64,
-}
+/// One G-code word: an address letter (upper-cased) and its numeric value
+/// (the shared core type).
+pub use gcodekit5_core::gcode::words::Word;
 
 /// Split a line into its code and its comments.
 ///
@@ -103,31 +98,9 @@ pub fn strip_comments(line: &str) -> String {
 /// The words in order. A letter whose value cannot be parsed is returned with `value = NaN`
 /// so callers can report it.
 pub fn words(line: &str) -> Vec<Word> {
-    let code = strip_comments(line);
-    let chars: Vec<char> = code.chars().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        let ch = chars[i];
-        if !ch.is_ascii_alphabetic() {
-            i += 1;
-            continue;
-        }
-        let letter = ch.to_ascii_uppercase();
-        i += 1;
-        while i < chars.len() && chars[i].is_whitespace() {
-            i += 1;
-        }
-        let start = i;
-        while i < chars.len() && (chars[i].is_ascii_digit() || matches!(chars[i], '.' | '-' | '+'))
-        {
-            i += 1;
-        }
-        let number: String = chars[start..i].iter().collect();
-        let value = number.parse::<f64>().unwrap_or(f64::NAN);
-        out.push(Word { letter, value });
-    }
-    out
+    // The same number grammar as the visualizer (gcodekit5_core::gcode::words):
+    // `X10-5` is X10 followed by junk, not an unparsable `10-5`.
+    gcodekit5_core::gcode::words::parse_words_keeping_invalid(&strip_comments(line))
 }
 
 /// A GRBL system command: a line whose code starts with `$`.

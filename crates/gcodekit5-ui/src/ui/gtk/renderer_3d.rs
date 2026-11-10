@@ -171,6 +171,7 @@ const TRAVEL_COLOR: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 /// (`intensity == None`, i.e. after M5) go to the travel buffer in grey; powered
 /// feed moves and arcs go to the cut buffer, coloured by intensity.
 pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
+    let chord = vis.arc_segment_length;
     let mut rapid_vertex = Vec::new();
     let mut cut_vertex = Vec::new();
 
@@ -197,8 +198,17 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                 clockwise,
                 intensity,
             } => match intensity {
-                Some(s) => push_arc(&mut cut_vertex, from, to, center, *clockwise, cut_color(*s)),
+                Some(s) => push_arc(
+                    chord,
+                    &mut cut_vertex,
+                    from,
+                    to,
+                    center,
+                    *clockwise,
+                    cut_color(*s),
+                ),
                 None => push_arc(
+                    chord,
                     &mut rapid_vertex,
                     from,
                     to,
@@ -213,46 +223,6 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
 
     (rapid_vertex, cut_vertex)
 }
-
-/*
-pub fn generate_vertex_data(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
-    let mut rapid_vertex = Vec::new();
-    let mut cut_vertex = Vec::new();
-
-    // Colors
-    let rapid_color = [0.0, 0.8, 1.0, 1.0]; // Cyan (matches 2D)
-    let cut_color = [1.0, 1.0, 0.0, 1.0]; // Yellow (matches 2D)
-    let arc_color = [1.0, 1.0, 0.0, 1.0]; // Yellow (matches 2D)
-
-    for cmd in visualizer.commands() {
-        match cmd {
-            GCodeCommand::Move {
-                from, to, rapid, ..
-            } => {
-                if *rapid {
-                    push_line(&mut rapid_vertex, from, to, rapid_color);
-                } else {
-                    push_line(&mut cut_vertex, from, to, cut_color);
-                }
-            }
-            GCodeCommand::Arc {
-                from,
-                to,
-                center,
-                clockwise,
-                ..
-            } => {
-                push_arc(&mut cut_vertex, from, to, center, *clockwise, arc_color);
-            }
-            GCodeCommand::Dwell { .. } => {
-                // Ignore dwell for now in 3D
-            }
-        }
-    }
-
-    (rapid_vertex, cut_vertex)
-}
-*/
 
 pub fn generate_bounds_data(
     min_x: f32,
@@ -376,7 +346,11 @@ fn push_line(vertex: &mut Vec<f32>, from: &Point3D, to: &Point3D, color: [f32; 4
 /// The sweep comes from the shared arc maths in
 /// `gcodekit5_visualizer::gcode::arc`, so the 3D view draws exactly the arc
 /// the parser computed bounds for (including full circles).
+///
+/// `max_chord` (mm, from Preferences > Arc Segment Length) limits each
+/// segment's length when positive; otherwise segments span at most 5 degrees.
 fn push_arc(
+    max_chord: f32,
     vertex: &mut Vec<f32>,
     from: &Point3D,
     to: &Point3D,
@@ -396,8 +370,13 @@ fn push_arc(
         return;
     };
 
-    // At most 5 degrees per segment, 4..=128 segments.
-    let segments = sweep.segment_count(std::f64::consts::PI / 36.0, 4, 128);
+    // At most 5 degrees per segment (4..=128 segments), or segments no longer
+    // than `max_chord` (4..=4096 segments).
+    let segments = if max_chord > 0.0 && sweep.radius > 0.0 {
+        sweep.segment_count(f64::from(max_chord) / sweep.radius, 4, 4096)
+    } else {
+        sweep.segment_count(std::f64::consts::PI / 36.0, 4, 128)
+    };
     let z_diff = to.z - from.z;
     let mut prev = *from;
     for i in 1..=segments {

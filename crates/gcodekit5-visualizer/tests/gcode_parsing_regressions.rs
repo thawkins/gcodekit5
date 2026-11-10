@@ -232,3 +232,18 @@ fn test_arc_segment_short_arc_at_large_radius_is_not_a_full_circle() {
     );
     assert!(arc.length() < 1.0, "length {}", arc.length());
 }
+
+#[test]
+fn test_arc_segment_length_setting_marks_vertices_stale() {
+    // Preferences > Arc Segment Length must reach the visualizer and force a redraw.
+    let mut vis = Visualizer::new();
+    vis.clear_dirty();
+    vis.set_arc_segment_length(0.5);
+    assert_eq!(vis.arc_segment_length, 0.5);
+    assert!(vis.is_dirty());
+    vis.clear_dirty();
+    vis.set_arc_segment_length(0.5);
+    assert!(!vis.is_dirty(), "same value: nothing to redraw");
+    vis.set_arc_segment_length(f32::NAN);
+    assert_eq!(vis.arc_segment_length, 0.0);
+}

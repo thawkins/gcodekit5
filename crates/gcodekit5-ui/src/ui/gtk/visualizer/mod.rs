@@ -955,6 +955,26 @@ impl GcodeVisualizer {
 
         // Initialize Visualizer logic
         let visualizer = shared(Visualizer::new());
+        // Preferences > File Processing > Arc Segment Length sets how finely
+        // arcs are drawn.
+        visualizer.borrow_mut().set_arc_segment_length(
+            settings_controller
+                .persistence
+                .borrow()
+                .config()
+                .file_processing
+                .arc_segment_length as f32,
+        );
+        {
+            let visualizer = visualizer.clone();
+            settings_controller.on_setting_changed(move |key, value| {
+                if key == "arc_segment_length"
+                    && let Ok(mm) = value.parse::<f32>()
+                {
+                    visualizer.borrow_mut().set_arc_segment_length(mm);
+                }
+            });
+        }
         let current_pos = shared((0.0f32, 0.0f32, 0.0f32));
         let preview_pos = shared(None::<(f32, f32, f32)>);
         let run_preview_points = shared(Vec::<(f32, f32, f32)>::new());

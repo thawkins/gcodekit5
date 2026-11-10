@@ -37,8 +37,7 @@ GCodeKit5 is organized as a Cargo workspace with 7 crates for modular compilatio
 - **gcodekit5-core** - Core types, traits, state management, events, and data models
 - **gcodekit5-camtools** - CAM tools and special G-code processing operations
 - **gcodekit5-designer** - Visual design tools and toolpath generation
-- **gcodekit5-gcodeeditor** - ✨ NEW - G-Code text editor and buffer management
-- **gcodekit5-communication** - Serial, TCP, WebSocket protocols and firmware implementations (5 firmware types)
+- **gcodekit5-communication** - Serial, TCP, WebSocket protocols and firmware implementations (GRBL family and Repetier)
 - **gcodekit5-ui** - GTK4-based UI components, visualizer, settings, and editor integration
 - **gcodekit5-devicedb** - Device profile management
 - **gcodekit5-settings** - Application settings management

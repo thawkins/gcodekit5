@@ -365,17 +365,12 @@ impl GerberConverter {
     ) -> Sketch<()> {
         let radius = ((p1.0 - center.0).powi(2) + (p1.1 - center.1).powi(2)).sqrt();
         let start_angle = (p1.1 - center.1).atan2(p1.0 - center.0);
-        let mut end_angle = (p2.1 - center.1).atan2(p2.0 - center.0);
-
-        if clockwise {
-            if end_angle >= start_angle {
-                end_angle -= 2.0 * std::f64::consts::PI;
-            }
-        } else if end_angle <= start_angle {
-            end_angle += 2.0 * std::f64::consts::PI;
-        }
-
-        let diff = end_angle - start_angle;
+        // Shared G-code arc rule: coincident ends are a full circle.
+        let diff = gcodekit5_core::gcode::arc::angular_travel(
+            (p1.0 - center.0, p1.1 - center.1),
+            (p2.0 - center.0, p2.1 - center.1),
+            clockwise,
+        );
         let segments = (diff.abs() / (5.0f64.to_radians())).ceil() as usize; // 5 degree steps
         let segments = segments.max(2);
 

@@ -42,8 +42,8 @@
 //! ```
 
 // Module declarations
-mod calculator;
-mod service;
+pub mod calculator;
+pub mod service;
 
 // Re-export calculator types
 pub use calculator::{

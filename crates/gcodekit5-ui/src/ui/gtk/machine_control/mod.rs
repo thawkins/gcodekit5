@@ -199,6 +199,8 @@ pub struct MachineControlView {
     pub jog_feed_entry: gtk4::Entry,
     pub jog_feed_units: Label,
     pub jog_step_mm: ThreadSafe<f32>,
+    /// Rotary jog step in degrees (Preferences > Machine > Rotary Jog Step).
+    pub jog_step_deg: ThreadSafe<f32>,
     /// Preferences, read when a job is prepared.
     settings_controller: Option<Rc<SettingsController>>,
     pub jog_feed_mm_per_min: ThreadSafe<f32>,
@@ -681,6 +683,23 @@ impl MachineControlView {
         let (a_box, a_dro, a_zero_btn) = create_dro("A", "WA");
         let (b_box, b_dro, b_zero_btn) = create_dro("B", "WB");
         let (c_box, c_dro, c_zero_btn) = create_dro("C", "WC");
+
+        // Rotary jog buttons sit in their axis's DRO row and show with it.
+        let rotary_jog = |axis_box: &gtk4::Box, axis: char| -> (Button, Button) {
+            let neg = Button::with_label("-");
+            neg.set_tooltip_text(Some(&format!("{} {axis}-", t!("Jog"))));
+            let pos = Button::with_label("+");
+            pos.set_tooltip_text(Some(&format!("{} {axis}+", t!("Jog"))));
+            for btn in [&neg, &pos] {
+                btn.add_css_class("circular");
+                btn.set_valign(Align::Center);
+                axis_box.append(btn);
+            }
+            (neg, pos)
+        };
+        let (jog_a_neg, jog_a_pos) = rotary_jog(&a_box, 'A');
+        let (jog_b_neg, jog_b_pos) = rotary_jog(&b_box, 'B');
+        let (jog_c_neg, jog_c_pos) = rotary_jog(&c_box, 'C');
 
         // Hide rotary axis DROs initially
         a_box.set_visible(false);
@@ -1380,13 +1399,19 @@ impl MachineControlView {
             a_dro_container: Some(a_box),
             b_dro_container: Some(b_box),
             c_dro_container: Some(c_box),
-            // Rotary axis jog buttons (initially None)
-            jog_a_pos: None,
-            jog_a_neg: None,
-            jog_b_pos: None,
-            jog_b_neg: None,
-            jog_c_pos: None,
-            jog_c_neg: None,
+            // Rotary axis jog buttons
+            jog_a_pos: Some(jog_a_pos),
+            jog_a_neg: Some(jog_a_neg),
+            jog_b_pos: Some(jog_b_pos),
+            jog_b_neg: Some(jog_b_neg),
+            jog_c_pos: Some(jog_c_pos),
+            jog_c_neg: Some(jog_c_neg),
+            jog_step_deg: thread_safe(
+                settings_controller
+                    .as_ref()
+                    .map(|c| c.persistence.borrow().config().machine.jog_increment_rotary as f32)
+                    .unwrap_or(1.0),
+            ),
             // Rotary axis zero buttons
             a_zero_btn: Some(a_zero_btn),
             b_zero_btn: Some(b_zero_btn),
@@ -1525,6 +1550,8 @@ impl MachineControlView {
         // Disable all controls initially (until connected)
         view.set_connection_controls(false);
         Self::wire_jog_controls(&view);
+        Self::wire_rotary_controls(&view);
+        view.refresh_limit_labels();
         Self::wire_job_controls(&view);
         Self::wire_machine_state_controls(&view);
         Self::wire_estop_probe_console(&view);
@@ -1807,6 +1834,141 @@ impl MachineControlView {
         let view_clone = view.clone();
         view.refresh_btn.connect_clicked(move |_| {
             view_clone.refresh_ports();
+        });
+    }
+
+    /// Fills the "Machine Limits" rows: X/Y/Z from the controller's max
+    /// travel (`$130`-`$132`) once read, otherwise Preferences > Machine >
+    /// X/Y/Z limit; A/B/C from Preferences (degrees).
+    pub(crate) fn refresh_limit_labels(&self) {
+        let machine = self
+            .settings_controller
+            .as_ref()
+            .map(|c| c.persistence.borrow().config().machine.clone());
+        let pref = |axis: char| -> Option<f64> {
+            let m = machine.as_ref()?;
+            Some(match axis {
+                'X' => m.x_limit,
+                'Y' => m.y_limit,
+                'Z' => m.z_limit,
+                'A' => m.a_limit,
+                'B' => m.b_limit,
+                _ => m.c_limit,
+            })
+        };
+        let units = *self.current_units.lock();
+        for (label, axis, grbl) in [
+            (&self.limits_x, 'X', Some(130)),
+            (&self.limits_y, 'Y', Some(131)),
+            (&self.limits_z, 'Z', Some(132)),
+            (&self.limits_a, 'A', None),
+            (&self.limits_b, 'B', None),
+            (&self.limits_c, 'C', None),
+        ] {
+            let Some(label) = label else {
+                continue;
+            };
+            let max = grbl
+                .and_then(device_status::get_grbl_setting_numeric)
+                .or_else(|| pref(axis));
+            let Some(max) = max else {
+                continue;
+            };
+            let text = if grbl.is_some() {
+                format!(
+                    "0 - {} {}",
+                    format_length(max as f32, units),
+                    get_unit_label(units)
+                )
+            } else {
+                format!("0 - {max:.1}\u{b0}")
+            };
+            if label.text() != text {
+                label.set_text(&text);
+            }
+        }
+    }
+
+    /// Connects the rotary axis controls and Preferences: the A/B/C jog
+    /// buttons (rotary jog step, in degrees, at the jog feed), the rotary jog
+    /// step itself, and steps per degree, which is sent to the controller
+    /// (`$103`-`$105`) when changed while it is connected and idle.
+    fn wire_rotary_controls(view: &Self) {
+        for (btn, axis, direction) in [
+            (&view.jog_a_neg, 'A', -1.0_f32),
+            (&view.jog_a_pos, 'A', 1.0),
+            (&view.jog_b_neg, 'B', -1.0),
+            (&view.jog_b_pos, 'B', 1.0),
+            (&view.jog_c_neg, 'C', -1.0),
+            (&view.jog_c_pos, 'C', 1.0),
+        ] {
+            let Some(btn) = btn else {
+                continue;
+            };
+            let communicator = view.communicator.clone();
+            let step = view.jog_step_deg.clone();
+            let feed = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            btn.connect_clicked(move |_| {
+                if Self::job_running(&is_streaming, &console) {
+                    return;
+                }
+                let delta = *step.lock() * direction * device_status::jog_direction(axis);
+                let cmd = grbl_stream::rotary_jog_command(axis, delta, *feed.lock());
+                let mut comm = communicator.lock();
+                if !comm.is_connected() {
+                    return;
+                }
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("> {}\n", cmd.trim()));
+                }
+                if let Err(e) = comm.send(cmd.as_bytes()) {
+                    tracing::warn!(error = %e, "Rotary jog not sent");
+                }
+            });
+        }
+
+        let Some(controller) = view.settings_controller.as_ref() else {
+            return;
+        };
+        let step = view.jog_step_deg.clone();
+        let communicator = view.communicator.clone();
+        let console = view.device_console.clone();
+        controller.on_setting_changed(move |key, value| {
+            if key == "jog_increment_rotary"
+                && let Ok(deg) = value.parse::<f32>()
+                && deg > 0.0
+            {
+                *step.lock() = deg;
+            }
+            let setting = match key {
+                "steps_per_degree_a" => 103,
+                "steps_per_degree_b" => 104,
+                "steps_per_degree_c" => 105,
+                _ => return,
+            };
+            let Some(steps) = grbl_stream::steps_per_degree_to_send(value) else {
+                return;
+            };
+            let log = |text: String| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("{text}\n"));
+                }
+            };
+            let mut comm = communicator.lock();
+            if !comm.is_connected() {
+                return;
+            }
+            if let Some(reason) = device_status::settings_command_blocked() {
+                log(format!("${setting} {}: {reason}", t!("not sent")));
+                return;
+            }
+            let cmd = format!("${setting}={steps}");
+            log(format!("> {cmd}"));
+            if let Err(e) = comm.send_command(&cmd) {
+                log(format!("{} {e}", t!("Error sending")));
+            }
         });
     }
 
@@ -2233,6 +2395,7 @@ impl MachineControlView {
             let wcs_btns = view.wcs_btns.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let settings = view.settings_controller.clone();
             btn.connect_clicked(move |_| {
                 if Self::job_running(&is_streaming, &console) {
                     return;
@@ -2242,7 +2405,21 @@ impl MachineControlView {
                     .position(|b| b.is_active())
                     .map(|i| i + 1)
                     .unwrap_or(1);
-                let cmd = format!("G10 L20 P{p} {axis}0");
+                // Preferences > Machine > Calibration: the current position
+                // becomes the axis's calibration offset instead of exactly 0.
+                let calibration = settings
+                    .as_ref()
+                    .and_then(|c| {
+                        c.persistence
+                            .borrow()
+                            .config()
+                            .machine
+                            .rotary_calibration
+                            .get(&axis.to_string())
+                            .copied()
+                    })
+                    .unwrap_or(0.0);
+                let cmd = format!("G10 L20 P{p} {axis}{calibration}");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
                 }

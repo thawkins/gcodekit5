@@ -467,3 +467,22 @@ fn strip_gcode_comments(line: &str) -> String {
     }
     out.trim().to_string()
 }
+
+/// The `$J=` jog for a rotary axis: `delta` degrees at `feed_mm_per_min`.
+/// `G21` is stated because the feed is stored in mm/min; a program that left
+/// the controller in `G20` would otherwise read it as inches per minute.
+pub fn rotary_jog_command(axis: char, delta: f32, feed_mm_per_min: f32) -> String {
+    format!("$J=G21 G91 {axis}{delta} F{feed_mm_per_min}\n")
+}
+
+/// The steps-per-degree value to send for Preferences text `value`, or
+/// `None` when it is not a finite number. Values below 1 become 1, as saving
+/// Preferences stores them, so the controller and the config agree.
+pub fn steps_per_degree_to_send(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite())
+        .map(|v| v.max(1.0))
+}
