@@ -22,7 +22,7 @@ modules:
         path: ../gcodekit5-linux-x86_64
         dest-filename: gcodekit5
       - type: file
-        path: ../assets/Pictures/com.github.thawkins.gcodekit5.png
+        path: ../assets/pictures/com.github.thawkins.gcodekit5.png
         dest-filename: com.github.thawkins.gcodekit5.png
       - type: file
         path: com.github.thawkins.gcodekit5.desktop

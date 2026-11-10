@@ -18,7 +18,6 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 thiserror = { workspace = true }
 regex = "1.10"
-dxf = "0.6"
 lyon = "1.0"
 gerber-types = "0.6.0"
 cavalier_contours = "0.7.0"

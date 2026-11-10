@@ -1,0 +1,12 @@
+# cargo-nextest configuration (https://nexte.st/docs/configuration/).
+# Every test runs in its own process; a test still running after 150 s
+# (30 s x 5) is killed and reported as a failure instead of stalling the run.
+
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 5 }
+failure-output = "immediate-final"
+
+[profile.ci]
+slow-timeout = { period = "30s", terminate-after = 5 }
+failure-output = "immediate-final"
+fail-fast = false

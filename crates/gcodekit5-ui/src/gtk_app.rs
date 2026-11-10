@@ -812,7 +812,7 @@ pub fn main() {
                 .program_name(t!("GCodeKit5"))
                 .version(env!("CARGO_PKG_VERSION"))
                 .comments(t!("GCode Toolkit for CNC/Laser Machines"))
-                .website("https://github.com/feveal/gcodekit5-design")
+                .website("https://github.com/thawkins/gcodekit5")
                 .license_type(gtk4::License::MitX11)
                 .authors(vec![t!(
                     "Tim Hawkins and GCodeKit Contributors: \n (feveal)"
@@ -1212,7 +1212,7 @@ pub fn main() {
                     .program_name(t!("GCodeKit5"))
                     .version(env!("CARGO_PKG_VERSION"))
                     .comments(t!("GCode Toolkit for CNC/Laser Machines"))
-                    .website("https://github.com/feveal/gcodekit5-design")
+                    .website("https://github.com/thawkins/gcodekit5")
                     .license_type(gtk4::License::MitX11)
                     .authors(vec![t!(
                         "Tim Hawkins and GCodeKit Contributors: \n (feveal)"

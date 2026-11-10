@@ -80,6 +80,18 @@
 
 ### Removed
 - The Device Config "Restore" button (E2-06): it reported restoring settings but did nothing
+## [Unreleased] - 2026-11-10 (release packaging and dependency diet)
+
+### Fixed
+- **Release binary name** (#80, A-05): the binary is `gcodekit5` again (a `[[bin]]` target), which the release workflow, Windows installer, flatpak and desktop file expect; it had become `gcodekit5-design`
+- **Package icons** (A-05): deb/rpm/flatpak/AppImage/macOS use `assets/pictures/com.github.thawkins.gcodekit5.png` (the paths used `assets/Pictures` and files that did not exist); deb/rpm install the existing desktop file
+- **Project URLs** (A-05): the repository and About dialog link to github.com/thawkins/gcodekit5
+- `cargo build -p gcodekit5-settings` works on its own (gettext uses the system library there too)
+
+### Changed
+- **Dependencies** (A-07/A-09): removed unused `dxf` (camtools), `uuid`/`bytemuck`/`lyon` (visualizer), `uuid`/`chrono` (ui runtime), `gtk4`/`gettext-rs`/`serde` (root), and the visualizer's dependency on the designer (it fed an unused toolpath channel); `async-executor` and `serialport` updated off yanked versions
+- **Build** (A-08): the UI's GResources are compiled once
+- **CI** (A-13): new jobs run clippy with warnings as errors and the tests with cargo-nextest (`.config/nextest.toml`, 150 s per-test limit); `deny.toml` only allows crates.io and the patched `core2` git source, and stale advisory ignores were removed
 
 ## [Unreleased] - 2026-11-10 (homing keeps the work zero)
 
