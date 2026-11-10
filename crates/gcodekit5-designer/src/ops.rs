@@ -646,16 +646,20 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
             int_pline.set_is_closed(true);
             let int_pline = clean_polyline(int_pline);
 
+            // Holes wind the other way round, so the same outward offset of
+            // the shape is the opposite offset of the hole ring.
             let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                int_pline.parallel_offset(distance)
+                int_pline.parallel_offset(-distance)
             }))
             .unwrap_or_default();
 
+            // A hole's offset is cut out of the shape, as in `perform_chamfer`;
+            // a union would fill the hole in.
             for offset in offsets {
                 let pts = interpolate_polyline_arcs(&offset, 0.01);
                 if pts.len() >= 3 {
                     result_sketch =
-                        result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
+                        result_sketch.difference(&csgrs::sketch::Sketch::polygon(&pts, None));
                 }
             }
         }
