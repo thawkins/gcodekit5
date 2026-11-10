@@ -1,6 +1,6 @@
 //! Phase 7: Advanced Features (Tasks 121-150)
 //!
-//! This module implements the final phase of GCodeKit4 features including:
+//! This module implements the final phase of GCodeKit5 features including:
 //! - Safety Features (Task 121): Emergency stop, motion interlock, soft limits, feed hold
 //! - Plugin System (Task 122): Plugin interface, loading, configuration, API
 //! - Export Formats (Task 123): Multi-format export with post-processors

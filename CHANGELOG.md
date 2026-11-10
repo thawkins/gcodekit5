@@ -1,3 +1,10 @@
+## [Unreleased] - 2026-11-10 (duplication and decomposition)
+
+### Changed
+- **Less duplicated code** (#82): the six designer align commands, the step-down/step-in/ramp-angle setters, fillet/chamfer, and the offset/chamfer property handlers each share one implementation; pt/mm conversion, probe-report parsing and the CAM error dialog are defined once
+- **Shorter functions** (#82): the designer's G-code generation (~640 lines) is split into set-up, toolpath and output phases; the machine panel's constructor (~2,100 lines) moves its handler wiring into four named phases
+- Comments and debug logs: emoji removed, Spanish log messages translated, crate docs say GCodeKit5; the Speeds & Feeds calculate handler is formatted again
+
 ## [Unreleased] - 2026-11-10 (dead code removal)
 
 ### Removed

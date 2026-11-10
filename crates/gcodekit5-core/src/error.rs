@@ -1,4 +1,4 @@
-//! Error handling for GCodeKit4
+//! Error handling for GCodeKit5
 //!
 //! Provides comprehensive error types for all layers of the application:
 //! - Controller errors (device/firmware related)
@@ -425,7 +425,7 @@ pub enum FirmwareError {
     },
 }
 
-/// Main error type for GCodeKit4
+/// Main error type for GCodeKit5
 ///
 /// A unified error type that can represent any error from all layers.
 /// This is the primary error type used in public APIs.

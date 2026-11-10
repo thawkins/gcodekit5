@@ -1,4 +1,4 @@
-//! # GCodeKit4 G-Code Editor
+//! # GCodeKit5 G-Code Editor
 //!
 //! This crate provides a high-performance text editor specifically optimized for
 //! G-code files with efficient text manipulation, undo/redo support, and GTK4 UI integration.

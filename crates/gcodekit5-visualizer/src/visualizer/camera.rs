@@ -148,7 +148,7 @@ impl Camera {
         let yaw_deg = self.yaw.to_degrees();
         let yaw_norm = ((yaw_deg % 360.0) + 360.0) % 360.0;
 
-        // ★ DETECTAR TODAS LAS VISTAS ORTOGONALES ★
+        // Detect every orthogonal view
         // Esto determina qué proyección usar, NO el snap
         let is_top = (pitch_deg - 90.0).abs() < 5.0;
         let is_bottom = (pitch_deg + 90.0).abs() < 5.0;

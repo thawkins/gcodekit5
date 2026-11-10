@@ -1,6 +1,6 @@
-//! # GCodeKit4 Core
+//! # GCodeKit5 Core
 //!
-//! Core types, traits, and utilities for GCodeKit4.
+//! Core types, traits, and utilities for GCodeKit5.
 //! Provides the fundamental abstractions for controller management,
 //! state machines, events, and data models.
 

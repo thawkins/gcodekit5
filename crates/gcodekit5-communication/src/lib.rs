@@ -1,9 +1,9 @@
 // Crate-wide: many protocol implementations are partial/in-progress (TinyG, g2core, FluidNC).
 // Fields and methods are defined for API completeness but not yet wired to callers.
 #![allow(dead_code)]
-//! # GCodeKit4 Communication
+//! # GCodeKit5 Communication
 //!
-//! Communication protocols and firmware implementations for GCodeKit4.
+//! Communication protocols and firmware implementations for GCodeKit5.
 //! Supports Serial/USB, TCP/IP, and WebSocket connections.
 //! Includes firmware-specific implementations for GRBL, TinyG, g2core, etc.
 
