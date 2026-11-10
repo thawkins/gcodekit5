@@ -1509,8 +1509,10 @@ dependencies = [
  "gettext-rs",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]
