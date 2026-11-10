@@ -584,22 +584,12 @@ impl StockSimulator3D {
                     if radius < 0.001 {
                         return 0.0;
                     }
-                    let start_angle = (start.y - center.y).atan2(start.x - center.x);
-                    let end_angle = (end.y - center.y).atan2(end.x - center.x);
-
-                    let angle_span = if segment.segment_type == ToolpathSegmentType::ArcCW {
-                        if end_angle > start_angle {
-                            end_angle - start_angle - 2.0 * std::f32::consts::PI
-                        } else {
-                            end_angle - start_angle
-                        }
-                    } else {
-                        if end_angle < start_angle {
-                            end_angle - start_angle + 2.0 * std::f32::consts::PI
-                        } else {
-                            end_angle - start_angle
-                        }
-                    };
+                    let angle_span = arc_span(
+                        start,
+                        end,
+                        center,
+                        segment.segment_type == ToolpathSegmentType::ArcCW,
+                    );
 
                     // Incluir la componente Z en la distancia
                     let dz = end.z - start.z;
@@ -784,21 +774,7 @@ impl StockSimulator3D {
         }
 
         let start_angle = (start.y - center.y).atan2(start.x - center.x);
-        let end_angle = (end.y - center.y).atan2(end.x - center.x);
-
-        let angle_span = if clockwise {
-            if end_angle > start_angle {
-                end_angle - start_angle - 2.0 * std::f32::consts::PI
-            } else {
-                end_angle - start_angle
-            }
-        } else {
-            if end_angle < start_angle {
-                end_angle - start_angle + 2.0 * std::f32::consts::PI
-            } else {
-                end_angle - start_angle
-            }
-        };
+        let angle_span = arc_span(start, end, center, clockwise);
 
         let steps = steps.max(1);
         let block_size = 8; // Bloques más pequeños para progreso más suave
@@ -868,20 +844,7 @@ impl StockSimulator3D {
         fn remove_arc(&mut self, start: Vec3, end: Vec3, center: Vec3, clockwise: bool) {
             let radius = (start - center).length();
             let start_angle = (start.y - center.y).atan2(start.x - center.x);
-            let end_angle = (end.y - center.y).atan2(end.x - center.x);
-            let angle_span = if clockwise {
-                if end_angle > start_angle {
-                    end_angle - start_angle - 2.0 * std::f32::consts::PI
-                } else {
-                    end_angle - start_angle
-                }
-            } else {
-                if end_angle < start_angle {
-                    end_angle - start_angle + 2.0 * std::f32::consts::PI
-                } else {
-                    end_angle - start_angle
-                }
-            };
+            let angle_span = arc_span(start, end, center, clockwise);
             let arc_length = radius * angle_span.abs();
             let resolution = self.grid.resolution;
             let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
@@ -912,20 +875,7 @@ impl StockSimulator3D {
         {
             let radius = (start - center).length();
             let start_angle = (start.y - center.y).atan2(start.x - center.x);
-            let end_angle = (end.y - center.y).atan2(end.x - center.x);
-            let angle_span = if clockwise {
-                if end_angle > start_angle {
-                    end_angle - start_angle - 2.0 * std::f32::consts::PI
-                } else {
-                    end_angle - start_angle
-                }
-            } else {
-                if end_angle < start_angle {
-                    end_angle - start_angle + 2.0 * std::f32::consts::PI
-                } else {
-                    end_angle - start_angle
-                }
-            };
+            let angle_span = arc_span(start, end, center, clockwise);
             let arc_length = radius * angle_span.abs();
             let resolution = self.grid.resolution;
             let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
@@ -957,4 +907,15 @@ impl StockSimulator3D {
         }
         mesh
     }
+}
+
+/// Signed angle (radians, negative for clockwise) an arc sweeps from `start`
+/// to `end` around `center` in the XY plane, using the shared G-code arc rule
+/// (coincident start and end make a full circle).
+fn arc_span(start: Vec3, end: Vec3, center: Vec3, clockwise: bool) -> f32 {
+    gcodekit5_core::gcode::arc::angular_travel(
+        (f64::from(start.x - center.x), f64::from(start.y - center.y)),
+        (f64::from(end.x - center.x), f64::from(end.y - center.y)),
+        clockwise,
+    ) as f32
 }
