@@ -256,7 +256,11 @@ impl MachineControlView {
         // A machine that is running again has been resumed, whether by the
         // Resume button, the controller's cycle-start button or a console `~`.
         if low.starts_with("run") || low.starts_with("jog") {
-            *self.is_paused.lock() = false;
+            let mut paused = self.is_paused.lock();
+            if *paused {
+                *paused = false;
+                self.resumed_externally.set(true);
+            }
         }
 
         // Unlock is only useful in ALARM.

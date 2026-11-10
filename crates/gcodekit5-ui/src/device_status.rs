@@ -7,7 +7,7 @@ use gcodekit5_communication::firmware::grbl::status_parser::{
 use gcodekit5_core::{thread_safe_rw, ThreadSafeRw};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 
 /// Global GRBL device status
 #[derive(Debug, Clone)]
@@ -115,6 +115,7 @@ pub fn set_active_controller_type(ct: Option<String>) {
 
 /// Update the machine state
 pub fn update_state(state: String) {
+    STATUS_SEQ.fetch_add(1, Ordering::Relaxed);
     {
         let mut status = DEVICE_STATUS.write();
         status.state = state;
@@ -256,12 +257,62 @@ pub fn is_job_active() -> bool {
     JOB_ACTIVE.load(Ordering::Relaxed)
 }
 
+/// Counts machine-state updates (one per status report), so a waiter can
+/// tell a fresh report from one received before it started waiting.
+static STATUS_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Number of machine-state updates so far.
+pub fn status_seq() -> u64 {
+    STATUS_SEQ.load(Ordering::Relaxed)
+}
+
+/// A Stop sequence (feed hold, then reset) is waiting to send its reset.
+static STOP_PENDING: AtomicBool = AtomicBool::new(false);
+/// Identifies the current Stop sequence; bumped to abandon it.
+static STOP_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Starts a Stop sequence. Until [`end_stop`] or [`cancel_stop`], manual
+/// commands and new jobs are refused.
+///
+/// # Returns
+/// The token the sequence passes to [`stop_is_current`] and [`end_stop`].
+pub fn begin_stop() -> u64 {
+    STOP_PENDING.store(true, Ordering::Relaxed);
+    STOP_GENERATION.fetch_add(1, Ordering::Relaxed) + 1
+}
+
+/// Whether the Stop sequence with `token` is still the live one.
+pub fn stop_is_current(token: u64) -> bool {
+    STOP_GENERATION.load(Ordering::Relaxed) == token
+}
+
+/// Ends the Stop sequence with `token` (a later one is left alone).
+pub fn end_stop(token: u64) {
+    if stop_is_current(token) {
+        STOP_PENDING.store(false, Ordering::Relaxed);
+    }
+}
+
+/// Abandons any Stop sequence (the connection was replaced or closed).
+pub fn cancel_stop() {
+    STOP_GENERATION.fetch_add(1, Ordering::Relaxed);
+    STOP_PENDING.store(false, Ordering::Relaxed);
+}
+
+/// Whether a Stop sequence is in progress.
+pub fn stop_pending() -> bool {
+    STOP_PENDING.load(Ordering::Relaxed)
+}
+
 /// Why a manual command (console line, jog) must not be sent now, or `None`.
 ///
 /// While a job streams, the job's sender owns the controller's responses: an
 /// extra line's `ok` would be credited to a job line and its `error:N` would
 /// stop the job.
 pub fn manual_command_blocked() -> Option<String> {
+    if stop_pending() {
+        return Some(crate::t!("the machine is stopping"));
+    }
     is_job_active().then(|| crate::t!("a job is running"))
 }
 

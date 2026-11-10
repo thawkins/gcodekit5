@@ -81,14 +81,16 @@ impl ConfigSettingsView {
     }
 
     pub(crate) fn retrieve_settings(&self) {
-        // Load settings definitions first
-        self.load_default_grbl_settings();
-
+        // Check first: loading the definitions resets every value, and a
+        // refused Retrieve must keep the values already on the page.
         if let Some(reason) = crate::device_status::settings_command_blocked() {
             self.status_label
                 .set_text(&format!("{} {}", t!("Cannot retrieve settings:"), reason));
             return;
         }
+
+        // Load settings definitions first
+        self.load_default_grbl_settings();
 
         if let Some(ref comm) = *self.communicator.borrow() {
             let mut comm_lock = comm.lock();
