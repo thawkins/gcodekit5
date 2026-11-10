@@ -1,5 +1,10 @@
 # Project Statistics
-Last Updated: 2026-05-16 (0.55.0-alpha.1)
+Last Updated: 2026-11-11 (1.2.0-beta.2)
+
+Current snapshot (`git ls-files '*.rs' | xargs cat | wc -l` at devel, 2026-11-11):
+297 Rust files, 113,615 lines; 408 tests (`cargo nextest run --workspace`).
+
+The table below is the earlier 0.55.0-alpha.1 snapshot (2026-05-16).
 
 ===============================================================================
  Language            Files        Lines         Code     Comments       Blanks

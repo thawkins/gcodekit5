@@ -202,6 +202,7 @@ The object positioning issue when opening "gckd" files.
   - Grid size indicator in status bar
   - Horizontal and vertical scrollbars for navigation
 - **Dynamic Canvas Sizing**: Automatically adjusts to window resize events
+- **2D/3D Toggle**: Switch between a locked top-down 2D view (left-drag pans) and the free-orbit 3D view
 - **Interactive Controls**: Zoom, pan, and fit-to-view, **Orbit and isometric cámera with mouse interaction**
 - **Color-Coded Paths**: Distinct colors for Rapid (G0) and Feed (G1/G2/G3) moves
 - **Performance**: Optimized rendering for large files

@@ -1,3 +1,20 @@
+## [Unreleased] - 2026-11-11 (visualiser 2D/3D toggle, quiet start-up, review fixes)
+
+### Added
+- **2D/3D view toggle** (#97): a 2D/3D switch at the top of the visualiser sidebar. 2D locks the camera to the top view, left-drag pans and the nav cube is hidden; 3D restores the isometric view with free orbit
+
+### Fixed
+- **Locale warning at start-up**: choosing a UI language set `LANG` to a locale that does not exist (e.g. `en.UTF-8`), so GTK warned "Locale not supported by C library" and fell back to "C". Only `LANGUAGE` is set now; `LANG` keeps the system locale
+- **Quiet start-up** (#97): two unsupported CSS declarations removed; Speeds & Feeds diagnostics and "Loaded settings" go to the log instead of the console
+- **Sidebar Fit button** (#97): fits the toolpath like the nav cube's Fit, keeping the current view (2D stays top-down)
+- **Halftone with minimum power** (#96): off pixels get zero power instead of the minimum power
+- **Array dialog** (#96): arrays over 10,000 objects are refused with a message instead of being built
+- **Rotary jog** (#96): jog commands state `G21`, so the feed is always mm/min; Steps per Degree is sent only when it is a finite number (at least 1, as Preferences saves it)
+- **Machine limits** (#96): Export uses the active device's limits, and saving Preferences refreshes the machine panel's limit labels
+
+### Changed
+- `assets/logs/` is ignored by git
+
 ## [Unreleased] - 2026-11-10 (Designer G-code correctness)
 
 ### Fixed

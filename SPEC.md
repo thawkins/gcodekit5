@@ -1,8 +1,15 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 1.1.0-beta.1
-**Last Updated**: 2026-11-09
+**Version**: 1.2.0-beta.2
+**Last Updated**: 2026-11-11
 **Status**: Beta Release
+
+### Unreleased (2026-11-11) - Visualiser 2D/3D Toggle
+- ✅ **Visualizer**
+  - 2D/3D toggle in the sidebar: 2D is the locked orthographic top view with left-drag pan and no nav cube; 3D is the isometric view with free orbit.
+  - The sidebar Fit button fits the toolpath without changing the view orientation.
+- ✅ **Internationalization**
+  - The UI language sets `LANGUAGE` only; `LANG` keeps the system locale.
 
 ### Latest Release (v0.55.0-alpha.1) - 6-Axis Support, Touch Probe, Feeds & Speeds
 - ✅ **6-Axis Support** (per 6AXISPLAN.md)
