@@ -3,6 +3,7 @@
 ### Fixed
 - **Repetier translation** (#72): only an exact `M4` becomes `M3` (`M400`, `M42` pass through); `G28 Z0` keeps its axis words and `G28.1` is unchanged; `G10 L20 P1 X0.5 Y20` becomes `G92 X0.5 Y20` with all axes and values; jogs keep their axes and feed and restore `G90` (and `G21` after an inch jog); user line numbers (`N10 G1 X5`) are replaced instead of dropping the line; parameter-only lines (`F`, `S`, `E`) are sent; untranslatable lines are reported as skipped
 - **Repetier streaming**: replies split across reads are reassembled before parsing, so acks and `Resend:` requests are no longer missed; resend requests rewind to the matching job line; stale acks are cleared when a job starts; a lost connection stops the job with an error; the sender thread exits when the sender is dropped
+- **Repetier pen mode is now a per-machine option** (B-21): `M3`/`M4`/`M5` are rewritten as pen-down/up Z moves only when "Pen Mode" is ticked on the device profile's Capabilities tab (new `pen_mode` profile field, off by default). Before, every Repetier job was rewritten, which dropped `S` words and broke spindle machines
 - **Repetier status**: the synthesized status reports Run/Idle from flow control and a position tracked from sent moves and `X:/Y:/Z:` reports instead of a fixed 0,0,0
 
 ### Changed

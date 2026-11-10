@@ -9,7 +9,9 @@ use crate::firmware::repetier::processor::RepetierEvent;
 use crate::firmware::Sender;
 use crate::SerialCommunicator;
 use gcodekit5_core::ThreadSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender as MpscSender, TryRecvError};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,6 +25,8 @@ pub struct RepetierSender {
     tx_control: MpscSender<SenderCommand>,
     communicator: ThreadSafe<SerialCommunicator>,
     is_streaming: ThreadSafe<bool>,
+    /// Pen-plotter mode: rewrite laser on/off as pen down/up Z moves.
+    pen_mode: Arc<AtomicBool>,
 }
 
 enum SenderCommand {
@@ -51,6 +55,8 @@ impl RepetierSender {
         // the originals, so we save copies here.
         let communicator_for_struct = communicator.clone();
         let is_streaming_for_struct = is_streaming.clone();
+        let pen_mode = Arc::new(AtomicBool::new(false));
+        let pen_mode_for_struct = Arc::clone(&pen_mode);
 
         thread::spawn(move || {
             let mut file_lines: Vec<String> = Vec::new();
@@ -72,8 +78,12 @@ impl RepetierSender {
                     };
                     match cmd {
                         SenderCommand::SendGcode(content) => {
-                            let gcode_with_pen = apply_pen_mode(&content);
-                            file_lines = gcode_with_pen
+                            let content = if pen_mode.load(Ordering::Relaxed) {
+                                apply_pen_mode(&content)
+                            } else {
+                                content
+                            };
+                            file_lines = content
                                 .lines()
                                 .map(|s| s.trim())
                                 .filter(|s| {
@@ -284,9 +294,22 @@ impl RepetierSender {
                 tx_control,
                 communicator: communicator_for_struct,
                 is_streaming: is_streaming_for_struct,
+                pen_mode: pen_mode_for_struct,
             },
             rx_ui,
         )
+    }
+}
+
+impl RepetierSender {
+    /// Turns pen-plotter mode on or off for jobs sent after this call.
+    ///
+    /// When on, laser on (`M3`/`M4`) becomes a pen-down `G0 Z0` and laser
+    /// off (`M5`) a pen-up `G0 Z5`. When off (the default) the program is
+    /// sent as written. This is a per-machine setting (`pen_mode` in the
+    /// device profile).
+    pub fn set_pen_mode(&self, enabled: bool) {
+        self.pen_mode.store(enabled, Ordering::Relaxed);
     }
 }
 
@@ -342,11 +365,10 @@ fn fail_job(
 
 /// Replace laser on/off commands with a Z move, for pen-plotter use.
 ///
-/// Repetier/Marlin machines have no laser. When the profile is
-/// Repetier, we assume the tool is a pen (or any non-laser tool)
-/// and translate the laser commands into Z moves so the tool is
-/// lowered when the "laser" would be on and lifted when it would
-/// be off.
+/// Used only when the machine's profile turns pen mode on
+/// ([`RepetierSender::set_pen_mode`]). The laser commands become Z
+/// moves so the pen is lowered when the "laser" would be on and
+/// lifted when it would be off.
 fn apply_pen_mode(gcode: &str) -> String {
     let mut out = String::with_capacity(gcode.len() + 256);
     // Whether the tool is currently up (laser off). Start with

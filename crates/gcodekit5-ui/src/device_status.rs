@@ -7,7 +7,7 @@ use gcodekit5_communication::firmware::grbl::status_parser::{
 use gcodekit5_core::{thread_safe_rw, ThreadSafeRw};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// Global GRBL device status
 #[derive(Debug, Clone)]
@@ -80,6 +80,19 @@ pub fn get_active_num_axes() -> u8 {
 /// Sets the number of axes for the active device.
 pub fn set_active_num_axes(n: u8) {
     ACTIVE_NUM_AXES.store(n, Ordering::Relaxed);
+}
+
+/// Whether the active device profile has Repetier pen mode on.
+static ACTIVE_PEN_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Returns whether the active device uses Repetier pen mode.
+pub fn get_active_pen_mode() -> bool {
+    ACTIVE_PEN_MODE.load(Ordering::Relaxed)
+}
+
+/// Sets whether the active device uses Repetier pen mode.
+pub fn set_active_pen_mode(enabled: bool) {
+    ACTIVE_PEN_MODE.store(enabled, Ordering::Relaxed);
 }
 
 /// Controller type of the currently active device profile, as a debug string

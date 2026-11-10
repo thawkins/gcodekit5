@@ -342,3 +342,73 @@ fn test_sender_reports_lost_connection_and_stops() {
     assert!(messages.iter().any(|m| m.contains("Completed")));
     assert!(!sender.is_streaming());
 }
+
+/// Streams `program` with the Repetier sender to a local TCP controller that
+/// acknowledges every line, and returns the text the controller received.
+fn stream_to_fake_controller(program: &str, pen_mode: bool) -> String {
+    use gcodekit5_communication::firmware::ControllerProtocol;
+    use gcodekit5_communication::{Communicator, ConnectionParams};
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("timeout");
+        let mut received = String::new();
+        let mut buf = [0u8; 1024];
+        while let Ok(n) = stream.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            let chunk = String::from_utf8_lossy(&buf[..n]).into_owned();
+            for _ in chunk.matches('\n') {
+                stream.write_all(b"ok\n").expect("ack");
+            }
+            received.push_str(&chunk);
+        }
+        received
+    });
+
+    let mut comm = SerialCommunicator::new();
+    comm.connect(&ConnectionParams::tcp("127.0.0.1", port))
+        .expect("connect");
+    comm.set_configured_protocol(ControllerProtocol::Repetier);
+    let comm = Arc::new(Mutex::new(comm));
+    let shared = |v: bool| Arc::new(Mutex::new(v));
+    let (sender, rx) =
+        RepetierSender::new(comm.clone(), shared(false), shared(false), shared(false));
+    sender.set_pen_mode(pen_mode);
+    sender.send_gcode(program);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if let Ok(m) = rx.recv_timeout(Duration::from_millis(50)) {
+            if m.contains("Completed") {
+                break;
+            }
+        }
+    }
+    drop(sender);
+    let _ = comm.lock().disconnect();
+    drop(comm);
+    server.join().expect("server")
+}
+
+#[test]
+fn test_pen_mode_off_sends_spindle_commands_unchanged() {
+    let sent = stream_to_fake_controller("M3 S1000\nG1 X1 F100\nM5\n", false);
+    assert!(sent.contains(" M3 S1000 "), "{sent}");
+    assert!(sent.contains(" M5 "), "{sent}");
+    assert!(!sent.contains("Z5"), "{sent}");
+}
+
+#[test]
+fn test_pen_mode_on_turns_spindle_commands_into_z_moves() {
+    let sent = stream_to_fake_controller("M5\nM3 S1000\nG1 X1 F100\nM5\n", true);
+    assert!(!sent.contains(" M3"), "{sent}");
+    assert!(sent.contains("G0 Z0.00"), "{sent}");
+    assert!(sent.contains("G0 Z5"), "{sent}");
+}
