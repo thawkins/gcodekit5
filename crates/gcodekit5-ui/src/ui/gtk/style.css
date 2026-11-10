@@ -559,13 +559,11 @@ stackswitcher > button:hover {
 stackswitcher > button:checked {
     background-color: alpha(var(--accent-bg-color), 0.12);
     color: var(--accent-color);
-    outline: 12px !important;;
     border-bottom: 4px solid var(--accent-color);
     font-weight: bold;
 }
 
 .group-badge {
-    cursor: pointer;
     color: @accent_color;
 }
 .group-badge:hover {

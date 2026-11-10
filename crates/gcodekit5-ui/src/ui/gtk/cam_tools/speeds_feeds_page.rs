@@ -79,14 +79,14 @@ impl CalculatorState {
     /// Get the active device profile if available
     fn get_active_device(&self) -> Option<DeviceProfile> {
         let manager = self.device_manager.as_ref()?;
-        eprintln!("[SpeedsFeeds] Device manager exists, getting active profile...");
+        tracing::debug!("Speeds/feeds: Device manager exists, getting active profile...");
         let profile = manager.get_active_profile();
-        eprintln!(
-            "[SpeedsFeeds] Active profile result: {:?}",
+        tracing::debug!(
+            "Speeds/feeds: Active profile result: {:?}",
             profile.as_ref().map(|p| &p.name)
         );
         if profile.is_none() {
-            eprintln!("[SpeedsFeeds] No active device profile found");
+            tracing::debug!("Speeds/feeds: No active device profile found");
         }
         profile
     }

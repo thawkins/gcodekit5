@@ -510,6 +510,24 @@ impl GcodeVisualizer {
 
         sidebar.append(&view_controls);
 
+        // 2D / 3D view mode radio pair. 2D locks the camera to the orthographic
+        // top view and turns left-drag into pan; 3D allows free orbit.
+        let view_2d = Rc::new(std::cell::Cell::new(false));
+        let view_mode_row = Box::new(Orientation::Horizontal, 6);
+        let view_2d_btn = CheckButton::builder()
+            .label(t!("2D"))
+            .tooltip_text(t!("Top-down 2D view"))
+            .build();
+        let view_3d_btn = CheckButton::builder()
+            .label(t!("3D"))
+            .tooltip_text(t!("Rotatable 3D view"))
+            .active(true)
+            .build();
+        view_2d_btn.set_group(Some(&view_3d_btn));
+        view_mode_row.append(&view_2d_btn);
+        view_mode_row.append(&view_3d_btn);
+        sidebar.append(&view_mode_row);
+
         let sidebar_list = ListBox::new();
         sidebar_list.set_selection_mode(SelectionMode::None);
         sidebar_list.add_css_class("visualizer-sidebar-list");
@@ -1010,6 +1028,29 @@ impl GcodeVisualizer {
         let nav_cube = NavCube::new(camera.clone(), gl_area.clone());
         overlay.add_overlay(&nav_cube.widget);
 
+        // Switching view mode: 2D snaps to the top view and hides the nav cube
+        // (its buttons would rotate out of 2D); 3D returns to the isometric view.
+        {
+            let view_2d = view_2d.clone();
+            let camera = camera.clone();
+            let gl_area = gl_area.clone();
+            let nav_widget = nav_cube.widget.clone();
+            view_2d_btn.connect_toggled(move |btn| {
+                let is_2d = btn.is_active();
+                view_2d.set(is_2d);
+                {
+                    let mut cam = camera.borrow_mut();
+                    if is_2d {
+                        cam.set_view(0.0, 90.0);
+                    } else {
+                        cam.set_isometric();
+                    }
+                }
+                nav_widget.set_visible(!is_2d);
+                gl_area.queue_render();
+            });
+        }
+
         // Empty state (shown when no G-code is loaded)
         let empty_box = Box::new(Orientation::Vertical, 8);
         empty_box.add_css_class("visualizer-osd");
@@ -1292,6 +1333,14 @@ impl GcodeVisualizer {
                 gl_area_fit_3d.queue_render();
             }
         });
+
+        // The sidebar Fit button runs the same fit; it is the only Fit control
+        // in 2D mode, where the nav cube (and its Fit button) is hidden. The
+        // fit keeps the camera's orientation, so the 2D top view stays locked.
+        {
+            let nav_fit = nav_cube.fit_btn.clone();
+            fit_btn.connect_clicked(move |_| nav_fit.emit_clicked());
+        }
 
         // Visibility Logic
         let nav_widget = nav_cube.widget.clone();
@@ -2954,6 +3003,7 @@ impl GcodeVisualizer {
         let hadj_3d_drag = hadjustment_3d.clone();
         let vadj_3d_drag = vadjustment_3d.clone();
         let is_updating_3d_drag = is_updating_3d.clone();
+        let view_2d_drag = view_2d.clone();
 
         gesture_drag.connect_drag_update(move |gesture, dx, dy| {
             let mut last_pos = last_drag_pos_update.borrow_mut();
@@ -2971,8 +3021,8 @@ impl GcodeVisualizer {
                 _ => false,
             };
 
-            if is_shift {
-                // Pan
+            if is_shift || view_2d_drag.get() {
+                // Pan (always pan in 2D mode)
                 cam.pan(delta_x as f32, delta_y as f32);
             } else {
                 // Orbit

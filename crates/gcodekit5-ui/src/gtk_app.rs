@@ -32,7 +32,7 @@ use gtk4::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use tracing::{debug, info};
+use tracing::debug;
 
 pub fn main() {
     // The language preference is applied before GLib or GTK starts: it sets
@@ -97,7 +97,7 @@ fn on_activate(app: &Application) {
                     error = %e,
                     "Settings file could not be loaded; using defaults"
                 ),
-                None => info!("Loaded settings from {:?}", config_path),
+                None => debug!("Loaded settings from {:?}", config_path),
             }
             settings_load_error = error.map(|e| format!("{}\n\n{e}", config_path.display()));
             Rc::new(RefCell::new(persistence))

@@ -1,6 +1,7 @@
 /target
 /target/temp
 assets/screenshots/*
+assets/logs/
 .ragent/codeindex/*
 .ragent/ragent.json
 
