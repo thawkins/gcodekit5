@@ -86,48 +86,6 @@ impl RenderBuffers {
         }
     }
 
-    pub fn update_volume(&mut self, vertex: &[f32]) {
-        // SAFETY: GL context is valid. The from_raw_parts reinterprets f32 as u8
-        // for GL buffer upload; pointer and length come from a valid slice.
-        unsafe {
-            self.gl.bind_vertex_array(Some(self.vao));
-            self.gl.bind_buffer(ARRAY_BUFFER, Some(self.vbo));
-
-            // Upload data
-            let u8_slice = std::slice::from_raw_parts(
-                vertex.as_ptr() as *const u8,
-                std::mem::size_of_val(vertex),
-            );
-            self.gl
-                .buffer_data_u8_slice(ARRAY_BUFFER, u8_slice, STATIC_DRAW);
-
-            // Configure attributes for volume rendering
-            // Stride: 3 floats for pos + 3 floats for tex coords = 6 * 4 bytes
-            let stride = 6 * std::mem::size_of::<f32>() as i32;
-
-            // Position (loc 0)
-            self.gl.enable_vertex_attrib_array(0);
-            self.gl
-                .vertex_attrib_pointer_f32(0, 3, FLOAT, false, stride, 0);
-
-            // TexCoord (loc 1)
-            self.gl.enable_vertex_attrib_array(1);
-            self.gl.vertex_attrib_pointer_f32(
-                1,
-                3,
-                FLOAT,
-                false,
-                stride,
-                3 * std::mem::size_of::<f32>() as i32,
-            );
-
-            self.vertex_count = (vertex.len() / 6) as i32;
-
-            self.gl.bind_vertex_array(None);
-            self.gl.bind_buffer(ARRAY_BUFFER, None);
-        }
-    }
-
     pub fn update_mesh(&mut self, vertex: &[f32]) {
         // SAFETY: GL context is valid. The from_raw_parts reinterprets f32 as u8
         // for GL buffer upload; pointer and length come from a valid slice.
@@ -244,42 +202,6 @@ pub fn generate_vertex_data(vis: &Visualizer) -> (Vec<f32>, Vec<f32>) {
                     TRAVEL_COLOR,
                 ),
             },
-            GCodeCommand::Dwell { .. } => {}
-        }
-    }
-
-    (rapid_vertex, cut_vertex)
-}
-
-// Versión original (sin colores por intensidad)
-pub fn generate_vertex_data_uniform(visualizer: &Visualizer) -> (Vec<f32>, Vec<f32>) {
-    let mut rapid_vertex = Vec::new();
-    let mut cut_vertex = Vec::new();
-
-    // Colors
-    let rapid_color = [0.0, 0.8, 1.0, 1.0]; // Cyan (matches 2D)
-    let cut_color = [1.0, 1.0, 0.0, 1.0]; // Yellow (matches 2D)
-
-    for cmd in visualizer.commands() {
-        match cmd {
-            GCodeCommand::Move {
-                from, to, rapid, ..
-            } => {
-                if *rapid {
-                    push_line(&mut rapid_vertex, from, to, rapid_color);
-                } else {
-                    push_line(&mut cut_vertex, from, to, cut_color);
-                }
-            }
-            GCodeCommand::Arc {
-                from,
-                to,
-                center,
-                clockwise,
-                ..
-            } => {
-                push_arc(&mut cut_vertex, from, to, center, *clockwise, cut_color);
-            }
             GCodeCommand::Dwell { .. } => {}
         }
     }
@@ -553,42 +475,6 @@ pub fn generate_axis_data(length: f32) -> Vec<f32> {
         &Point3D::new(0.0, 0.0, length),
         [0.0, 0.0, 1.0, 1.0],
     );
-
-    vertex
-}
-
-// Generate a bounding box for volumetric rendering
-// Returns vertex for a cube with position (loc 0) and tex coords (loc 1)
-pub fn generate_volume_box_data(
-    min_x: f32,
-    max_x: f32,
-    min_y: f32,
-    max_y: f32,
-    min_z: f32,
-    max_z: f32,
-) -> Vec<f32> {
-    // Each vertex: 3 floats (position) + 3 floats (tex coord)
-    let vertex = vec![
-        // Front face (Z = max_z)
-        min_x, min_y, max_z, 0.0, 0.0, 1.0, max_x, min_y, max_z, 1.0, 0.0, 1.0, max_x, max_y, max_z,
-        1.0, 1.0, 1.0, min_x, min_y, max_z, 0.0, 0.0, 1.0, max_x, max_y, max_z, 1.0, 1.0, 1.0,
-        min_x, max_y, max_z, 0.0, 1.0, 1.0, // Back face (Z = min_z)
-        max_x, min_y, min_z, 1.0, 0.0, 0.0, min_x, min_y, min_z, 0.0, 0.0, 0.0, min_x, max_y,
-        min_z, 0.0, 1.0, 0.0, max_x, min_y, min_z, 1.0, 0.0, 0.0, min_x, max_y, min_z, 0.0, 1.0,
-        0.0, max_x, max_y, min_z, 1.0, 1.0, 0.0, // Top face (Y = max_y)
-        min_x, max_y, max_z, 0.0, 1.0, 1.0, max_x, max_y, max_z, 1.0, 1.0, 1.0, max_x, max_y,
-        min_z, 1.0, 1.0, 0.0, min_x, max_y, max_z, 0.0, 1.0, 1.0, max_x, max_y, min_z, 1.0, 1.0,
-        0.0, min_x, max_y, min_z, 0.0, 1.0, 0.0, // Bottom face (Y = min_y)
-        min_x, min_y, min_z, 0.0, 0.0, 0.0, max_x, min_y, min_z, 1.0, 0.0, 0.0, max_x, min_y,
-        max_z, 1.0, 0.0, 1.0, min_x, min_y, min_z, 0.0, 0.0, 0.0, max_x, min_y, max_z, 1.0, 0.0,
-        1.0, min_x, min_y, max_z, 0.0, 0.0, 1.0, // Right face (X = max_x)
-        max_x, min_y, max_z, 1.0, 0.0, 1.0, max_x, min_y, min_z, 1.0, 0.0, 0.0, max_x, max_y,
-        min_z, 1.0, 1.0, 0.0, max_x, min_y, max_z, 1.0, 0.0, 1.0, max_x, max_y, min_z, 1.0, 1.0,
-        0.0, max_x, max_y, max_z, 1.0, 1.0, 1.0, // Left face (X = min_x)
-        min_x, min_y, min_z, 0.0, 0.0, 0.0, min_x, min_y, max_z, 0.0, 0.0, 1.0, min_x, max_y,
-        max_z, 0.0, 1.0, 1.0, min_x, min_y, min_z, 0.0, 0.0, 0.0, min_x, max_y, max_z, 0.0, 1.0,
-        1.0, min_x, max_y, min_z, 0.0, 1.0, 0.0,
-    ];
 
     vertex
 }

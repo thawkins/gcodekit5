@@ -26,7 +26,6 @@ pub mod renderer_3d;
 pub mod settings;
 pub mod shaders;
 pub mod status_bar;
-pub mod stock_texture;
 pub mod visualizer;
 //pub mod designer_file_ops; // Temporarily disabled - needs shape struct updates
 pub mod config_settings;

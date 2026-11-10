@@ -455,23 +455,6 @@ impl Default for ProbeSettings {
     }
 }
 
-/// Firmware-specific settings trait
-///
-/// Allows firmware implementations to define their own settings structure.
-pub trait FirmwareSettings: Serialize {
-    /// Get the firmware name
-    fn firmware_name(&self) -> &str;
-
-    /// Validate the settings
-    fn validate(&self) -> Result<()>;
-
-    /// Get setting by key
-    fn get_setting(&self, key: &str) -> Option<String>;
-
-    /// Set setting by key
-    fn set_setting(&mut self, key: &str, value: String) -> Result<()>;
-}
-
 /// Complete application configuration
 ///
 /// Aggregates all settings sections and provides file I/O operations.
@@ -613,19 +596,6 @@ impl Config {
         }
 
         Ok(())
-    }
-
-    /// Add file to recent files list
-    pub fn add_recent_file(&mut self, path: PathBuf) {
-        // Remove if already in list
-        self.recent_files.retain(|f| f != &path);
-
-        // Add to front
-        self.recent_files.insert(0, path);
-
-        // Trim to max size
-        self.recent_files
-            .truncate(self.file_processing.recent_files_count);
     }
 
     /// Merge another config into this one.

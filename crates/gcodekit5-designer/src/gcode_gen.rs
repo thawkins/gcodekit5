@@ -15,7 +15,6 @@ pub struct MachineLimits {
 
 /// G-code generator for converting toolpaths to G-code commands.
 pub struct ToolpathToGcode {
-    _units: Units,
     /// Safe Z height for rapid moves between shapes
     pub safe_z: f64,
     line_numbers_enabled: bool,
@@ -38,9 +37,11 @@ pub struct ToolpathToGcode {
 
 impl ToolpathToGcode {
     /// Creates a new G-code generator.
-    pub fn new(units: Units, safe_z: f64) -> Self {
+    ///
+    /// Output is always millimetres (`G21`); `_units` is kept for API
+    /// compatibility.
+    pub fn new(_units: Units, safe_z: f64) -> Self {
         Self {
-            _units: units,
             safe_z,
             line_numbers_enabled: false,
             num_axes: 3,
@@ -54,9 +55,8 @@ impl ToolpathToGcode {
     }
 
     /// Creates a new G-code generator with line numbers enabled.
-    pub fn with_line_numbers(units: Units, safe_z: f64, enabled: bool) -> Self {
+    pub fn with_line_numbers(_units: Units, safe_z: f64, enabled: bool) -> Self {
         Self {
-            _units: units,
             safe_z,
             line_numbers_enabled: enabled,
             num_axes: 3,
@@ -229,17 +229,6 @@ impl ToolpathToGcode {
             //            gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
         }
         //        gcode.push_str(&format!("; Total path length: {:.2}mm\n", total_length));
-        /*
-                let estimated_minutes = if feed_rate > 0.0 {
-                    total_length / feed_rate
-                } else {
-                    0.0
-                };
-
-                let hours = (estimated_minutes / 60.0).floor() as u32;
-                let minutes = (estimated_minutes.rem_euclid(60.0)).round() as u32;
-                gcode.push_str(&format!("; Estimated time: {}h {}m\n", hours, minutes));
-        */
 
         gcode.push('\n');
 

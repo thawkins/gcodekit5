@@ -49,11 +49,6 @@ codegen-units = 1
 opt-level = 1
 
 [dependencies]
-gcodekit5-core = { path = "crates/gcodekit5-core" }
-gcodekit5-communication = { path = "crates/gcodekit5-communication" }
-gcodekit5-camtools = { path = "crates/gcodekit5-camtools" }
-gcodekit5-designer = { path = "crates/gcodekit5-designer" }
-gcodekit5-visualizer = { path = "crates/gcodekit5-visualizer" }
 gcodekit5-ui = { path = "crates/gcodekit5-ui" }
 
 gtk4 = { version = "0.9", features = ["v4_14"] }
@@ -67,13 +62,9 @@ tracing-subscriber = { version = "0.3", features = [
     "json",
 ] }
 anyhow = "1.0"
-rfd = "0.15.4"
 serde = { version = "1.0", features = ["derive"] }
 
 
-# Build dependencies
-[build-dependencies]
-chrono = "0.4"
 
 [package.metadata.deb]
 maintainer = "GCodeKit Contributors"

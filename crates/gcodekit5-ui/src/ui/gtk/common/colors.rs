@@ -122,13 +122,3 @@ pub fn grayscale(value: f64) -> RGBA {
     let v = value.clamp(0.0, 1.0) as f32;
     RGBA::new(v, v, v, 1.0)
 }
-
-/// Apply opacity to a color
-pub fn with_opacity(color: &RGBA, opacity: f64) -> RGBA {
-    RGBA::new(
-        color.red(),
-        color.green(),
-        color.blue(),
-        (color.alpha() as f64 * opacity) as f32,
-    )
-}

@@ -248,18 +248,4 @@ impl SettingsController {
 
         self.notify_listeners(&changed);
     }
-
-    /// Convert string category to enum
-    pub fn get_category_from_string(cat: &str) -> SettingsCategory {
-        match cat {
-            "controller" => SettingsCategory::Controller,
-            "general" => SettingsCategory::General,
-            "ui" => SettingsCategory::UserInterface,
-            "file" => SettingsCategory::FileProcessing,
-            "machine" => SettingsCategory::Machine,
-            "shortcuts" => SettingsCategory::KeyboardShortcuts,
-            "advanced" => SettingsCategory::Advanced,
-            _ => SettingsCategory::Controller,
-        }
-    }
 }

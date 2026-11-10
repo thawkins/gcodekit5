@@ -53,41 +53,6 @@ impl LayersPanel {
         out
     }
 
-    pub fn select_row_at_index(&self, index: usize) {
-        let rows = Self::list_box_rows(&self.list_box);
-        if let Some(row) = rows.get(index) {
-            self.list_box.select_row(Some(row));
-            row.grab_focus();
-        }
-    }
-
-    pub fn sync_selection(list_box: &ListBox, state: &Shared<DesignerState>) {
-        // Collect first and release the borrow: (un)selecting rows emits
-        // `selected-rows-changed`, whose handler mutably borrows the state.
-        let selected_ids: Vec<u64> = state
-            .borrow()
-            .canvas
-            .shape_store
-            .iter()
-            .filter(|obj| obj.selected)
-            .map(|obj| obj.id)
-            .collect();
-
-        list_box.unselect_all();
-        for row in Self::list_box_rows(list_box) {
-            // Rows are ordered by draw position, so match by shape id (row name).
-            let is_selected = row
-                .widget_name()
-                .as_str()
-                .parse::<u64>()
-                .is_ok_and(|id| selected_ids.contains(&id));
-            if is_selected {
-                list_box.select_row(Some(&row));
-                row.grab_focus();
-            }
-        }
-    }
-
     /// Sets the callback run after the user changes the selection or the shapes from
     /// this panel (row clicks, grouping, z-order, renaming).
     ///

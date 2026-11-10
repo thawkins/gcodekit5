@@ -119,11 +119,6 @@ impl Viewport {
         }
     }
 
-    /// Check if content is scrollable
-    pub fn is_scrollable(&self) -> bool {
-        self.total_lines > self.visible_lines
-    }
-
     /// Get overscan range (lines to pre-render above/below viewport)
     pub fn overscan_range(&self, overscan_lines: usize) -> Range<usize> {
         let start = self.start_line.saturating_sub(overscan_lines);

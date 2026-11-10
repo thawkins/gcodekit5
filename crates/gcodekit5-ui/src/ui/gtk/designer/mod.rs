@@ -833,11 +833,6 @@ impl DesignerView {
         *self.on_gcode_generated.borrow_mut() = Some(std::boxed::Box::new(f));
     }
 
-    pub fn fit_to_device(&self) {
-        self.canvas.fit_to_device_area();
-        self.canvas.widget.queue_draw();
-    }
-
     pub fn undo(&self) {
         self.canvas.undo();
     }
