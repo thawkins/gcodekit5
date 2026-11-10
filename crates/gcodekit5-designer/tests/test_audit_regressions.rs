@@ -406,3 +406,79 @@ fn test_path_pocket_does_not_join_separate_contours() {
         );
     }
 }
+
+#[test]
+fn test_slice_through_a_vertex_gives_one_segment() {
+    // Audit C-06: a vertex on the plane was found twice and the triangle
+    // was dropped from the slice.
+    use gcodekit5_designer::model3d::Triangle3D;
+    use nalgebra::Point3;
+    let tri = Triangle3D::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(10.0, 0.0, 1.0),
+        Point3::new(0.0, 10.0, -1.0),
+    );
+    assert_eq!(tri.intersect_plane_z(0.0).len(), 2);
+    let flat = Triangle3D::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
+    );
+    assert!(
+        flat.normal.iter().all(|v| v.is_finite()),
+        "{:?}",
+        flat.normal
+    );
+}
+
+/// A flat `n x n` grid of unit squares (two triangles each), facing up.
+fn grid_mesh(n: usize) -> gcodekit5_designer::model3d::Mesh3D {
+    use gcodekit5_designer::model3d::{Mesh3D, Triangle3D};
+    use nalgebra::Point3;
+    let mut tris = Vec::new();
+    for y in 0..n {
+        for x in 0..n {
+            let (x0, y0, x1, y1) = (x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
+            tris.push(Triangle3D::new(
+                Point3::new(x0, y0, 0.0),
+                Point3::new(x1, y0, 0.0),
+                Point3::new(x1, y1, 0.0),
+            ));
+            tris.push(Triangle3D::new(
+                Point3::new(x0, y0, 0.0),
+                Point3::new(x1, y1, 0.0),
+                Point3::new(x0, y1, 0.0),
+            ));
+        }
+    }
+    Mesh3D::new(tris)
+}
+
+#[test]
+fn test_stl_shadow_is_the_outline_and_fast() {
+    // Audit C-05: every triangle edge was chained (2500 shapes for a 50x50
+    // grid) with an O(n^2) scan (26 s for 20 000 triangles).
+    let start = std::time::Instant::now();
+    let shapes = grid_mesh(100).project_shadow_z().expect("shadow");
+    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(shapes.len(), 1, "one outline expected");
+    let (x0, y0, x1, y1) = shapes[0].bounds();
+    assert_eq!((x0, y0, x1, y1), (0.0, 0.0, 100.0, 100.0));
+}
+
+#[test]
+fn test_dxf_malformed_numbers_are_reported() {
+    // Audit C-08: a bad value silently became 0.
+    let dxf = "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n1.0\n20\nabc\n11\n5.0\n21\nNaN\n0\nENDSEC\n0\nEOF\n";
+    let design = DxfImporter::new(1.0, 0.0, 0.0)
+        .import_string(dxf)
+        .expect("import");
+    assert!(
+        design
+            .unsupported_entities
+            .iter()
+            .any(|(name, count)| name.contains("not numbers") && *count == 2),
+        "{:?}",
+        design.unsupported_entities
+    );
+}

@@ -57,8 +57,66 @@ impl DrillPressGenerator {
         Self { params }
     }
 
+    /// Most pecks a hole may take; a smaller peck is almost certainly a typo
+    /// and would produce an enormous program.
+    const MAX_PECKS: f64 = 10_000.0;
+
+    /// Rejects parameters that would produce unsafe or broken G-code.
+    fn validate(p: &DrillPressParameters) -> Result<()> {
+        let values = [
+            ("hole diameter", p.hole_diameter),
+            ("tool diameter", p.tool_diameter),
+            ("top Z", p.top_z),
+            ("bottom Z", p.bottom_z),
+            ("peck depth", p.peck_depth),
+            ("plunge rate", p.plunge_rate),
+            ("feed rate", p.feed_rate),
+            ("safe Z", p.safe_z),
+            ("X", p.x),
+            ("Y", p.y),
+        ];
+        if let Some((name, value)) = values.iter().find(|(_, v)| !v.is_finite()) {
+            anyhow::bail!("Drill press {name} must be a number (got {value})");
+        }
+        if p.hole_diameter <= 0.0 || p.tool_diameter <= 0.0 {
+            anyhow::bail!("Hole and tool diameters must be greater than 0");
+        }
+        if p.bottom_z >= p.top_z {
+            anyhow::bail!(
+                "Bottom Z ({}) must be below top Z ({})",
+                p.bottom_z,
+                p.top_z
+            );
+        }
+        if p.safe_z <= p.top_z {
+            anyhow::bail!(
+                "Safe Z ({}) must be above top Z ({}), or the move to the hole cuts through the stock",
+                p.safe_z,
+                p.top_z
+            );
+        }
+        if p.plunge_rate <= 0.0 || p.feed_rate <= 0.0 {
+            anyhow::bail!("Plunge and feed rates must be greater than 0");
+        }
+        if p.peck_depth < 0.0 {
+            anyhow::bail!("Peck depth must not be negative (0 drills in one plunge)");
+        }
+        if p.peck_depth > 0.0 && (p.top_z - p.bottom_z) / p.peck_depth > Self::MAX_PECKS {
+            anyhow::bail!(
+                "Peck depth {} is too small for a {} mm deep hole",
+                p.peck_depth,
+                p.top_z - p.bottom_z
+            );
+        }
+        Ok(())
+    }
+
     /// Generate the G-Code for the drilling operation
+    ///
+    /// # Errors
+    /// Returns an error when the parameters are invalid (see `validate`).
     pub fn generate(&self) -> Result<String> {
+        Self::validate(&self.params)?;
         let mut gcode = String::new();
         let p = &self.params;
 

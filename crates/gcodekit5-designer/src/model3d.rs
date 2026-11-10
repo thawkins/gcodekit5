@@ -16,7 +16,7 @@ use crate::model::Point;
 use crate::model::{DesignPath as PathShape, Shape};
 use anyhow::{anyhow, Result};
 use nalgebra::{Matrix4, Point3, Vector3};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use tracing::debug;
 
 /// A 3D triangle made up of three vertices
@@ -31,7 +31,12 @@ impl Triangle3D {
         // Calculate normal using cross product
         let edge1 = v2 - v1;
         let edge2 = v3 - v1;
-        let normal = edge1.cross(&edge2).normalize();
+        // A degenerate (zero-area) triangle has no direction; use zero rather
+        // than the NaN that normalising a zero vector gives.
+        let normal = edge1
+            .cross(&edge2)
+            .try_normalize(f32::EPSILON)
+            .unwrap_or_else(Vector3::zeros);
 
         Self {
             vertices: [v1, v2, v3],
@@ -94,10 +99,18 @@ impl Triangle3D {
             }
         }
 
-        // Remove duplicates (vertices that are exactly on the plane)
-        intersections.dedup_by(|a, b| (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6);
-
-        intersections
+        // A vertex on the plane is found by both edges that share it, which are
+        // not always next to each other in the list: remove every duplicate.
+        let mut unique: Vec<Point3<f32>> = Vec::with_capacity(intersections.len());
+        for p in intersections {
+            if !unique
+                .iter()
+                .any(|q| (p.x - q.x).abs() < 1e-6 && (p.y - q.y).abs() < 1e-6)
+            {
+                unique.push(p);
+            }
+        }
+        unique
     }
 }
 
@@ -257,20 +270,48 @@ impl Mesh3D {
     pub fn project_shadow_z(&self) -> Result<Vec<Shape>> {
         debug!("Projecting 3D mesh to 2D shadow along Z-axis");
 
-        // Collect all edge segments from all triangles projected to XY plane
-        let mut edge_segments = Vec::new();
+        // The outline of the projection is the boundary of the triangles that
+        // face up (or, for a mesh with none, down): an edge used by exactly one
+        // of them. Interior edges and face diagonals are shared and dropped.
+        let facing_up: Vec<&Triangle3D> = self
+            .triangles
+            .iter()
+            .filter(|t| t.normal.z > 1e-6)
+            .collect();
+        let facing: Vec<&Triangle3D> = if facing_up.is_empty() {
+            self.triangles
+                .iter()
+                .filter(|t| t.normal.z < -1e-6)
+                .collect()
+        } else {
+            facing_up
+        };
 
-        for triangle in &self.triangles {
-            // Project each triangle to XY plane and add its edges
-            let v1_2d = Point::new(triangle.vertices[0].x as f64, triangle.vertices[0].y as f64);
-            let v2_2d = Point::new(triangle.vertices[1].x as f64, triangle.vertices[1].y as f64);
-            let v3_2d = Point::new(triangle.vertices[2].x as f64, triangle.vertices[2].y as f64);
-
-            // Add triangle edges as line segments
-            edge_segments.push((v1_2d, v2_2d));
-            edge_segments.push((v2_2d, v3_2d));
-            edge_segments.push((v3_2d, v1_2d));
+        let key = |p: Point| ((p.x * 1e6).round() as i64, (p.y * 1e6).round() as i64);
+        let mut edge_use: HashMap<EdgeKey, (Point, Point, usize)> = HashMap::new();
+        for triangle in facing {
+            let v: Vec<Point> = triangle
+                .vertices
+                .iter()
+                .map(|p| Point::new(p.x as f64, p.y as f64))
+                .collect();
+            for (a, b) in [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+                let (ka, kb) = (key(a), key(b));
+                if ka == kb {
+                    continue;
+                }
+                let edge_key = if ka < kb { (ka, kb) } else { (kb, ka) };
+                edge_use.entry(edge_key).or_insert((a, b, 0)).2 += 1;
+            }
         }
+        let mut boundary: Vec<(EdgeKey, (Point, Point))> = edge_use
+            .into_iter()
+            .filter(|(_, (_, _, count))| *count == 1)
+            .map(|(k, (a, b, _))| (k, (a, b)))
+            .collect();
+        // Deterministic order, so the same mesh gives the same shapes.
+        boundary.sort_by_key(|(k, _)| *k);
+        let edge_segments: Vec<(Point, Point)> = boundary.into_iter().map(|(_, seg)| seg).collect();
 
         debug!("Collected {} edge segments", edge_segments.len());
 
@@ -317,6 +358,9 @@ impl Mesh3D {
     }
 }
 
+/// An undirected edge between two points quantised to 1e-6 (smaller end first).
+type EdgeKey = ((i64, i64), (i64, i64));
+
 /// Build contour paths from a collection of line segments
 /// This function attempts to connect segments into closed loops
 pub fn build_contours_from_segments(segments: &[(Point, Point)]) -> Result<Vec<PathShape>> {
@@ -324,50 +368,44 @@ pub fn build_contours_from_segments(segments: &[(Point, Point)]) -> Result<Vec<P
         return Ok(vec![]);
     }
 
-    let mut used_segments = HashSet::new();
+    // Endpoints are matched within 1e-6; index them by that grid so each
+    // extension is a lookup instead of a scan of every segment (the scan made
+    // a 20 000-triangle import take about 26 s).
+    let key = |p: Point| ((p.x * 1e6).round() as i64, (p.y * 1e6).round() as i64);
+    let mut by_endpoint: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (index, &(a, b)) in segments.iter().enumerate() {
+        by_endpoint.entry(key(a)).or_default().push(index);
+        if key(b) != key(a) {
+            by_endpoint.entry(key(b)).or_default().push(index);
+        }
+    }
+
+    let mut used = vec![false; segments.len()];
     let mut contours = Vec::new();
 
     for (i, &(start, end)) in segments.iter().enumerate() {
-        if used_segments.contains(&i) {
+        if used[i] {
             continue;
         }
 
-        // Start a new contour
+        // Start a new contour and extend it with the first unused segment
+        // (in input order) that touches its end.
         let mut contour_points = vec![start];
         let mut current_end = end;
-        used_segments.insert(i);
+        used[i] = true;
 
-        // Try to extend the contour by finding connecting segments
-        let mut found_connection = true;
-        while found_connection {
-            found_connection = false;
-
-            for (j, &(seg_start, seg_end)) in segments.iter().enumerate() {
-                if used_segments.contains(&j) {
-                    continue;
-                }
-
-                let tolerance = 1e-6;
-
-                // Check if this segment connects to the current end
-                if (current_end.x - seg_start.x).abs() < tolerance
-                    && (current_end.y - seg_start.y).abs() < tolerance
-                {
-                    contour_points.push(seg_end);
-                    current_end = seg_end;
-                    used_segments.insert(j);
-                    found_connection = true;
-                    break;
-                } else if (current_end.x - seg_end.x).abs() < tolerance
-                    && (current_end.y - seg_end.y).abs() < tolerance
-                {
-                    contour_points.push(seg_start);
-                    current_end = seg_start;
-                    used_segments.insert(j);
-                    found_connection = true;
-                    break;
-                }
-            }
+        while let Some(j) = by_endpoint
+            .get(&key(current_end))
+            .and_then(|list| list.iter().copied().find(|&j| !used[j]))
+        {
+            let (seg_start, seg_end) = segments[j];
+            current_end = if key(seg_start) == key(current_end) {
+                seg_end
+            } else {
+                seg_start
+            };
+            contour_points.push(current_end);
+            used[j] = true;
         }
 
         // Check if the contour closes back to the start
