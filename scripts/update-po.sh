@@ -6,12 +6,16 @@ mkdir -p po
 
 # Extract strings from source code
 # We look for gettext calls: gettext("..."), t!("...")
-# Note: We need to define keywords for xgettext to recognize our macros
-xgettext --language=Rust --keyword=gettext --keyword=t! --keyword=_ \
-    --add-comments --sort-output --no-location \
-    --package-name="GCodeKit5" --package-version="0.1.0" \
-    --output=po/gcodekit5.pot \
-    crates/gcodekit5-ui/src/*.rs crates/gcodekit5-ui/src/**/*.rs
+# Note: We need to define keywords for xgettext to recognize our macros.
+# Every tracked Rust source outside tests/ is scanned (the settings crate
+# has translatable descriptions too); git ls-files avoids relying on the
+# shell's globstar option, which `**` needs to recurse.
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+git ls-files 'crates/*.rs' 'src/*.rs' | grep -v '/tests/' | \
+    xargs xgettext --language=Rust --keyword=gettext --keyword=t! --keyword=t --keyword=_ \
+    --from-code=UTF-8 --add-comments --sort-by-file --no-location \
+    --package-name="GCodeKit5" --package-version="$VERSION" \
+    --output=po/gcodekit5.pot
 
 echo "Updated po/gcodekit5.pot"
 
