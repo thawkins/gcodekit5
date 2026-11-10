@@ -15,4 +15,4 @@ serde_json = "1.0"
 toml = "0.8"
 dirs = "6.0"
 thiserror = { workspace = true }
-gettext-rs = "0.7"
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
