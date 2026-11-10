@@ -59,6 +59,7 @@ pub fn template_3axis_mill() -> DeviceProfile {
         tcp_port: 23,
         timeout_ms: 5000,
         auto_reconnect: false,
+        pen_mode: false,
         grbl_settings: std::collections::HashMap::new(),
     }
 }
@@ -117,6 +118,7 @@ pub fn template_4axis_mill() -> DeviceProfile {
         tcp_port: 23,
         timeout_ms: 5000,
         auto_reconnect: false,
+        pen_mode: false,
         grbl_settings: std::collections::HashMap::new(),
     }
 }
@@ -175,6 +177,7 @@ pub fn template_5axis_mill() -> DeviceProfile {
         tcp_port: 23,
         timeout_ms: 5000,
         auto_reconnect: false,
+        pen_mode: false,
         grbl_settings: std::collections::HashMap::new(),
     }
 }
@@ -233,6 +236,7 @@ pub fn template_6axis_mill() -> DeviceProfile {
         tcp_port: 23,
         timeout_ms: 5000,
         auto_reconnect: false,
+        pen_mode: false,
         grbl_settings: std::collections::HashMap::new(),
     }
 }

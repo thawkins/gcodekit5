@@ -193,6 +193,7 @@ impl DeviceManagerWindow {
             self.edit_has_spindle.set_active(profile.has_spindle);
             self.edit_has_laser.set_active(profile.has_laser);
             self.edit_has_coolant.set_active(profile.has_coolant);
+            self.edit_pen_mode.set_active(profile.pen_mode);
             self.edit_num_axes.set_text(profile.num_axes.trim());
             self.edit_max_s_value.set_text(profile.max_s_value.trim());
             self.edit_spindle_watts
@@ -358,6 +359,7 @@ impl DeviceManagerWindow {
             model.has_spindle = self.edit_has_spindle.is_active();
             model.has_laser = self.edit_has_laser.is_active();
             model.has_coolant = self.edit_has_coolant.is_active();
+            model.pen_mode = self.edit_pen_mode.is_active();
 
             let num_axes: u8 = match self.edit_num_axes.text().trim().parse() {
                 Ok(v) if (1..=6).contains(&v) => v,

@@ -466,7 +466,13 @@ impl ConfigSettingsView {
                             let mut comm_lock = comm.lock();
                             if comm_lock.is_connected() {
                                 let command = format!("${}={}", setting_number, new_value);
-                                comm_lock.send_command(&command).map_err(|e| e.to_string())
+                                let sent =
+                                    comm_lock.send_command(&command).map_err(|e| e.to_string());
+                                if sent.is_ok() {
+                                    // GRBL replies `ok`, not the value: keep the cache in step.
+                                    crate::device_status::note_setting_sent(&command);
+                                }
+                                sent
                             } else {
                                 Err(t!("not connected").to_string())
                             }

@@ -134,6 +134,10 @@ pub struct DeviceProfile {
     pub timeout_ms: u64,
     pub auto_reconnect: bool,
 
+    /// Pen-plotter mode for Repetier machines: laser on/off (`M3`/`M4`/`M5`)
+    /// is sent as a pen-down/pen-up Z move instead of a spindle command.
+    pub pen_mode: bool,
+
     /// Last known GRBL settings (from `$$`) for this profile (u16 to support grblHAL extended settings up to $680).
     #[serde(default)]
     pub grbl_settings: std::collections::HashMap<u16, String>,
@@ -216,6 +220,7 @@ impl Default for DeviceProfile {
             tcp_host: "192.168.1.100".to_string(),
             tcp_port: 23,
             timeout_ms: 5000,
+            pen_mode: false,
             auto_reconnect: false,
             grbl_settings: std::collections::HashMap::new(),
         }

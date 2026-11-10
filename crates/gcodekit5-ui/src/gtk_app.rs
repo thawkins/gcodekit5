@@ -203,8 +203,10 @@ pub fn main() {
                 crate::device_status::set_active_controller_type(Some(
                     profile.controller_type.as_str().to_string(),
                 ));
+                crate::device_status::set_active_pen_mode(profile.pen_mode);
             } else {
                 crate::device_status::set_active_controller_type(None);
+                crate::device_status::set_active_pen_mode(false);
             }
             glib::ControlFlow::Continue
         });
@@ -220,6 +222,7 @@ pub fn main() {
 
             // Publicar el ControllerType de la activa en el estado global
             crate::device_status::set_active_controller_type(Some(controller_type.clone()));
+            crate::device_status::set_active_pen_mode(profile.pen_mode);
 
             status_bar.set_device_info(device_name, &controller_type, &device_type);
         }
