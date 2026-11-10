@@ -1385,9 +1385,14 @@ impl GcodeVisualizer {
                 let menu = Popover::new();
                 menu.set_parent(&da_menu);
                 // Unparent once closed, or every right-click leaks a popover.
+                // Clearing the child first drops the buttons, whose handlers
+                // hold the menu, so the popover itself can be freed.
                 menu.connect_closed(|m| {
                     let m = m.clone();
-                    glib::idle_add_local_once(move || m.unparent());
+                    glib::idle_add_local_once(move || {
+                        m.set_child(None::<&gtk4::Widget>);
+                        m.unparent();
+                    });
                 });
                 menu.set_has_arrow(false);
                 let rect = gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
@@ -2143,6 +2148,9 @@ impl GcodeVisualizer {
                         STOCK_REMOVAL_RESOLUTION,
                     ) {
                         tracing::warn!("Stock simulation not started: {reason}");
+                        // Unchecking runs the cleanup branch below, which
+                        // clears the running flag and the progress UI.
+                        checkbox.set_active(false);
                         crate::ui::gtk::common::dialog::show_warning(
                             &t!("Stock Simulation"),
                             &reason,
