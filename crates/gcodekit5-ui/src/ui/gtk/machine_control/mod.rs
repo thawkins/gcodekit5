@@ -2819,11 +2819,6 @@ impl MachineControlView {
             },
         )
     }
-
-    /// Get the current axis count
-    pub fn get_axis_count(&self) -> u8 {
-        self.axis_count.get()
-    }
 }
 mod operations;
 mod overrides;

@@ -92,6 +92,16 @@
 - **Dependencies** (A-07/A-09): removed unused `dxf` (camtools), `uuid`/`bytemuck`/`lyon` (visualizer), `uuid`/`chrono` (ui runtime), `gtk4`/`gettext-rs`/`serde` (root), and the visualizer's dependency on the designer (it fed an unused toolpath channel); `async-executor` and `serialport` updated off yanked versions
 - **Build** (A-08): the UI's GResources are compiled once
 - **CI** (A-13): new jobs run clippy with warnings as errors and the tests with cargo-nextest (`.config/nextest.toml`, 150 s per-test limit); `deny.toml` only allows crates.io and the patched `core2` git source, and stale advisory ignores were removed
+## [Unreleased] - 2026-11-10 (dead code removal)
+
+### Removed
+- **Unused code with no callers** (#81), about 9,300 lines:
+  - Designer: 17 modules no feature reached (adaptive, drilling patterns, multipass, parametric, templates, toolpath simulation, V-carve, history, renderers, slice/shadow toolpaths, editor/visualizer "integration", G-code converter, helpers) and the orphan `src/mod.rs`
+  - CAM tools: `advanced_features`, `advanced_features_panel`, `core_infrastructure`
+  - Settings/device database: the `SettingsManager` instance API and firmware preset tables, `FirmwareSettings`, the device-profile templates and `DeviceProfileProvider`
+  - Root crate: the re-export facade, `platform.rs`, `app/`, `GcodeSendState`, `BUILD_DATE` and its build script
+  - UI: 59 functions with no callers, `stock_texture.rs`, the unused parts of `common/rendering.rs`, and commented-out code
+- Kept for wiring up: run-preview pause/resume, the designer array functions and the halftone/dithering code
 
 ## [Unreleased] - 2026-11-10 (homing keeps the work zero)
 

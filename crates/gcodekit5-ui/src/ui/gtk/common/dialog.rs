@@ -128,17 +128,6 @@ pub fn show_error(title: &str, message: &str, parent: Option<&Window>) {
     );
 }
 
-/// Show an error dialog with secondary text
-pub fn show_error_with_details(title: &str, message: &str, details: &str, parent: Option<&Window>) {
-    show_message_dialog(
-        DialogConfig::new(title, message)
-            .message_type(MessageType::Error)
-            .secondary_text(details),
-        parent,
-        None,
-    );
-}
-
 /// Show a warning dialog
 pub fn show_warning(title: &str, message: &str, parent: Option<&Window>) {
     show_message_dialog(
@@ -176,15 +165,6 @@ pub fn show_question(
 /// Try to obtain the parent `Window` from any widget
 pub fn parent_window(widget: &impl IsA<Widget>) -> Option<Window> {
     widget.root().and_then(|r| r.downcast::<Window>().ok())
-}
-
-/// Show an error dialog from any widget context
-///
-/// Convenience function that automatically gets the parent window from the widget
-pub fn show_error_from_widget(title: &str, message: &str, widget: &impl IsA<Widget>) {
-    let parent = parent_window(widget);
-    let parent_ref = parent.as_ref();
-    show_error(title, message, parent_ref);
 }
 
 /// Show a confirmation dialog with callback

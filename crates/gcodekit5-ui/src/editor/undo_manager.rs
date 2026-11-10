@@ -156,11 +156,6 @@ impl UndoManager {
     pub fn undo_count(&self) -> usize {
         self.undo_stack.len()
     }
-
-    /// Get number of redo operations available
-    pub fn redo_count(&self) -> usize {
-        self.redo_stack.len()
-    }
 }
 
 impl Default for UndoManager {

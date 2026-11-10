@@ -25,11 +25,6 @@ impl MachineControlView {
         self.refresh_connection_target();
     }
 
-    /// Returns the jog step size in mm.
-    pub fn get_step_size(&self) -> f64 {
-        *self.jog_step_mm.lock() as f64
-    }
-
     /// Starts a line-by-line job (one line in flight; the status poller sends the next
     /// line after each ack). Used by tools such as the drill press.
     ///

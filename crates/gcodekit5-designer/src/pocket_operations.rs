@@ -120,25 +120,6 @@ fn polygon_centroid(points: &[Point]) -> Option<Point> {
     Some(Point::new(cx, cy))
 }
 
-/*
-fn point_in_polygon(poly: &[Point], test: Point) -> bool {
-    // Standard ray casting test.
-    let mut inside = false;
-    let mut j = poly.len().saturating_sub(1);
-    for i in 0..poly.len() {
-        let pi = poly[i];
-        let pj = poly[j];
-        if ((pi.y > test.y) != (pj.y > test.y))
-            && (test.x < (pj.x - pi.x) * (test.y - pi.y) / (pj.y - pi.y + f64::EPSILON) + pi.x)
-        {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
-}
-*/
-
 /// Strategy for pocket milling.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Default)]
 pub enum PocketStrategy {

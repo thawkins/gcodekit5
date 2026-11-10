@@ -118,19 +118,6 @@ impl MessageFilter {
         }
     }
 
-    /// Create filter showing only errors
-    pub fn errors_only() -> Self {
-        Self {
-            debug: false,
-            info: false,
-            warning: true,
-            error: true,
-            success: false,
-            commands: false,
-            text_filter: None,
-        }
-    }
-
     /// Check if message passes filter
     pub fn matches(&self, msg: &ConsoleMessage) -> bool {
         let level_match = match msg.level {
@@ -319,65 +306,9 @@ impl ConsolePanel {
         self.history.clear();
     }
 
-    /// Set filter
-    pub fn set_filter(&mut self, filter: MessageFilter) {
-        self.filter = filter;
-        self.scroll_position = 0;
-    }
-
-    /// Toggle debug messages
-    pub fn toggle_debug(&mut self) {
-        self.filter.debug = !self.filter.debug;
-    }
-
-    /// Toggle info messages
-    pub fn toggle_info(&mut self) {
-        self.filter.info = !self.filter.info;
-    }
-
-    /// Toggle warning messages
-    pub fn toggle_warning(&mut self) {
-        self.filter.warning = !self.filter.warning;
-    }
-
-    /// Toggle error messages
-    pub fn toggle_error(&mut self) {
-        self.filter.error = !self.filter.error;
-    }
-
-    /// Toggle command echos
-    pub fn toggle_commands(&mut self) {
-        self.filter.commands = !self.filter.commands;
-    }
-
-    /// Set text filter
-    pub fn set_text_filter(&mut self, text: Option<String>) {
-        self.filter.text_filter = text;
-    }
-
-    /// Scroll up
-    pub fn scroll_up(&mut self) {
-        self.scroll_position = self.scroll_position.saturating_add(1);
-    }
-
-    /// Scroll down
-    pub fn scroll_down(&mut self) {
-        self.scroll_position = self.scroll_position.saturating_sub(1);
-    }
-
     /// Get message count (total)
     pub fn message_count(&self) -> usize {
         self.messages.len()
-    }
-
-    /// Get filtered message count
-    pub fn filtered_count(&self) -> usize {
-        self.get_filtered_messages().len()
-    }
-
-    /// Get history count
-    pub fn history_count(&self) -> usize {
-        self.history.len()
     }
 }
 

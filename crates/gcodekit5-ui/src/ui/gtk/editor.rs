@@ -24,10 +24,13 @@ pub struct GcodeEditor {
     pub widget: Overlay,
     pub view: View,
     pub buffer: Buffer,
-    _line_counter_label: Label,
     current_file: SharedOption<PathBuf>,
-    _search_context: SearchContext,
-    _search_settings: SearchSettings,
+    // Not read, but must live as long as the editor: the source view's
+    // search highlighting stops when these are dropped.
+    #[allow(dead_code)]
+    search_context: SearchContext,
+    #[allow(dead_code)]
+    search_settings: SearchSettings,
     _status_bar: Option<StatusBar>,
     settings_controller: Option<Rc<SettingsController>>,
 }
@@ -478,10 +481,9 @@ impl GcodeEditor {
             widget: overlay,
             view: view.clone(),
             buffer: buffer.clone(),
-            _line_counter_label: line_counter_label.clone(),
             current_file: shared_none(),
-            _search_context: search_context,
-            _search_settings: search_settings,
+            search_context,
+            search_settings,
             _status_bar: status_bar,
             settings_controller: settings_controller.clone(),
         };

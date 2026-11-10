@@ -113,30 +113,6 @@ impl EditorState {
         self.modified = true;
     }
 
-    /// Delete text at cursor (delete key) or selection
-    pub fn delete_forward(&mut self, count: usize) {
-        if let Some((_start, _end)) = self.selection {
-            self.delete_selection();
-        } else if self.cursor_pos < self.buffer.len_chars() {
-            let end = (self.cursor_pos + count).min(self.buffer.len_chars());
-            let old_text = self.buffer.slice(self.cursor_pos, end);
-
-            self.buffer.delete(self.cursor_pos..end);
-
-            let change = TextChange::new(
-                self.cursor_pos..end,
-                old_text,
-                String::new(),
-                self.cursor_pos,
-                self.cursor_pos,
-            );
-
-            self.undo_manager.record(change);
-            self.viewport.set_total_lines(self.buffer.len_lines());
-            self.modified = true;
-        }
-    }
-
     /// Delete text before cursor (backspace key)
     pub fn delete_backward(&mut self, count: usize) {
         if let Some((_start, _end)) = self.selection {
@@ -262,11 +238,6 @@ impl EditorState {
         self.cursor_pos
     }
 
-    /// Get cursor line and column
-    pub fn cursor_line_col(&self) -> (usize, usize) {
-        self.buffer.char_to_line_col(self.cursor_pos)
-    }
-
     /// Check if document is modified
     pub fn is_modified(&self) -> bool {
         self.modified
@@ -280,11 +251,6 @@ impl EditorState {
     /// Get total line count
     pub fn line_count(&self) -> usize {
         self.buffer.len_lines()
-    }
-
-    /// Get character count
-    pub fn char_count(&self) -> usize {
-        self.buffer.len_chars()
     }
 
     /// Update viewport size (when UI resizes)
