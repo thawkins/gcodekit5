@@ -208,15 +208,6 @@ pub fn update_commanded_spindle_speed(spindle_speed: f32) {
     }
 }
 
-pub fn update_grbl_settings_bulk(settings: &[(u16, String)]) {
-    {
-        let mut status = DEVICE_STATUS.write();
-        for (n, v) in settings {
-            status.grbl_settings.insert(*n, v.clone());
-        }
-    }
-}
-
 pub fn get_grbl_setting(number: u16) -> Option<String> {
     DEVICE_STATUS.read().grbl_settings.get(&number).cloned()
 }

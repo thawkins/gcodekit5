@@ -63,14 +63,6 @@ impl MaterialsManagerBackend {
         Ok(())
     }
 
-    pub fn get_library(&self) -> &MaterialLibrary {
-        &self.library
-    }
-
-    pub fn get_library_mut(&mut self) -> &mut MaterialLibrary {
-        &mut self.library
-    }
-
     pub fn add_material(&mut self, material: Material) {
         self.library.add_material(material);
         // Save custom materials to disk
@@ -98,10 +90,6 @@ impl MaterialsManagerBackend {
         } else {
             self.library.search_by_name(query)
         }
-    }
-
-    pub fn filter_by_category(&self, category: MaterialCategory) -> Vec<&Material> {
-        self.library.get_materials_by_category(category)
     }
 
     pub fn get_all_materials(&self) -> Vec<&Material> {
@@ -241,54 +229,6 @@ pub fn string_to_category(s: &str) -> Option<MaterialCategory> {
         "Composite" => Some(MaterialCategory::Composite),
         "Stone and Ceramic" => Some(MaterialCategory::StoneAndCeramic),
         _ => None,
-    }
-}
-
-pub fn string_to_chip_type(s: &str) -> ChipType {
-    match s {
-        "Continuous" => ChipType::Continuous,
-        "Segmented" => ChipType::Segmented,
-        "Granular" => ChipType::Granular,
-        "Small" => ChipType::Small,
-        _ => ChipType::Continuous,
-    }
-}
-
-pub fn string_to_heat_sensitivity(s: &str) -> HeatSensitivity {
-    match s {
-        "Low" => HeatSensitivity::Low,
-        "Moderate" => HeatSensitivity::Moderate,
-        "High" => HeatSensitivity::High,
-        _ => HeatSensitivity::Low,
-    }
-}
-
-pub fn string_to_abrasiveness(s: &str) -> Abrasiveness {
-    match s {
-        "Low" => Abrasiveness::Low,
-        "Moderate" => Abrasiveness::Moderate,
-        "High" => Abrasiveness::High,
-        _ => Abrasiveness::Low,
-    }
-}
-
-pub fn string_to_surface_finish(s: &str) -> SurfaceFinishability {
-    match s {
-        "Excellent" => SurfaceFinishability::Excellent,
-        "Good" => SurfaceFinishability::Good,
-        "Fair" => SurfaceFinishability::Fair,
-        "Rough" => SurfaceFinishability::Rough,
-        _ => SurfaceFinishability::Good,
-    }
-}
-
-pub fn string_to_hazard_level(s: &str) -> HazardLevel {
-    match s {
-        "None" => HazardLevel::None,
-        "Minimal" => HazardLevel::Minimal,
-        "Moderate" => HazardLevel::Moderate,
-        "High" => HazardLevel::High,
-        _ => HazardLevel::None,
     }
 }
 

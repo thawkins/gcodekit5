@@ -110,13 +110,6 @@ impl DeviceConsoleManager {
         console.add_to_history(&command);
     }
 
-    /// Get console output as model
-    pub fn get_model(&self) -> Vec<String> {
-        let console = self.console.lock();
-
-        console.get_displayed_strings(1000)
-    }
-
     /// Get console output as string
     pub fn get_output(&self) -> String {
         let console = self.console.lock();
@@ -167,26 +160,6 @@ impl DeviceConsoleManager {
         *self.auto_scroll_enabled.lock()
     }
 
-    /// Set maximum number of console lines to keep
-    pub fn set_max_lines(&self, max_lines: usize) {
-        {
-            let mut console = self.console.lock();
-            console.max_messages = max_lines;
-        }
-    }
-
-    /// Get maximum number of console lines
-    pub fn get_max_lines(&self) -> usize {
-        let console = self.console.lock();
-        console.max_messages
-    }
-
-    /// Toggle auto-scroll
-    pub fn toggle_auto_scroll(&self) {
-        let enabled = !self.is_auto_scroll_enabled();
-        self.set_auto_scroll_enabled(enabled);
-    }
-
     /// Get command history
     pub fn get_history(&self) -> Vec<String> {
         let console = self.console.lock();
@@ -197,16 +170,6 @@ impl DeviceConsoleManager {
     pub fn message_count(&self) -> usize {
         let console = self.console.lock();
         console.message_count()
-    }
-
-    /// Simulate connection message
-    pub fn on_connection(&self) {
-        self.add_message(DeviceMessageType::Success, "Device connected");
-    }
-
-    /// Simulate disconnection message
-    pub fn on_disconnection(&self) {
-        self.add_message(DeviceMessageType::Output, "Device disconnected");
     }
 
     /// Simulate error message
@@ -239,11 +202,6 @@ impl DeviceConsoleManager {
     pub fn set_silent_mode(&self, enabled: bool) {
         *self.silent_mode.lock() = enabled;
     }
-
-    /// Obtener estado del modo silencioso
-    pub fn is_silent_mode(&self) -> bool {
-        *self.silent_mode.lock()
-    }
 }
 
 impl Default for DeviceConsoleManager {
@@ -270,14 +228,6 @@ pub struct ConsoleListener {
 impl ConsoleListener {
     /// Create new console listener connected to a console manager
     pub fn new(console_manager: Arc<DeviceConsoleManager>) -> Arc<Self> {
-        Arc::new(Self {
-            console_manager,
-            _response_buffer: thread_safe(String::new()),
-        })
-    }
-
-    /// Create with firmware detection state sharing
-    pub fn new_with_firmware_state(console_manager: Arc<DeviceConsoleManager>) -> Arc<Self> {
         Arc::new(Self {
             console_manager,
             _response_buffer: thread_safe(String::new()),

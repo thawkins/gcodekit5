@@ -3067,14 +3067,6 @@ impl GcodeVisualizer {
         self.queue_gcode(gcode, false);
     }
 
-    /// Show newly loaded G-code, debounced, always fitting the 3D view to it.
-    ///
-    /// # Arguments
-    /// * `gcode` - Full program text.
-    pub fn load_gcode(&self, gcode: &str) {
-        self.queue_gcode(gcode, true);
-    }
-
     /// Parse and show G-code immediately, cancelling any pending debounced update.
     ///
     /// # Arguments
@@ -3281,20 +3273,6 @@ impl GcodeVisualizer {
     /// Currently selected stock Z0 convention for the stock simulation.
     pub fn stock_zero_reference(&self) -> StockZeroReference {
         *self.stock_zero_reference.borrow()
-    }
-
-    /// Set the "Stock Z0 at" option used by the stock simulation.
-    ///
-    /// # Arguments
-    /// * `reference` - Which stock face the program's work Z0 is on.
-    ///
-    /// This counts as the user's choice: it is restored for later programs whose
-    /// header does not record the convention.
-    pub fn set_stock_zero_reference(&self, reference: StockZeroReference) {
-        // The dropdown's notify handler updates both shared values.
-        self.stock_zero_dropdown.set_selected(reference.index());
-        *self.stock_zero_reference.borrow_mut() = reference;
-        *self.stock_zero_user_choice.borrow_mut() = reference;
     }
 
     /// Default the "Stock Z0 at" option for a newly loaded program: the

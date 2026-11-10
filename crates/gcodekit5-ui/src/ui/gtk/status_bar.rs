@@ -244,12 +244,6 @@ impl StatusBar {
         }
     }
 
-    /// Shows the firmware version.
-    pub fn set_version(&self, version: &str) {
-        self.version_label
-            .set_text(&format!("{} {}", t!("Version:"), version));
-    }
-
     /// Shows the machine state, coloured by state class, on the left.
     ///
     /// Any other text (e.g. "Importing image...") is shown on the right as a

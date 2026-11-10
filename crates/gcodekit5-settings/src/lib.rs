@@ -11,8 +11,8 @@ pub mod presets;
 pub mod view_model;
 
 pub use config::{
-    Config, ConnectionSettings, ConnectionType, FileProcessingSettings, FirmwareSettings,
-    MachineSettings, ProbeSettings, Theme, UiSettings,
+    Config, ConnectionSettings, ConnectionType, FileProcessingSettings, MachineSettings,
+    ProbeSettings, Theme, UiSettings,
 };
 pub use controller::{SettingUiModel, SettingsController};
 pub use error::{

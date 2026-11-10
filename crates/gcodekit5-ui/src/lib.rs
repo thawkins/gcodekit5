@@ -12,8 +12,8 @@ pub mod ui;
 
 // Re-export settings for convenience if needed
 pub use gcodekit5_settings::{
-    Config, ConnectionSettings, ConnectionType, FileProcessingSettings, FirmwareSettings,
-    MachineSettings, SettingsManager, UiSettings,
+    Config, ConnectionSettings, ConnectionType, FileProcessingSettings, MachineSettings,
+    SettingsManager, UiSettings,
 };
 
 pub use gcodekit5_gcodeeditor::{

@@ -144,14 +144,6 @@ impl ToolsManagerBackend {
         Ok(())
     }
 
-    pub fn get_library(&self) -> &ToolLibrary {
-        &self.library
-    }
-
-    pub fn get_library_mut(&mut self) -> &mut ToolLibrary {
-        &mut self.library
-    }
-
     pub fn add_tool(&mut self, tool: Tool) {
         self.library.add_tool(tool);
         // Save custom tools to disk
@@ -179,15 +171,6 @@ impl ToolsManagerBackend {
         } else {
             self.library.search_by_name(query)
         }
-    }
-
-    pub fn filter_by_type(&self, tool_type: ToolType) -> Vec<&Tool> {
-        self.library.get_tools_by_type(tool_type)
-    }
-
-    pub fn filter_by_diameter(&self, diameter: f32, tolerance: f32) -> Vec<&Tool> {
-        self.library
-            .search_by_diameter(diameter - tolerance, diameter + tolerance)
     }
 
     pub fn get_all_tools(&self) -> Vec<&Tool> {

@@ -6,7 +6,6 @@
 //! for device CRUD operations.
 
 use crate::model::DeviceProfile;
-use crate::traits::DeviceProfileProvider;
 use anyhow::{Context, Result};
 use gcodekit5_core::{thread_safe, thread_safe_rw, ThreadSafe, ThreadSafeRw, ThreadSafeRwMap};
 use std::fs;
@@ -288,15 +287,5 @@ impl DeviceManager {
     pub fn get_active_profile(&self) -> Option<DeviceProfile> {
         let active_id = self.active_profile_id.read().clone()?;
         self.get_profile(&active_id)
-    }
-}
-
-impl DeviceProfileProvider for DeviceManager {
-    fn get_active_profile(&self) -> Option<DeviceProfile> {
-        self.get_active_profile()
-    }
-
-    fn get_profile(&self, id: &str) -> Option<DeviceProfile> {
-        self.get_profile(id)
     }
 }
