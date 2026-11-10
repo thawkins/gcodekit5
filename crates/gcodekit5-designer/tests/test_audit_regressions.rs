@@ -474,12 +474,106 @@ fn test_dxf_malformed_numbers_are_reported() {
     let design = DxfImporter::new(1.0, 0.0, 0.0)
         .import_string(dxf)
         .expect("import");
-    assert!(
-        design
-            .unsupported_entities
-            .iter()
-            .any(|(name, count)| name.contains("not numbers") && *count == 2),
-        "{:?}",
-        design.unsupported_entities
+    assert_eq!(design.replaced_numbers, 2);
+    // #90 review: they are not reported as discarded solids.
+    assert!(design.unsupported_entities.is_empty());
+}
+
+#[test]
+fn test_dxf_malformed_bulge_is_reported_and_straight() {
+    // #90 review: bulges bypassed the bad-number counter.
+    for bulge in ["abc", "NaN", "inf"] {
+        let dxf = format!(
+            "0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\n0\n90\n2\n70\n0\n10\n0.0\n20\n0.0\n42\n{bulge}\n10\n10.0\n20\n0.0\n0\nENDSEC\n0\nEOF\n"
+        );
+        let design = DxfImporter::new(1.0, 0.0, 0.0)
+            .import_string(&dxf)
+            .expect("import");
+        assert_eq!(design.replaced_numbers, 1, "{bulge}");
+        for shape in &design.shapes {
+            let (x0, y0, x1, y1) = shape.bounds();
+            assert!([x0, y0, x1, y1].iter().all(|v| v.is_finite()), "{bulge}");
+        }
+    }
+}
+
+/// A closed box from `(x0, y0, z0)` to `(x1, y1, z1)` with outward normals.
+fn box_triangles(
+    (x0, y0, z0): (f32, f32, f32),
+    (x1, y1, z1): (f32, f32, f32),
+) -> Vec<gcodekit5_designer::model3d::Triangle3D> {
+    use gcodekit5_designer::model3d::Triangle3D;
+    use nalgebra::Point3;
+    let p = Point3::new;
+    let quad = |a, b, c, d| [Triangle3D::new(a, b, c), Triangle3D::new(a, c, d)];
+    [
+        quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y1, z1), p(x0, y1, z1)), // top
+        quad(p(x0, y0, z0), p(x0, y1, z0), p(x1, y1, z0), p(x1, y0, z0)), // bottom
+        quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y0, z1), p(x0, y0, z1)), // front
+        quad(p(x1, y1, z0), p(x0, y1, z0), p(x0, y1, z1), p(x1, y1, z1)), // back
+        quad(p(x0, y1, z0), p(x0, y0, z0), p(x0, y0, z1), p(x0, y1, z1)), // left
+        quad(p(x1, y0, z0), p(x1, y1, z0), p(x1, y1, z1), p(x1, y0, z1)), // right
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+#[test]
+fn test_stl_shadow_of_stacked_parts_is_kept() {
+    // #90 review: identical footprints at two heights cancelled each other.
+    use gcodekit5_designer::model3d::Mesh3D;
+    let mut tris = box_triangles((0.0, 0.0, 0.0), (10.0, 10.0, 1.0));
+    tris.extend(box_triangles((0.0, 0.0, 2.0), (10.0, 10.0, 3.0)));
+    let shapes = Mesh3D::new(tris).project_shadow_z().expect("shadow");
+    assert_eq!(shapes.len(), 1);
+    assert_eq!(shapes[0].bounds(), (0.0, 0.0, 10.0, 10.0));
+}
+
+#[test]
+fn test_stl_shadow_of_overlapping_parts_is_their_union() {
+    // #90 review: overlapping projections kept internal contours.
+    use gcodekit5_designer::model::Shape;
+    use gcodekit5_designer::model3d::Mesh3D;
+    let mut tris = box_triangles((0.0, 0.0, 0.0), (10.0, 10.0, 1.0));
+    tris.extend(box_triangles((5.0, 0.0, 2.0), (15.0, 10.0, 3.0)));
+    let shapes = Mesh3D::new(tris).project_shadow_z().expect("shadow");
+    assert_eq!(shapes.len(), 1);
+    let (x0, y0, x1, y1) = shapes[0].bounds();
+    assert!((x0, y0) == (0.0, 0.0) && (x1 - 15.0).abs() < 1e-9 && (y1 - 10.0).abs() < 1e-9);
+    let Shape::Path(path) = &shapes[0] else {
+        panic!("path expected")
+    };
+    let polygons: Vec<_> = path.sketch.to_multipolygon().0;
+    assert_eq!(polygons.len(), 1, "{polygons:?}");
+    assert!(polygons[0].interiors().is_empty(), "internal contour kept");
+}
+
+#[test]
+fn test_mesh_transform_keeps_degenerate_normal_finite() {
+    // #90 review: transform re-normalised a zero normal into NaN.
+    use gcodekit5_designer::model3d::{Mesh3D, Triangle3D};
+    use nalgebra::{Matrix4, Point3, Vector3};
+    let flat = Triangle3D::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
     );
+    let mut mesh = Mesh3D::new(vec![flat]);
+    mesh.transform(&Matrix4::new_translation(&Vector3::new(1.0, 2.0, 3.0)));
+    mesh.center();
+    assert!(mesh.triangles[0].normal.iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn test_contour_endpoints_rounding_into_neighbour_cells_still_join() {
+    // #90 review: 1.0000004 and 1.0000006 round into different 1e-6 cells.
+    use gcodekit5_designer::model::Point;
+    use gcodekit5_designer::model3d::build_contours_from_segments;
+    let segments = [
+        (Point::new(0.0, 0.0), Point::new(1.0000004, 0.0)),
+        (Point::new(1.0000006, 0.0), Point::new(2.0, 0.0)),
+    ];
+    let contours = build_contours_from_segments(&segments).expect("contours");
+    assert_eq!(contours.len(), 1);
 }

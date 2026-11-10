@@ -491,6 +491,7 @@ impl DesignerView {
                             Ok(mut design) => {
                                 let unsupported_entities =
                                     std::mem::take(&mut design.unsupported_entities);
+                                let replaced_numbers = design.replaced_numbers;
                                 let mut z_metadata = std::mem::take(&mut design.z_metadata);
                                 if z_metadata.len() != design.shapes.len() {
                                     z_metadata = vec![(0.0, 0.0); design.shapes.len()];
@@ -566,6 +567,20 @@ impl DesignerView {
                                             "{}\n\n{}",
                                             t!("This DXF file contains ACIS solid entities (3D solids) that are not supported and were discarded:"),
                                             details
+                                        ),
+                                        parent.as_ref(),
+                                    );
+                                }
+
+                                if replaced_numbers > 0 {
+                                    let parent =
+                                        crate::ui::gtk::file_dialog::parent_window(&canvas.widget);
+                                    crate::ui::gtk::common::dialog::show_warning(
+                                        &t!("Invalid numbers replaced"),
+                                        &format!(
+                                            "{} {}",
+                                            replaced_numbers,
+                                            t!("values in this DXF file were not numbers and were replaced by defaults, so some geometry may be wrong.")
                                         ),
                                         parent.as_ref(),
                                     );
@@ -696,7 +711,12 @@ impl DesignerView {
             }
             Err(e) => {
                 error!("Error saving file: {}", e);
-                self.set_status(&format!("{} {}", t!("Error saving file:"), e));
+                let parent = crate::ui::gtk::file_dialog::parent_window(&self.canvas.widget);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Save Failed"),
+                    &format!("{}\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
             }
         }
     }
@@ -834,11 +854,11 @@ impl DesignerView {
                             }
                             Err(e) => {
                                 error!("Error exporting G-Code: {}", e);
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Error exporting G-Code:"),
-                                    e
-                                ));
+                                crate::ui::gtk::common::dialog::show_warning(
+                                    &t!("Export Failed"),
+                                    &format!("{}\n\n{}", path.display(), e),
+                                    None,
+                                );
                             }
                         }
                     }

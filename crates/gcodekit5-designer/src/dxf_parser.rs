@@ -320,6 +320,8 @@ pub struct DxfFile {
     pub layers: HashMap<String, Vec<DxfEntity>>,
     /// Unsupported entity types encountered (e.g. ACIS solids), mapped to occurrence count
     pub unsupported_entities: HashMap<String, usize>,
+    /// Values that were not numbers and were replaced by a default
+    pub replaced_numbers: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -352,6 +354,7 @@ impl DxfFile {
             entities: Vec::new(),
             layers: HashMap::new(),
             unsupported_entities: HashMap::new(),
+            replaced_numbers: 0,
         }
     }
 
@@ -655,14 +658,13 @@ impl DxfParser {
             i += 1;
         }
 
-        // Values that were not numbers were replaced by defaults; report them
-        // with the unsupported entities so the import shows a warning.
+        // Values that were not numbers were replaced by defaults; count them
+        // so the import can warn that the geometry was changed.
         let bad = BAD_NUMBERS.with(std::cell::Cell::get);
         if bad > 0 {
             tracing::warn!(count = bad, "DXF values that are not numbers were replaced");
-            file.unsupported_entities
-                .insert("values that are not numbers".to_string(), bad);
         }
+        file.replaced_numbers = bad;
         Ok(file)
     }
 
@@ -869,7 +871,7 @@ impl DxfParser {
                     }
                 }
                 "42" => {
-                    if let Ok(bulge_val) = value.parse::<f64>()
+                    if let Some(bulge_val) = parse_opt::<f64>(value)
                         && let Some(last_bulge) = bulges.last_mut()
                     {
                         *last_bulge = bulge_val;

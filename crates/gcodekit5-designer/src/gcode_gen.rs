@@ -303,8 +303,21 @@ impl ToolpathToGcode {
         let mut current_xy: Option<(f64, f64)> = None;
 
         let has_z = self.num_axes >= 3 && !self.is_laser_2d;
+        // CNC spindle speed in effect: the header (or the caller) started the
+        // spindle at the first segment's speed; a later change gets an `S`.
+        let mut cnc_speed = toolpath.segments.first().map(|s| s.spindle_speed);
 
         for segment in &toolpath.segments {
+            if !self.is_laser_2d
+                && segment.segment_type != ToolpathSegmentType::RapidMove
+                && cnc_speed != Some(segment.spindle_speed)
+            {
+                gcode.push_str(&format!(
+                    "S{}        ; Spindle speed\n",
+                    segment.spindle_speed
+                ));
+                cnc_speed = Some(segment.spindle_speed);
+            }
             match segment.segment_type {
                 ToolpathSegmentType::RapidMove => {
                     // Always turn off the laser before rapid movement

@@ -573,3 +573,64 @@ fn test_gerber_single_quadrant_arc_centre_uses_signless_offsets() {
     let c = single_quadrant_center((0.0, 1.0), (1.0, 0.0), (0.0, 1.0), true);
     assert!(c.0.abs() < 1e-9 && c.1.abs() < 1e-9, "{c:?}");
 }
+
+#[test]
+fn test_gerber_single_quadrant_arc_with_rounded_endpoint_keeps_true_centre() {
+    // #90 review: the true centre's sweep is 90.003 degrees after rounding;
+    // it must still win over a centre the endpoints are not both on.
+    use gcodekit5_camtools::gerber::single_quadrant_center;
+    let c = single_quadrant_center((1.0, 1.0), (-1.0001, 1.0), (1.0, 1.0), false);
+    assert!(c.0.abs() < 1e-9 && c.1.abs() < 1e-9, "{c:?}");
+}
+
+#[test]
+fn test_drill_press_rejects_non_finite_spindle_speed() {
+    // #90 review: NaN/inf reached the M3 S word.
+    use gcodekit5_camtools::drill_press::{DrillPressGenerator, DrillPressParameters};
+    for speed in [f64::NAN, f64::INFINITY] {
+        let result = DrillPressGenerator::new(DrillPressParameters {
+            hole_diameter: 6.0,
+            tool_diameter: 6.0,
+            top_z: 0.0,
+            bottom_z: -6.0,
+            peck_depth: 2.0,
+            plunge_rate: 100.0,
+            feed_rate: 500.0,
+            spindle_speed: speed,
+            safe_z: 5.0,
+            x: 10.0,
+            y: 20.0,
+            home_before_job: false,
+        })
+        .generate();
+        assert!(result.is_err(), "{speed}");
+    }
+}
+
+#[test]
+fn test_tabbed_box_rejects_non_finite_burn_and_joint_settings() {
+    // #90 review: these feed coordinates and F words too.
+    let mut cases = Vec::new();
+    let base = BoxParameters::default;
+    cases.push(BoxParameters {
+        burn: f32::NAN,
+        ..base()
+    });
+    cases.push(BoxParameters {
+        feed_rate: f32::INFINITY,
+        ..base()
+    });
+    cases.push(BoxParameters {
+        offset_x: f32::NAN,
+        ..base()
+    });
+    let mut p = base();
+    p.finger_joint.play = f32::NAN;
+    cases.push(p);
+    let mut p = base();
+    p.finger_joint.extra_length = f32::INFINITY;
+    cases.push(p);
+    for params in cases {
+        assert!(TabbedBoxMaker::new(params).is_err());
+    }
+}

@@ -60,15 +60,20 @@ impl VoxelGrid {
     /// `resolution` mm per voxel.
     ///
     /// # Errors
-    /// A message when a dimension is not a positive finite number, or the
-    /// grid would exceed [`MAX_STOCK_VOXELS`].
+    /// A message when a dimension or the resolution is not a positive finite
+    /// number, or the grid would exceed [`MAX_STOCK_VOXELS`].
     pub fn check_dimensions(
         width: f32,
         height: f32,
         depth: f32,
         resolution: f32,
     ) -> Result<(), String> {
-        for (name, value) in [("width", width), ("height", height), ("thickness", depth)] {
+        for (name, value) in [
+            ("width", width),
+            ("height", height),
+            ("thickness", depth),
+            ("resolution", resolution),
+        ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(format!(
                     "Stock {name} must be a positive number (got {value})"

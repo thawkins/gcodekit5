@@ -1,6 +1,9 @@
 //! Regression tests for settings persistence: tolerant loading of partial
 //! config files and real factory-default restoration.
 
+// Rust 2024 makes `std::env::set_var` unsafe; tests may opt in for it.
+#![allow(unsafe_code)]
+
 use gcodekit5_core::shared;
 use gcodekit5_settings::{
     Config, SettingValue, SettingsController, SettingsDialog, SettingsPersistence,
@@ -182,6 +185,58 @@ fn test_preferences_save_keeps_folder_remembered_by_file_dialogs() {
     persistence.load_from_dialog(&dialog).expect("load");
     assert_eq!(
         persistence.config().file_processing.output_directory,
+        std::path::PathBuf::from("/picked")
+    );
+}
+
+#[test]
+fn test_second_preferences_save_keeps_folder_picked_after_first_save() {
+    // #88 review: the first save left the dialog's old folder as its baseline,
+    // so a second save still restored it over the folder a file dialog chose.
+    // nextest runs each test in its own process, so pointing the config
+    // directory at a temporary folder does not leak into other tests; the
+    // binary-wide lock covers an in-process `cargo test` run.
+    let _env = crate::global_env_lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    // SAFETY: the binary-wide env lock is held and this test starts no thread
+    // that reads the environment.
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+    }
+
+    let persistence = shared(SettingsPersistence::new());
+    persistence
+        .borrow_mut()
+        .config_mut()
+        .file_processing
+        .output_directory = "/start".into();
+    let mut dialog = SettingsDialog::new();
+    persistence.borrow().populate_dialog(&mut dialog);
+    let controller = SettingsController::new(shared(dialog), persistence.clone());
+
+    controller.update_setting("default_directory", "/chosen");
+    controller.save().expect("first save");
+    assert_eq!(
+        persistence
+            .borrow()
+            .config()
+            .file_processing
+            .output_directory,
+        std::path::PathBuf::from("/chosen")
+    );
+    persistence
+        .borrow_mut()
+        .config_mut()
+        .file_processing
+        .output_directory = "/picked".into();
+    controller.save().expect("second save");
+
+    assert_eq!(
+        persistence
+            .borrow()
+            .config()
+            .file_processing
+            .output_directory,
         std::path::PathBuf::from("/picked")
     );
 }

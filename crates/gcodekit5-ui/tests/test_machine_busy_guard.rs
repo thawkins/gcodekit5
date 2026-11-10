@@ -32,3 +32,29 @@ fn test_stop_resets_only_once_the_machine_has_stopped() {
         assert!(device_status::machine_is_stopped(stopped), "{stopped}");
     }
 }
+
+#[test]
+fn test_stop_in_progress_blocks_manual_commands_until_done() {
+    // Review of #87: the machine stayed usable while Stop waited to reset.
+    let _guard = crate::global_env_lock();
+    device_status::set_job_active(false);
+    let token = device_status::begin_stop();
+    assert!(device_status::stop_pending());
+    assert!(device_status::manual_command_blocked().is_some());
+    device_status::end_stop(token);
+    assert!(!device_status::stop_pending());
+    assert!(device_status::manual_command_blocked().is_none());
+
+    // A replaced connection abandons the sequence.
+    let token = device_status::begin_stop();
+    device_status::cancel_stop();
+    assert!(!device_status::stop_is_current(token));
+    assert!(!device_status::stop_pending());
+}
+
+#[test]
+fn test_status_seq_counts_reports() {
+    let before = device_status::status_seq();
+    device_status::update_state("Hold:0".to_string());
+    assert!(device_status::status_seq() > before);
+}

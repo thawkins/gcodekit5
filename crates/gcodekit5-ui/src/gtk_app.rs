@@ -1103,6 +1103,29 @@ pub fn main() {
         };
         stack.set_visible_child_name(initial_tab);
 
+        // Preferences > Window Width/Height resize the window at once, so the
+        // size saved on close is the one just chosen.
+        {
+            let window_weak = window.downgrade();
+            settings_controller.on_setting_changed(move |key, value| {
+                if key != "window_width" && key != "window_height" {
+                    return;
+                }
+                let (Some(win), Ok(v)) = (window_weak.upgrade(), value.parse::<i32>()) else {
+                    return;
+                };
+                if win.is_maximized() || v <= 0 {
+                    return;
+                }
+                let (w, h) = (win.default_width(), win.default_height());
+                if key == "window_width" {
+                    win.set_default_size(v.max(640), h);
+                } else {
+                    win.set_default_size(w, v.max(480));
+                }
+            });
+        }
+
         // Remember the window size for the next start. Connected before the
         // unsaved-changes prompt so it runs on every close request.
         {

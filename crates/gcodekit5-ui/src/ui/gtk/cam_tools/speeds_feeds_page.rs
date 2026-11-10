@@ -70,6 +70,12 @@ impl CalculatorState {
         }
     }
 
+    /// Clears the selections and inputs back to their defaults, keeping the
+    /// live device database.
+    fn reset(&mut self) {
+        *self = Self::with_device_manager(self.device_manager.take());
+    }
+
     /// Get the active device profile if available
     fn get_active_device(&self) -> Option<DeviceProfile> {
         let manager = self.device_manager.as_ref()?;
@@ -103,13 +109,23 @@ struct ResultLabels {
 
 pub struct SpeedsFeedsTool {
     content: Box,
-    #[allow(dead_code)]
     state: Rc<RefCell<CalculatorState>>,
     #[allow(dead_code)]
     result_labels: Rc<RefCell<Option<ResultLabels>>>,
 }
 
 impl SpeedsFeedsTool {
+    /// Clears the calculator, as the Reset button does.
+    pub fn reset(&self) {
+        self.state.borrow_mut().reset();
+    }
+
+    /// Name of the machine the calculator uses: the active profile of the
+    /// application's device database, read when asked.
+    pub fn active_device_name(&self) -> Option<String> {
+        self.state.borrow().get_active_device().map(|p| p.name)
+    }
+
     pub fn new(
         stack: &Stack,
         _settings: Rc<SettingsController>,
@@ -792,10 +808,7 @@ impl SpeedsFeedsTool {
         });
 
         let state_clone = state.clone();
-        reset_btn.connect_clicked(move |_| {
-            let device_manager = state_clone.borrow().device_manager.clone();
-            *state_clone.borrow_mut() = CalculatorState::with_device_manager(device_manager);
-        });
+        reset_btn.connect_clicked(move |_| state_clone.borrow_mut().reset());
 
         right_panel
     }

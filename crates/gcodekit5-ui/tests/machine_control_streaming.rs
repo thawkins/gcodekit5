@@ -7,8 +7,9 @@ use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_core::units::{FeedRateUnits, MeasurementSystem};
 use gcodekit5_ui::ui::gtk::machine_control::grbl_stream::{
     CharCountWindow, GRBL_RX_BUFFER_BYTES, GrblResponseLine, ResponseLineSplitter,
-    classify_response, format_probe_move, jog_step_presets, line_cost, nearest_jog_step_preset,
-    network_driver_for, parse_jog_feed, parse_probe_report, reported_axis_count,
+    classify_response, format_probe_move, jog_step_choices, jog_step_presets, line_cost,
+    nearest_jog_step_preset, network_driver_for, parse_jog_feed, parse_probe_report,
+    reported_axis_count,
 };
 
 #[test]
@@ -131,6 +132,19 @@ fn test_probe_report_success_and_failure() {
     assert_eq!(parse_probe_report("ok"), None);
 }
 
+/// A quick probe completes only on an explicit `:1`; a report with no flag,
+/// an empty flag or any other value is not a probe result (PR #94 review).
+#[test]
+fn test_probe_report_without_explicit_flag_is_not_a_result() {
+    assert_eq!(parse_probe_report("[PRB:0.000,0.000,-1.234]"), None);
+    assert_eq!(parse_probe_report("[PRB:0.000,0.000,-1.234:]"), None);
+    assert_eq!(parse_probe_report("[PRB:0.000,0.000,-1.234:2]"), None);
+    assert_eq!(
+        parse_probe_report("[PRB:0.000,0.000,-1.234: 1 ]"),
+        Some(true)
+    );
+}
+
 #[test]
 fn test_reported_axis_count_from_position() {
     let mut pos = MachinePosition {
@@ -225,4 +239,22 @@ fn test_connection_type_selects_network_driver() {
     );
     assert_eq!(network_driver_for("Serial"), None);
     assert_eq!(network_driver_for(""), None);
+}
+
+#[test]
+fn test_jog_step_choices_keeps_an_exact_custom_step() {
+    let (choices, idx) = jog_step_choices(MeasurementSystem::Metric, 5.0);
+    assert!((choices[idx].mm - 5.0).abs() < 1e-6);
+    assert!(choices.windows(2).all(|w| w[0].mm < w[1].mm));
+    assert_eq!(
+        choices.len(),
+        jog_step_presets(MeasurementSystem::Metric).len() + 1
+    );
+
+    let (choices, idx) = jog_step_choices(MeasurementSystem::Metric, 1.0);
+    assert_eq!(
+        choices.len(),
+        jog_step_presets(MeasurementSystem::Metric).len()
+    );
+    assert!((choices[idx].mm - 1.0).abs() < 1e-6);
 }
