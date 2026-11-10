@@ -349,6 +349,10 @@ impl ImageEngraver {
     }
 
     fn intensity_to_power(&self, intensity: u8) -> u32 {
+        // A halftoned off dot is laser off, not Min Power.
+        if intensity == 0 && self.params.halftone != HalftoneMethod::None {
+            return 0;
+        }
         let normalized = intensity as f32 / 255.0;
         let gamma = 0.7;
         let corrected = normalized.powf(gamma);

@@ -620,3 +620,27 @@ fn test_halftone_makes_an_on_off_engraving() {
     );
     assert_eq!(HalftoneMethod::from_name("unknown"), HalftoneMethod::None);
 }
+
+#[test]
+fn test_halftone_off_pixels_get_zero_power_with_min_power_set() {
+    // PR #96 review: with Min Power above zero, halftoned off pixels were
+    // still burned at Min Power, so the laser never switched off between dots.
+    use gcodekit5_designer::engraving::{EngravingParams, HalftoneMethod, ImageEngraver};
+    let ramp = image::GrayImage::from_fn(64, 8, |x, _| image::Luma([(x * 4) as u8]));
+    let params = EngravingParams {
+        width_mm: 16.0,
+        min_power: 10.0,
+        max_power: 50.0,
+        halftone: HalftoneMethod::Threshold,
+        ..EngravingParams::default()
+    };
+    let gcode = ImageEngraver::from_image(image::DynamicImage::ImageLuma8(ramp), params)
+        .expect("engraver")
+        .generate_gcode()
+        .expect("gcode");
+    let levels = power_levels(&gcode);
+    assert!(
+        levels.iter().all(|&s| s == 0 || s == 500),
+        "halftoned power must be off or Max Power: {levels:?}"
+    );
+}

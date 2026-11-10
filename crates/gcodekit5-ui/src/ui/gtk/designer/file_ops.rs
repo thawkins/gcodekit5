@@ -834,10 +834,14 @@ impl DesignerView {
                         state.toolpath_generator.set_start_depth(start_depth);
                         state.toolpath_generator.set_step_in(tool_diameter * 0.4); // Default stepover
 
-                        // No device database here: the Preferences limits apply.
-                        let limits = settings_persistence_for_limits
-                            .as_ref()
-                            .and_then(|p| super::designer_machine_limits(None, &p.borrow()));
+                        // The same working area Generate checks: the active
+                        // device profile, else the Preferences limits.
+                        let limits = settings_persistence_for_limits.as_ref().and_then(|p| {
+                            super::designer_machine_limits(
+                                canvas.device_manager.as_ref(),
+                                &p.borrow(),
+                            )
+                        });
                         let (gcode, has_out_of_limits_warning) =
                             state.generate_gcode_with_warning_info(limits);
 

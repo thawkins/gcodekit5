@@ -96,6 +96,28 @@ pub fn parse_array_input(
     }
 }
 
+/// Most objects one Array operation may create; larger arrays would freeze
+/// the UI thread and can exhaust memory.
+pub const MAX_ARRAY_OBJECTS: usize = 10_000;
+
+/// Checks that `spec` applied to `selected` objects stays within
+/// [`MAX_ARRAY_OBJECTS`].
+///
+/// # Errors
+/// A message giving the limit when the array would be larger.
+pub fn check_array_size(spec: &ArraySpec, selected: usize) -> Result<(), String> {
+    let copies = match *spec {
+        ArraySpec::Linear { count, .. } | ArraySpec::Circular { count, .. } => Some(count),
+        ArraySpec::Grid { rows, cols, .. } => rows.checked_mul(cols),
+    };
+    match copies.and_then(|c| c.checked_mul(selected.max(1))) {
+        Some(total) if total <= MAX_ARRAY_OBJECTS => Ok(()),
+        _ => Err(format!(
+            "The array would create more than {MAX_ARRAY_OBJECTS} objects"
+        )),
+    }
+}
+
 impl DesignerCanvas {
     /// Opens the Array dialog for the current selection.
     pub(super) fn open_array_dialog(&self) {
@@ -196,23 +218,27 @@ impl DesignerCanvas {
                 cy: cy.text().to_string(),
                 angle: angle.text().to_string(),
             };
-            match parse_array_input(&input, system) {
-                Ok(ArraySpec::Linear { count, dx, dy }) => {
-                    canvas.create_linear_array(count, dx, dy)
-                }
-                Ok(ArraySpec::Grid { rows, cols, dx, dy }) => {
-                    canvas.create_grid_array(rows, cols, dx, dy)
-                }
-                Ok(ArraySpec::Circular {
-                    count,
-                    cx,
-                    cy,
-                    angle,
-                }) => canvas.create_circular_array(count, cx, cy, angle),
+            let selected = canvas.state.borrow().selected_count();
+            let spec = match parse_array_input(&input, system)
+                .and_then(|spec| check_array_size(&spec, selected).map(|()| spec))
+            {
+                Ok(spec) => spec,
                 Err(message) => {
                     error.set_text(&message);
                     return;
                 }
+            };
+            match spec {
+                ArraySpec::Linear { count, dx, dy } => canvas.create_linear_array(count, dx, dy),
+                ArraySpec::Grid { rows, cols, dx, dy } => {
+                    canvas.create_grid_array(rows, cols, dx, dy)
+                }
+                ArraySpec::Circular {
+                    count,
+                    cx,
+                    cy,
+                    angle,
+                } => canvas.create_circular_array(count, cx, cy, angle),
             }
             d.close();
         });

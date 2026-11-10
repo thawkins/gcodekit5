@@ -574,13 +574,18 @@ fn on_activate(app: &Application) {
     let settings_controller_clone = settings_controller.clone();
     let visualizer_settings = visualizer.clone();
     let designer_settings = designer.clone();
+    let machine_control_settings = machine_control.clone();
     settings_action.connect_activate(move |_, _| {
         let visualizer_redraw = visualizer_settings.clone();
         let designer_redraw = designer_settings.clone();
+        let machine_control_limits = machine_control_settings.clone();
         let on_save = Box::new(move || {
             // Queue redraws for visualizer and designer when settings are saved
             visualizer_redraw.queue_draw();
             designer_redraw.queue_draw();
+            // The Machine Limits labels otherwise refresh only on status
+            // reports, so a limit saved while disconnected would not show.
+            machine_control_limits.refresh_limit_labels();
         });
         let win =
             SettingsWindow::new_with_callback(settings_controller_clone.clone(), Some(on_save));

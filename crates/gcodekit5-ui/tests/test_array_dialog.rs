@@ -2,7 +2,7 @@
 
 use gcodekit5_core::units::MeasurementSystem;
 use gcodekit5_ui::ui::gtk::designer_canvas::array_dialog::{
-    ArrayInput, ArraySpec, parse_array_input,
+    ArrayInput, ArraySpec, MAX_ARRAY_OBJECTS, check_array_size, parse_array_input,
 };
 
 fn input(kind: u32) -> ArrayInput {
@@ -70,4 +70,34 @@ fn test_array_dialog_converts_inches_and_rejects_bad_values() {
     let mut bad = input(1);
     bad.dx = "abc".into();
     assert!(parse_array_input(&bad, MeasurementSystem::Metric).is_err());
+}
+
+#[test]
+fn test_array_dialog_rejects_arrays_too_large_to_build() {
+    // PR #96 review: a 100000 x 100000 grid tried to build ten billion copies
+    // on the GTK thread. The total, times the selection, is now capped.
+    let grid = |rows, cols| ArraySpec::Grid {
+        rows,
+        cols,
+        dx: 1.0,
+        dy: 1.0,
+    };
+    assert!(check_array_size(&grid(100, 100), 1).is_ok());
+    assert!(check_array_size(&grid(100, 100), 2).is_err());
+    assert!(check_array_size(&grid(100_000, 100_000), 1).is_err());
+    assert!(check_array_size(&grid(usize::MAX, 2), 1).is_err());
+    let linear = ArraySpec::Linear {
+        count: MAX_ARRAY_OBJECTS,
+        dx: 1.0,
+        dy: 0.0,
+    };
+    assert!(check_array_size(&linear, 1).is_ok());
+    assert!(check_array_size(&linear, usize::MAX).is_err());
+    let circular = ArraySpec::Circular {
+        count: MAX_ARRAY_OBJECTS + 1,
+        cx: 0.0,
+        cy: 0.0,
+        angle: 360.0,
+    };
+    assert!(check_array_size(&circular, 0).is_err());
 }

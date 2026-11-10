@@ -1915,7 +1915,7 @@ impl MachineControlView {
                     return;
                 }
                 let delta = *step.lock() * direction * device_status::jog_direction(axis);
-                let cmd = format!("$J=G91 {axis}{delta} F{}\n", *feed.lock());
+                let cmd = grbl_stream::rotary_jog_command(axis, delta, *feed.lock());
                 let mut comm = communicator.lock();
                 if !comm.is_connected() {
                     return;
@@ -1948,7 +1948,7 @@ impl MachineControlView {
                 "steps_per_degree_c" => 105,
                 _ => return,
             };
-            let Ok(steps) = value.parse::<f64>() else {
+            let Some(steps) = grbl_stream::steps_per_degree_to_send(value) else {
                 return;
             };
             let log = |text: String| {

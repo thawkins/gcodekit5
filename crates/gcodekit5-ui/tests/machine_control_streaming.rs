@@ -9,7 +9,7 @@ use gcodekit5_ui::ui::gtk::machine_control::grbl_stream::{
     CharCountWindow, GRBL_RX_BUFFER_BYTES, GrblResponseLine, ResponseLineSplitter,
     classify_response, format_probe_move, jog_step_choices, jog_step_presets, line_cost,
     nearest_jog_step_preset, network_driver_for, parse_jog_feed, parse_probe_report,
-    reported_axis_count,
+    reported_axis_count, rotary_jog_command, steps_per_degree_to_send,
 };
 
 #[test]
@@ -257,4 +257,29 @@ fn test_jog_step_choices_keeps_an_exact_custom_step() {
         jog_step_presets(MeasurementSystem::Metric).len()
     );
     assert!((choices[idx].mm - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn test_rotary_jog_states_mm_units_for_its_feed() {
+    // PR #96 review: the rotary jog inherited the controller's units, so after
+    // a G20 program its mm/min feed ran 25.4 times too fast.
+    assert_eq!(
+        rotary_jog_command('A', -5.0, 600.0),
+        "$J=G21 G91 A-5 F600\n"
+    );
+    assert_eq!(
+        rotary_jog_command('C', 0.5, 1200.0),
+        "$J=G21 G91 C0.5 F1200\n"
+    );
+}
+
+#[test]
+fn test_steps_per_degree_sent_matches_what_preferences_saves() {
+    // PR #96 review: 0.5 was sent as $103=0.5 while the config saved 1.0, and
+    // non-finite text was sent as-is.
+    assert_eq!(steps_per_degree_to_send("0.5"), Some(1.0));
+    assert_eq!(steps_per_degree_to_send(" 88.9 "), Some(88.9));
+    assert_eq!(steps_per_degree_to_send("NaN"), None);
+    assert_eq!(steps_per_degree_to_send("inf"), None);
+    assert_eq!(steps_per_degree_to_send("abc"), None);
 }
