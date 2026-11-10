@@ -5,8 +5,8 @@
 //! configurable stepover, depth, and spindle speed.
 //!
 //! Homing is optional (off by default) and handled by [`crate::job_preamble`]: when it is on,
-//! only the G54 X/Y offset is cleared (the Z work offset, i.e. the spoilboard surface, is
-//! kept) and every Z travel/retract is a `G53` machine-coordinate move that never rises above
+//! the G54 work offsets are kept (the Z work offset is the spoilboard surface) and every Z
+//! travel/retract is a `G53` machine-coordinate move that never rises above
 //! the homed position.
 
 use anyhow::Result;
@@ -21,7 +21,7 @@ pub struct SpoilboardSurfacingParameters {
     pub cut_depth: f64,
     pub stepover_percent: f64,
     pub safe_z: f64,
-    /// Home (`$H`) and clear the G54 X/Y offset before surfacing (default `false`).
+    /// Home (`$H`) before surfacing, keeping the G54 work offsets (default `false`).
     pub home_before_job: bool,
 }
 

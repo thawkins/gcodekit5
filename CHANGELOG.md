@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-10 (homing keeps the work zero)
+
+### Fixed
+- **Homed CAM jobs stayed outside the machine travel** (#70): with "Home before job" on, the tabbed box, bitmap engraver, spoilboard surfacing/grid and drill press emitted `G10 L2 P1 X0 Y0` after `$H`, putting work X/Y zero at the homing switches. With GRBL's default homing the travel is in negative machine coordinates, so the job's positive X/Y moves hit the soft limits (or the switches). Homed jobs now keep the G54 work offsets the user set; Z travel still uses machine-coordinate `G53` moves
+
 ## [Unreleased] - 2026-11-10 (merge master into devel)
 
 ### Changed

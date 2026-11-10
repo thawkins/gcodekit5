@@ -286,7 +286,7 @@ impl BitmapEngravingTool {
         let home_row = ActionRow::builder()
             .title(t!("Home Device Before Start"))
             .subtitle(t!(
-                "Runs $H and clears the G54 X/Y offset (Z offset kept). The engraver never moves Z."
+                "Runs $H, then engraves from the G54 work zero you set. The engraver never moves Z."
             ))
             .build();
         home_row.add_suffix(&home_before);

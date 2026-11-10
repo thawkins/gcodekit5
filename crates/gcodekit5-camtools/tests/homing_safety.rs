@@ -1,6 +1,7 @@
 //! Regression tests for the optional homing preamble and GRBL `$` system commands.
 //!
-//! - After `$H` the generators keep the G54 Z offset, so work Z0 is not machine Z0. Every Z
+//! - After `$H` the generators keep every G54 offset (no `G10`), so work Z0 is not machine
+//!   Z0 and X/Y run from the user's work zero, inside the travel (issue #70). Every Z
 //!   travel/retract move after homing must be a `G53` machine-coordinate move at Z <= 0, so
 //!   it can never rise above the homed position whatever the Z offset is (simulated here with
 //!   G54 Z offsets of +10 mm, 0 and -40 mm). This covers the tabbed box, bitmap
@@ -247,9 +248,9 @@ fn test_engraver_homed_never_moves_z() {
 fn test_spoilboard_surfacing_homed_travel_never_above_homed_position() {
     let gcode = surfacing(true);
     assert_homed_z_safe(&gcode);
-    // Only X/Y are re-zeroed: the spoilboard surface (Z work offset) is kept.
-    let g10: Vec<&str> = gcode.lines().filter(|l| l.starts_with("G10")).collect();
-    assert_eq!(g10, vec!["G10 L2 P1 X0 Y0 ; Clear G54 X/Y offset"]);
+    // No offset is rewritten: the user's G54 X/Y zero and the spoilboard surface (Z work
+    // offset) are both kept.
+    assert!(!gcode.lines().any(|l| l.starts_with("G10")), "{gcode}");
     // Z is cleared before the first X/Y move.
     let first_z = gcode
         .lines()
@@ -290,6 +291,23 @@ fn test_no_homing_preamble_without_homing() {
     assert!(z_moves(&surfacing(false))
         .iter()
         .any(|m| !m.machine && m.z > 0.0));
+}
+
+#[test]
+fn test_homed_programs_keep_g54_offsets() {
+    // Clearing G54 X/Y after `$H` put work zero at the homing switches, outside GRBL's
+    // negative travel range (issue #70). Every homed program must leave G54 untouched.
+    for (name, gcode) in all_programs(true) {
+        assert!(gcode.contains("$H"), "{name}: no $H");
+        assert!(
+            !gcode.lines().any(|l| l.starts_with("G10")),
+            "{name}: homed program rewrites a work offset"
+        );
+        assert!(
+            gcode.lines().any(|l| l.starts_with("G54")),
+            "{name}: no G54"
+        );
+    }
 }
 
 // ---- GRBL `$` commands ----

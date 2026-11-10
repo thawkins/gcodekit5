@@ -9,7 +9,7 @@
 //! and feed rates in mm/min.
 //!
 //! Homing is optional (off by default) and handled by [`crate::job_preamble`]: when it is on,
-//! only the G54 X/Y offset is cleared and the safe-height travel/retract moves become `G53`
+//! the G54 work offsets are kept and the safe-height travel/retract moves become `G53`
 //! machine-coordinate moves that never rise above the homed position. The peck-drilling
 //! chip-clearing retracts stay at `top_z` in work coordinates.
 
@@ -41,7 +41,7 @@ pub struct DrillPressParameters {
     pub x: f64,
     /// Y coordinate of the hole center (mm)
     pub y: f64,
-    /// Home (`$H`) and clear the G54 X/Y offset before drilling (default `false`).
+    /// Home (`$H`) before drilling, keeping the G54 work offsets (default `false`).
     #[serde(default)]
     pub home_before_job: bool,
 }
