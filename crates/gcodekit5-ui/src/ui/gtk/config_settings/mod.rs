@@ -17,6 +17,7 @@ use gtk4::{
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use crate::t;
 
 #[derive(Clone)]
 pub struct ConfigSettingRow {
@@ -133,21 +134,21 @@ impl ConfigSettingsView {
         // Toolbar
         let toolbar = Box::new(Orientation::Horizontal, spacing::MEDIUM);
 
-        let reload_btn = Button::with_label("Retrieve");
-        reload_btn.set_tooltip_text(Some("Retrieve Settings from Device ($$)"));
+        let reload_btn = Button::with_label(&t!("Retrieve"));
+        reload_btn.set_tooltip_text(Some(&t!("Retrieve Settings from Device ($$)")));
         toolbar.append(&reload_btn);
 
-        let save_btn = Button::with_label("Save");
-        save_btn.set_tooltip_text(Some("Save Settings to File"));
+        let save_btn = Button::with_label(&t!("Save"));
+        save_btn.set_tooltip_text(Some(&t!("Save Settings to File")));
         save_btn.set_sensitive(false);
         toolbar.append(&save_btn);
 
-        let load_btn = Button::with_label("Load");
-        load_btn.set_tooltip_text(Some("Load Settings from File"));
+        let load_btn = Button::with_label(&t!("Load"));
+        load_btn.set_tooltip_text(Some(&t!("Load Settings from File")));
         toolbar.append(&load_btn);
 
-        let restore_btn = Button::with_label("Restore");
-        restore_btn.set_tooltip_text(Some("Restore Settings to Device"));
+        let restore_btn = Button::with_label(&t!("Restore"));
+        restore_btn.set_tooltip_text(Some(&t!("Restore Settings to Device")));
         restore_btn.set_sensitive(false);
         toolbar.append(&restore_btn);
 
@@ -161,15 +162,15 @@ impl ConfigSettingsView {
         // Filter bar (right panel)
         let filter_bar = Box::new(Orientation::Horizontal, 10);
 
-        let filter_label = Label::new(Some("Filter:"));
+        let filter_label = Label::new(Some(&t!("Filter:")));
         filter_bar.append(&filter_label);
 
         let search_entry = SearchEntry::new();
-        search_entry.set_placeholder_text(Some("Search settings..."));
+        search_entry.set_placeholder_text(Some(&t!("Search settings...")));
         search_entry.set_hexpand(true);
         filter_bar.append(&search_entry);
 
-        let category_label = Label::new(Some("Category:"));
+        let category_label = Label::new(Some(&t!("Category:")));
         filter_bar.append(&category_label);
 
         let category_filter = ComboBoxText::new();

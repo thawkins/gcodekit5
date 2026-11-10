@@ -15,6 +15,7 @@ use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager
 use gcodekit5_communication::SerialCommunicator;
 use gcodekit5_core::{shared, shared_none, Shared, SharedOption, ThreadSafe};
 use std::rc::Rc;
+use crate::t;
 
 #[derive(Clone)]
 pub struct CapabilityItem {
@@ -64,19 +65,19 @@ impl DeviceInfoView {
         container.add_css_class("sidebar");
 
         // Device Type Section (at the very top)
-        let type_title = Label::new(Some("Device Type"));
+        let type_title = Label::new(Some(&t!("Device Type")));
         type_title.add_css_class("mc-group-title");
         type_title.set_halign(Align::Start);
         type_title.set_margin_bottom(4);
         container.append(&type_title);
 
         let device_type_cnc = CheckButton::with_label("CNC");
-        device_type_cnc.set_tooltip_text(Some("Spindle-based machining"));
+        device_type_cnc.set_tooltip_text(Some(&t!("Spindle-based machining")));
         let device_type_laser = CheckButton::with_label("Laser");
-        device_type_laser.set_tooltip_text(Some("Laser cutter/engraver"));
+        device_type_laser.set_tooltip_text(Some(&t!("Laser cutter/engraver")));
         device_type_laser.set_group(Some(&device_type_cnc));
-        let device_type_other = CheckButton::with_label("Other");
-        device_type_other.set_tooltip_text(Some("Other device type"));
+        let device_type_other = CheckButton::with_label(&t!("Other"));
+        device_type_other.set_tooltip_text(Some(&t!("Other device type")));
         device_type_other.set_group(Some(&device_type_cnc));
         device_type_other.set_active(true); // Default to Other
 
@@ -95,7 +96,7 @@ impl DeviceInfoView {
         status_icon.set_pixel_size(18);
         header.append(&status_icon);
 
-        let title = Label::new(Some("Device"));
+        let title = Label::new(Some(&t!("Device")));
         title.add_css_class("mc-group-title");
         title.set_halign(Align::Start);
         title.set_hexpand(true);
@@ -103,7 +104,7 @@ impl DeviceInfoView {
 
         let refresh_btn = Button::from_icon_name("view-refresh-symbolic");
         refresh_btn.set_tooltip_text(Some("Refresh device info"));
-        refresh_btn.update_property(&[AccessibleProperty::Label("Refresh device info")]);
+        refresh_btn.update_property(&[AccessibleProperty::Label(&t!("Refresh device info"))]);
         refresh_btn.set_sensitive(false);
 
         let copy_btn = Button::from_icon_name("edit-copy-symbolic");
@@ -130,7 +131,7 @@ impl DeviceInfoView {
         scroll.set_vexpand(true);
         scroll.set_child(Some(&capabilities_list));
 
-        let capabilities_expander = Expander::new(Some("Capabilities"));
+        let capabilities_expander = Expander::new(Some(&t!("Capabilities")));
         capabilities_expander.set_expanded(false);
         capabilities_expander.set_child(Some(&scroll));
         capabilities_expander.set_sensitive(false);
@@ -327,6 +328,21 @@ impl DeviceInfoView {
             Some(false) => (false, "Disabled ($32=0)".to_string()),
             None => (false, "Unknown (settings not loaded)".to_string()),
         };
+
+        match laser {
+            Some(true) => {
+                // If the machine has laser mode enabled ($32=1), we select "Laser".
+                self.device_type_laser.set_active(true);
+            }
+            Some(false) => {
+                // If it is disabled ($32=0), we select "CNC"
+                self.device_type_cnc.set_active(true);
+            }
+            None => {
+                // If the parameters have not been loaded, it remains at the default "Other".
+                self.device_type_other.set_active(true);
+            }
+        }
 
         let capabilities = vec![
             CapabilityItem {

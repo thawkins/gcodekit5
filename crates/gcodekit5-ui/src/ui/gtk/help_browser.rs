@@ -561,6 +561,8 @@ fn create_help_page(topic_id: &str, _title: &str, stack: &Stack) -> (String, Scr
     let scroller = ScrolledWindow::builder()
         .child(&text_view)
         .hscrollbar_policy(gtk4::PolicyType::Never)
+        .propagate_natural_width(false)
+        .propagate_natural_height(false)
         .build();
 
     (topic_id.to_string(), scroller)

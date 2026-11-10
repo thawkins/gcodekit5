@@ -13,11 +13,12 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.2.0-beta.2"
+version = "1.2.0-beta.2a"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 authors = ["GCodeKit Contributors"]
+readme = false
 repository = "https://github.com/feveal/gcodekit5-design"
 
 [workspace.dependencies]
@@ -43,11 +44,11 @@ tempfile = "3.8"
 name = "gcodekit5-design"
 version.workspace = true
 edition.workspace = true
-description = "A Rust-based Universal G-Code Sender for Laser and CNC machines with support for GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers"
+description = "A Rust-based Universal G-Code Sender for Laser and CNC machines with support for GRBL and Repetier firmware. "
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-readme = "README.md"
+readme = false
 
 [profile.release]
 opt-level = 3
@@ -87,20 +88,25 @@ chrono = "0.4"
 
 [package.metadata.deb]
 maintainer = "GCodeKit Contributors"
-copyright = "2025, GCodeKit Contributors"
+copyright = "2025-2026, GCodeKit Contributors"
+license-file ="LICENSE-MIT"
 depends = "$auto"
 section = "utility"
 priority = "optional"
+extended-description = """ gcodekit5-design integrates advanced vector design tools, SVG/DXF file and image import, and optimized real-time G-code streaming management.
+"""
 assets = [
     ["target/release/gcodekit5-design", "usr/bin/", "755"],
-    ["assets/Pictures/com.github.feveal.gcodekit5-design.png", "usr/share/icons/hicolor/128x128/apps/gcodekit5-design.png", "644"],
+    ["assets/pictures/48/gcodekit5-design.png", "usr/share/icons/hicolor/48x48/apps/gcodekit5-design.png", "644"],
+    ["assets/pictures/128/gcodekit5-design.png", "usr/share/icons/hicolor/128x128/apps/gcodekit5-design.png", "644"],
     ["flatpak/com.github.feveal.gcodekit5-design.desktop", "usr/share/applications/gcodekit5-design.desktop", "644"],
+    ["flatpak/com.github.feveal.gcodekit5-design.metainfo.xml", "usr/share/metainfo/com.github.feveal.gcodekit5-design.metainfo.xml", "644"],
 ]
 
 [package.metadata.generate-rpm]
 assets = [
     { source = "target/release/gcodekit5-design", dest = "/usr/bin/gcodekit5-design", mode = "755" },
-    { source = "gcodekit5.png", dest = "/usr/share/icons/hicolor/128x128/apps/gcodekit5-design.png", mode = "644" },
+    { source = "assets/pictures/48/gcodekit5-design.png", dest = "/usr/share/icons/hicolor/128x128/apps/gcodekit5-design.png", mode = "644" },
     { source = "flatpak/com.github.feveal.gcodekit5-design.desktop", dest = "/usr/share/applications/gcodekit5-design.desktop", mode = "644" },
 ]
 

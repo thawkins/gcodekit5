@@ -1,3 +1,4 @@
+// gcodekit5-ui/src/ui/gtk/config_settings/opertions.rs
 //! # Settings Operations
 //!
 //! Backend operations for reading, writing, and validating
@@ -16,6 +17,8 @@ use gtk4::{
 use super::ConfigSettingRow;
 use super::ConfigSettingsView;
 use crate::device_status;
+use crate::t;
+
 
 impl ConfigSettingsView {
     pub(crate) fn has_settings(&self) -> bool {
@@ -79,154 +82,223 @@ impl ConfigSettingsView {
     }
 
     pub(crate) fn retrieve_settings(&self) {
-        // Load settings definitions first
+        // Check whether a communicator exists and if it is connected
+        let mut is_connected = false;
+        if let Some(ref comm) = *self.communicator.borrow() {
+            if comm.lock().is_connected() {
+                is_connected = true;
+            }
+        }
+
+        // If it is not connected, display a notification and exit the function whith current values.
+        if !is_connected {
+            let Some(window) = self.container.root().and_downcast::<gtk4::Window>() else {
+                tracing::warn!("Failed to get parent window for alert dialog");
+                return;
+            };
+
+            let alert_dialog = Dialog::with_buttons(
+                Some(&t!("Connection Notice")),
+                Some(&window),
+                DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
+                &[(&t!("Accept"), ResponseType::Ok)],
+            );
+
+            let content = alert_dialog.content_area();
+            content.set_spacing(15);
+            content.set_margin_top(15);
+            content.set_margin_bottom(15);
+            content.set_margin_start(15);
+            content.set_margin_end(15);
+
+            let msg_label = Label::new(Some(&t!("Please connect the machine before retrieving parameters.")));
+            msg_label.set_wrap(true);
+            content.append(&msg_label);
+
+            alert_dialog.connect_response(|dialog, _response| {
+                dialog.close();
+            });
+
+            alert_dialog.show();
+
+            // Updated bottom status bar to reflect the notice.
+            self.status_label.set_text(&t!("Operation cancelled: Device not connected"));
+            return;
+        }
+
         self.load_default_grbl_settings();
 
         if let Some(ref comm) = *self.communicator.borrow() {
             let mut comm_lock = comm.lock();
-            if comm_lock.is_connected() {
-                // Send $$ command to get all settings
+            // Send $$ command to get all settings
+            self.status_label
+                .set_text(&t!("Retrieving settings and device info..."));
+
+            if let Err(e) = comm_lock.send_command("$$") {
                 self.status_label
-                    .set_text("Retrieving settings from device...");
-
-                if let Err(e) = comm_lock.send_command("$$") {
-                    self.status_label
-                        .set_text(&format!("Error sending $$: {}", e));
-                    return;
-                }
-                drop(comm_lock); // Release lock
-
-                // Wait for console to receive responses (machine control polling handles this)
-                let manager_clone = self.settings_manager.clone();
-                let status_label_clone = self.status_label.clone();
-                let save_btn_clone = self.save_btn.clone();
-                let restore_btn_clone = self.restore_btn.clone();
-                let settings_list_clone = self.settings_list.clone();
-                let search_entry_clone = self.search_entry.clone();
-                let category_filter_clone = self.category_filter.clone();
-                let container_clone = self.container.clone();
-                let device_console_clone = self.device_console.clone();
-                let communicator_clone = self.communicator.clone();
-
-                let start_log_length = if let Some(ref console) = *self.device_console.borrow() {
-                    console.get_log_text().len()
-                } else {
-                    0
-                };
-
-                let attempt_count = shared(0);
-
-                glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                    *attempt_count.borrow_mut() += 1;
-
-                    // Get console log
-                    let console_text = if let Some(ref console) = *device_console_clone.borrow() {
-                        console.get_log_text()
-                    } else {
-                        String::new()
-                    };
-
-                    // Check if we got response (console log grew)
-                    let has_settings_response = console_text.len() > start_log_length
-                        && (console_text.contains("$0=") || console_text.contains("$100="));
-
-                    if has_settings_response || *attempt_count.borrow() > 40 {
-                        // 2 seconds timeout
-                        // Parse settings from console log
-                        let mut count = 0;
-                        for line in console_text.lines() {
-                            let line = line.trim();
-                            if line.starts_with('$') && line.contains('=') {
-                                if let Some((number, value)) =
-                                    SettingsManager::parse_setting_line(line)
-                                {
-                                    let mut manager = manager_clone.borrow_mut();
-                                    if let Some(setting) = manager.get_setting(number) {
-                                        let mut updated = setting.clone();
-                                        updated.value = value.clone();
-                                        updated.numeric_value =
-                                            crate::device_status::get_grbl_setting_numeric(number)
-                                                .or_else(|| value.parse::<f64>().ok());
-                                        manager.set_setting(updated);
-                                        count += 1;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Refresh display by calling apply_filter logic
-                        while let Some(child) = settings_list_clone.first_child() {
-                            settings_list_clone.remove(&child);
-                        }
-
-                        let search_text = search_entry_clone.text().to_string().to_lowercase();
-                        let category = category_filter_clone
-                            .active_text()
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| "All".to_string());
-
-                        let manager = manager_clone.borrow();
-                        let mut settings: Vec<ConfigSettingRow> = manager
-                            .get_all_settings()
-                            .iter()
-                            .map(|s| ConfigSettingRow::from(*s))
-                            .collect();
-
-                        settings.sort_by_key(|s| s.number);
-
-                        let mut displayed_count = 0;
-                        for setting in settings {
-                            if !search_text.is_empty() {
-                                let matches = setting.name.to_lowercase().contains(&search_text)
-                                    || setting.description.to_lowercase().contains(&search_text)
-                                    || format!("${}", setting.number).contains(&search_text);
-                                if !matches {
-                                    continue;
-                                }
-                            }
-
-                            if category != "All" && setting.category != category {
-                                continue;
-                            }
-
-                            let row = ConfigSettingsView::create_setting_row_static(
-                                &setting,
-                                &container_clone,
-                                communicator_clone.clone(),
-                            );
-                            settings_list_clone.append(&row);
-                            displayed_count += 1;
-                        }
-
-                        let total = manager.get_all_settings().len();
-                        if let Some(count_label) = container_clone
-                            .last_child()
-                            .and_then(|w| w.last_child().and_downcast::<Label>())
-                        {
-                            count_label
-                                .set_text(&format!("{} / {} settings", displayed_count, total));
-                        }
-
-                        status_label_clone
-                            .set_text(&format!("Retrieved {} settings from device", count));
-                        save_btn_clone.set_sensitive(true);
-                        restore_btn_clone.set_sensitive(true);
-
-                        return glib::ControlFlow::Break;
-                    }
-
-                    glib::ControlFlow::Continue
-                });
+                    .set_text(&format!("Error sending $$: {}", e));
                 return;
             }
-        }
 
-        // Fallback if not connected
-        self.refresh_display();
-        self.status_label
-            .set_text("Not connected - showing defaults");
-        self.save_btn.set_sensitive(true);
-        self.restore_btn.set_sensitive(false);
+            if let Err(e) = comm_lock.send_command("$I") {
+                tracing::warn!("Error sending $I: {}", e);
+            }
+
+            drop(comm_lock); // Release lock
+
+            // Wait for console to receive responses (machine control polling handles this)
+            let manager_clone = self.settings_manager.clone();
+            let status_label_clone = self.status_label.clone();
+            let save_btn_clone = self.save_btn.clone();
+            let restore_btn_clone = self.restore_btn.clone();
+            let settings_list_clone = self.settings_list.clone();
+            let search_entry_clone = self.search_entry.clone();
+            let category_filter_clone = self.category_filter.clone();
+            let container_clone = self.container.clone();
+            let device_console_clone = self.device_console.clone();
+            let communicator_clone = self.communicator.clone();
+            let device_info_view_clone = self.device_info_view.clone();
+
+            let start_log_length = if let Some(ref console) = *self.device_console.borrow() {
+                console.get_log_text().len()
+            } else {
+                0
+            };
+
+            let attempt_count = shared(0);
+
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                *attempt_count.borrow_mut() += 1;
+
+                // Get console log
+                let console_text = if let Some(ref console) = *device_console_clone.borrow() {
+                    console.get_log_text()
+                } else {
+                    String::new()
+                };
+
+                // Check if we got response (console log grew)
+                let has_settings_response = console_text.len() > start_log_length
+                    && (console_text.contains("$0=") || console_text.contains("$100="));
+
+                if has_settings_response || *attempt_count.borrow() > 40 {
+                    let mut count = 0;
+                    let mut detected_machine = String::from("Grbl Device");
+                    let mut detected_firmware = String::from("Grbl");
+                    let mut detected_version = String::from("Unknown");
+
+                    for line in console_text.lines() {
+                        let line = line.trim();
+
+                        if line.starts_with('$') && line.contains('=') {
+                            if let Some((number, value)) =
+                                SettingsManager::parse_setting_line(line)
+                            {
+                                let mut manager = manager_clone.borrow_mut();
+                                if let Some(setting) = manager.get_setting(number) {
+                                    let mut updated = setting.clone();
+                                    updated.value = value.clone();
+                                    updated.numeric_value =
+                                        crate::device_status::get_grbl_setting_numeric(number)
+                                            .or_else(|| value.parse::<f64>().ok());
+                                    manager.set_setting(updated);
+                                    count += 1;
+                                }
+                            }
+                        }
+
+                        if line.starts_with('[') && line.ends_with(']') {
+                            let content = &line[1..line.len()-1];
+                            if let Some((key, val)) = content.split_once(':') {
+                                match key {
+                                    "Machine" => detected_machine = val.to_string(),
+                                    "VER" => {
+                                        if let Some((v, _)) = val.split_once('.') {
+                                            detected_version = v.to_string();
+                                        } else {
+                                            detected_version = val.to_string();
+                                        }
+                                    },
+                                    "Software" => {
+                                        detected_firmware = format!("Grbl Ext ({})", val);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        if line.starts_with("Grbl ") {
+                            if let Some(ver) = line.split_whitespace().nth(1) {
+                                detected_version = ver.to_string();
+                            }
+                        }
+                    }
+
+                    device_info_view_clone.set_connected(true, &detected_machine, &detected_firmware, &detected_version);
+                    device_info_view_clone.load_grbl_capabilities_from_status();
+
+                    while let Some(child) = settings_list_clone.first_child() {
+                        settings_list_clone.remove(&child);
+                    }
+
+                    let search_text = search_entry_clone.text().to_string().to_lowercase();
+                    let category = category_filter_clone
+                        .active_text()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "All".to_string());
+
+                    let manager = manager_clone.borrow();
+                    let mut settings: Vec<ConfigSettingRow> = manager
+                        .get_all_settings()
+                        .iter()
+                        .map(|s| ConfigSettingRow::from(*s))
+                        .collect();
+
+                    settings.sort_by_key(|s| s.number);
+
+                    let mut displayed_count = 0;
+                    for setting in settings {
+                        if !search_text.is_empty() {
+                            let matches = setting.name.to_lowercase().contains(&search_text)
+                                || setting.description.to_lowercase().contains(&search_text)
+                                || format!("${}", setting.number).contains(&search_text);
+                            if !matches {
+                                continue;
+                            }
+                        }
+
+                        if category != "All" && setting.category != category {
+                            continue;
+                        }
+
+                        let row = ConfigSettingsView::create_setting_row_static(
+                            &setting,
+                            &container_clone,
+                            communicator_clone.clone(),
+                        );
+                        settings_list_clone.append(&row);
+                        displayed_count += 1;
+                    }
+
+                    let total = manager.get_all_settings().len();
+                    if let Some(count_label) = container_clone
+                        .last_child()
+                        .and_then(|w| w.last_child().and_downcast::<Label>())
+                    {
+                        count_label
+                            .set_text(&format!("{} / {} settings", displayed_count, total));
+                    }
+
+                    status_label_clone
+                        .set_text(&format!("Retrieved {} settings and updated device profile", count));
+                    save_btn_clone.set_sensitive(true);
+                    restore_btn_clone.set_sensitive(true);
+
+                    return glib::ControlFlow::Break;
+                }
+                glib::ControlFlow::Continue
+            });
+        }
     }
 
     pub(crate) fn refresh_display(&self) {

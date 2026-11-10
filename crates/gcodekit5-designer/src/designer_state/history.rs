@@ -65,4 +65,14 @@ impl DesignerState {
         self.undo_stack.clear();
         self.redo_stack.clear();
     }
+
+    /// Marks the document as clean (no unsaved changes).
+    pub fn mark_clean(&mut self) {
+        self.is_modified = false;
+    }
+
+    /// Returns true if there are unsaved changes.
+    pub fn is_modified(&self) -> bool {
+        self.is_modified
+    }
 }

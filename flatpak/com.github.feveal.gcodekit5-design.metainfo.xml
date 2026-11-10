@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.feveal.gcodekit5-design</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>gcodekit5-design</name>
+  <summary>Universal G-Code Sender for Laser and CNC machines</summary>
+  <developer_name>GCodeKit Contributors</developer_name>
+  <developer id="://github.com">
+  <name>GCodeKit Contributors</name>
+  </developer>
+  <description>
+    <p>
+      GCodeKit5 Design is an enhanced fork of GCodeKit5. It includes a powerful Designer module with raster image support, mixed compositions, and independent per-object laser/CNC parameters (speed, power, and passes).
+    </p>
+    <p>
+      Based on the original Rust-based Universal G-Code Sender by Tim Hawkins, it supports GRBL, TinyG, g2core, Smoothieware, and FluidNC controllers.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.github.feveal.gcodekit5-design.desktop</launchable>
+  <categories>
+    <category>Engineering</category>
+    <category>Graphics</category>
+  </categories>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/feveal/gcodekit5-design/master/assets/pictures/jogging_control_panel.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/feveal/gcodekit5-design</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.2.0-beta.2a" date="2026-10-26" />
+  </releases>
+</component>

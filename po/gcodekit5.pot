@@ -261,6 +261,21 @@ msgstr ""
 msgid "This DXF file contains ACIS solid entities (3D solids) that are not supported and were discarded:"
 msgstr ""
 
+msgid "Error exporting SVG:"
+msgstr ""
+
+msgid "Exported SVG:"
+msgstr ""
+
+msgid "Unsaved changes"
+msgstr ""
+
+msgid "Do you want to save the changes to the current design?"
+msgstr ""
+
+msgid "Discard"
+msgstr ""
+
 # crates/gcodekit5-settings/src/config.rs
 msgid "Machine Control"
 msgstr ""
@@ -1733,3 +1748,73 @@ msgstr ""
 
 msgid "Add Text"
 msgstr ""
+
+# crates/gcodekit5-ui/src/ui/gtk/config_settings/operations.rs
+msgid "Connection Notice"
+msgstr ""
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr ""
+
+msgid "Operation cancelled: Device not connected"
+msgstr ""
+
+msgid "Retrieving settings and device info..."
+msgstr ""
+
+msgid "Accept"
+msgstr ""
+
+# crates/gcodekit5-ui/src/ui/gtk/config_settings/mod.rs
+msgid "Retrieve"
+msgstr ""
+
+msgid "Retrieve Settings from Device ($$)"
+msgstr ""
+
+msgid "Save Settings to File"
+msgstr ""
+
+msgid "Load Settings from File"
+msgstr ""
+
+msgid "Restore"
+msgstr ""
+
+msgid "Restore Settings to Device"
+msgstr ""
+
+msgid "Filter:"
+msgstr ""
+
+msgid "Search settings..."
+msgstr ""
+
+msgid "Category:"
+msgstr ""
+
+# crates/gcodekit5-ui/src/ui/gtk/device_info.rs
+msgid "Device Type"
+msgstr ""
+
+msgid "Spindle-based machining"
+msgstr ""
+
+msgid "Laser cutter/engraver"
+msgstr ""
+
+msgid "Other"
+msgstr ""
+
+msgid "Other device type"
+msgstr ""
+
+msgid "Device"
+msgstr ""
+
+msgid "Refresh device info"
+msgstr ""
+
+msgid "Capabilities"
+msgstr ""
+

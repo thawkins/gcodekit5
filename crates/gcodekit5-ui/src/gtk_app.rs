@@ -228,7 +228,7 @@ pub fn main() {
             crate::device_status::set_active_controller_type(Some(controller_type.clone()));
 
             status_bar.set_device_info(device_name, &controller_type, &device_type);
-}
+        }
 
         let device_controller = Rc::new(gcodekit5_devicedb::DeviceUiController::new(
             device_manager.clone(),
@@ -609,6 +609,38 @@ pub fn main() {
         });
         app.add_action(&run_action);
 
+        {
+            let designer_for_close = designer.clone();
+            let window_for_close = window.clone();
+            window.connect_close_request(move |_| {
+                // Si el diseñador está modificado, preguntar antes de cerrar.
+                // (El editor de G-code tiene su propio flujo; de momento solo
+                // gestionamos el diseñador. Se puede ampliar después.)
+                let state = designer_for_close.canvas.state.borrow();
+                let is_modified = state.is_modified();
+                drop(state);
+
+                if !is_modified {
+                    // Nada que guardar: permitir el cierre normal.
+                    return glib::Propagation::Proceed;
+                }
+
+                // Hay cambios: mostrar diálogo y decidir.
+                // Detenemos el cierre inmediatamente; si el usuario confirma,
+                // destruimos la ventana desde el callback.
+                let window_weak = window_for_close.downgrade();
+                designer_for_close.confirm_discard_unsaved(std::boxed::Box::new(move |should_close| {
+                    if should_close {
+                        if let Some(window) = window_weak.upgrade() {
+                            window.destroy();
+                        }
+                    }
+                }));
+
+                glib::Propagation::Stop
+            });
+        }
+
         // Generate Frame
         let editor_frame = editor.clone();
         let designer_frame = designer.clone();
@@ -625,8 +657,6 @@ pub fn main() {
                 // 4. Jump to the editor tab to view the code
                 //                stack_frame.set_visible_child_name("machine");
                 stack_frame.set_visible_child_name("visualizer");
-            } else {
-                tracing::debug!("Frame requested but canvas is empty - nothing to frame");
             }
         });
 
@@ -702,7 +732,7 @@ pub fn main() {
         save_action.connect_activate(move |_, _| {
             if let Some(name) = stack_clone.visible_child_name() {
                 match name.as_str() {
-                    "designer" => designer_clone.save_file(),
+                    "designer" => designer_clone.save_file(None),
                     "editor" => editor_clone.save_file(),
                     "machine" => editor_clone.save_file(),
                     _ => {}
@@ -718,7 +748,7 @@ pub fn main() {
         save_as_action.connect_activate(move |_, _| {
             if let Some(name) = stack_clone.visible_child_name() {
                 match name.as_str() {
-                    "designer" => designer_clone.save_as_file(),
+                    "designer" => designer_clone.save_as_file(None),
                     "editor" => editor_clone.save_as_file(),
                     "machine" => editor_clone.save_as_file(),
                     _ => {}

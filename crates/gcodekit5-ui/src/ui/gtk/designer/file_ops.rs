@@ -5,14 +5,25 @@ use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::serialization::DesignMode;
 
 impl DesignerView {
-    pub fn new_file(&self) {
+    pub fn new_file(self: &Rc<Self>) {
         self.new_file_2d();
     }
 
-    pub fn new_file_2d(&self) {
+    pub fn new_file_2d(self: &Rc<Self>) {
+        let this = self.clone();
+        self.confirm_discard_unsaved(std::boxed::Box::new(move |should_continue| {
+            if should_continue {
+                this.new_file_2d_impl();
+            }
+        }));
+    }
+
+    fn new_file_2d_impl(self: &Rc<Self>) {
         let mut state = self.canvas.state.borrow_mut();
         state.canvas.clear();
         state.set_machine_mode(MachineMode::Laser2D);
+        state.clear_history();
+        state.mark_clean();
         *self.current_file.borrow_mut() = None;
         drop(state);
 
@@ -22,10 +33,21 @@ impl DesignerView {
         self.set_status(&t!("New 2D design created"));
     }
 
-    pub fn new_file_3d(&self) {
+    pub fn new_file_3d(self: &Rc<Self>) {
+        let this = self.clone();
+        self.confirm_discard_unsaved(std::boxed::Box::new(move |should_continue| {
+            if should_continue {
+                this.new_file_3d_impl();
+            }
+        }));
+    }
+
+    pub fn new_file_3d_impl(self: &Rc<Self>) {
         let mut state = self.canvas.state.borrow_mut();
         state.canvas.clear();
         state.set_machine_mode(MachineMode::Cnc3D);
+        state.clear_history();
+        state.mark_clean();
         *self.current_file.borrow_mut() = None;
         drop(state);
 
@@ -35,7 +57,29 @@ impl DesignerView {
         self.set_status(&t!("New 3D design created"));
     }
 
-    pub fn open_file(&self) {
+    pub fn save_file(self: &Rc<Self>, on_done: Option<std::boxed::Box<dyn FnOnce(bool) + 'static>>) {
+        let current_path = self.current_file.borrow().clone();
+
+        if let Some(path) = current_path {
+            self.save_to_path(path);
+            if let Some(cb) = on_done {
+                cb(true);
+            }
+        } else {
+            self.save_as_file(on_done);
+        }
+    }
+
+    pub fn open_file(self: &Rc<Self>) {
+        let this = self.clone();
+        self.confirm_discard_unsaved(std::boxed::Box::new(move |should_continue| {
+            if should_continue {
+                this.open_file_impl();
+            }
+        }));
+    }
+
+    pub fn open_file_impl(self: &Rc<Self>) {
         let open_label = t!("Open");
         let cancel_label = t!("Cancel");
 
@@ -48,6 +92,11 @@ impl DesignerView {
                 (&*cancel_label, gtk4::ResponseType::Cancel),
             ],
         );
+        if let Some(root) = self.widget.root() {
+            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
+                dialog.set_transient_for(Some(window));
+            }
+        }
 
         if let Some(ref settings) = self.settings_persistence {
             if let Ok(settings_ref) = settings.try_borrow() {
@@ -165,7 +214,7 @@ impl DesignerView {
                                         let _ = settings_ref_mut.save_to_file(&config_path);
                                     }
                                 } // ---------------------------
-
+                                state.mark_clean();
                                 drop(state);
 
                                 if restored_shapes > 0 && !viewport_ok {
@@ -190,21 +239,6 @@ impl DesignerView {
             }
             dialog.destroy();
         });
-
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "output.gckd".to_string())
-        } else {
-            // If the design has never been saved before
-            "untitled_design.gckd".to_string()
-        };
-
-        dialog.set_current_name(&default_name);
-        // ------------------------------------------------------------
 
         dialog.show();
     }
@@ -504,20 +538,7 @@ impl DesignerView {
             }
             dialog.destroy();
         });
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "output.gckd".to_string())
-        } else {
-            // If the design has never been saved before
-            "untitled_design.gckd".to_string()
-        };
 
-        dialog.set_current_name(&default_name);
-        // ------------------------------------------------------------
         dialog.show();
     }
 
@@ -537,17 +558,7 @@ impl DesignerView {
         self.import_file_internal(Some("stl"));
     }
 
-    pub fn save_file(&self) {
-        let current_path = self.current_file.borrow().clone();
-
-        if let Some(path) = current_path {
-            self.save_to_path(path);
-        } else {
-            self.save_as_file();
-        }
-    }
-
-    pub fn save_as_file(&self) {
+    pub fn save_as_file(self: &Rc<Self>, on_done: Option<std::boxed::Box<dyn FnOnce(bool) + 'static>>) {
         let save_label = t!("Save");
         let cancel_label = t!("Cancel");
 
@@ -560,6 +571,11 @@ impl DesignerView {
                 (&*cancel_label, gtk4::ResponseType::Cancel),
             ],
         );
+        if let Some(root) = self.widget.root() {
+            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
+                dialog.set_transient_for(Some(window));
+            }
+        }
         dialog.set_current_name("design.gckd");
 
         // Set initial directory from settings
@@ -588,7 +604,14 @@ impl DesignerView {
         let status_label = self.status_label.clone();
         let settings_persistence_clone = self.settings_persistence.clone();
 
+        // Envolver el callback para poder moverlo al closure `Fn` de GTK
+        // y consumirlo una sola vez (`FnOnce`).
+        let on_done_cell: Rc<std::cell::RefCell<Option<std::boxed::Box<dyn FnOnce(bool) + 'static>>>> =
+            Rc::new(std::cell::RefCell::new(on_done));
+
         dialog.connect_response(move |dialog, response| {
+            let mut success = false;
+
             if response == ResponseType::Accept {
                 if let Some(file) = dialog.file() {
                     if let Some(mut path) = file.path() {
@@ -612,53 +635,61 @@ impl DesignerView {
                             }
                         }
 
-                        // Save logic
-                        let state = canvas.state.borrow();
-                        let mut design =
-                            DesignFile::new(path.file_stem().unwrap_or_default().to_string_lossy());
+                        // Construir el DesignFile y guardarlo en un bloque para soltar
+                        // el borrow inmutable de `state` antes de llamar a mark_clean().
+                        let save_result = {
+                            let state = canvas.state.borrow();
+                            let mut design = DesignFile::new(
+                                path.file_stem().unwrap_or_default().to_string_lossy(),
+                            );
 
-                        design.design_mode = match state.machine_mode() {
-                            MachineMode::Laser2D => DesignMode::TwoD,
-                            MachineMode::Cnc3D => DesignMode::ThreeD,
+                            design.design_mode = match state.machine_mode() {
+                                MachineMode::Laser2D => DesignMode::TwoD,
+                                MachineMode::Cnc3D => DesignMode::ThreeD,
+                            };
+
+                            // Viewport
+                            design.viewport.zoom = state.canvas.zoom();
+                            design.viewport.pan_x = state.canvas.pan_x();
+                            design.viewport.pan_y = state.canvas.pan_y();
+
+                            // Tool settings
+                            design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
+                            design.toolpath_params.spindle_speed =
+                                state.tool_settings.spindle_speed as f64;
+                            design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
+                            design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
+                            design.toolpath_params.step_down = state.tool_settings.step_down;
+                            design.toolpath_params.continuous_z_between_passes =
+                                state.tool_settings.continuous_z_between_passes;
+
+                            // Stock and toolpath parameters
+                            if let Some(ref stock) = state.stock_material {
+                                design.toolpath_params.stock_width = stock.width;
+                                design.toolpath_params.stock_height = stock.height;
+                                design.toolpath_params.stock_thickness = stock.thickness;
+                                design.toolpath_params.safe_z_height = stock.safe_z;
+                            }
+
+                            // Shapes
+                            for obj in state.canvas.shapes() {
+                                let shape_data = DesignFile::from_drawing_object(obj);
+                                design.shapes.push(shape_data);
+                            }
+
+                            design.save_to_file(&path)
                         };
 
-                        // Viewport
-                        design.viewport.zoom = state.canvas.zoom();
-                        design.viewport.pan_x = state.canvas.pan_x();
-                        design.viewport.pan_y = state.canvas.pan_y();
-
-                        // Tool settings
-                        design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
-                        design.toolpath_params.spindle_speed =
-                            state.tool_settings.spindle_speed as f64;
-                        design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
-                        design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
-                        design.toolpath_params.step_down = state.tool_settings.step_down;
-                        design.toolpath_params.continuous_z_between_passes =
-                            state.tool_settings.continuous_z_between_passes;
-
-                        // Stock and toolpath parameters
-                        if let Some(ref stock) = state.stock_material {
-                            design.toolpath_params.stock_width = stock.width;
-                            design.toolpath_params.stock_height = stock.height;
-                            design.toolpath_params.stock_thickness = stock.thickness;
-                            design.toolpath_params.safe_z_height = stock.safe_z;
-                        }
-
-                        // Shapes
-                        for obj in state.canvas.shapes() {
-                            let shape_data = DesignFile::from_drawing_object(obj);
-                            design.shapes.push(shape_data);
-                        }
-
-                        match design.save_to_file(&path) {
+                        match save_result {
                             Ok(_) => {
                                 *current_file.borrow_mut() = Some(path.clone());
+                                canvas.state.borrow_mut().mark_clean();
                                 status_label.set_text(&format!(
                                     "{} {}",
                                     t!("Saved:"),
                                     path.display()
                                 ));
+                                success = true;
                             }
                             Err(e) => {
                                 error!("Error saving file: {}", e);
@@ -672,63 +703,63 @@ impl DesignerView {
                     }
                 }
             }
+
+            // Invocar el callback (una sola vez) con el resultado.
+            if let Some(cb) = on_done_cell.borrow_mut().take() {
+                cb(success);
+            }
+
             dialog.destroy();
         });
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "design.gckd".to_string())
-        } else {
-            "untitled_design.gckd".to_string()
-        };
-        dialog.set_current_name(&default_name);
-        // ------------------------------------------------------------
+
         dialog.show();
     }
 
     pub(crate) fn save_to_path(&self, path: PathBuf) {
-        let state = self.canvas.state.borrow();
-        let mut design = DesignFile::new(path.file_stem().unwrap_or_default().to_string_lossy());
+        let save_result = {
+            let state = self.canvas.state.borrow();
+            let mut design = DesignFile::new(path.file_stem().unwrap_or_default().to_string_lossy());
 
-        design.design_mode = match state.machine_mode() {
-            MachineMode::Laser2D => DesignMode::TwoD,
-            MachineMode::Cnc3D => DesignMode::ThreeD,
+            design.design_mode = match state.machine_mode() {
+                MachineMode::Laser2D => DesignMode::TwoD,
+                MachineMode::Cnc3D => DesignMode::ThreeD,
+            };
+
+            // Viewport
+            design.viewport.zoom = state.canvas.zoom();
+            design.viewport.pan_x = state.canvas.pan_x();
+            design.viewport.pan_y = state.canvas.pan_y();
+
+            // Tool settings
+            design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
+            design.toolpath_params.spindle_speed = state.tool_settings.spindle_speed as f64;
+            design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
+            design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
+            design.toolpath_params.step_down = state.tool_settings.step_down;
+            design.toolpath_params.continuous_z_between_passes =
+                state.tool_settings.continuous_z_between_passes;
+
+            // Stock and toolpath parameters
+            if let Some(ref stock) = state.stock_material {
+                design.toolpath_params.stock_width = stock.width;
+                design.toolpath_params.stock_height = stock.height;
+                design.toolpath_params.stock_thickness = stock.thickness;
+                design.toolpath_params.safe_z_height = stock.safe_z;
+            }
+
+            // Shapes
+            for obj in state.canvas.shapes() {
+                let shape_data = DesignFile::from_drawing_object(obj);
+                design.shapes.push(shape_data);
+            }
+
+            design.save_to_file(&path)
         };
 
-        // Viewport
-        design.viewport.zoom = state.canvas.zoom();
-        design.viewport.pan_x = state.canvas.pan_x();
-        design.viewport.pan_y = state.canvas.pan_y();
-
-        // Tool settings
-        design.toolpath_params.feed_rate = state.tool_settings.feed_rate;
-        design.toolpath_params.spindle_speed = state.tool_settings.spindle_speed as f64;
-        design.toolpath_params.tool_diameter = state.tool_settings.tool_diameter;
-        design.toolpath_params.cut_depth = state.tool_settings.cut_depth;
-        design.toolpath_params.step_down = state.tool_settings.step_down;
-        design.toolpath_params.continuous_z_between_passes =
-            state.tool_settings.continuous_z_between_passes;
-
-        // Stock and toolpath parameters
-        if let Some(ref stock) = state.stock_material {
-            design.toolpath_params.stock_width = stock.width;
-            design.toolpath_params.stock_height = stock.height;
-            design.toolpath_params.stock_thickness = stock.thickness;
-            design.toolpath_params.safe_z_height = stock.safe_z;
-        }
-
-        // Shapes
-        for obj in state.canvas.shapes() {
-            let shape_data = DesignFile::from_drawing_object(obj);
-            design.shapes.push(shape_data);
-        }
-
-        match design.save_to_file(&path) {
+        match save_result {
             Ok(_) => {
                 self.set_status(&format!("{} {}", t!("Saved:"), path.display()));
+                self.canvas.state.borrow_mut().mark_clean();
             }
             Err(e) => {
                 error!("Error saving file: {}", e);
@@ -750,6 +781,11 @@ impl DesignerView {
                 (&*cancel_label, gtk4::ResponseType::Cancel),
             ],
         );
+        if let Some(root) = self.widget.root() {
+            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
+                dialog.set_transient_for(Some(window));
+            }
+        }
 
         if let Some(ref settings) = self.settings_persistence {
             if let Ok(settings_ref) = settings.try_borrow() {
@@ -887,21 +923,21 @@ impl DesignerView {
             }
             dialog.destroy();
         });
+
         // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
         let current_file_borrow = self.current_file.borrow();
         let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            // We extract the name without the extension and add .nc to it.
             path.file_stem()
                 .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "output.gckd".to_string())
+                .map(|s| format!("{}.nc", s))
+                .unwrap_or_else(|| "output.nc".to_string())
         } else {
-            // If the design has never been saved before
-            "untitled_design.gckd".to_string()
+            "untitled_design.nc".to_string()
         };
 
         dialog.set_current_name(&default_name);
         // ------------------------------------------------------------
+
         dialog.show();
     }
 
@@ -918,6 +954,11 @@ impl DesignerView {
                 (&*cancel_label, gtk4::ResponseType::Cancel),
             ],
         );
+        if let Some(root) = self.widget.root() {
+            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
+                dialog.set_transient_for(Some(window));
+            }
+        }
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("SVG Files"));
@@ -1158,7 +1199,81 @@ impl DesignerView {
         self.layers.refresh(&self.canvas.state);
         self.canvas.widget.queue_draw();
     }
-}
+
+    /// Muestra el diálogo de "cambios sin guardar" si el diseño está modificado.
+    /// Si el diseño está limpio, llama a `on_result(true)` inmediatamente.
+    /// Si está modificado, muestra el diálogo y llama a `on_result(should_continue)`:
+    ///   - `true` si el usuario guardó con éxito o descartó los cambios.
+    ///   - `false` si el usuario canceló.
+    pub fn confirm_discard_unsaved(
+        self: &Rc<Self>,
+        on_result: SaveDoneCallback,
+    ) {
+            // Si no hay cambios, continuar sin preguntar.
+            if !self.canvas.state.borrow().is_modified() {
+                on_result(true);
+                return;
+            }
+
+            let dialog = gtk4::MessageDialog::builder()
+                .text(t!("Unsaved changes"))
+                .secondary_text(t!(
+                    "Do you want to save the changes to the current design?"
+                ))
+                .modal(true)
+                .build();
+
+            dialog.add_button(&t!("Cancel"), gtk4::ResponseType::Cancel);
+            dialog.add_button(&t!("Discard"), gtk4::ResponseType::Reject);
+            dialog.add_button(&t!("Save"), gtk4::ResponseType::Accept);
+            dialog.set_default_response(gtk4::ResponseType::Accept);
+
+            if let Some(root) = self.widget.root() {
+                if let Some(window) = root.downcast_ref::<gtk4::Window>() {
+                    dialog.set_transient_for(Some(window));
+                }
+            }
+
+            // Envolver el callback para poder consumirlo una vez desde el closure Fn.
+            let on_result_cell = Rc::new(std::cell::RefCell::new(Some(on_result)));
+            let this = self.clone();
+
+            dialog.connect_response(move |dialog, response| {
+                dialog.destroy();
+
+                match response {
+                    gtk4::ResponseType::Cancel | gtk4::ResponseType::DeleteEvent => {
+                        // Cancelar: no continuar.
+                        if let Some(cb) = on_result_cell.borrow_mut().take() {
+                            cb(false);
+                        }
+                    }
+                    gtk4::ResponseType::Reject => {
+                        // Descartar: continuar sin guardar.
+                        if let Some(cb) = on_result_cell.borrow_mut().take() {
+                            cb(true);
+                        }
+                    }
+                    gtk4::ResponseType::Accept => {
+                        // Guardar: encadenar save_file con callback.
+                        let on_result_cell = on_result_cell.clone();
+                        this.save_file(Some(std::boxed::Box::new(move |saved: bool| {
+                            if let Some(cb) = on_result_cell.borrow_mut().take() {
+                                cb(saved);
+                            }
+                        })));
+                }
+                _ => {
+                    if let Some(cb) = on_result_cell.borrow_mut().take() {
+                        cb(false);
+                    }
+                }
+            }
+        });
+
+        dialog.present();
+    }
+} // impl DesignerView
 
 /// Transforma un string de path SVG de coordenadas cartesianas a coordenadas SVG (Y invertido)
 fn transform_svg_path_to_svg_coords(d: &str, min_y: f64, max_y: f64) -> String {
@@ -1224,3 +1339,7 @@ fn transform_svg_path_to_svg_coords(d: &str, min_y: f64, max_y: f64) -> String {
 
     result
 }
+
+/// Callback invocado al terminar una operación de guardado.
+/// Recibe `true` si se guardó con éxito, `false` si se canceló o falló.
+pub type SaveDoneCallback = std::boxed::Box<dyn FnOnce(bool) + 'static>;

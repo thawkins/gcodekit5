@@ -259,6 +259,22 @@ msgstr "Se descartaron los sólidos 3D no soportados"
 msgid "This DXF file contains ACIS solid entities (3D solids) that are not supported and were discarded:"
 msgstr "Este archivo DXF contiene entidades sólidas ACIS (sólidos 3D) que no son compatibles y fueron descartadas:"
 
+msgid "Error exporting SVG:"
+msgstr "Error exportando SVG:"
+
+msgid "Exported SVG:"
+msgstr "SVG Exportado:"
+
+msgid "Unsaved changes"
+msgstr "Cambios sin guardar"
+
+msgid "Do you want to save the changes to the current design?"
+msgstr "Quieres guardar los cambios del Diseñador?"
+
+msgid "Discard"
+msgstr "Descartar"
+
+
 # crates/gcodekit5-settings/src/config.rs
 msgid "Machine Control"
 msgstr "Control de máquina"
@@ -1725,4 +1741,72 @@ msgstr "Centrado en Y"
 msgid "Add Text"
 msgstr "Añadir Texto"
 
+# crates/gcodekit5-ui/src/ui/gtk/config_settings/operations.rs
+msgid "Connection Notice"
+msgstr "Aviso de conexión"
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr "Por favor, conecte la máquina antes de recuperar los parámetros."
+
+msgid "Operation cancelled: Device not connected"
+msgstr "Operación cancelada: Dispositivo no conectado"
+
+msgid "Retrieving settings and device info..."
+msgstr "Recuperando la configuración del dispositivo..."
+
+msgid "Accept"
+msgstr "Aceptar"
+
+# crates/gcodekit5-ui/src/ui/gtk/config_settings/mod.rs
+msgid "Retrieve"
+msgstr "Recuperar"
+
+msgid "Retrieve Settings from Device ($$)"
+msgstr "Recuperar ajustes del dispositivo ($$)"
+
+msgid "Save Settings to File"
+msgstr "Guardar configuración en archivo"
+
+msgid "Load Settings from File"
+msgstr "Cargar configuración desde archivo"
+
+msgid "Restore"
+msgstr "Restaurar"
+
+msgid "Restore Settings to Device"
+msgstr "Restaurar configuración al dispositivo"
+
+msgid "Filter:"
+msgstr "Filtro:"
+
+msgid "Search settings..."
+msgstr "Buscando en la configuración..."
+
+msgid "Category:"
+msgstr "Categoría:"
+
+# crates/gcodekit5-ui/src/ui/gtk/device_info.rs
+msgid "Device Type"
+msgstr "Tipo de dispositivo"
+
+msgid "Spindle-based machining"
+msgstr "Mecanizado basado en husillo"
+
+msgid "Laser cutter/engraver"
+msgstr "Cortadora/grabadora Láser"
+
+msgid "Other"
+msgstr "Otro"
+
+msgid "Other device type"
+msgstr "Otro tipo de dispositivo"
+
+msgid "Device"
+msgstr "Dispositivo"
+
+msgid "Refresh device info"
+msgstr "Refrescar información de dispositivo"
+
+msgid "Capabilities"
+msgstr "Capacidades"
 

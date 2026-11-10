@@ -75,6 +75,9 @@
      <!-- *********** Help images ************ -->
     <file compressed="true" alias="help_images/gcodekit5_1.png">help_images/gcodekit5_1.png</file>
     <file compressed="true" alias="help_images/designer.png">help_images/designer.png</file>
+    <file compressed="true" alias="help_images/designer_context.png">help_images/designer_context.png</file>
+    <file compressed="true" alias="help_images/designer_group.png">help_images/designer_group.png</file>
+    <file compressed="true" alias="help_images/designer_objects.png">help_images/designer_objects.png</file>
     <file compressed="true" alias="help_images/gcode_frame.png">help_images/gcode_frame.png</file>
     <file compressed="true" alias="help_images/global_properties.png">help_images/global_properties.png</file>
     <file compressed="true" alias="help_images/individual_properties.png">help_images/individual_properties.png</file>

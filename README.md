@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender for Laser and CNC machine controller writ
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
 [![License: APACHE](https://img.shields.io/badge/license-apache-blue.svg)](LICENSE-APACHE)
-[![Version](https://img.shields.io/badge/Version-1.1.0--beta.1-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.2.0--beta.2a-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -228,6 +228,7 @@ The object positioning issue when opening "gckd" files.
 
 ### ⚙️ Configuration Management
 - **GRBL Settings Editor**: Complete access to all $0-$130 parameters
+  - ***Caution when changing GRBL parameters on the machine***
 - **Inline Editing**: Click any setting value to edit
 - **Descriptions**: Tooltips explain each parameter's purpose
 - **Value Validation**: Ensures valid ranges and data types
@@ -615,7 +616,18 @@ You may choose either license for your use of this software.
 ## Updates
 
 ### Recent Updates (1.2.0-beta.2a) Fixed an issue with moving multiple objects using grips and Fix Dead Keys on Wayland (2026-10-25)
-  - When modifying the grips of a set of objects, they would lose their position. This issue has been fixed.
+
+  - Feat (Designer): prompt to save unsaved changes before destructive actions
+
+      - Ask the user before discarding unsaved design changes when creating a new
+document, opening another file, or closing the application.
+
+    - The change introduces a `confirm_discard_unsaved` dialog with three
+options (Cancel / Discard / Save) and wires it into:
+
+      - File → New 2D / New 3D
+      - File → Open
+      - Window close request (including `app.quit()`)
 
 - #### Fix: Accents and Dead Keys on Wayland (GTK 4.20+)
 
@@ -641,6 +653,8 @@ Chinese), set the environment variable `GTK_IM_MODULE=ibus` (or `fcitx`)
 before launching the application; the app will respect that value and
 will not overwrite it.
 
+- When modifying the grips of a set of objects, they would lose their position. This issue has been fixed.
+  
 ### Recent Updates (1.2.0-beta.2) - refactor: consolidate Sender trait, enforce protocol consistency, and dead code cleanup (2026-10-20)
 - This update consolidates communication architecture, enforces strict protocol validation, and removes obsolete code. All changes have been verified in real-world environments
 

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name[es_ES]=gcodekit5-design
+Name=gcodekit5-design
+Comment[es_ES]=Programa para grabado y corte por láser y mecanizado CNC mediante G-Code
+Comment=Software for laser engraving and cutting, and for CNC machining using G-code
+Exec=gcodekit5-design
+GenericName[es_ES]=Grabado Laser y CNC
+GenericName=Laser Engraving and CNC
+Icon=gcodekit5-design
+Type=Application
+MimeType=application/x-gckd;
+Categories=Engineering;Graphics;
+Keywords=GCode;Laser;CNC;GRBL;
+StartupNotify=true
+StartupWMClass=com.gcodekit5.app
+Terminal=false
