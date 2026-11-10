@@ -229,6 +229,30 @@ pub fn get_grbl_setting_numeric(number: u16) -> Option<f64> {
     get_grbl_setting(number).and_then(|v| parse_numeric_prefix(&v))
 }
 
+/// Records a `$n=v` setting assignment that was sent to the controller, so
+/// the cached settings (e.g. `$13`, which decides report units) match it.
+/// GRBL answers an assignment with `ok`, not with the new value, so the
+/// cache would otherwise keep the old value until the next `$$`.
+///
+/// # Arguments
+/// * `command` - The line sent; anything that is not `$<number>=<value>` is ignored.
+pub fn note_setting_sent(command: &str) {
+    let Some(body) = command.trim().strip_prefix('$') else {
+        return;
+    };
+    let Some((number, value)) = body.split_once('=') else {
+        return;
+    };
+    if let Ok(number) = number.trim().parse::<u16>() {
+        update_grbl_setting(number, value.trim().to_string());
+    }
+}
+
+/// Whether the controller reports positions in inches (`$13=1`).
+pub fn reports_in_inches() -> bool {
+    get_grbl_setting_numeric(13).is_some_and(|v| v >= 1.0)
+}
+
 /// Get a snapshot of the current device status
 pub fn get_status() -> GrblDeviceStatus {
     DEVICE_STATUS.read().clone()

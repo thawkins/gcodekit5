@@ -469,7 +469,10 @@ impl ConfigSettingsView {
                     let mut comm_lock = comm.lock();
                     if comm_lock.is_connected() {
                         let command = format!("${}={}", setting_number, new_value);
-                        let _ = comm_lock.send_command(&command);
+                        match comm_lock.send_command(&command) {
+                            Ok(()) => crate::device_status::note_setting_sent(&command),
+                            Err(e) => tracing::warn!(error = %e, "Setting not sent: {command}"),
+                        }
                     }
                 }
             }
