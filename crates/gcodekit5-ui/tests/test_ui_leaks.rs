@@ -1,7 +1,8 @@
 //! Regression tests for the UI leak and silent-failure fixes (issue #79):
 //! the Tool Settings dialog is built once, refreshing an entry from the model
 //! does not write the rounded value back, a newer status notice is not cleared
-//! by an older notice's timer, and the shared CAM preset helpers.
+//! by an older notice's timer, Speeds & Feeds follows the live device
+//! database before and after Reset, and the shared CAM preset helpers.
 //!
 //! The GTK cases need a display. Without one (`gtk4::init()` fails) they
 //! return early. GTK must be driven from one thread, so they run in one test.
@@ -9,10 +10,16 @@
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use gcodekit5_core::shared;
 use gcodekit5_core::units::MeasurementSystem;
+use gcodekit5_devicedb::model::DeviceProfile;
+use gcodekit5_devicedb::DeviceManager;
+use gcodekit5_settings::{SettingsController, SettingsDialog, SettingsPersistence};
 use gcodekit5_ui::ui::gtk::cam_tools::common::{load_preset_json, preset_length, save_preset_json};
+use gcodekit5_ui::ui::gtk::cam_tools::SpeedsFeedsTool;
 use gcodekit5_ui::ui::gtk::designer_toolbox::{build_once, fill_entry_from_model};
 use gcodekit5_ui::ui::gtk::status_bar::StatusBar;
 use gtk4::prelude::*;
@@ -94,6 +101,34 @@ fn test_ui_leak_fixes_with_gtk() {
         load_preset_json::<BTreeMap<String, f64>>(&path),
         Some(preset)
     );
+
+    // E2-07: Speeds & Feeds reads the application's live device database,
+    // before and after Reset (it loaded its own copy from disk before).
+    let devices = Arc::new(DeviceManager::new(dir.join("devices.json")));
+    let mut ids = Vec::new();
+    for name in ["Mill A", "Mill B"] {
+        let profile = DeviceProfile {
+            name: name.to_string(),
+            ..DeviceProfile::default()
+        };
+        ids.push(profile.id.clone());
+        devices.save_profile(profile).expect("save profile");
+    }
+    devices.set_active_profile(&ids[0]).expect("activate A");
+    let settings = Rc::new(SettingsController::new(
+        shared(SettingsDialog::new()),
+        shared(SettingsPersistence::new()),
+    ));
+    let feeds = SpeedsFeedsTool::new(&gtk4::Stack::new(), settings, Some(devices.clone()));
+    assert_eq!(feeds.active_device_name().as_deref(), Some("Mill A"));
+    devices.set_active_profile(&ids[1]).expect("activate B");
+    assert_eq!(feeds.active_device_name().as_deref(), Some("Mill B"));
+    feeds.reset();
+    assert_eq!(feeds.active_device_name().as_deref(), Some("Mill B"));
+    devices
+        .set_active_profile(&ids[0])
+        .expect("activate A again");
+    assert_eq!(feeds.active_device_name().as_deref(), Some("Mill A"));
 
     // E2-09: an older notice's timer must not clear a newer notice.
     let status = StatusBar::new();
