@@ -115,3 +115,40 @@ fn test_offset_keeps_holes_and_moves_them() {
     assert_eq!(holes, 1, "shrinking the shape must keep the hole");
     assert!((r - 9.0).abs() < 0.1, "hole radius {r}, expected 9");
 }
+
+/// A circle as polygon points.
+fn circle_pts(r: f64) -> Vec<[f64; 2]> {
+    (0..64)
+        .map(|i| {
+            let a = i as f64 / 64.0 * std::f64::consts::TAU;
+            [r * a.cos(), r * a.sin()]
+        })
+        .collect()
+}
+
+#[test]
+fn test_offset_keeps_an_island_inside_a_hole() {
+    // Review of #85: cutting one polygon's hole removed an island processed
+    // before it. The polygons are given in both orders.
+    use csgrs::sketch::Sketch;
+    use csgrs::traits::CSG;
+    use gcodekit5_designer::model::{DesignPath, DesignerShape, Shape};
+    use gcodekit5_designer::ops::perform_offset;
+    let donut: Sketch<()> = Sketch::polygon(&circle_pts(20.0), None)
+        .difference(&Sketch::polygon(&circle_pts(8.0), None));
+    let island: Sketch<()> = Sketch::polygon(&circle_pts(3.0), None);
+    for (first, second) in [(&island, &donut), (&donut, &island)] {
+        let mut geometry = first.geometry.clone();
+        geometry.0.extend(second.geometry.0.iter().cloned());
+        let shape = Shape::Path(DesignPath::from_csg(Sketch::from_geo(geometry, None)));
+        assert_eq!(
+            shape.as_csg().to_multipolygon().0.len(),
+            2,
+            "donut + island"
+        );
+        let grown = perform_offset(&shape, 1.0);
+        let polys = grown.as_csg().to_multipolygon().0.len();
+        assert_eq!(polys, 2, "the island must survive the offset");
+        assert_eq!(hole_stats(&grown).0, 1, "the donut keeps its hole");
+    }
+}

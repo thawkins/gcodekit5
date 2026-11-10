@@ -4,7 +4,7 @@
 //! including box makers, engravers, spoilboard tools, and more.
 
 mod bitmap_engraving;
-mod common;
+pub mod common;
 mod drill_press;
 mod gerber;
 mod jigsaw;

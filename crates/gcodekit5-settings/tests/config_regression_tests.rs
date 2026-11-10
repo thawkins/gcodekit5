@@ -185,3 +185,49 @@ fn test_preferences_save_keeps_folder_remembered_by_file_dialogs() {
         std::path::PathBuf::from("/picked")
     );
 }
+
+#[test]
+fn test_second_preferences_save_keeps_folder_picked_after_first_save() {
+    // #88 review: the first save left the dialog's old folder as its baseline,
+    // so a second save still restored it over the folder a file dialog chose.
+    // nextest runs each test in its own process, so pointing the config
+    // directory at a temporary folder does not leak into other tests.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::env::set_var("XDG_CONFIG_HOME", dir.path());
+
+    let persistence = shared(SettingsPersistence::new());
+    persistence
+        .borrow_mut()
+        .config_mut()
+        .file_processing
+        .output_directory = "/start".into();
+    let mut dialog = SettingsDialog::new();
+    persistence.borrow().populate_dialog(&mut dialog);
+    let controller = SettingsController::new(shared(dialog), persistence.clone());
+
+    controller.update_setting("default_directory", "/chosen");
+    controller.save().expect("first save");
+    assert_eq!(
+        persistence
+            .borrow()
+            .config()
+            .file_processing
+            .output_directory,
+        std::path::PathBuf::from("/chosen")
+    );
+    persistence
+        .borrow_mut()
+        .config_mut()
+        .file_processing
+        .output_directory = "/picked".into();
+    controller.save().expect("second save");
+
+    assert_eq!(
+        persistence
+            .borrow()
+            .config()
+            .file_processing
+            .output_directory,
+        std::path::PathBuf::from("/picked")
+    );
+}

@@ -88,6 +88,15 @@ impl TabbedBoxMaker {
             params.z_step_down,
             params.finger_joint.space,
             params.finger_joint.finger,
+            params.finger_joint.surrounding_spaces,
+            params.finger_joint.play,
+            params.finger_joint.extra_length,
+            params.finger_joint.dimple_height,
+            params.finger_joint.dimple_length,
+            params.burn,
+            params.feed_rate,
+            params.offset_x,
+            params.offset_y,
         ];
         if numbers.iter().any(|v| !v.is_finite()) {
             return Err("All dimensions must be numbers".to_string());

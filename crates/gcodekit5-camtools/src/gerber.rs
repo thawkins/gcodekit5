@@ -582,7 +582,13 @@ impl GerberConverter {
                                                     // G74: I/J are unsigned and the arc spans
                                                     // at most 90 degrees; a zero-length arc
                                                     // is a point, not a full circle.
+                                                    // It still paints the aperture there.
                                                     if (x - current_x).hypot(y - current_y) < 1e-9 {
+                                                        sketches.push(Self::create_thick_segment(
+                                                            (current_x, current_y),
+                                                            (x, y),
+                                                            width,
+                                                        ));
                                                         current_x = x;
                                                         current_y = y;
                                                         continue;
@@ -1221,8 +1227,8 @@ impl GerberConverter {
 ///
 /// In G74 mode `I`/`J` are unsigned distances and the arc spans at most 90
 /// degrees, so of the four sign combinations the centre is the one that is
-/// equidistant from both endpoints with a sweep of 90 degrees or less in the
-/// arc's direction.
+/// equidistant from both endpoints (within coordinate rounding) with the
+/// shortest sweep in the arc's direction.
 ///
 /// # Arguments
 /// * `start` / `end` - Arc endpoints.
@@ -1250,12 +1256,16 @@ pub fn single_quadrant_center(
     };
     let candidates =
         [(i, j), (-i, j), (i, -j), (-i, -j)].map(|(di, dj)| (start.0 + di, start.1 + dj));
-    let quarter = std::f64::consts::FRAC_PI_2 + 1e-6;
+    // A centre is consistent when both endpoints are on its circle, within
+    // what rounded file coordinates allow. Of those, the arc takes the
+    // shortest sweep (at most 90 degrees in a valid file); a rounded endpoint
+    // can push that a little past 90, so the sweep is not a hard limit.
+    let tolerance = |c: (f64, f64)| (1e-3 * (start.0 - c.0).hypot(start.1 - c.1)).max(1e-3);
     candidates
         .iter()
         .copied()
-        .filter(|c| sweep(*c) <= quarter)
-        .min_by(|a, b| mismatch(*a).total_cmp(&mismatch(*b)))
+        .filter(|c| mismatch(*c) <= tolerance(*c))
+        .min_by(|a, b| sweep(*a).total_cmp(&sweep(*b)))
         .or_else(|| {
             candidates
                 .iter()
