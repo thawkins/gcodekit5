@@ -151,8 +151,6 @@ pub struct UiSettings {
     pub font_size: u8,
     /// UI language code (e.g., "en", "es", "fr")
     pub language: String,
-    /// Show keyboard shortcuts in menus
-    pub show_menu_shortcuts: bool,
     /// Measurement system (Metric or Imperial)
     #[serde(default)]
     pub measurement_system: MeasurementSystem,
@@ -236,7 +234,6 @@ impl Default for UiSettings {
             theme: Theme::default(),
             font_size: 12,
             language: "en".to_string(),
-            show_menu_shortcuts: true,
             measurement_system: MeasurementSystem::default(),
             feed_rate_units: FeedRateUnits::default(),
             startup_tab: StartupTab::default(),

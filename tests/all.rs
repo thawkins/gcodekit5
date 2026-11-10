@@ -1,8 +1,8 @@
-//! Single integration-test binary for `gcodekit5-gcodeeditor`.
+//! Single integration-test binary for `gcodekit5-design`.
 //!
 //! Each test file is included as a child module, so the crate links one test
 //! binary instead of one per file. Run one file with
-//! `cargo nextest run -p gcodekit5-gcodeeditor -E 'test({module}::)'`.
+//! `cargo nextest run -p gcodekit5-design -E 'test({module}::)'`.
 
 /// Binary-wide lock for tests that touch process-global state.
 pub fn global_env_mutex() -> &'static std::sync::Mutex<()> {
@@ -17,5 +17,5 @@ pub fn global_env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-#[path = "editor_regressions.rs"]
-mod editor_regressions;
+#[path = "six_axis_integration_tests.rs"]
+mod six_axis_integration_tests;
