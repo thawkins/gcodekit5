@@ -394,3 +394,32 @@ fn test_header_final_z_is_the_deepest_cut() {
     let gcode = pocket_gcode(|s| s.canvas.add_rectangle(0.0, 0.0, 30.0, 20.0), 3.0);
     assert!(gcode.contains("; Final Z: 7.000mm"), "{gcode}");
 }
+
+#[test]
+fn test_cnc_spindle_speed_change_is_emitted() {
+    // Review of #85: segments asking for another RPM ran at the first one.
+    let mut tp = Toolpath::new(3.0, -1.0);
+    tp.add_segment(ToolpathSegment::new(
+        ToolpathSegmentType::LinearMove,
+        Point::new(0.0, 0.0),
+        Point::new(10.0, 0.0),
+        1000.0,
+        12000,
+    ));
+    tp.add_segment(ToolpathSegment::new(
+        ToolpathSegmentType::LinearMove,
+        Point::new(10.0, 0.0),
+        Point::new(10.0, 10.0),
+        1000.0,
+        8000,
+    ));
+    let gcode = ToolpathToGcode::new(Units::MM, 5.0).generate(&tp);
+    let lines = gcode_words(&gcode);
+    let start = lines.iter().position(|l| l == "M3 S12000");
+    let change = lines.iter().position(|l| l == "S8000");
+    assert!(
+        start.is_some() && change.is_some() && start < change,
+        "{gcode}"
+    );
+    assert_eq!(lines.iter().filter(|l| l.as_str() == "S12000").count(), 0);
+}
