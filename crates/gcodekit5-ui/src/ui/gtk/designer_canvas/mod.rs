@@ -722,9 +722,7 @@ impl DesignerCanvas {
                 if let Some(controller) = settings_controller.as_ref() {
                     if let Ok(mut persistence) = controller.persistence.try_borrow_mut() {
                         persistence.config_mut().file_processing.output_directory = path.clone();
-                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-                        let _ = persistence.save_to_file(&config_path);
+                        persistence.persist_or_log();
                     }
                 }
                 canvas.process_imported_image(path);

@@ -263,6 +263,7 @@ impl MachineControlView {
                 *self.job_start_time.lock() = None;
                 self.quick_probe.set(QuickProbeState::Idle);
                 self.last_wco.set(None);
+                device_status::cancel_stop();
 
                 self.set_connection_controls(false);
                 self.update_axis_visibility(device_status::get_active_num_axes());
@@ -406,6 +407,7 @@ impl MachineControlView {
         self.disabled_reason_label.set_text("");
 
         device_status::update_connection_status(true, Some(port_name.to_string()));
+        device_status::cancel_stop();
         if let Some(sb) = self.status_bar.as_ref() {
             sb.set_connected(true, port_name);
         }
@@ -623,6 +625,14 @@ impl MachineControlView {
         if let GrblResponseLine::Status(status) = &kind {
             self.apply_status_report(status);
             self.restore_absolute_mode_after_probe(comm);
+            // An `ok` that arrived while paused left the drill/probe queue
+            // waiting for a send that never came: send it now.
+            if self.resumed_externally.take()
+                && !*self.waiting_for_ack.lock()
+                && !self.send_queue.lock().is_empty()
+            {
+                self.advance_legacy_queue(comm);
+            }
         }
     }
 

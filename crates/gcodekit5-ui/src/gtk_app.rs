@@ -43,16 +43,11 @@ pub fn main() {
 
     app.connect_startup(|_| {
         // Load settings early to get language preference
-        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-
-        let language = if config_path.exists() {
-            gcodekit5_settings::SettingsPersistence::load_from_file(&config_path)
-                .map(|p| p.config().ui.language.clone())
-                .unwrap_or_else(|_| "system".to_string())
-        } else {
-            "system".to_string()
-        };
+        let language = gcodekit5_settings::SettingsManager::config_file_path()
+            .ok()
+            .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
+            .map(|p| p.config().ui.language.clone())
+            .unwrap_or_else(|| "system".to_string());
 
         i18n::init(Some(language));
         if let Err(e) = libadwaita::init() {
@@ -79,22 +74,28 @@ pub fn main() {
         let settings_dialog = Rc::new(RefCell::new(gcodekit5_settings::SettingsDialog::new()));
 
         // Load settings from file if it exists, otherwise use defaults
-        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-        let settings_persistence = if config_path.exists() {
-            match gcodekit5_settings::SettingsPersistence::load_from_file(&config_path) {
-                Ok(persistence) => {
-                    info!("Loaded settings from {:?}", config_path);
-                    Rc::new(RefCell::new(persistence))
+        // A config file that fails to load is kept: the defaults are used and
+        // the file is backed up before the first save replaces it.
+        let mut settings_load_error: Option<String> = None;
+        let settings_persistence = match gcodekit5_settings::SettingsManager::config_file_path() {
+            Ok(config_path) => {
+                let (persistence, error) =
+                    gcodekit5_settings::SettingsPersistence::load_or_default(&config_path);
+                match &error {
+                    Some(e) => tracing::error!(
+                        path = %config_path.display(),
+                        error = %e,
+                        "Settings file could not be loaded; using defaults"
+                    ),
+                    None => info!("Loaded settings from {:?}", config_path),
                 }
-                Err(e) => {
-                    info!("Failed to load settings: {}, using defaults", e);
-                    Rc::new(RefCell::new(gcodekit5_settings::SettingsPersistence::new()))
-                }
+                settings_load_error = error.map(|e| format!("{}\n\n{e}", config_path.display()));
+                Rc::new(RefCell::new(persistence))
             }
-        } else {
-            info!("Config file not found at {:?}, using defaults", config_path);
-            Rc::new(RefCell::new(gcodekit5_settings::SettingsPersistence::new()))
+            Err(e) => {
+                tracing::error!(error = %e, "No settings directory; using defaults");
+                Rc::new(RefCell::new(gcodekit5_settings::SettingsPersistence::new()))
+            }
         };
 
         let settings_controller = Rc::new(gcodekit5_settings::SettingsController::new(
@@ -121,11 +122,17 @@ pub fn main() {
         }
 
         // Designer state is now managed internally by DesignerView
+        // Window size from Preferences (saved again when the window closes).
+        let (window_width, window_height) = {
+            let p = settings_persistence.borrow();
+            let ui = &p.config().ui;
+            (ui.window_width.max(640) as i32, ui.window_height.max(480) as i32)
+        };
         let window = ApplicationWindow::builder()
             .application(app)
             .title(t!("GCodeKit5"))
-            .default_width(1400) // Ancho de ventana
-            .default_height(900) // Alto de ventana
+            .default_width(window_width)
+            .default_height(window_height)
             .build();
 
         // Use HeaderBar as titlebar
@@ -203,8 +210,10 @@ pub fn main() {
                 crate::device_status::set_active_controller_type(Some(
                     profile.controller_type.as_str().to_string(),
                 ));
+                crate::device_status::set_active_pen_mode(profile.pen_mode);
             } else {
                 crate::device_status::set_active_controller_type(None);
+                crate::device_status::set_active_pen_mode(false);
             }
             glib::ControlFlow::Continue
         });
@@ -220,6 +229,7 @@ pub fn main() {
 
             // Publicar el ControllerType de la activa en el estado global
             crate::device_status::set_active_controller_type(Some(controller_type.clone()));
+            crate::device_status::set_active_pen_mode(profile.pen_mode);
 
             status_bar.set_device_info(device_name, &controller_type, &device_type);
         }
@@ -517,8 +527,25 @@ pub fn main() {
 
         main_box.append(&content_box);
 
-        // Append the StatusBar
+        // Append the StatusBar; Preferences > Show Status Bar controls it.
         main_box.append(&status_bar.widget);
+        let show_status_bar = settings_persistence
+            .borrow()
+            .config()
+            .ui
+            .panel_visibility
+            .get("status_bar")
+            .copied()
+            .unwrap_or(true);
+        status_bar.widget.set_visible(show_status_bar);
+        {
+            let status_bar_widget = status_bar.widget.clone();
+            settings_controller.on_setting_changed(move |key, value| {
+                if key == "show_status_bar" {
+                    status_bar_widget.set_visible(value == "true");
+                }
+            });
+        }
 
         // Connect eStop (Ctrl-X / 0x18): delegate to MachineControlView so the DirectSender
         // worker thread is stopped too (resetting only the flags let it keep streaming).
@@ -1084,6 +1111,48 @@ pub fn main() {
         };
         stack.set_visible_child_name(initial_tab);
 
+        // Preferences > Window Width/Height resize the window at once, so the
+        // size saved on close is the one just chosen.
+        {
+            let window_weak = window.downgrade();
+            settings_controller.on_setting_changed(move |key, value| {
+                if key != "window_width" && key != "window_height" {
+                    return;
+                }
+                let (Some(win), Ok(v)) = (window_weak.upgrade(), value.parse::<i32>()) else {
+                    return;
+                };
+                if win.is_maximized() || v <= 0 {
+                    return;
+                }
+                let (w, h) = (win.default_width(), win.default_height());
+                if key == "window_width" {
+                    win.set_default_size(v.max(640), h);
+                } else {
+                    win.set_default_size(w, v.max(480));
+                }
+            });
+        }
+
+        // Remember the window size for the next start. Connected before the
+        // unsaved-changes prompt so it runs on every close request.
+        {
+            let persistence = settings_persistence.clone();
+            window.connect_close_request(move |win| {
+                if !win.is_maximized() {
+                    let (width, height) = (win.default_width(), win.default_height());
+                    if width > 0 && height > 0 {
+                        if let Ok(mut p) = persistence.try_borrow_mut() {
+                            p.config_mut().ui.window_width = width as u32;
+                            p.config_mut().ui.window_height = height as u32;
+                            p.persist_or_log();
+                        }
+                    }
+                }
+                glib::Propagation::Proceed
+            });
+        }
+
         // Ask before closing the window while the design has unsaved changes.
         {
             let designer_close = designer.clone();
@@ -1108,6 +1177,17 @@ pub fn main() {
 
         //        window.maximize();
         window.present();
+
+        if let Some(details) = settings_load_error {
+            crate::ui::gtk::common::dialog::show_warning(
+                &t!("Settings could not be loaded"),
+                &format!(
+                    "{}\n\n{details}",
+                    t!("Default settings are in use. The settings file will be backed up before it is replaced.")
+                ),
+                Some(window.upcast_ref()),
+            );
+        }
 
         // Forzar actualización del editor después de que la ventana esté visible
         let editor_for_startup = editor.clone();

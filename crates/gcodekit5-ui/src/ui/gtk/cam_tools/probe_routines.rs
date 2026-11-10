@@ -33,7 +33,7 @@ use gcodekit5_camtools::probe_routines::{
     defaults as probe_defaults, ProbeOptions, ProbeRoutineEngine,
 };
 use gcodekit5_camtools::wcs_service::{WcsUpdateConfig, WcsUpdateService};
-use gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report;
+use gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report_in;
 use gcodekit5_communication::Communicator;
 use gcodekit5_core::{
     Corner, Position, ProbeAxis as Axis, ProbeDirection as Direction, ProbeReport, ProbeRoutine,
@@ -108,7 +108,9 @@ impl ProbeRunLog {
         let mut reports = Vec::new();
         let mut failure = None;
         for line in text.lines().map(str::trim) {
-            if let Some(report) = parse_probe_report(line) {
+            if let Some(report) =
+                parse_probe_report_in(line, crate::device_status::reports_in_inches())
+            {
                 reports.push(report);
             } else if failure.is_none() {
                 let lower = line.to_ascii_lowercase();
@@ -736,7 +738,7 @@ impl ProbeRoutinesTool {
             .borrow()
             .as_ref()
             .is_some_and(|s| s.is_streaming());
-        if *mc.is_streaming.lock() || direct_running {
+        if mc.job_active() || direct_running {
             return Some(t!("A job is running."));
         }
         if mc.quick_probe.get() != Default::default() {

@@ -140,16 +140,17 @@ impl ControllerProtocol {
     }
 
     /// Parses a controller type name (as stored in device profiles).
+    ///
+    /// grblHAL and FluidNC speak the GRBL protocol, so they map to
+    /// [`Self::Grbl`].
     pub fn from_name(s: &str) -> Self {
         match s {
-            "GRBL" | "Grbl" => Self::Grbl,
+            "GRBL" | "Grbl" | "grblHAL" | "GrblHal" | "FluidNC" => Self::Grbl,
             "Repetier" => Self::Repetier,
             // "Marlin" => Self::Marlin,
-            // "FluidNC" => Self::FluidNC,
             // "TinyG" => Self::TinyG,
             // "g2core" | "G2Core" => Self::G2Core,
             // "Smoothieware" => Self::Smoothieware,
-            // "grblHAL" | "GrblHal" => Self::GrblHal,
             _ => Self::Unknown,
         }
     }
