@@ -282,6 +282,7 @@ impl DesignerCanvas {
                     "convert_to_rectangle" => canvas.convert_to_rectangle(),
                     "mirror_x" => canvas.mirror_x(),
                     "mirror_y" => canvas.mirror_y(),
+                    "array" => canvas.open_array_dialog(),
                     _ => {}
                 }
             });
@@ -319,6 +320,7 @@ impl DesignerCanvas {
 
         vbox.append(&create_item(&t!("Mirror on X"), "mirror_x"));
         vbox.append(&create_item(&t!("Mirror on Y"), "mirror_y"));
+        vbox.append(&create_item(&t!("Array..."), "array"));
 
         // Rotate menu is always shown since we have a selection
         {

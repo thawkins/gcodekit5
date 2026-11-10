@@ -356,17 +356,6 @@ impl SettingsPersistence {
             .with_category(SettingsCategory::UserInterface),
         );
 
-        // Show Toolbar
-        dialog.add_setting(
-            Setting::new(
-                "show_toolbar",
-                "Show Toolbar",
-                SettingValue::Boolean(ui.panel_visibility.get("toolbar").copied().unwrap_or(true)),
-            )
-            .with_description("Show the main toolbar")
-            .with_category(SettingsCategory::UserInterface),
-        );
-
         // Show Status Bar
         dialog.add_setting(
             Setting::new(
@@ -380,17 +369,6 @@ impl SettingsPersistence {
                 ),
             )
             .with_description("Show the status bar at the bottom")
-            .with_category(SettingsCategory::UserInterface),
-        );
-
-        // Show Menu Shortcuts
-        dialog.add_setting(
-            Setting::new(
-                "show_menu_shortcuts",
-                "Show Menu Shortcuts",
-                SettingValue::Boolean(ui.show_menu_shortcuts),
-            )
-            .with_description("Display keyboard shortcuts in menu items")
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -828,15 +806,6 @@ impl SettingsPersistence {
             self.config.ui.window_height = height;
         }
 
-        if let Some(setting) = dialog.get_setting("show_toolbar")
-            && let Ok(value) = setting.value.as_str().parse::<bool>()
-        {
-            self.config
-                .ui
-                .panel_visibility
-                .insert("toolbar".to_string(), value);
-        }
-
         if let Some(setting) = dialog.get_setting("show_status_bar")
             && let Ok(value) = setting.value.as_str().parse::<bool>()
         {
@@ -844,12 +813,6 @@ impl SettingsPersistence {
                 .ui
                 .panel_visibility
                 .insert("status_bar".to_string(), value);
-        }
-
-        if let Some(setting) = dialog.get_setting("show_menu_shortcuts")
-            && let Ok(value) = setting.value.as_str().parse::<bool>()
-        {
-            self.config.ui.show_menu_shortcuts = value;
         }
 
         if let Some(setting) = dialog.get_setting("show_about_on_startup")

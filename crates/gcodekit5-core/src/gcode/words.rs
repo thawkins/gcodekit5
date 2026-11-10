@@ -66,6 +66,22 @@ pub fn strip_comments(line: &str) -> Cow<'_, str> {
 /// # Returns
 /// The words in the order they appear on the line.
 pub fn parse_words(code: &str) -> Vec<Word> {
+    scan_words(code, false)
+}
+
+/// Like [`parse_words`], but a letter without a valid number is kept as a
+/// word with `value = NaN`, so a validator can report it.
+///
+/// # Arguments
+/// * `code` - Line content with comments already removed.
+pub fn parse_words_keeping_invalid(code: &str) -> Vec<Word> {
+    scan_words(code, true)
+}
+
+/// Shared word scanner: a letter, optional spaces, then an optional sign,
+/// digits and at most one dot. Invalid numbers are dropped, or kept as NaN
+/// when `keep_invalid` is set.
+fn scan_words(code: &str, keep_invalid: bool) -> Vec<Word> {
     let bytes = code.as_bytes();
     let mut words = Vec::new();
     let mut i = 0;
@@ -101,10 +117,13 @@ pub fn parse_words(code: &str) -> Vec<Word> {
         }
 
         // All consumed bytes are ASCII, so `start..i` is a valid char boundary range.
-        if let Ok(value) = code[start..i].parse::<f64>()
-            && value.is_finite()
-        {
-            words.push(Word { letter, value });
+        match code[start..i].parse::<f64>() {
+            Ok(value) if value.is_finite() => words.push(Word { letter, value }),
+            _ if keep_invalid => words.push(Word {
+                letter,
+                value: f64::NAN,
+            }),
+            _ => {}
         }
     }
 

@@ -1,8 +1,8 @@
-//! Single integration-test binary for the `gcodekit5` binary package.
+//! Single integration-test binary for `gcodekit5-design`.
 //!
 //! Each test file is included as a child module, so the crate links one test
 //! binary instead of one per file. Run one file with
-//! `cargo nextest run -p gcodekit5 -E 'test({module}::)'`.
+//! `cargo nextest run -p gcodekit5-design -E 'test({module}::)'`.
 
 /// Binary-wide lock for tests that touch process-global state.
 pub fn global_env_mutex() -> &'static std::sync::Mutex<()> {

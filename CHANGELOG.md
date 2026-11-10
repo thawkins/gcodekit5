@@ -80,6 +80,23 @@
 
 ### Removed
 - The Device Config "Restore" button (E2-06): it reported restoring settings but did nothing
+## [Unreleased] - 2026-11-10 (leftovers: Preferences, features, shared G-code code)
+
+### Added
+- **Designer Array dialog**: right-click > Array... copies the selection as a linear, grid or circular array
+- **Rotary jog buttons**: A/B/C -/+ buttons in each rotary DRO row jog by Preferences > Machine > Rotary Jog Step
+
+### Changed
+- **Preferences that now take effect**: X/Y limits are the Designer's working area when no device profile is active; X/Y/Z/A/B/C limits fill the machine panel's Machine Limits (from `$130`-`$132` once read); Steps per Degree A/B/C is sent to the controller (`$103`-`$105`) when changed while idle; Rotary Calibration A/B/C is the work position set when zeroing that axis; Arc Segment Length sets how finely the 3D view draws arcs
+- **Dithering/halftone** for engraved images is back (Threshold, Bayer, Floyd-Steinberg, Atkinson) in the image properties
+- **One G-code tokenizer and one arc rule** (in `gcodekit5-core`) are shared by the visualizer, the CAM tools and the stock simulator; a coincident arc start/end is a full circle everywhere
+- Long functions split: the properties panel refresh and the application start-up
+- Inline unit tests moved to each crate's `tests/`
+
+### Removed
+- The unused `gcodekit5-gcodeeditor` crate
+- Preferences > Show Toolbar and Show Menu Shortcuts (no toolbar exists; GTK always shows menu shortcuts)
+
 ## [Unreleased] - 2026-11-10 (structural changes)
 
 ### Removed
