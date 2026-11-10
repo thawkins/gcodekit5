@@ -79,6 +79,28 @@ impl TabbedBoxMaker {
     }
 
     fn validate_parameters(params: &BoxParameters) -> Result<(), String> {
+        // `NaN < 20.0` is false, so non-numbers must be rejected explicitly.
+        let numbers = [
+            params.x,
+            params.y,
+            params.h,
+            params.thickness,
+            params.z_step_down,
+            params.finger_joint.space,
+            params.finger_joint.finger,
+        ];
+        if numbers.iter().any(|v| !v.is_finite()) {
+            return Err("All dimensions must be numbers".to_string());
+        }
+
+        if params.laser_passes < 1 {
+            return Err("Laser passes must be at least 1".to_string());
+        }
+
+        if params.z_step_down < 0.0 {
+            return Err("Z step down must not be negative".to_string());
+        }
+
         if params.x < 20.0 || params.y < 20.0 || params.h < 20.0 {
             return Err("All dimensions must be at least 20mm".to_string());
         }

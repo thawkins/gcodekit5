@@ -458,3 +458,114 @@ fn test_arc_expander_full_circle() {
     // A full circle must visit the opposite side (-10, 0), not collapse onto the start point.
     assert!(pts.iter().any(|&(x, _)| x < -9.0));
 }
+
+// Moved from the inline `hatch_test` module (audit D-03); its empty
+// always-passing companion test was removed.
+#[test]
+fn test_gerber_rubout_generation() {
+    let params = GerberParameters {
+        layer_type: GerberLayerType::TopCopper,
+        rubout: true,
+        board_width: 20.0,
+        board_height: 20.0,
+        tool_diameter: 1.0,
+        isolation_width: 0.0,
+        ..Default::default()
+    };
+
+    // Simple Gerber: A 10x10 square at 5,5
+    // D10* (Aperture 10)
+    // %ADD10C,5*% (Circle 5mm)
+    // D02 X50000 Y50000* (Move to 5,5)
+    // D01 X150000 Y50000* (Draw to 15,5)
+    // D01 X150000 Y150000* (Draw to 15,15)
+    // D01 X50000 Y150000* (Draw to 5,15)
+    // D01 X50000 Y50000* (Draw to 5,5)
+
+    // Actually let's just use a simple flash to create a shape
+    // %ADD10C,10*% (Circle 10mm)
+    // D10*
+    // X100000Y100000D03* (Flash at 10,10)
+
+    let gerber_content = r#"
+%MOIN*%
+%FSLAX24Y24*%
+%ADD10C,0.3937*%
+D10*
+X100000Y100000D03*
+M02*
+"#;
+
+    let result = GerberConverter::generate(&params, gerber_content);
+    match result {
+        Ok(gcode) => {
+            assert!(gcode.contains("; Rubout"));
+            assert!(gcode.contains("G1 Z-0.1")); // Cutting move
+        }
+        Err(e) => {
+            panic!("Failed to generate G-code: {:?}", e);
+        }
+    }
+}
+
+fn drill(safe_z: f64, top_z: f64, bottom_z: f64, peck: f64) -> anyhow::Result<String> {
+    use gcodekit5_camtools::drill_press::{DrillPressGenerator, DrillPressParameters};
+    DrillPressGenerator::new(DrillPressParameters {
+        hole_diameter: 6.0,
+        tool_diameter: 6.0,
+        top_z,
+        bottom_z,
+        peck_depth: peck,
+        plunge_rate: 100.0,
+        feed_rate: 500.0,
+        spindle_speed: 10000.0,
+        safe_z,
+        x: 10.0,
+        y: 20.0,
+        home_before_job: false,
+    })
+    .generate()
+}
+
+#[test]
+fn test_drill_press_rejects_unsafe_parameters() {
+    // Audit D-05.
+    assert!(drill(5.0, 0.0, -6.0, 2.0).is_ok());
+    assert!(
+        drill(-1.0, 0.0, -6.0, 2.0).is_err(),
+        "safe Z inside the stock"
+    );
+    assert!(drill(5.0, 0.0, 2.0, 2.0).is_err(), "bottom above top");
+    assert!(drill(5.0, 0.0, -6.0, f64::NAN).is_err(), "NaN peck");
+    assert!(drill(5.0, 0.0, -6.0, 1e-6).is_err(), "absurdly small peck");
+    assert!(drill(5.0, 0.0, -6.0, -1.0).is_err(), "negative peck");
+    assert!(drill(5.0, 0.0, -6.0, 0.0).is_ok(), "0 drills in one plunge");
+}
+
+#[test]
+fn test_tabbed_box_rejects_zero_passes_and_nan() {
+    // Audit D-06.
+    use gcodekit5_camtools::tabbed_box::{BoxParameters, TabbedBoxMaker};
+    let zero_passes = BoxParameters {
+        laser_passes: 0,
+        ..BoxParameters::default()
+    };
+    assert!(TabbedBoxMaker::new(zero_passes).is_err());
+    let nan = BoxParameters {
+        x: f32::NAN,
+        ..BoxParameters::default()
+    };
+    assert!(TabbedBoxMaker::new(nan).is_err());
+    assert!(TabbedBoxMaker::new(BoxParameters::default()).is_ok());
+}
+
+#[test]
+fn test_gerber_single_quadrant_arc_centre_uses_signless_offsets() {
+    // Audit D-04: G74 I/J are unsigned; the centre must be picked from the
+    // four sign combinations, not taken as start + (I, J).
+    use gcodekit5_camtools::gerber::single_quadrant_center;
+    let c = single_quadrant_center((1.0, 0.0), (0.0, 1.0), (1.0, 0.0), false);
+    assert!(c.0.abs() < 1e-9 && c.1.abs() < 1e-9, "{c:?}");
+    let c = single_quadrant_center((0.0, 1.0), (1.0, 0.0), (0.0, 1.0), true);
+    assert!(c.0.abs() < 1e-9 && c.1.abs() < 1e-9, "{c:?}");
+}
