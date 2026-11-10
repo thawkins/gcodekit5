@@ -1496,7 +1496,6 @@ dependencies = [
  "gcodekit5-core",
  "gcodekit5-designer",
  "gcodekit5-devicedb",
- "gcodekit5-gcodeeditor",
  "gcodekit5-settings",
  "gcodekit5-visualizer",
  "gettext-rs",
@@ -1513,7 +1512,6 @@ dependencies = [
  "once_cell",
  "raw-window-handle 0.5.2",
  "rfd",
- "ropey",
  "serde",
  "serde_json",
  "sourceview5",
@@ -1526,7 +1524,6 @@ dependencies = [
 name = "gcodekit5-visualizer"
 version = "1.2.0-beta.2"
 dependencies = [
- "anyhow",
  "chrono",
  "criterion",
  "gcodekit5-camtools",

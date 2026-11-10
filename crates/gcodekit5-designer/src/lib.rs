@@ -34,7 +34,6 @@ pub mod arrays;
 pub mod canvas;
 pub mod commands;
 pub mod dxf_parser;
-pub mod error;
 pub mod font_manager;
 pub mod gcode_gen;
 pub mod import;

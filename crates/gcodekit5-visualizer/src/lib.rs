@@ -3,10 +3,8 @@
 //! G-code visualization, parsing, and processing for GCodeKit5.
 //! Includes parser, preprocessors, stream readers, and visualizer components.
 
-pub mod error;
 pub mod gcode;
 pub mod helpers;
-pub mod utils;
 pub mod visualizer;
 
 pub use gcode::{
@@ -20,17 +18,4 @@ pub use visualizer::{
     generate_surface_mesh, Camera, Camera3D, GCodeCommand, Point3D, Renderer, Scene,
     StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer, VisualizerControls,
     VoxelGrid,
-};
-
-pub use utils::{
-    AdvancedProber, Alarm, AlarmManager, AlarmType, AutoConnectConfig, BackupEntry, BackupManager,
-    BasicProber, Bookmark, BookmarkManager, BoundingBox, CommandHistory, CustomAction, CustomMacro,
-    DataLogger, DropEvent, DropFileType, DropIndicatorState, DropTarget, DropZone, ExportOptions,
-    FeedRateStats, FileComparison, FileEncoding, FileExporter, FileFormat, FileProcessingPipeline,
-    FileReadStats, FileStatistics, FileValidation, GcodeFileReader, GcodeTemplate, HeightPoint,
-    HistoryEntry, LogEntry, NetworkConfig, PendantButton, PendantConfig, PerformanceMetrics,
-    ProbeMesh, ProbePoint, ProcessedFile, ProgramState, RecentFileEntry, RecentFilesManager,
-    SimulationPosition, Simulator, SoftLimits, SpindleStats, Stepper, TemplateLibrary,
-    TemplateVariable, ToolInfo, ToolLibrary, ToolOffset, ToolOffsetManager, ValidationIssue,
-    ValidationResult, ValidationSeverity, WorkCoordinateSystem, WorkOffset,
 };

@@ -8,16 +8,12 @@ use std::sync::Arc;
 
 use gcodekit5_visualizer::gcode::arc::arc_sweep;
 use gcodekit5_visualizer::gcode::processors::{ArcExpander, PatternRemover};
-use gcodekit5_visualizer::utils::phase7::{
-    CalibrationStepType, CalibrationWizard, CommunicationDiagnostics, DiagnosticReport,
-};
 use gcodekit5_visualizer::visualizer::{
     detect_stock_zero_reference, is_content_replacement, StockZeroReference, ToolpathCache,
 };
 use gcodekit5_visualizer::{
-    BackupManager, CommandProcessor, DecimalProcessor, FileEncoding, FileStreamReader,
-    GCodeCommand, GcodeCommand, GcodeFileReader, GcodeState, GcodeStreamReader, Point3D,
-    StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer,
+    CommandProcessor, DecimalProcessor, FileStreamReader, GCodeCommand, GcodeCommand, GcodeState,
+    GcodeStreamReader, Point3D, StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer,
 };
 
 fn parse(gcode: &str) -> Visualizer {
@@ -325,50 +321,6 @@ fn test_arc_expander_description_matches_behaviour() {
 // ------------------------------------------------------------- input files
 
 #[test]
-fn test_file_reader_decodes_non_utf8_files() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("latin1.nc");
-    fs::write(&path, b"G21 (caf\xe9)\r\nG1 X1\n").expect("write");
-    let reader = GcodeFileReader::new(&path).expect("reader");
-
-    let mut lines = Vec::new();
-    let stats = reader
-        .read_lines(|line| {
-            lines.push(line.to_string());
-            Ok(())
-        })
-        .expect("read_lines");
-    assert_eq!(lines, vec!["G21 (caf\u{e9})", "G1 X1"]);
-    assert_eq!(stats.encoding, FileEncoding::Latin1);
-    assert_eq!(stats.lines_read, 2);
-
-    let all = reader.read_all().expect("read_all");
-    assert!(all.contains("caf\u{e9}"));
-    let (limited, limited_stats) = reader.read_lines_limited(1).expect("limited");
-    assert_eq!(limited.len(), 1);
-    assert_eq!(limited_stats.encoding, FileEncoding::Latin1);
-}
-
-#[test]
-fn test_file_reader_strips_utf8_bom() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("bom.nc");
-    fs::write(&path, b"\xEF\xBB\xBFG0 X1\n").expect("write");
-    let reader = GcodeFileReader::new(&path).expect("reader");
-    let mut first = String::new();
-    let stats = reader
-        .read_lines(|line| {
-            if first.is_empty() {
-                first = line.to_string();
-            }
-            Ok(())
-        })
-        .expect("read_lines");
-    assert_eq!(first, "G0 X1");
-    assert_eq!(stats.encoding, FileEncoding::Utf8);
-}
-
-#[test]
 fn test_file_stream_read_error_is_not_eof() {
     // Reading a directory fails with EISDIR on Linux; that must surface as an
     // error, not be mistaken for the end of the file.
@@ -394,44 +346,7 @@ fn test_file_stream_reads_non_utf8_lossily() {
     assert!(reader.is_eof());
 }
 
-#[test]
-fn test_backup_same_second_does_not_overwrite() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let source = dir.path().join("prog.nc");
-    let backups = dir.path().join("backups");
-    let manager = BackupManager::new(&backups);
-
-    fs::write(&source, "first").expect("write");
-    let a = manager.backup(&source, "a").expect("backup a");
-    fs::write(&source, "second").expect("write");
-    let b = manager.backup(&source, "b").expect("backup b");
-    fs::write(&source, "third").expect("write");
-    let c = manager.backup(&source, "c").expect("backup c");
-
-    assert_ne!(a.backup_path, b.backup_path);
-    assert_ne!(b.backup_path, c.backup_path);
-    assert_eq!(fs::read_to_string(&a.backup_path).expect("a"), "first");
-    assert_eq!(fs::read_to_string(&b.backup_path).expect("b"), "second");
-    assert_eq!(fs::read_to_string(&c.backup_path).expect("c"), "third");
-
-    let listed = manager.list_backups().expect("list");
-    assert_eq!(listed.len(), 3);
-    assert_eq!(listed[0].id, c.id, "newest first");
-}
-
 // --------------------------------------------------------------- timestamps
-
-#[test]
-fn test_phase7_timestamps_are_utc() {
-    let mut wizard = CalibrationWizard::new(CalibrationStepType::StepCalibration);
-    wizard.record_measurement(10.0).expect("measure");
-    let ts: chrono::DateTime<chrono::Utc> = wizard.results()[0].timestamp;
-    assert!((chrono::Utc::now() - ts).num_seconds().abs() < 60);
-
-    let report = DiagnosticReport::new(CommunicationDiagnostics::default());
-    let _: chrono::DateTime<chrono::Utc> = report.timestamp;
-    assert!(report.format_report().contains(" UTC"));
-}
 
 #[test]
 fn test_stock_origin_explicit_marker_overrides_designer_header() {

@@ -1,5 +1,6 @@
 [package]
 name = "gcodekit5-core"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -23,3 +24,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [[bench]]
 name = "core_bench"
 harness = false
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

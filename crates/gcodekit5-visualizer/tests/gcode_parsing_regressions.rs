@@ -7,9 +7,8 @@ use gcodekit5_visualizer::gcode::processors::ArcExpander;
 use gcodekit5_visualizer::gcode::words::{parse_line, strip_comments};
 use gcodekit5_visualizer::visualizer::{ArcSegment, Vector3};
 use gcodekit5_visualizer::{
-    AdvancedProber, BackupManager, CommandProcessor, CommentProcessor, FileProcessingPipeline,
-    FileStreamReader, GCodeCommand, GcodeCommand, GcodeFileReader, GcodeParser, GcodeState,
-    GcodeStreamReader, ProcessorPipeline, Visualizer,
+    CommandProcessor, CommentProcessor, FileStreamReader, GCodeCommand, GcodeCommand, GcodeParser,
+    GcodeState, GcodeStreamReader, ProcessorPipeline, Visualizer,
 };
 
 fn parse(gcode: &str) -> Visualizer {
@@ -182,46 +181,6 @@ fn test_arc_segment_full_circle_length() {
 }
 
 #[test]
-fn test_file_statistics_modal_units_and_time() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("stats.nc");
-    fs::write(
-        &path,
-        "(header)\nG21 G90\nM3 S1000\nG0 X10\nG1 X20 F600\nG92 X0\nG91 G1 X10\nG2 X10 Y0 I5\n",
-    )
-    .expect("write");
-
-    let mut pipeline = FileProcessingPipeline::new();
-    let result = pipeline.process_file(&path).expect("process");
-    let stats = &result.statistics;
-    assert_eq!(stats.rapid_moves, 1);
-    assert_eq!(stats.linear_moves, 2);
-    assert_eq!(stats.arc_moves, 1);
-    assert_eq!(stats.comment_lines, 1);
-    assert_eq!(result.original_lines, 8);
-    assert!(stats.command_counts.contains_key("M3"));
-    // 10 + 10 + 10 straight, plus a half circle of radius 5
-    let expected = 30.0 + std::f32::consts::PI * 5.0;
-    assert!((stats.total_distance - expected).abs() < 1e-2);
-    // 0.2 s rapid + 20 mm / 600 mm/min (2 s) + 15.7 mm / 600 mm/min (1.57 s)
-    assert_eq!(stats.estimated_time, 4);
-}
-
-#[test]
-fn test_file_validation_does_not_count_g21_g91_as_moves() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("v.nc");
-    fs::write(&path, "G21 G90\nG91 G1 X1\nG92 X0\n").expect("write");
-    let validation = GcodeFileReader::new(&path)
-        .expect("reader")
-        .validate()
-        .expect("validate");
-    assert_eq!(validation.linear_moves, 1);
-    assert_eq!(validation.rapid_moves, 0);
-    assert_eq!(validation.arc_moves, 0);
-}
-
-#[test]
 fn test_comment_processor_removes_comment_text() {
     let out = CommentProcessor::new()
         .process(
@@ -257,40 +216,6 @@ fn test_file_stream_seek_mid_file_not_eof() {
         reader.read_line().expect("read").as_deref().map(str::trim),
         Some("L3")
     );
-}
-
-#[test]
-fn test_backup_cleanup_keeps_newest() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("time")
-        .as_secs();
-    for age in [1u64, 2, 3, 10_000_000] {
-        fs::write(dir.path().join((now - age).to_string()), "x").expect("write");
-    }
-    let mut manager = BackupManager::new(dir.path());
-    manager.set_max_backups(2);
-    manager.cleanup().expect("cleanup");
-    let mut remaining: Vec<u64> = manager
-        .list_backups()
-        .expect("list")
-        .iter()
-        .map(|b| b.timestamp)
-        .collect();
-    remaining.sort_unstable();
-    assert_eq!(remaining, vec![now - 2, now - 1]);
-}
-
-#[test]
-fn test_probe_sequence_retracts_between_points() {
-    let mut prober = AdvancedProber::new();
-    prober.add_probe_point(0.0, 0.0);
-    prober.add_probe_point(10.0, 10.0);
-    let seq = prober.generate_probe_sequence();
-    let probe = seq.find("G38.2").expect("probe");
-    let next_xy = seq.find("G0 X10").expect("second point");
-    assert!(seq[probe..next_xy].contains("G0 Z"));
 }
 
 #[test]

@@ -26,7 +26,6 @@ pub mod arc_expander;
 pub mod cam_presets;
 pub mod comment_processor;
 pub mod drill_press;
-pub mod error;
 pub mod gerber;
 pub mod hatch_generator;
 pub mod jigsaw_puzzle;
@@ -48,9 +47,6 @@ pub mod wcs_service;
 pub use arc_expander::ArcExpander;
 pub use comment_processor::CommentProcessor;
 pub use drill_press::{DrillPressGenerator, DrillPressParameters};
-pub use error::{
-    CamToolError, CamToolResult, FileFormatError, FileFormatResult, ParameterError, ParameterResult,
-};
 pub use gerber::{GerberConverter, GerberLayerType, GerberParameters};
 pub use jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 pub use laser_engraver::{

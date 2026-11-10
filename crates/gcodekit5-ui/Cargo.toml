@@ -14,7 +14,6 @@ gcodekit5-core = { path = "../gcodekit5-core" }
 gcodekit5-communication = { path = "../gcodekit5-communication" }
 gcodekit5-camtools = { path = "../gcodekit5-camtools" }
 gcodekit5-designer = { path = "../gcodekit5-designer" }
-gcodekit5-gcodeeditor = { path = "../gcodekit5-gcodeeditor" }
 gcodekit5-visualizer = { path = "../gcodekit5-visualizer" }
 gcodekit5-settings = { path = "../gcodekit5-settings" }
 gcodekit5-devicedb = { path = "../gcodekit5-devicedb" }
@@ -26,7 +25,6 @@ gio = "0.20"
 rfd = "0.15.4"
 lyon = "1.0"
 image = "0.25"
-ropey = "1.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"

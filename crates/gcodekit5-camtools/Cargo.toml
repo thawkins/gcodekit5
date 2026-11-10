@@ -1,5 +1,6 @@
 [package]
 name = "gcodekit5-camtools"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -26,3 +27,7 @@ gerber_parser = "0.3.1"
 serde_json.workspace = true
 csgrs = "0.20.1"
 nalgebra = "0.33.3"
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
