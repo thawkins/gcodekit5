@@ -7,6 +7,7 @@
 //! - Tool operations
 //! - Toolpath preview generation
 
+pub mod array_dialog;
 mod editing;
 mod input;
 mod rendering;
