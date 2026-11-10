@@ -5,13 +5,18 @@
 //! Resend requests in real-time by rolling back the file pointer.
 
 use crate::communication::Communicator;
-use crate::firmware::repetier::processor::{JobLineMap, RepetierEvent};
+use crate::firmware::repetier::processor::RepetierEvent;
 use crate::firmware::Sender;
 use crate::SerialCommunicator;
 use gcodekit5_core::ThreadSafe;
 use std::sync::mpsc::{channel, Receiver, Sender as MpscSender, TryRecvError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How long one line may keep failing to send before the job is stopped.
+/// A full port clears within milliseconds; a failure that lasts this long
+/// means the controller is gone.
+const SEND_RETRY_LIMIT: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 pub struct RepetierSender {
@@ -48,13 +53,12 @@ impl RepetierSender {
         let is_streaming_for_struct = is_streaming.clone();
 
         thread::spawn(move || {
-            let mut line_map = JobLineMap::default();
             let mut file_lines: Vec<String> = Vec::new();
             let mut current_idx: usize = 0;
             let mut commands_in_flight: usize = 0;
             let mut local_streaming = false;
             let mut local_paused = false;
-            let mut last_retry_idx: Option<usize> = None;
+            let mut send_failing_since: Option<Instant> = None;
 
             loop {
                 // Process control commands from the UI
@@ -96,7 +100,7 @@ impl RepetierSender {
                                     );
                                 }
                             }
-                            line_map.clear();
+                            send_failing_since = None;
 
                             current_idx = 0;
                             commands_in_flight = 0;
@@ -135,19 +139,14 @@ impl RepetierSender {
                         };
 
                     if !connected {
-                        tracing::warn!(
-                            "Repetier sender: controller not connected, job stopped at line {} of {}",
+                        fail_job(
+                            &tx_ui_thread,
+                            &is_streaming,
+                            "controller not connected",
                             current_idx,
-                            file_lines.len()
+                            file_lines.len(),
                         );
-                        let _ = tx_ui_thread.send(format!(
-                            "> Error: controller not connected; job stopped at line {} of {}",
-                            current_idx,
-                            file_lines.len()
-                        ));
                         local_streaming = false;
-                        *is_streaming.lock() = false;
-                        let _ = tx_ui_thread.send("Completed".to_string());
                         continue;
                     }
 
@@ -165,13 +164,12 @@ impl RepetierSender {
                             match comm.send(raw_line.as_bytes()) {
                                 Ok(written) if written > 0 => {
                                     let after = comm.repetier_line_counter();
-                                    line_map.record(before, after, current_idx);
                                     let _ = tx_ui_thread.send(format!("> {}", raw_line.trim()));
                                     // One ack is due per numbered line sent.
                                     commands_in_flight +=
                                         (after.saturating_sub(before) as usize).max(1);
                                     current_idx += 1;
-                                    last_retry_idx = None;
+                                    send_failing_since = None;
                                 }
                                 Ok(_) => {
                                     let _ = tx_ui_thread.send(format!(
@@ -181,13 +179,26 @@ impl RepetierSender {
                                     current_idx += 1;
                                 }
                                 Err(e) => {
-                                    if last_retry_idx != Some(current_idx) {
+                                    // Retry briefly (a full port clears quickly);
+                                    // a failure that persists ends the job.
+                                    let since = *send_failing_since.get_or_insert_with(|| {
                                         tracing::debug!(
                                             "Repetier sender: retrying line {} after: {}",
                                             current_idx,
                                             e
                                         );
-                                        last_retry_idx = Some(current_idx);
+                                        Instant::now()
+                                    });
+                                    if since.elapsed() >= SEND_RETRY_LIMIT {
+                                        fail_job(
+                                            &tx_ui_thread,
+                                            &is_streaming,
+                                            &format!("send failed: {e}"),
+                                            current_idx,
+                                            file_lines.len(),
+                                        );
+                                        local_streaming = false;
+                                        continue;
                                     }
                                 }
                             }
@@ -211,40 +222,50 @@ impl RepetierSender {
                                     );
                                 }
                                 RepetierEvent::Resend(target_line) => {
-                                    commands_in_flight = 0;
-                                    match line_map.file_index(target_line) {
-                                        Some(idx) => {
-                                            // Re-send the whole file line with the
-                                            // numbers it used the first time.
-                                            let first =
-                                                line_map.first_number(idx).unwrap_or(target_line);
-                                            comm.repetier_set_line_counter(first.saturating_sub(1));
-                                            current_idx = idx;
+                                    // Replay the exact numbered lines from the
+                                    // requested one, whoever sent them (job or
+                                    // console); each replayed line needs an ack.
+                                    match comm.repetier_resend(target_line) {
+                                        Ok(count) => {
+                                            commands_in_flight = count;
                                             let _ = tx_ui_thread.send(format!(
-                                                "> Resend requested for N{}: re-sending job line {}",
-                                                target_line,
-                                                idx + 1
+                                                "> Resend requested for N{}: re-sent {} line(s)",
+                                                target_line, count
                                             ));
                                         }
-                                        None => {
-                                            // Not a job line (e.g. a console
-                                            // command): continue the job with
-                                            // the number the firmware expects.
-                                            comm.repetier_set_line_counter(
-                                                target_line.saturating_sub(1),
+                                        Err(e) => {
+                                            fail_job(
+                                                &tx_ui_thread,
+                                                &is_streaming,
+                                                &format!("resend of N{target_line} failed: {e}"),
+                                                current_idx,
+                                                file_lines.len(),
                                             );
-                                            let _ = tx_ui_thread.send(format!(
-                                                "> Resend requested for N{}, which is not a job line; continuing",
-                                                target_line
-                                            ));
+                                            local_streaming = false;
+                                            break;
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Drain the byte buffer to avoid accumulation
-                        let _ = comm.receive();
+                        if !local_streaming {
+                            continue;
+                        }
+
+                        // Drain the byte buffer to avoid accumulation. A read
+                        // error means the controller can no longer answer.
+                        if let Err(e) = comm.receive() {
+                            fail_job(
+                                &tx_ui_thread,
+                                &is_streaming,
+                                &format!("receive failed: {e}"),
+                                current_idx,
+                                file_lines.len(),
+                            );
+                            local_streaming = false;
+                            continue;
+                        }
                     }
 
                     if current_idx >= file_lines.len() && commands_in_flight == 0 {
@@ -299,6 +320,24 @@ impl Sender for RepetierSender {
     fn is_streaming(&self) -> bool {
         *self.is_streaming.lock()
     }
+}
+
+/// Reports a job-ending error to the UI and marks streaming as finished.
+///
+/// The caller clears its own `local_streaming` flag.
+fn fail_job(
+    tx_ui: &MpscSender<String>,
+    is_streaming: &ThreadSafe<bool>,
+    reason: &str,
+    line: usize,
+    total: usize,
+) {
+    tracing::warn!("Repetier sender: {reason}; job stopped at line {line} of {total}");
+    let _ = tx_ui.send(format!(
+        "> Error: {reason}; job stopped at line {line} of {total}"
+    ));
+    *is_streaming.lock() = false;
+    let _ = tx_ui.send("Completed".to_string());
 }
 
 /// Replace laser on/off commands with a Z move, for pen-plotter use.

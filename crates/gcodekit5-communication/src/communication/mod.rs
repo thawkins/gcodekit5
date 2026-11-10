@@ -465,6 +465,36 @@ impl SerialCommunicator {
         self.repetier_processor.line_counter = n;
     }
 
+    /// Answers a firmware `Resend:N` by writing the numbered lines from
+    /// `from` onwards again, exactly as they were first sent.
+    ///
+    /// # Returns
+    /// The number of lines written (each needs one ack), or an error when
+    /// a requested line is no longer known or the port write fails.
+    pub fn repetier_resend(&mut self, from: u32) -> gcodekit5_core::Result<usize> {
+        let lines = self.repetier_processor.resend_lines(from).ok_or_else(|| {
+            gcodekit5_core::Error::other(format!("line N{from} is not available to re-send"))
+        })?;
+        let port = self
+            .port
+            .as_mut()
+            .ok_or_else(|| gcodekit5_core::Error::other("Not connected to serial port"))?;
+        let payload = lines.concat();
+        let mut bytes_to_send = payload.as_bytes();
+        while !bytes_to_send.is_empty() {
+            match port.write(bytes_to_send) {
+                Ok(0) => return Err(gcodekit5_core::Error::other("Full port".to_string())),
+                Ok(n) => bytes_to_send = &bytes_to_send[n..],
+                Err(e) => return Err(gcodekit5_core::Error::other(e.to_string())),
+            }
+        }
+        if !lines.is_empty() {
+            self.repetier_processor.mark_buffer_full();
+            self.notify_listeners(CommunicatorEvent::DataSent, &payload);
+        }
+        Ok(lines.len())
+    }
+
     /// Sets the protocol configured by the user (via Device Manager)
     ///
     /// The CONFIGURATION is the source of truth for the operating mode

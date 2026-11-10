@@ -5,9 +5,7 @@
 //! keep the meaning of the GRBL-style input, and the streaming helpers must
 //! frame, acknowledge, rewind and shut down correctly.
 
-use gcodekit5_communication::firmware::repetier::processor::{
-    JobLineMap, RepetierEvent, RepetierProcessor,
-};
+use gcodekit5_communication::firmware::repetier::processor::{RepetierEvent, RepetierProcessor};
 use gcodekit5_communication::firmware::repetier::RepetierSender;
 use gcodekit5_communication::firmware::Sender;
 use gcodekit5_communication::SerialCommunicator;
@@ -48,11 +46,22 @@ fn test_m4_is_still_translated_to_m3() {
 }
 
 #[test]
-fn test_preformatted_line_m400_is_not_translated_to_m3() {
+fn test_preformatted_line_is_renumbered_and_m400_kept() {
     let mut p = RepetierProcessor::new();
     let out = p.process_outgoing(b"N7 M400*99").expect("line is sent");
     let text = String::from_utf8_lossy(&out);
-    assert!(text.starts_with("N7 M400 "), "got {text:?}");
+    assert!(text.starts_with("N1 M400 "), "got {text:?}");
+    assert_eq!(p.line_counter, 1);
+    assert_eq!(p.resend_lines(1), Some(vec![text.into_owned()]));
+}
+
+#[test]
+fn test_compact_words_are_tokenized() {
+    let mut p = RepetierProcessor::new();
+    assert_eq!(translate(&mut p, "M4S500"), vec!["M3 S500"]);
+    assert_eq!(translate(&mut p, "M400"), vec!["M400"]);
+    assert_eq!(translate(&mut p, "N10G1X10Y5"), vec!["G1 X10 Y5"]);
+    assert!(status(&mut p).contains("MPos:10.000,5.000,0.000"));
 }
 
 #[test]
@@ -97,6 +106,25 @@ fn test_jog_keeps_axis_and_feed_and_restores_absolute() {
     assert_eq!(
         translate(&mut p, "$J=G21 G91 X10 F1000"),
         vec!["G21", "G91", "G1 X10 F1000", "G90"]
+    );
+}
+
+#[test]
+fn test_jog_honours_g90_and_restores_prior_g91() {
+    let mut p = RepetierProcessor::new();
+    translate(&mut p, "G91");
+    assert_eq!(
+        translate(&mut p, "$J=G90 X10 F100"),
+        vec!["G90", "G1 X10 F100", "G91"]
+    );
+}
+
+#[test]
+fn test_inch_jog_restores_mm() {
+    let mut p = RepetierProcessor::new();
+    assert_eq!(
+        translate(&mut p, "$J=G20 G91 X1 F10"),
+        vec!["G20", "G91", "G1 X1 F10", "G90", "G21"]
     );
 }
 
@@ -192,20 +220,82 @@ fn test_status_state_follows_flow_control() {
 }
 
 #[test]
-fn test_job_line_map_resolves_resend_to_file_line() {
-    let mut map = JobLineMap::default();
-    // A console command used N1..N4 before the job started.
-    map.record(4, 5, 0);
-    map.record(5, 6, 1);
-    map.record(6, 8, 2); // one file line that emitted two numbered lines
-    assert_eq!(map.file_index(5), Some(0));
-    assert_eq!(map.file_index(6), Some(1));
-    assert_eq!(map.file_index(7), Some(2));
-    assert_eq!(map.file_index(8), Some(2));
-    assert_eq!(map.first_number(2), Some(7));
-    assert_eq!(map.file_index(3), None);
-    map.clear();
-    assert_eq!(map.file_index(5), None);
+fn test_resend_lines_replays_exact_suffix() {
+    let mut p = RepetierProcessor::new();
+    let sent: Vec<String> = translate_raw(&mut p, "$J=G91 X1 F100");
+    assert_eq!(sent.len(), 3);
+    // N2 and N3 were not accepted: replay exactly those, not N1.
+    assert_eq!(p.resend_lines(2), Some(sent[1..].to_vec()));
+    // The next number not yet sent: nothing to replay.
+    assert_eq!(p.resend_lines(4), Some(Vec::new()));
+    // A number never sent cannot be honoured.
+    assert_eq!(p.resend_lines(5), None);
+    assert_eq!(p.resend_lines(0), None);
+}
+
+#[test]
+fn test_resend_of_evicted_line_is_refused() {
+    let mut p = RepetierProcessor::new();
+    for i in 0..600 {
+        translate(&mut p, &format!("G1 X{i}"));
+    }
+    assert_eq!(p.resend_lines(1), None);
+    assert_eq!(p.resend_lines(600).map(|l| l.len()), Some(1));
+}
+
+#[test]
+fn test_activate_resets_modal_state_and_position() {
+    let mut p = RepetierProcessor::new();
+    translate(&mut p, "G20");
+    translate(&mut p, "G91");
+    translate(&mut p, "G1 X1");
+    p.activate();
+    translate(&mut p, "G1 X10");
+    assert!(status(&mut p).contains("MPos:10.000,0.000,0.000"));
+    assert_eq!(p.resend_lines(1).map(|l| l.len()), Some(1));
+}
+
+#[test]
+fn test_status_reports_g92_offset_as_wco() {
+    let mut p = RepetierProcessor::new();
+    translate(&mut p, "G1 X10 Y4");
+    translate(&mut p, "G10 L20 P1 X0 Y0");
+    let s = status(&mut p);
+    assert!(s.contains("MPos:10.000,4.000,0.000"), "got {s:?}");
+    assert!(s.contains("WCO:10.000,4.000,0.000"), "got {s:?}");
+    // Absolute moves are now in the shifted work coordinates.
+    translate(&mut p, "G1 X1");
+    assert!(status(&mut p).contains("MPos:11.000,4.000,0.000"));
+    // Homing clears the offset.
+    translate(&mut p, "$H");
+    assert!(status(&mut p).contains("WCO:0.000,0.000,0.000"));
+}
+
+#[test]
+fn test_configuration_axis_words_do_not_move_position() {
+    let mut p = RepetierProcessor::new();
+    translate(&mut p, "M201 X1000 Y1000 Z100");
+    translate(&mut p, "M92 X80");
+    assert!(status(&mut p).contains("MPos:0.000,0.000,0.000"));
+}
+
+#[test]
+fn test_ack_in_same_read_reports_idle() {
+    let mut p = RepetierProcessor::new();
+    p.mark_buffer_full();
+    let r = p.process_incoming(b"ok\n".to_vec());
+    let text = String::from_utf8_lossy(&r.display);
+    assert!(text.contains("<Idle|"), "got {text:?}");
+}
+
+/// Translates one outgoing line and returns each emitted numbered line as
+/// written to the port.
+fn translate_raw(p: &mut RepetierProcessor, line: &str) -> Vec<String> {
+    let out = p.process_outgoing(line.as_bytes()).expect("line is sent");
+    String::from_utf8_lossy(&out)
+        .split_inclusive('\n')
+        .map(str::to_string)
+        .collect()
 }
 
 fn new_sender() -> (RepetierSender, std::sync::mpsc::Receiver<String>) {
