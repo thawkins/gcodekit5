@@ -3,6 +3,7 @@
 //! Core types, traits, and utilities for GCodeKit5.
 //! Provides the fundamental abstractions for controller management,
 //! state machines, events, and data models.
+#![deny(unsafe_code)]
 
 pub mod constants;
 pub mod core;

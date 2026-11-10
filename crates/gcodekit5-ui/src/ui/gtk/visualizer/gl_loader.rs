@@ -16,6 +16,7 @@ pub(crate) fn load_gl_func(name: &str) -> *const std::ffi::c_void {
     // subsequent reads are immutable. The FFI calls to epoxy_get_proc_addr
     // and libloading::Library::get are safe because the libraries are valid
     // shared objects loaded by the OS dynamic linker.
+    #[allow(unsafe_code)]
     unsafe {
         EPOXY_INIT.call_once(|| {
             let lib = Library::new("libepoxy.so.0")

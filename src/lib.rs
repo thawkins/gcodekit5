@@ -2,6 +2,7 @@
 //!
 //! The application binary's library: logging set-up. The application itself
 //! is in the workspace crates (`gcodekit5-ui` starts the GTK application).
+#![deny(unsafe_code)]
 
 /// Initialize logging with the default configuration
 ///

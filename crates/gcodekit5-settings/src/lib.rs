@@ -1,6 +1,7 @@
 //! GCodeKit5 Settings Crate
 //!
 //! Handles application configuration, settings persistence, and UI view models.
+#![deny(unsafe_code)]
 
 pub mod config;
 pub mod controller;

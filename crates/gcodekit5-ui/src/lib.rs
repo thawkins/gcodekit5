@@ -1,6 +1,7 @@
 //! # GCodeKit5 UI
 //!
 //! GTK-based user interface for GCodeKit5.
+#![deny(unsafe_code)]
 
 pub mod device_status;
 pub mod glib_log_filter;

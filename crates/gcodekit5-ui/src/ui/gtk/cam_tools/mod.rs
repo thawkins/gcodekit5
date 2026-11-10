@@ -240,6 +240,7 @@ impl CamToolsView {
                 let Ok(row) = w.downcast::<gtk4::ListBoxRow>() else {
                     continue;
                 };
+                #[allow(unsafe_code)]
                 let idx = unsafe {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
@@ -314,6 +315,7 @@ impl CamToolsView {
             row.set_selectable(true);
             // SAFETY: set_data stores a u32 keyed by "camtool-index". The data
             // is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data("camtool-index", idx as u32);
             }
@@ -400,6 +402,7 @@ impl CamToolsView {
                 if let Some(row) = row {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
+                    #[allow(unsafe_code)]
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
@@ -427,6 +430,7 @@ impl CamToolsView {
                 if let Some(row) = list_for_click.selected_row() {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
+                    #[allow(unsafe_code)]
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
@@ -443,6 +447,7 @@ impl CamToolsView {
             list.connect_row_activated(move |_, row| {
                 // SAFETY: row.data() retrieves a u32 previously stored via
                 // set_data("camtool-index", ...). Type and key match.
+                #[allow(unsafe_code)]
                 let idx = unsafe {
                     row.data::<u32>("camtool-index")
                         .map(|p| *p.as_ref() as usize)

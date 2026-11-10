@@ -42,6 +42,7 @@ impl ShaderProgram {
         // SAFETY: All glow GL calls require unsafe. The GL context is valid
         // because it was created from a valid loader in the GLArea render callback.
         // Shaders are compiled, attached, linked, then detached and deleted.
+        #[allow(unsafe_code)]
         unsafe {
             let program = gl
                 .create_program()
@@ -69,6 +70,7 @@ impl ShaderProgram {
 
     pub fn bind(&self) {
         // SAFETY: GL context is valid; program was successfully linked in new().
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.use_program(Some(self.program));
         }
@@ -76,6 +78,7 @@ impl ShaderProgram {
 
     pub fn unbind(&self) {
         // SAFETY: GL context is valid; unbinding the current program is always safe.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.use_program(None);
         }
@@ -83,7 +86,10 @@ impl ShaderProgram {
 
     pub fn get_uniform_location(&self, name: &str) -> Option<NativeUniformLocation> {
         // SAFETY: GL context is valid; querying uniform locations is a read-only GL operation.
-        unsafe { self.gl.get_uniform_location(self.program, name) }
+        #[allow(unsafe_code)]
+        unsafe {
+            self.gl.get_uniform_location(self.program, name)
+        }
     }
 }
 
@@ -91,6 +97,7 @@ impl Drop for ShaderProgram {
     fn drop(&mut self) {
         // SAFETY: GL context is valid; program handle is owned by this struct
         // and will not be used after deletion.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.delete_program(self.program);
         }
@@ -148,6 +155,7 @@ impl StockRemovalShaderProgram {
         // SAFETY: All glow GL calls require unsafe. The GL context is valid
         // because it was created from a valid loader in the GLArea render callback.
         // Shaders are compiled, attached, linked, then detached and deleted.
+        #[allow(unsafe_code)]
         unsafe {
             let program = gl
                 .create_program()
@@ -175,6 +183,7 @@ impl StockRemovalShaderProgram {
 
     pub fn bind(&self) {
         // SAFETY: GL context is valid; program was successfully linked in new().
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.use_program(Some(self.program));
         }
@@ -182,6 +191,7 @@ impl StockRemovalShaderProgram {
 
     pub fn unbind(&self) {
         // SAFETY: GL context is valid; unbinding the current program is always safe.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.use_program(None);
         }
@@ -189,7 +199,10 @@ impl StockRemovalShaderProgram {
 
     pub fn get_uniform_location(&self, name: &str) -> Option<NativeUniformLocation> {
         // SAFETY: GL context is valid; querying uniform locations is a read-only GL operation.
-        unsafe { self.gl.get_uniform_location(self.program, name) }
+        #[allow(unsafe_code)]
+        unsafe {
+            self.gl.get_uniform_location(self.program, name)
+        }
     }
 }
 
@@ -197,6 +210,7 @@ impl Drop for StockRemovalShaderProgram {
     fn drop(&mut self) {
         // SAFETY: GL context is valid; program handle is owned by this struct
         // and will not be used after deletion.
+        #[allow(unsafe_code)]
         unsafe {
             self.gl.delete_program(self.program);
         }
@@ -206,11 +220,15 @@ impl Drop for StockRemovalShaderProgram {
 // SAFETY: This function is unsafe because all glow GL calls require unsafe.
 // Caller must ensure the GL context is current. The shader is created, compiled,
 // and on failure cleaned up before returning an error.
+#[allow(unsafe_code)]
 unsafe fn compile_shader(
     gl: &Context,
     source: &str,
     shader_type: u32,
 ) -> Result<NativeShader, String> {
+    // SAFETY: callers pass the GL context that is current (GLArea realize/render), and only objects
+    // created from it are used.
+    #[allow(unsafe_code)]
     unsafe {
         let shader = gl
             .create_shader(shader_type)

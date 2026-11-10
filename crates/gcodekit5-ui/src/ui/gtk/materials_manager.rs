@@ -655,6 +655,7 @@ impl MaterialsManagerView {
             // SAFETY: row.data() retrieves a pointer previously stored via
             // set_data() with the same key. The type matches (String) and the
             // data remains valid while the row exists.
+            #[allow(unsafe_code)]
             let id = unsafe {
                 row.data::<String>("material-id")
                     .map(|p| p.as_ref().clone())
@@ -779,6 +780,7 @@ impl MaterialsManagerView {
             row.set_child(Some(&row_box));
             // SAFETY: set_data stores a String keyed by "material-id". The data
             // is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data("material-id", material.id.0.clone());
             }

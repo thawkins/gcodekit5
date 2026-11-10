@@ -29,6 +29,7 @@
 //! // Apply operations
 //! let toolpath = canvas.generate_toolpath()?;
 //! ```
+#![deny(unsafe_code)]
 
 pub mod arrays;
 pub mod canvas;

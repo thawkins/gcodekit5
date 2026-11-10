@@ -21,6 +21,7 @@
 //! - **Job Preamble**: Optional homing preamble shared by the laser generators
 //! - **CAM Presets**: Unit-aware saved parameter files for the bitmap and probe tools
 //! - **Statistics**: G-Code statistics and analysis
+#![deny(unsafe_code)]
 
 pub mod arc_expander;
 pub mod cam_presets;

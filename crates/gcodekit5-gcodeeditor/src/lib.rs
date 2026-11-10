@@ -58,6 +58,7 @@
 //! ### Error Handling
 //! - **EditorError**: Structured error types for text buffer operations
 //! - **EditorResult**: Result type alias with EditorError
+#![deny(unsafe_code)]
 
 mod editor_bridge;
 mod error;

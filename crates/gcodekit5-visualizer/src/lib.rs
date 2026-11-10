@@ -2,6 +2,7 @@
 //!
 //! G-code visualization, parsing, and processing for GCodeKit5.
 //! Includes parser, preprocessors, stream readers, and visualizer components.
+#![deny(unsafe_code)]
 
 pub mod gcode;
 pub mod helpers;

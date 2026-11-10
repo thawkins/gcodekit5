@@ -915,6 +915,9 @@ impl ToolSelectionDialog {
 
                 // Store tool_id on the ListBoxRow
                 let tool_id = tool.id.0.clone();
+                // SAFETY: rows only ever store "tool_id" as a String (set when the row is built),
+                // and it is read back as a String.
+                #[allow(unsafe_code)]
                 unsafe {
                     row.set_data("tool_id", tool_id.clone());
                 }
@@ -937,6 +940,9 @@ impl ToolSelectionDialog {
             move |_, row| {
                 if let Some(r) = row {
                     // Retrieve tool_id directly from the ListBoxRow
+                    // SAFETY: rows only ever store "tool_id" as a String (set when the row is
+                    // built), and it is read back as a String.
+                    #[allow(unsafe_code)]
                     let tool_id: Option<String> =
                         unsafe { r.data::<String>("tool_id").map(|d| d.as_ref().clone()) };
                     *selected_id.borrow_mut() = tool_id;
@@ -1115,6 +1121,9 @@ impl MaterialSelectionDialog {
 
                 // Store material_id on the ListBoxRow
                 let material_id = material.id.0.clone();
+                // SAFETY: rows only ever store "material_id" as a String (set when the row is
+                // built), and it is read back as a String.
+                #[allow(unsafe_code)]
                 unsafe {
                     row.set_data("material_id", material_id.clone());
                 }
@@ -1135,6 +1144,9 @@ impl MaterialSelectionDialog {
             let selected_id = selected_id.clone();
             move |_, row| {
                 if let Some(r) = row {
+                    // SAFETY: rows only ever store "material_id" as a String (set when the row is
+                    // built), and it is read back as a String.
+                    #[allow(unsafe_code)]
                     let material_id: Option<String> =
                         unsafe { r.data::<String>("material_id").map(|d| d.as_ref().clone()) };
                     *selected_id.borrow_mut() = material_id;

@@ -266,19 +266,19 @@ Use the `Bash` tool to run the following cargo commands:
 ### Core Code Rules
 
 * **No `unsafe` Blocks:** Never use `unsafe` unless explicitly approved or required by FFI bounds; document all safety invariants clearly when used.
-  Every crate root (`crates/*/src/lib.rs`) and the `ragent` binary root (`src/main.rs`)
+  Every crate root (`crates/*/src/lib.rs`) and the `gcodekit5` binary root (`src/main.rs`)
   carries a crate-level `#![deny(unsafe_code)]`, so a new `unsafe` block fails to
   compile until it is explicitly re-enabled. The approved production sites are
   gated with a scoped `#[allow(unsafe_code)]` plus a `// SAFETY:` comment stating
-  the invariant, and each exists only because libc has no safe std equivalent:
+  the invariant, and each exists because the API it calls (OpenGL, GObject data,
+  Win32, the process environment) has no safe equivalent:
 
   | Site | Why |
   | --- | --- |
-  | `crates/ragent-tools-core/src/bash.rs` (`kill_process_group`) | `libc::killpg` - bash-timeout process-group kill |
-  | `crates/ragent-agent/src/team/manager.rs` (`kill_hook_process_group`) | `libc::killpg`/`kill` - hook timeout teardown |
-  | `crates/ragent-agent/src/mcp/mod.rs` (`kill_stdio_child`) | `libc::kill`/`killpg` - MCP stdio child teardown (3 blocks) |
-  | `src/stderr_spool.rs` (`install`) | `libc::pipe`/`dup`/`dup2`/`close` and `File::from_raw_fd` - stderr spool capture (7 blocks) |
-  | `src/crash_dump.rs` (`process_alive`) | `libc::kill` signal 0 liveness probe, `OpenProcess`/`GetExitCodeProcess`/`CloseHandle` on Windows (2 blocks) |
+  | `crates/gcodekit5-ui/src/ui/gtk/shaders.rs`, `renderer_3d.rs`, `visualizer/mod.rs`, `visualizer/gl_loader.rs` | OpenGL through `glow` (GL calls are `unsafe`); each block runs with the GLArea's context current (29 blocks) |
+  | `crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs`, `cam_tools/speeds_feeds_page.rs`, `tools_manager/mod.rs`, `tools_manager/event_handlers.rs`, `materials_manager.rs` | `glib::ObjectExt::set_data`/`data` on list rows (typed by key) (14 blocks) |
+  | `crates/gcodekit5-ui/src/i18n.rs` (`init`) | `std::env::set_var` for `LANGUAGE`/`LANG` once at startup (unsafe in edition 2024) |
+  | `crates/gcodekit5-ui/src/ui/gtk/platform/windows.rs` | Win32 FFI for dialog parent handles (module-level allow; Windows only) |
 
   Tests may opt back in with a file-level `#![allow(unsafe_code)]` for the Rust 2024
   `std::env::set_var`/`remove_var` migration; that is the only sanctioned test use.
