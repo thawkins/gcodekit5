@@ -234,12 +234,8 @@ pub fn classify_response(line: &str) -> GrblResponseLine {
 /// `Some(true)` for a successful probe, `Some(false)` for a failed one, `None` if the
 /// line is not a probe report.
 pub fn parse_probe_report(line: &str) -> Option<bool> {
-    let inner = line.trim().strip_prefix("[PRB:")?.strip_suffix(']')?;
-    match inner.rsplit(':').next()?.trim() {
-        "1" => Some(true),
-        "0" => Some(false),
-        _ => None,
-    }
+    gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report(line)
+        .map(|report| report.success)
 }
 
 /// Returns how many axes a status report's position carries (3 to 6).
