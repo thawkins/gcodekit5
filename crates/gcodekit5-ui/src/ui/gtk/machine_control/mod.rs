@@ -77,6 +77,9 @@ fn make_icon_label_toggle(icon: &str, label: &str) -> ToggleButton {
 /// Minimum width in px of the G-code editor/console column on Machine Control.
 const EDITOR_COLUMN_MIN_WIDTH: i32 = 360;
 
+/// Longest wait for a feed hold to complete before Stop sends the reset.
+const STOP_HOLD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Clone)]
 pub struct MachineControlView {
     pub widget: Paned,
@@ -222,6 +225,10 @@ pub struct MachineControlView {
     pub active_sender: Rc<RefCell<Option<Rc<dyn Sender>>>>,
     /// Last Work Coordinate Offset reported (GRBL only sends WCO in some reports).
     pub(crate) last_wco: Rc<Cell<Option<WorkCoordinateOffset>>>,
+    /// Set when a status report shows the machine running again after a
+    /// pause the panel did not end (cycle-start button, console `~`); the
+    /// poller then sends the next queued line.
+    pub(crate) resumed_externally: Rc<Cell<bool>>,
     /// The report units (`$13`) `last_wco` was read in; when they change the
     /// cached offset is dropped until the controller sends a new one.
     pub(crate) wco_in_inches: Rc<Cell<bool>>,
@@ -488,7 +495,7 @@ impl MachineControlView {
 
         let stop_btn = make_icon_label_button("media-playback-stop-symbolic", &t!("Stop"));
         stop_btn.set_tooltip_text(Some(&t!(
-            "Stop job: abort streaming (does not reset controller)"
+            "Stop job: feed hold, then reset the controller once stopped (keeps position)"
         )));
         stop_btn.add_css_class("destructive-action");
         stop_btn.set_hexpand(true);
@@ -514,7 +521,7 @@ impl MachineControlView {
         trans_box.append(&trans_row2);
 
         let stop_hint = Label::new(Some(&t!(
-            "Stop aborts streaming; E‑Stop resets the controller."
+            "Stop holds the feed, then resets; E‑Stop resets the controller at once."
         )));
         stop_hint.add_css_class("dim-label");
         stop_hint.set_wrap(true);
@@ -1400,6 +1407,7 @@ impl MachineControlView {
             job_start_time: thread_safe_none(),
             active_sender: Rc::new(RefCell::new(None)),
             last_wco: Rc::new(Cell::new(None)),
+            resumed_externally: Rc::new(Cell::new(false)),
             wco_in_inches: Rc::new(Cell::new(false)),
             quick_probe: Rc::new(Cell::new(QuickProbeState::Idle)),
             poll_generation: Rc::new(Cell::new(0)),
@@ -1481,6 +1489,15 @@ impl MachineControlView {
             if *is_streaming.lock() {
                 if let Some(c) = console {
                     c.append_log(&format!("{}\n", t!("Command ignored: a job is running.")));
+                }
+                return true;
+            }
+            if device_status::stop_pending() {
+                if let Some(c) = console {
+                    c.append_log(&format!(
+                        "{}\n",
+                        t!("Command ignored: the machine is stopping.")
+                    ));
                 }
                 return true;
             }
@@ -1824,14 +1841,18 @@ impl MachineControlView {
                     sender.stop();
                 }
 
-                // GRBL-style controllers: soft reset. Flow-control protocols (Repetier)
-                // have no realtime reset; their sender's stop() ends the job.
-                if !Self::is_flow_control_protocol() {
-                    if let Some(c) = console.as_ref() {
-                        c.append_log("> 0x18 (Stop)\n");
-                    }
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(&[0x18]);
+                // GRBL-style controllers: feed hold, then soft reset once the machine
+                // has stopped, so the reset does not raise "reset while in motion"
+                // and lose the position. Flow-control protocols (Repetier) have no
+                // realtime reset; their sender's stop() ends the job.
+                let flow_control = Self::is_flow_control_protocol();
+                if !flow_control {
+                    let view_done = view_stop.clone();
+                    Self::feed_hold_then_reset(&communicator, &console, move || {
+                        // The machine is stopped: Send is available again.
+                        view_done.send_btn.set_sensitive(true);
+                        view_done.update_job_controls();
+                    });
                 }
 
                 *is_streaming.lock() = false;
@@ -1843,8 +1864,9 @@ impl MachineControlView {
                 if let Some(sb) = status_bar.as_ref() {
                     sb.set_progress(0.0, "", "");
                 }
-                // Re-enable Send; Pause/Resume/Stop follow the (now ended) job state.
-                view_stop.send_btn.set_sensitive(true);
+                // Pause/Resume/Stop follow the (now ended) job state. Send stays off
+                // until a GRBL stop sequence has reset the controller.
+                view_stop.send_btn.set_sensitive(flow_control);
                 view_stop.update_job_controls();
             });
         }
@@ -1863,7 +1885,10 @@ impl MachineControlView {
                     .borrow()
                     .as_ref()
                     .is_some_and(|s| s.is_streaming());
-                if *view_clone.is_streaming.lock() || previous_still_running {
+                if *view_clone.is_streaming.lock()
+                    || previous_still_running
+                    || device_status::stop_pending()
+                {
                     if let Some(c) = view_clone.device_console.as_ref() {
                         c.append_log(&format!("{}\n", t!("A job is already running.")));
                     }
@@ -2235,6 +2260,20 @@ impl MachineControlView {
                 console_clone.add_to_history(cmd.clone());
                 console_clone.reset_history_navigation();
 
+                // Realtime commands (feed hold, resume, status) are safe during a
+                // job; any other line would corrupt the job's ack accounting.
+                let realtime = matches!(cmd.as_str(), "!" | "~" | "?");
+                if !realtime {
+                    if let Some(reason) = device_status::manual_command_blocked() {
+                        console_clone.append_log(&format!(
+                            "{} {}\n",
+                            t!("Command not sent:"),
+                            reason
+                        ));
+                        return;
+                    }
+                }
+
                 // Send command (only log it as sent if it actually went out)
                 {
                     let mut comm = communicator.lock();
@@ -2242,7 +2281,14 @@ impl MachineControlView {
                         console_clone.append_log(&format!("{}\n", t!("Not connected")));
                         return;
                     }
-                    match comm.send_command(&cmd) {
+                    // Realtime characters go out bare: with a newline GRBL would
+                    // answer an extra `ok` that a running job would miscount.
+                    let sent = if realtime {
+                        comm.send(cmd.as_bytes()).map(|_| ())
+                    } else {
+                        comm.send_command(&cmd)
+                    };
+                    match sent {
                         Ok(_) => {
                             device_status::note_setting_sent(&cmd);
                             console_clone.append_log(&format!("> {}\n", cmd))
@@ -2484,6 +2530,71 @@ impl MachineControlView {
                 self.log(&format!("{}: {e}", t!("Error sending")));
             }
         }
+    }
+
+    /// Stops a GRBL machine without losing its position: sends feed hold
+    /// (`!`), waits until the controller reports the hold complete (or that
+    /// it is not moving), then sends the soft reset (0x18) that clears the
+    /// planner. If the hold does not complete within
+    /// [`STOP_HOLD_TIMEOUT`], the reset is sent anyway.
+    fn feed_hold_then_reset(
+        communicator: &ThreadSafe<SerialCommunicator>,
+        console: &Option<Rc<DeviceConsoleView>>,
+        on_done: impl Fn() + 'static,
+    ) {
+        // While this runs, jobs and manual commands are refused.
+        let token = device_status::begin_stop();
+        let log = |text: &str| {
+            if let Some(c) = console.as_ref() {
+                c.append_log(&format!("{text}\n"));
+            }
+        };
+        log("> ! (Stop: feed hold)");
+        // Ask for a status right after the hold, and only trust reports that
+        // arrive after it: an older Idle/Hold:0 does not mean the machine stopped.
+        let seq_at_hold = device_status::status_seq();
+        {
+            let mut comm = communicator.lock();
+            if let Err(e) = comm.send(b"!") {
+                tracing::warn!(error = %e, "Stop: feed hold not sent");
+            }
+            if let Err(e) = comm.send(b"?") {
+                tracing::debug!(error = %e, "Stop: status request not sent");
+            }
+        }
+
+        let communicator = communicator.clone();
+        let console = console.clone();
+        let started = std::time::Instant::now();
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            if !device_status::stop_is_current(token) {
+                // The connection was replaced or closed: nothing to reset.
+                on_done();
+                return glib::ControlFlow::Break;
+            }
+            let state = device_status::get_status().state;
+            let fresh = device_status::status_seq() > seq_at_hold;
+            let stopped = fresh && device_status::machine_is_stopped(&state);
+            let timed_out = started.elapsed() >= STOP_HOLD_TIMEOUT;
+            if !stopped && !timed_out {
+                return glib::ControlFlow::Continue;
+            }
+            if let Some(c) = console.as_ref() {
+                if stopped {
+                    c.append_log("> 0x18 (Stop: reset)\n");
+                } else {
+                    c.append_log(&format!(
+                        "> 0x18 (Stop: reset; feed hold did not complete, state {state})\n"
+                    ));
+                }
+            }
+            if let Err(e) = communicator.lock().send(&[0x18]) {
+                tracing::warn!(error = %e, "Stop: soft reset not sent");
+            }
+            device_status::end_stop(token);
+            on_done();
+            glib::ControlFlow::Break
+        });
     }
 
     /// Whether the active machine's protocol uses a flow-control sender (Repetier).

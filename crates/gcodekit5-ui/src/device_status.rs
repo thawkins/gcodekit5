@@ -7,7 +7,7 @@ use gcodekit5_communication::firmware::grbl::status_parser::{
 use gcodekit5_core::{thread_safe_rw, ThreadSafeRw};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 
 /// Global GRBL device status
 #[derive(Debug, Clone)]
@@ -115,6 +115,7 @@ pub fn set_active_controller_type(ct: Option<String>) {
 
 /// Update the machine state
 pub fn update_state(state: String) {
+    STATUS_SEQ.fetch_add(1, Ordering::Relaxed);
     {
         let mut status = DEVICE_STATUS.write();
         status.state = state;
@@ -240,6 +241,113 @@ fn parse_numeric_prefix(s: &str) -> Option<f64> {
 
 pub fn get_grbl_setting_numeric(number: u16) -> Option<f64> {
     get_grbl_setting(number).and_then(|v| parse_numeric_prefix(&v))
+}
+
+/// Whether a job is streaming to the controller. Kept up to date by the
+/// machine control panel.
+static JOB_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Records whether a job is streaming to the controller.
+pub fn set_job_active(active: bool) {
+    JOB_ACTIVE.store(active, Ordering::Relaxed);
+}
+
+/// Whether a job is streaming to the controller.
+pub fn is_job_active() -> bool {
+    JOB_ACTIVE.load(Ordering::Relaxed)
+}
+
+/// Counts machine-state updates (one per status report), so a waiter can
+/// tell a fresh report from one received before it started waiting.
+static STATUS_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Number of machine-state updates so far.
+pub fn status_seq() -> u64 {
+    STATUS_SEQ.load(Ordering::Relaxed)
+}
+
+/// A Stop sequence (feed hold, then reset) is waiting to send its reset.
+static STOP_PENDING: AtomicBool = AtomicBool::new(false);
+/// Identifies the current Stop sequence; bumped to abandon it.
+static STOP_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Starts a Stop sequence. Until [`end_stop`] or [`cancel_stop`], manual
+/// commands and new jobs are refused.
+///
+/// # Returns
+/// The token the sequence passes to [`stop_is_current`] and [`end_stop`].
+pub fn begin_stop() -> u64 {
+    STOP_PENDING.store(true, Ordering::Relaxed);
+    STOP_GENERATION.fetch_add(1, Ordering::Relaxed) + 1
+}
+
+/// Whether the Stop sequence with `token` is still the live one.
+pub fn stop_is_current(token: u64) -> bool {
+    STOP_GENERATION.load(Ordering::Relaxed) == token
+}
+
+/// Ends the Stop sequence with `token` (a later one is left alone).
+pub fn end_stop(token: u64) {
+    if stop_is_current(token) {
+        STOP_PENDING.store(false, Ordering::Relaxed);
+    }
+}
+
+/// Abandons any Stop sequence (the connection was replaced or closed).
+pub fn cancel_stop() {
+    STOP_GENERATION.fetch_add(1, Ordering::Relaxed);
+    STOP_PENDING.store(false, Ordering::Relaxed);
+}
+
+/// Whether a Stop sequence is in progress.
+pub fn stop_pending() -> bool {
+    STOP_PENDING.load(Ordering::Relaxed)
+}
+
+/// Why a manual command (console line, jog) must not be sent now, or `None`.
+///
+/// While a job streams, the job's sender owns the controller's responses: an
+/// extra line's `ok` would be credited to a job line and its `error:N` would
+/// stop the job.
+pub fn manual_command_blocked() -> Option<String> {
+    if stop_pending() {
+        return Some(crate::t!("the machine is stopping"));
+    }
+    is_job_active().then(|| crate::t!("a job is running"))
+}
+
+/// Why a `$` settings command (`$$`, `$n=v`) must not be sent now, or `None`.
+///
+/// Besides the job rule of [`manual_command_blocked`], GRBL rejects `$`
+/// commands unless it is Idle (or in Alarm).
+pub fn settings_command_blocked() -> Option<String> {
+    if let Some(reason) = manual_command_blocked() {
+        return Some(reason);
+    }
+    let state = get_status().state;
+    let low = state.to_ascii_lowercase();
+    if low.is_empty() || low.starts_with("idle") || low.starts_with("alarm") {
+        None
+    } else {
+        Some(format!(
+            "{} ({state})",
+            crate::t!("the machine must be idle")
+        ))
+    }
+}
+
+/// Whether a GRBL state means the machine is not moving, so a soft reset
+/// will not lose its position: a completed hold (`Hold:0`), or any state that
+/// is not motion (`Idle`, `Alarm`, `Check`, `Door:0`, ...).
+pub fn machine_is_stopped(state: &str) -> bool {
+    let low = state.trim().to_ascii_lowercase();
+    if let Some(sub) = low
+        .strip_prefix("hold")
+        .or_else(|| low.strip_prefix("door"))
+    {
+        return sub.is_empty() || sub == ":0";
+    }
+    !(low.starts_with("run") || low.starts_with("jog") || low.starts_with("home"))
 }
 
 /// Records a `$n=v` setting assignment that was sent to the controller, so

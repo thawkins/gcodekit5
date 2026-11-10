@@ -26,6 +26,16 @@
 
 ### Changed
 - `gcodekit5-communication` tests build as one `tests/all.rs` binary (`autotests = false`); 21 Repetier regression tests added
+## [Unreleased] - 2026-11-10 (machine-control busy guard and Stop)
+
+### Changed
+- **Stop keeps the position** (#74, E2-10): Stop sends feed hold (`!`), waits until the controller reports the hold complete (up to 10 s), then soft-resets. Before, the immediate reset raised "reset while in motion" and the machine had to be rehomed. E-Stop still resets at once
+
+### Fixed
+- **Console during a job** (E2-01): console lines other than `!`, `~` and `?` are refused while a job streams; before, their `ok`/`error` corrupted the job's accounting or stopped it
+- **Device Config during a job** (E2-02): Retrieve (`$$`) and setting edits (`$n=v`) are refused while a job streams or the machine is not Idle/Alarm; an edit updates the page only after the controller was sent the value, and a failure is shown
+- **Pause state** (E2-03): resuming from the controller's cycle-start button or a console `~` re-enables Pause
+- **Device manager** (E2-11): delete and set-active failures are shown, and the panel's axis count changes only when set-active succeeds
 
 ## [Unreleased] - 2026-11-10 (homing keeps the work zero)
 

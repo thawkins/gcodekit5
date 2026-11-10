@@ -253,6 +253,16 @@ impl MachineControlView {
             }
         }
 
+        // A machine that is running again has been resumed, whether by the
+        // Resume button, the controller's cycle-start button or a console `~`.
+        if low.starts_with("run") || low.starts_with("jog") {
+            let mut paused = self.is_paused.lock();
+            if *paused {
+                *paused = false;
+                self.resumed_externally.set(true);
+            }
+        }
+
         // Unlock is only useful in ALARM.
         self.unlock_btn.set_sensitive(is_alarm);
         if is_alarm {
@@ -286,6 +296,7 @@ impl MachineControlView {
                 status.state.to_ascii_lowercase().starts_with("hold"),
             )
         };
+        device_status::set_job_active(self.job_active());
         let active = connected && self.job_active();
         let paused = *self.is_paused.lock() || held;
         self.stop_btn.set_sensitive(active);

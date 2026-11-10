@@ -23,5 +23,7 @@ mod machine_control_streaming;
 mod test_dialog_window;
 #[path = "test_glib_log_filter.rs"]
 mod test_glib_log_filter;
+#[path = "test_machine_busy_guard.rs"]
+mod test_machine_busy_guard;
 #[path = "test_report_units.rs"]
 mod test_report_units;
