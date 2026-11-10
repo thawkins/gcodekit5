@@ -232,8 +232,15 @@ pub fn classify_response(line: &str) -> GrblResponseLine {
 ///
 /// # Returns
 /// `Some(true)` for a successful probe, `Some(false)` for a failed one, `None` if the
-/// line is not a probe report.
+/// line is not a probe report or its success flag is not an explicit `0` or `1`.
 pub fn parse_probe_report(line: &str) -> Option<bool> {
+    // The shared parser treats a missing flag as success; a quick probe must
+    // only complete on an explicit `:1`.
+    let inner = line.trim().strip_prefix("[PRB:")?.strip_suffix(']')?;
+    let (_, flag) = inner.rsplit_once(':')?;
+    if !matches!(flag.trim(), "0" | "1") {
+        return None;
+    }
     gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report(line)
         .map(|report| report.success)
 }
