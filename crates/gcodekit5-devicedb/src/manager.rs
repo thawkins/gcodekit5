@@ -272,11 +272,13 @@ impl DeviceManager {
     pub fn set_active_profile(&self, id: &str) -> Result<()> {
         let exists = self.profiles.read().contains_key(id);
         if exists {
-            {
-                let mut lock = self.active_profile_id.write();
-                *lock = Some(id.to_string());
+            let previous = self.active_profile_id.write().replace(id.to_string());
+            // Keep memory and disk in step: if the new choice cannot be saved,
+            // the previous active profile stays active.
+            if let Err(e) = self.save() {
+                *self.active_profile_id.write() = previous;
+                return Err(e);
             }
-            self.save()?;
             Ok(())
         } else {
             Err(anyhow::anyhow!("Profile not found"))

@@ -65,6 +65,7 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 anyhow = "1.0"
 
+
 [package.metadata.deb]
 maintainer = "GCodeKit Contributors"
 copyright = "2025, GCodeKit Contributors"

@@ -475,6 +475,18 @@ fn test_stock_dimensions_are_checked_before_allocating() {
 }
 
 #[test]
+fn test_stock_resolution_must_be_positive_and_finite() {
+    // #89 review: a bad resolution gave zero cells and passed the check.
+    use gcodekit5_visualizer::VoxelGrid;
+    for resolution in [0.0, -0.19, f32::NAN, f32::INFINITY] {
+        assert!(
+            VoxelGrid::check_dimensions(200.0, 200.0, 10.0, resolution).is_err(),
+            "{resolution}"
+        );
+    }
+}
+
+#[test]
 fn test_probe_move_is_drawn_as_travel_not_a_cut() {
     // Audit D-02: G38.2 kept the previous G1 mode, so the probe and the
     // following modal line were simulated as feed cuts.

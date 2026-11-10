@@ -7,7 +7,7 @@ use gcodekit5_communication::firmware::grbl::status_parser::{
 use gcodekit5_core::{ThreadSafeRw, thread_safe_rw};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 /// Global GRBL device status
 #[derive(Debug, Clone)]
@@ -115,6 +115,7 @@ pub fn set_active_controller_type(ct: Option<String>) {
 
 /// Update the machine state
 pub fn update_state(state: String) {
+    STATUS_SEQ.fetch_add(1, Ordering::Relaxed);
     {
         let mut status = DEVICE_STATUS.write();
         status.state = state;
@@ -233,9 +234,25 @@ pub fn get_grbl_setting_numeric(number: u16) -> Option<f64> {
     get_grbl_setting(number).and_then(|v| parse_numeric_prefix(&v))
 }
 
-/// Whether the controller reports positions in inches (`$13=1`).
-pub fn reports_in_inches() -> bool {
-    get_grbl_setting_numeric(13).is_some_and(|v| v >= 1.0)
+/// Axes whose jog direction is reversed (Preferences > Machine > Invert).
+static JOG_INVERTED: Lazy<ThreadSafeRw<Vec<char>>> = Lazy::new(|| thread_safe_rw(Vec::new()));
+
+/// Sets whether jogging `axis` (X, Y, Z, A, B or C) runs in reverse.
+pub fn set_jog_inverted(axis: char, inverted: bool) {
+    let mut axes = JOG_INVERTED.write();
+    axes.retain(|a| *a != axis);
+    if inverted {
+        axes.push(axis);
+    }
+}
+
+/// `-1.0` when jogging `axis` is inverted, otherwise `1.0`.
+pub fn jog_direction(axis: char) -> f32 {
+    if JOG_INVERTED.read().contains(&axis) {
+        -1.0
+    } else {
+        1.0
+    }
 }
 
 /// Whether a job is streaming to the controller. Kept up to date by the
@@ -252,12 +269,62 @@ pub fn is_job_active() -> bool {
     JOB_ACTIVE.load(Ordering::Relaxed)
 }
 
+/// Counts machine-state updates (one per status report), so a waiter can
+/// tell a fresh report from one received before it started waiting.
+static STATUS_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Number of machine-state updates so far.
+pub fn status_seq() -> u64 {
+    STATUS_SEQ.load(Ordering::Relaxed)
+}
+
+/// A Stop sequence (feed hold, then reset) is waiting to send its reset.
+static STOP_PENDING: AtomicBool = AtomicBool::new(false);
+/// Identifies the current Stop sequence; bumped to abandon it.
+static STOP_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Starts a Stop sequence. Until [`end_stop`] or [`cancel_stop`], manual
+/// commands and new jobs are refused.
+///
+/// # Returns
+/// The token the sequence passes to [`stop_is_current`] and [`end_stop`].
+pub fn begin_stop() -> u64 {
+    STOP_PENDING.store(true, Ordering::Relaxed);
+    STOP_GENERATION.fetch_add(1, Ordering::Relaxed) + 1
+}
+
+/// Whether the Stop sequence with `token` is still the live one.
+pub fn stop_is_current(token: u64) -> bool {
+    STOP_GENERATION.load(Ordering::Relaxed) == token
+}
+
+/// Ends the Stop sequence with `token` (a later one is left alone).
+pub fn end_stop(token: u64) {
+    if stop_is_current(token) {
+        STOP_PENDING.store(false, Ordering::Relaxed);
+    }
+}
+
+/// Abandons any Stop sequence (the connection was replaced or closed).
+pub fn cancel_stop() {
+    STOP_GENERATION.fetch_add(1, Ordering::Relaxed);
+    STOP_PENDING.store(false, Ordering::Relaxed);
+}
+
+/// Whether a Stop sequence is in progress.
+pub fn stop_pending() -> bool {
+    STOP_PENDING.load(Ordering::Relaxed)
+}
+
 /// Why a manual command (console line, jog) must not be sent now, or `None`.
 ///
 /// While a job streams, the job's sender owns the controller's responses: an
 /// extra line's `ok` would be credited to a job line and its `error:N` would
 /// stop the job.
 pub fn manual_command_blocked() -> Option<String> {
+    if stop_pending() {
+        return Some(crate::t!("the machine is stopping"));
+    }
     is_job_active().then(|| crate::t!("a job is running"))
 }
 
@@ -295,25 +362,28 @@ pub fn machine_is_stopped(state: &str) -> bool {
     !(low.starts_with("run") || low.starts_with("jog") || low.starts_with("home"))
 }
 
-/// Axes whose jog direction is reversed (Preferences > Machine > Invert).
-static JOG_INVERTED: Lazy<ThreadSafeRw<Vec<char>>> = Lazy::new(|| thread_safe_rw(Vec::new()));
-
-/// Sets whether jogging `axis` (X, Y, Z, A, B or C) runs in reverse.
-pub fn set_jog_inverted(axis: char, inverted: bool) {
-    let mut axes = JOG_INVERTED.write();
-    axes.retain(|a| *a != axis);
-    if inverted {
-        axes.push(axis);
+/// Records a `$n=v` setting assignment that was sent to the controller, so
+/// the cached settings (e.g. `$13`, which decides report units) match it.
+/// GRBL answers an assignment with `ok`, not with the new value, so the
+/// cache would otherwise keep the old value until the next `$$`.
+///
+/// # Arguments
+/// * `command` - The line sent; anything that is not `$<number>=<value>` is ignored.
+pub fn note_setting_sent(command: &str) {
+    let Some(body) = command.trim().strip_prefix('$') else {
+        return;
+    };
+    let Some((number, value)) = body.split_once('=') else {
+        return;
+    };
+    if let Ok(number) = number.trim().parse::<u16>() {
+        update_grbl_setting(number, value.trim().to_string());
     }
 }
 
-/// `-1.0` when jogging `axis` is inverted, otherwise `1.0`.
-pub fn jog_direction(axis: char) -> f32 {
-    if JOG_INVERTED.read().contains(&axis) {
-        -1.0
-    } else {
-        1.0
-    }
+/// Whether the controller reports positions in inches (`$13=1`).
+pub fn reports_in_inches() -> bool {
+    get_grbl_setting_numeric(13).is_some_and(|v| v >= 1.0)
 }
 
 /// Get a snapshot of the current device status

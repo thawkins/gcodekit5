@@ -57,6 +57,7 @@ pub mod viewport;
 // Integration modules
 pub mod designer_state;
 pub mod engraving;
+pub mod gcode_converter;
 pub mod image_importer;
 
 // Re-export all public types from submodules
@@ -83,3 +84,4 @@ pub use viewport::Viewport;
 
 // State and integration
 pub use designer_state::DesignerState;
+pub use gcode_converter::{create_arc_segment, create_linear_segment, point_to_2d};

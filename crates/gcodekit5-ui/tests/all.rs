@@ -35,5 +35,9 @@ mod test_job_preferences;
 mod test_machine_busy_guard;
 #[path = "test_materials_manager_backend.rs"]
 mod test_materials_manager_backend;
+#[path = "test_report_units.rs"]
+mod test_report_units;
 #[path = "test_tools_manager_backend.rs"]
 mod test_tools_manager_backend;
+#[path = "test_ui_leaks.rs"]
+mod test_ui_leaks;

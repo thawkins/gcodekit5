@@ -552,6 +552,7 @@ impl DesignerState {
 
     /// Phase 3 of G-code generation: appends each shape's comment header
     /// and passes to `gcode`, numbering lines from 10 in steps of 10.
+    /// `header_speed` is the CNC spindle speed the header started.
     fn emit_shapes_gcode(
         &mut self,
         gcode: &mut String,
