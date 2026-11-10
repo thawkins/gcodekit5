@@ -418,6 +418,44 @@ impl SerialCommunicator {
         }
     }
 
+    /// Creates a communicator already connected through `port`.
+    ///
+    /// For tests: lets a fake [`serial::SerialPort`] stand in for hardware.
+    #[doc(hidden)]
+    pub fn with_port(port: Box<dyn serial::SerialPort>) -> Self {
+        Self {
+            port: Some(port),
+            ..Self::new()
+        }
+    }
+
+    /// Drops a port whose connection is gone, so `is_connected()` is false,
+    /// and tells listeners. Returns the error to report.
+    fn drop_dead_port(&mut self, e: &std::io::Error) -> gcodekit5_core::Error {
+        if let Some(mut port) = self.port.take() {
+            if let Err(close_err) = port.close() {
+                tracing::debug!("Error closing dead port: {}", close_err);
+            }
+        }
+        let msg = format!("Connection lost: {}", e);
+        tracing::warn!("{}", msg);
+        self.notify_listeners(CommunicatorEvent::Disconnected, &msg);
+        gcodekit5_core::Error::other(msg)
+    }
+
+    /// Turns a port write error into the error `send` returns. A write that
+    /// fails because the connection is gone (cable pulled, peer closed)
+    /// drops the port, like the same error on a read.
+    fn write_failed(&mut self, e: std::io::Error) -> gcodekit5_core::Error {
+        if is_terminal_io_error(e.kind()) {
+            self.drop_dead_port(&e)
+        } else {
+            let msg = format!("Send error: {}", e);
+            self.notify_listeners(CommunicatorEvent::Error, &msg);
+            gcodekit5_core::Error::other(msg)
+        }
+    }
+
     /// Notify listeners of an event
     fn notify_listeners(&self, event: CommunicatorEvent, message: &str) {
         for listener in &self.listeners {
@@ -519,13 +557,6 @@ impl serial::SerialPort for TcpAsSerialPort {
                 std::io::ErrorKind::ConnectionAborted,
                 "connection closed by the controller",
             )),
-            // `SerialCommunicator::receive` treats BrokenPipe as "no data" for the sake of
-            // serial-port cleanup. On a socket it means the peer is gone, so report it as
-            // a closed connection instead.
-            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Err(std::io::Error::new(
-                std::io::ErrorKind::ConnectionAborted,
-                e,
-            )),
             other => other,
         }
     }
@@ -539,12 +570,13 @@ impl serial::SerialPort for TcpAsSerialPort {
     }
 }
 
-/// Returns true for read errors that mean the connection itself is gone (as opposed to
+/// Returns true for I/O errors that mean the connection itself is gone (as opposed to
 /// a timeout or a transient fault), so the port must be dropped.
-fn is_terminal_read_error(kind: std::io::ErrorKind) -> bool {
+fn is_terminal_io_error(kind: std::io::ErrorKind) -> bool {
     matches!(
         kind,
-        std::io::ErrorKind::ConnectionAborted
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionAborted
             | std::io::ErrorKind::ConnectionReset
             | std::io::ErrorKind::UnexpectedEof
             | std::io::ErrorKind::NotConnected
@@ -674,7 +706,7 @@ impl Communicator for SerialCommunicator {
                                 return Err(gcodekit5_core::Error::other("Full port".to_string()))
                             }
                             Ok(n) => bytes_to_send = &bytes_to_send[n..],
-                            Err(e) => return Err(gcodekit5_core::Error::other(e.to_string())),
+                            Err(e) => return Err(self.write_failed(e)),
                         }
                     }
                     return Ok(data.len());
@@ -699,7 +731,7 @@ impl Communicator for SerialCommunicator {
                                 return Err(gcodekit5_core::Error::other("Full port".to_string()))
                             }
                             Ok(n) => bytes_to_send = &bytes_to_send[n..],
-                            Err(e) => return Err(gcodekit5_core::Error::other(e.to_string())),
+                            Err(e) => return Err(self.write_failed(e)),
                         }
                     }
 
@@ -729,11 +761,7 @@ impl Communicator for SerialCommunicator {
                     self.notify_listeners(CommunicatorEvent::DataSent, &data_str);
                     Ok(n)
                 }
-                Err(e) => {
-                    let msg = format!("Send error: {}", e);
-                    self.notify_listeners(CommunicatorEvent::Error, &msg);
-                    Err(gcodekit5_core::Error::other(msg))
-                }
+                Err(e) => Err(self.write_failed(e)),
             }
         } else {
             Err(gcodekit5_core::Error::other("Not connected to serial port"))
@@ -802,23 +830,11 @@ impl Communicator for SerialCommunicator {
                         || e.kind() == std::io::ErrorKind::TimedOut
                     {
                         Ok(vec![])
-                    } else if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        // BrokenPipe during receive often happens during serial cleanup or
-                        // disconnect. (The TCP adapter maps a socket BrokenPipe to
-                        // ConnectionAborted, so it is handled as terminal below.)
-                        Ok(vec![])
-                    } else if is_terminal_read_error(e.kind()) {
-                        // The connection is gone: drop the port so is_connected() is false
-                        // and listeners (the UI) see the disconnect.
-                        if let Some(mut port) = self.port.take() {
-                            if let Err(close_err) = port.close() {
-                                tracing::debug!("Error closing dead port: {}", close_err);
-                            }
-                        }
-                        let msg = format!("Connection lost: {}", e);
-                        tracing::warn!("{}", msg);
-                        self.notify_listeners(CommunicatorEvent::Disconnected, &msg);
-                        Err(gcodekit5_core::Error::other(msg))
+                    } else if is_terminal_io_error(e.kind()) {
+                        // The connection is gone (serialport reports a pulled USB
+                        // cable as BrokenPipe): drop the port so is_connected() is
+                        // false and listeners (the UI) see the disconnect.
+                        Err(self.drop_dead_port(&e))
                     } else {
                         let msg = format!("Receive error: {}", e);
                         self.notify_listeners(CommunicatorEvent::Error, &msg);
@@ -828,184 +844,6 @@ impl Communicator for SerialCommunicator {
             }
         } else {
             Err(gcodekit5_core::Error::other("Not connected to serial port"))
-        }
-    }
-
-    fn add_listener(&mut self, listener: CommunicatorListenerHandle) {
-        self.listeners.push(listener);
-    }
-
-    fn remove_listener(&mut self, listener: &CommunicatorListenerHandle) {
-        self.listeners.retain(|l| !Arc::ptr_eq(l, listener));
-    }
-
-    fn connection_params(&self) -> Option<&ConnectionParams> {
-        self.params.as_ref()
-    }
-
-    fn set_connection_params(&mut self, params: ConnectionParams) -> gcodekit5_core::Result<()> {
-        params.validate()?;
-        self.params = Some(params);
-        Ok(())
-    }
-}
-
-/// TCP/Network communicator for remote controller connections
-///
-/// Provides network-based communication using TCP/IP for connecting to
-/// CNC controllers over Ethernet or other network connections.
-pub struct TcpCommunicator {
-    port: Option<Box<dyn tcp::TcpPort>>,
-    params: Option<ConnectionParams>,
-    listeners: Vec<CommunicatorListenerHandle>,
-}
-
-impl TcpCommunicator {
-    /// Create a new TCP communicator
-    pub fn new() -> Self {
-        Self {
-            port: None,
-            params: None,
-            listeners: Vec::new(),
-        }
-    }
-
-    /// Notify listeners of an event
-    fn notify_listeners(&self, event: CommunicatorEvent, message: &str) {
-        for listener in &self.listeners {
-            match event {
-                CommunicatorEvent::Connected => listener.on_connected(),
-                CommunicatorEvent::Disconnected => listener.on_disconnected(),
-                CommunicatorEvent::Error => listener.on_error(message),
-                CommunicatorEvent::DataReceived => listener.on_data_received(message.as_bytes()),
-                CommunicatorEvent::DataSent => listener.on_data_sent(message.as_bytes()),
-                CommunicatorEvent::Timeout => listener.on_timeout(),
-            }
-        }
-    }
-}
-
-impl Default for TcpCommunicator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Communicator for TcpCommunicator {
-    fn connect(&mut self, params: &ConnectionParams) -> gcodekit5_core::Result<()> {
-        params.validate()?;
-        if params.driver != ConnectionDriver::Tcp {
-            return Err(gcodekit5_core::Error::other(
-                "TcpCommunicator requires Tcp driver type",
-            ));
-        }
-
-        // Try to open the connection
-        match tcp::RealTcpPort::open(params) {
-            Ok(port) => {
-                self.port = Some(Box::new(port));
-                self.params = Some(params.clone());
-                self.notify_listeners(CommunicatorEvent::Connected, "Connected to TCP server");
-                Ok(())
-            }
-            Err(e) => {
-                let msg = format!("Failed to connect: {}", e);
-                // tracing::error!("{}", msg);
-                self.notify_listeners(CommunicatorEvent::Error, &msg);
-                Err(e)
-            }
-        }
-    }
-
-    fn disconnect(&mut self) -> gcodekit5_core::Result<()> {
-        if let Some(mut port) = self.port.take() {
-            match port.close() {
-                Ok(()) => {
-                    self.notify_listeners(
-                        CommunicatorEvent::Disconnected,
-                        "Disconnected from TCP server",
-                    );
-                    Ok(())
-                }
-                Err(e) => {
-                    let msg = format!("Error closing port: {}", e);
-                    // tracing::error!("{}", msg);
-                    self.notify_listeners(CommunicatorEvent::Error, &msg);
-                    Err(gcodekit5_core::Error::other(msg))
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    fn is_connected(&self) -> bool {
-        self.port.is_some()
-    }
-
-    fn send(&mut self, data: &[u8]) -> gcodekit5_core::Result<usize> {
-        if let Some(port) = &mut self.port {
-            match port.write(data) {
-                Ok(n) => {
-                    let sent_data = &data[..n];
-                    let data_str = String::from_utf8_lossy(sent_data);
-                    self.notify_listeners(CommunicatorEvent::DataSent, &data_str);
-                    Ok(n)
-                }
-                Err(e) => {
-                    // BrokenPipe means the peer is gone: the data was NOT sent, so it
-                    // must be reported rather than swallowed as a successful 0-byte write.
-                    let msg = format!("Send error: {}", e);
-                    self.notify_listeners(CommunicatorEvent::Error, &msg);
-                    Err(gcodekit5_core::Error::other(msg))
-                }
-            }
-        } else {
-            Err(gcodekit5_core::Error::other("Not connected to TCP server"))
-        }
-    }
-
-    fn receive(&mut self) -> gcodekit5_core::Result<Vec<u8>> {
-        if let Some(port) = &mut self.port {
-            let mut buf = [0u8; 4096];
-            match port.read(&mut buf) {
-                Ok(0) => {
-                    // A 0-byte read on a TCP stream is EOF: the controller closed the
-                    // connection. Drop the port so is_connected() reflects reality.
-                    self.port = None;
-                    let msg = "TCP connection closed by peer";
-                    self.notify_listeners(CommunicatorEvent::Disconnected, msg);
-                    Err(gcodekit5_core::Error::other(msg))
-                }
-                Ok(n) => {
-                    let data = buf[..n].to_vec();
-                    if n > 0 {
-                        self.notify_listeners(
-                            CommunicatorEvent::DataReceived,
-                            &format!("{} bytes", n),
-                        );
-                    }
-                    Ok(data)
-                }
-                Err(e) => {
-                    // Check if it's a timeout (no data) which is normal
-                    if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut
-                    {
-                        Ok(vec![])
-                    } else if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        // BrokenPipe during receive often happens during cleanup or disconnect
-                        Ok(vec![])
-                    } else {
-                        let msg = format!("Receive error: {}", e);
-                        // tracing::error!("{}", msg);
-                        self.notify_listeners(CommunicatorEvent::Error, &msg);
-                        Err(gcodekit5_core::Error::other(msg))
-                    }
-                }
-            }
-        } else {
-            Err(gcodekit5_core::Error::other("Not connected to TCP server"))
         }
     }
 

@@ -229,6 +229,11 @@ pub fn get_grbl_setting_numeric(number: u16) -> Option<f64> {
     get_grbl_setting(number).and_then(|v| parse_numeric_prefix(&v))
 }
 
+/// Whether the controller reports positions in inches (`$13=1`).
+pub fn reports_in_inches() -> bool {
+    get_grbl_setting_numeric(13).is_some_and(|v| v >= 1.0)
+}
+
 /// Get a snapshot of the current device status
 pub fn get_status() -> GrblDeviceStatus {
     DEVICE_STATUS.read().clone()
