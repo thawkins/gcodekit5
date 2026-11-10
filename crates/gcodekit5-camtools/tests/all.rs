@@ -25,3 +25,7 @@ mod generator_fixes;
 mod homing_safety;
 #[path = "probe_routines.rs"]
 mod probe_routines;
+#[path = "test_speeds_feeds_calculator.rs"]
+mod test_speeds_feeds_calculator;
+#[path = "test_speeds_feeds_service.rs"]
+mod test_speeds_feeds_service;

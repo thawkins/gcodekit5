@@ -25,5 +25,9 @@ mod grbl_protocol_tests;
 mod override_sequencer_tests;
 #[path = "tcp_transport_tests.rs"]
 mod tcp_transport_tests;
+#[path = "test_error_decoder.rs"]
+mod test_error_decoder;
+#[path = "test_protocol_registry.rs"]
+mod test_protocol_registry;
 #[path = "test_repetier.rs"]
 mod test_repetier;

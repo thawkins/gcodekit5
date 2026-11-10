@@ -21,6 +21,10 @@ pub fn global_env_lock() -> std::sync::MutexGuard<'static, ()> {
 mod machine_control_streaming;
 #[path = "test_array_dialog.rs"]
 mod test_array_dialog;
+#[path = "test_command_history.rs"]
+mod test_command_history;
+#[path = "test_device_console_manager.rs"]
+mod test_device_console_manager;
 #[path = "test_dialog_window.rs"]
 mod test_dialog_window;
 #[path = "test_glib_log_filter.rs"]
@@ -29,3 +33,7 @@ mod test_glib_log_filter;
 mod test_job_preferences;
 #[path = "test_machine_busy_guard.rs"]
 mod test_machine_busy_guard;
+#[path = "test_materials_manager_backend.rs"]
+mod test_materials_manager_backend;
+#[path = "test_tools_manager_backend.rs"]
+mod test_tools_manager_backend;
