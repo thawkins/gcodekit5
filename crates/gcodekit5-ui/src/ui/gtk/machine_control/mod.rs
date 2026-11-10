@@ -1223,7 +1223,7 @@ impl MachineControlView {
             };
             let unit_label = get_unit_label(initial_units);
             step_label.set_text(&format!("{} ({unit_label}):", t!("Step")));
-            let step_mm = Self::populate_step_presets(&step_combo, initial_units, step_pref);
+            let step_mm = Self::populate_exact_step(&step_combo, initial_units, step_pref);
             *jog_step_mm.lock() = step_mm;
 
             jog_feed_units.set_text(&initial_feed_units.to_string());
@@ -1260,7 +1260,7 @@ impl MachineControlView {
                 if key == "jog_increment_linear" {
                     if let Ok(step) = value.parse::<f32>() {
                         let units = *units_clone.lock();
-                        let step_mm = Self::populate_step_presets(&step_combo_clone, units, step);
+                        let step_mm = Self::populate_exact_step(&step_combo_clone, units, step);
                         *jog_step_mm_clone.lock() = step_mm;
                     }
                 }
@@ -1269,8 +1269,10 @@ impl MachineControlView {
                     if let Ok(feed) = value.parse::<f32>() {
                         if feed > 0.0 {
                             *jog_feed_mm_per_min_clone.lock() = feed;
-                            jog_feed_entry_clone
-                                .set_text(&format_feed_rate(feed, *feed_units_clone.lock()));
+                            // Read the units first: set_text runs the entry's
+                            // changed handler, which locks the same mutex.
+                            let units = *feed_units_clone.lock();
+                            jog_feed_entry_clone.set_text(&format_feed_rate(feed, units));
                         }
                     }
                 }
@@ -2510,6 +2512,19 @@ impl MachineControlView {
     ///
     /// # Returns
     /// The selected step in mm.
+    /// Fills the step list and selects `step_mm` exactly (adding it when it
+    /// is not a preset). Used for the Preferences jog step, which must not be
+    /// rounded to a neighbouring preset.
+    fn populate_exact_step(combo: &DropDown, units: MeasurementSystem, step_mm: f32) -> f32 {
+        let (choices, selected) = grbl_stream::jog_step_choices(units, step_mm);
+        combo.remove_all();
+        for choice in &choices {
+            combo.append(Some(&format!("{}", choice.mm)), &choice.label);
+        }
+        combo.set_active_id(Some(&format!("{}", choices[selected].mm)));
+        choices[selected].mm
+    }
+
     fn populate_step_presets(combo: &DropDown, units: MeasurementSystem, step_mm: f32) -> f32 {
         let presets = jog_step_presets(units);
         combo.remove_all();

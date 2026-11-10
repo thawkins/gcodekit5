@@ -297,6 +297,32 @@ pub fn jog_step_presets(units: MeasurementSystem) -> Vec<JogStepPreset> {
 ///
 /// # Returns
 /// The closest preset's index, or `None` if `presets` is empty.
+/// The jog step choices for `units` with `step_mm` selectable exactly: the
+/// presets, plus a custom entry when `step_mm` is not one of them.
+///
+/// # Returns
+/// The choices and the index of the one equal to `step_mm`.
+pub fn jog_step_choices(units: MeasurementSystem, step_mm: f32) -> (Vec<JogStepPreset>, usize) {
+    let mut presets = jog_step_presets(units);
+    if let Some(i) = presets
+        .iter()
+        .position(|p| (p.mm - step_mm).abs() <= p.mm * 1e-3)
+    {
+        return (presets, i);
+    }
+    let display = match units {
+        MeasurementSystem::Metric => step_mm,
+        MeasurementSystem::Imperial => step_mm / MM_PER_INCH,
+    };
+    let custom = JogStepPreset {
+        mm: step_mm,
+        label: format!("{} {}", display, get_unit_label(units)),
+    };
+    let at = presets.partition_point(|p| p.mm < step_mm);
+    presets.insert(at, custom);
+    (presets, at)
+}
+
 pub fn nearest_jog_step_preset(presets: &[JogStepPreset], step_mm: f32) -> Option<usize> {
     let target = if step_mm.is_finite() && step_mm > 0.0 {
         step_mm.ln()
@@ -423,13 +449,15 @@ pub fn prepare_program(
 
 /// Removes `( ... )` and `; ...` comments from one G-code line and trims it.
 fn strip_gcode_comments(line: &str) -> String {
-    let line = line.split(';').next().unwrap_or_default();
     let mut out = String::with_capacity(line.len());
     let mut depth = 0usize;
     for c in line.chars() {
         match c {
             '(' => depth += 1,
             ')' => depth = depth.saturating_sub(1),
+            // A `;` inside parentheses is part of that comment, not the start
+            // of an end-of-line comment.
+            ';' if depth == 0 => break,
             _ if depth == 0 => out.push(c),
             _ => {}
         }

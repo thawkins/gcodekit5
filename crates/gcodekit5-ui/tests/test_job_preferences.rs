@@ -37,3 +37,11 @@ fn test_inverted_axis_jogs_the_other_way() {
     device_status::set_jog_inverted('Y', false);
     assert_eq!(device_status::jog_direction('Y'), 1.0);
 }
+
+#[test]
+fn test_semicolon_inside_parentheses_is_part_of_the_comment() {
+    let out = prepare_program("G1 X1 (rough; finish) Y2 F100 ; tail\n", false, 256).expect("ok");
+    assert!(out.starts_with("G1 X1"), "{out}");
+    assert!(out.contains("Y2 F100"), "{out}");
+    assert!(!out.contains("tail") && !out.contains("rough"), "{out}");
+}

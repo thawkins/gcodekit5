@@ -6,9 +6,10 @@ use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_communication::ConnectionDriver;
 use gcodekit5_core::units::{FeedRateUnits, MeasurementSystem};
 use gcodekit5_ui::ui::gtk::machine_control::grbl_stream::{
-    classify_response, format_probe_move, jog_step_presets, line_cost, nearest_jog_step_preset,
-    network_driver_for, parse_jog_feed, parse_probe_report, reported_axis_count, CharCountWindow,
-    GrblResponseLine, ResponseLineSplitter, GRBL_RX_BUFFER_BYTES,
+    classify_response, format_probe_move, jog_step_choices, jog_step_presets, line_cost,
+    nearest_jog_step_preset, network_driver_for, parse_jog_feed, parse_probe_report,
+    reported_axis_count, CharCountWindow, GrblResponseLine, ResponseLineSplitter,
+    GRBL_RX_BUFFER_BYTES,
 };
 
 #[test]
@@ -225,4 +226,22 @@ fn test_connection_type_selects_network_driver() {
     );
     assert_eq!(network_driver_for("Serial"), None);
     assert_eq!(network_driver_for(""), None);
+}
+
+#[test]
+fn test_jog_step_choices_keeps_an_exact_custom_step() {
+    let (choices, idx) = jog_step_choices(MeasurementSystem::Metric, 5.0);
+    assert!((choices[idx].mm - 5.0).abs() < 1e-6);
+    assert!(choices.windows(2).all(|w| w[0].mm < w[1].mm));
+    assert_eq!(
+        choices.len(),
+        jog_step_presets(MeasurementSystem::Metric).len() + 1
+    );
+
+    let (choices, idx) = jog_step_choices(MeasurementSystem::Metric, 1.0);
+    assert_eq!(
+        choices.len(),
+        jog_step_presets(MeasurementSystem::Metric).len()
+    );
+    assert!((choices[idx].mm - 1.0).abs() < 1e-6);
 }
