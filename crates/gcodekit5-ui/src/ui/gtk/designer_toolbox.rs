@@ -393,7 +393,7 @@ impl DesignerToolbox {
         tool_settings_btn.set_margin_start(5);
         tool_settings_btn.set_margin_end(5);
 
-        // Conectar el botón para mostrar el diálogo (recreado cada vez)
+        // Show the tool settings dialog (built once, then reused)
         {
             let state_dialog = state.clone();
             let settings_controller_dialog = settings_controller.clone();
@@ -401,11 +401,24 @@ impl DesignerToolbox {
             let refresh_callbacks_dialog = refresh_callbacks.clone();
             let tool_settings_changed_dialog = tool_settings_changed.clone();
             let btn = tool_settings_btn.clone();
+            // Built on first use and shown again afterwards: building it per click
+            // leaked a window, its callbacks and its settings listeners each time.
+            let dialog_cell: Rc<std::cell::RefCell<Option<DialogWindow>>> =
+                Rc::new(std::cell::RefCell::new(None));
 
             tool_settings_btn.connect_clicked(move |_| {
+                if let Some(dialog) = dialog_cell.borrow().as_ref() {
+                    // Show the current machine mode and units.
+                    let callbacks: Vec<Rc<dyn Fn()>> = refresh_callbacks_dialog.borrow().clone();
+                    for callback in callbacks {
+                        callback();
+                    }
+                    dialog.present();
+                    return;
+                }
                 if let Some(root) = btn.root() {
                     if let Ok(win) = root.downcast::<gtk4::Window>() {
-                        Self::show_tool_settings_dialog(
+                        let dialog = Self::show_tool_settings_dialog(
                             &win,
                             state_dialog.clone(),
                             settings_controller_dialog.clone(),
@@ -413,6 +426,7 @@ impl DesignerToolbox {
                             refresh_callbacks_dialog.clone(),
                             tool_settings_changed_dialog.clone(),
                         );
+                        *dialog_cell.borrow_mut() = Some(dialog);
                     }
                 }
             });
@@ -459,11 +473,15 @@ impl DesignerToolbox {
                 stock_grid.attach(&entry, 1, row, 1, 1);
                 stock_grid.attach(&units_label, 2, row, 1, 1);
 
+                // Set while the entry is filled from the model, so its `changed`
+                // handler does not write the rounded display value back.
+                let updating = Rc::new(Cell::new(false));
                 let update_display = {
                     let entry = entry.clone();
                     let units_label = units_label.clone();
                     let getter = getter.clone();
                     let current_units = current_units.clone();
+                    let updating = updating.clone();
 
                     Rc::new(move || {
                         let val_mm = getter();
@@ -475,7 +493,9 @@ impl DesignerToolbox {
                         };
 
                         units_label.set_text(unit_str);
+                        updating.set(true);
                         entry.set_text(&format!("{:.3}", val_display));
+                        updating.set(false);
                     })
                 };
 
@@ -485,7 +505,11 @@ impl DesignerToolbox {
                 {
                     let current_units = current_units.clone();
                     let setter = setter.clone();
+                    let updating = updating.clone();
                     entry.connect_changed(move |e| {
+                        if updating.get() {
+                            return;
+                        }
                         if let Ok(val) = e.text().parse::<f32>() {
                             e.remove_css_class("entry-invalid");
                             let units = *current_units.lock();
@@ -836,11 +860,15 @@ impl DesignerToolbox {
                 settings_grid.attach(&entry, 1, row, 1, 1);
                 settings_grid.attach(&units_label, 2, row, 1, 1);
 
+                // Set while the entry is filled from the model, so its `changed`
+                // handler does not write the rounded display value back.
+                let updating = Rc::new(Cell::new(false));
                 let update_display = {
                     let entry = entry.clone();
                     let units_label = units_label.clone();
                     let getter = getter.clone();
                     let current_units = current_units.clone();
+                    let updating = updating.clone();
                     let state = state.clone();
                     let label = label.clone();
 
@@ -882,7 +910,9 @@ impl DesignerToolbox {
                         };
 
                         units_label.set_text(unit_str);
+                        updating.set(true);
                         entry.set_text(&format!("{:.3}", val_display));
+                        updating.set(false);
                     })
                 };
 
@@ -894,7 +924,11 @@ impl DesignerToolbox {
                     let setter = setter.clone();
                     let state = state.clone();
                     let tool_settings_changed = tool_settings_changed.clone();
+                    let updating = updating.clone();
                     entry.connect_changed(move |e| {
+                        if updating.get() {
+                            return;
+                        }
                         if let Ok(val) = e.text().parse::<f64>() {
                             e.remove_css_class("entry-invalid");
                             let units = *current_units.lock();
@@ -1083,7 +1117,7 @@ impl DesignerToolbox {
         current_units: ThreadSafe<MeasurementSystem>,
         refresh_callbacks: SharedVec<Rc<dyn Fn()>>,
         tool_settings_changed: Shared<Option<Rc<dyn Fn()>>>,
-    ) {
+    ) -> DialogWindow {
         // Crear el settings_box con el modo actual
         let (settings_box, _) = Self::create_tool_settings_box(
             state.clone(),
@@ -1125,6 +1159,7 @@ impl DesignerToolbox {
 
         dialog.content_area().append(&scroller);
         dialog.present();
+        dialog
     }
 
     pub fn connect_generate_clicked<F: Fn() + 'static>(&self, f: F) {

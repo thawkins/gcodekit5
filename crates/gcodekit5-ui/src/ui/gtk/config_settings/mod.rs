@@ -178,6 +178,9 @@ impl ConfigSettingsView {
         let restore_btn = Button::with_label(&t!("Restore"));
         restore_btn.set_tooltip_text(Some(&t!("Restore Settings to Device")));
         restore_btn.set_sensitive(false);
+        // Not shown: restoring needs each `$n=v` paced by the controller's `ok`,
+        // which this page cannot see. (It used to claim a restore it never did.)
+        restore_btn.set_visible(false);
         toolbar.append(&restore_btn);
 
         let spacer = Box::new(Orientation::Horizontal, 0);
@@ -347,11 +350,6 @@ impl ConfigSettingsView {
         let view_clone = view.clone();
         load_btn.connect_clicked(move |_| {
             view_clone.load_from_file();
-        });
-
-        let view_clone = view.clone();
-        restore_btn.connect_clicked(move |_| {
-            view_clone.restore_to_device();
         });
 
         // Connect ListBox row-activated signal to handle editing

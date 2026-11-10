@@ -654,13 +654,21 @@ impl DesignerView {
                             }
                         }
                         Err(e) => {
-                            status_label_gen.set_text(&format!("Error: {}", e));
                             error!("Failed to generate image G-code: {}", e);
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Image Engraving Failed"),
+                                &e.to_string(),
+                                None,
+                            );
                         }
                     },
                     Err(e) => {
-                        status_label_gen.set_text(&format!("Error loading image: {}", e));
                         error!("Failed to load image: {}", e);
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Image Load Failed"),
+                            &e.to_string(),
+                            None,
+                        );
                     }
                 }
                 console_manager.set_silent_mode(false);
