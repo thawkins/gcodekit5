@@ -29,7 +29,6 @@ pub mod drill_press;
 pub mod error;
 pub mod gerber;
 pub mod hatch_generator;
-mod hatch_test;
 pub mod jigsaw_puzzle;
 pub mod job_preamble;
 pub mod laser_engraver;

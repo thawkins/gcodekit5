@@ -282,13 +282,7 @@ impl DocumentHandles {
                                     .output_directory = path.clone();
 
                                 // (Windows/Linux/macOS)
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
                         } // ---------------------------
 
@@ -303,7 +297,13 @@ impl DocumentHandles {
                         status_label.set_text(&format!("{} {}", t!("Loaded:"), path.display()));
                     }
                     Err(e) => {
-                        status_label.set_text(&format!("Error: {}", e));
+                        // The designer's status label is not shown: report it.
+                        error!("Error opening design {}: {}", path.display(), e);
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Open Failed"),
+                            &format!("{}\n\n{}", path.display(), e),
+                            None,
+                        );
                     }
                 }
             }
@@ -427,10 +427,7 @@ impl DesignerView {
 
                                 settings_ref_mut.config_mut().file_processing.output_directory = path.clone();
 
-                                let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                                .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
                         }
 
@@ -496,6 +493,7 @@ impl DesignerView {
                             Ok(mut design) => {
                                 let unsupported_entities =
                                     std::mem::take(&mut design.unsupported_entities);
+                                let replaced_numbers = design.replaced_numbers;
                                 let mut z_metadata = std::mem::take(&mut design.z_metadata);
                                 if z_metadata.len() != design.shapes.len() {
                                     z_metadata = vec![(0.0, 0.0); design.shapes.len()];
@@ -571,6 +569,20 @@ impl DesignerView {
                                             "{}\n\n{}",
                                             t!("This DXF file contains ACIS solid entities (3D solids) that are not supported and were discarded:"),
                                             details
+                                        ),
+                                        parent.as_ref(),
+                                    );
+                                }
+
+                                if replaced_numbers > 0 {
+                                    let parent =
+                                        crate::ui::gtk::file_dialog::parent_window(&canvas.widget);
+                                    crate::ui::gtk::common::dialog::show_warning(
+                                        &t!("Invalid numbers replaced"),
+                                        &format!(
+                                            "{} {}",
+                                            replaced_numbers,
+                                            t!("values in this DXF file were not numbers and were replaced by defaults, so some geometry may be wrong.")
                                         ),
                                         parent.as_ref(),
                                     );
@@ -671,9 +683,7 @@ impl DesignerView {
                             .file_processing
                             .output_directory = path.clone();
 
-                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-                        let _ = settings_ref_mut.save_to_file(&config_path);
+                        settings_ref_mut.persist_or_log();
                     }
                 }
 
@@ -684,7 +694,11 @@ impl DesignerView {
                     }
                     Err(e) => {
                         error!("Error saving file: {}", e);
-                        status_label.set_text(&format!("{} {}", t!("Error saving file:"), e));
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Save Failed"),
+                            &format!("{}\n\n{}", path.display(), e),
+                            None,
+                        );
                     }
                 }
             }
@@ -699,7 +713,12 @@ impl DesignerView {
             }
             Err(e) => {
                 error!("Error saving file: {}", e);
-                self.set_status(&format!("{} {}", t!("Error saving file:"), e));
+                let parent = crate::ui::gtk::file_dialog::parent_window(&self.canvas.widget);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Save Failed"),
+                    &format!("{}\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
             }
         }
     }
@@ -766,12 +785,7 @@ impl DesignerView {
                                     .file_processing
                                     .output_directory = folder_to_save;
 
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
                         }
 
@@ -843,11 +857,11 @@ impl DesignerView {
                             }
                             Err(e) => {
                                 error!("Error exporting G-Code: {}", e);
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Error exporting G-Code:"),
-                                    e
-                                ));
+                                crate::ui::gtk::common::dialog::show_warning(
+                                    &t!("Export Failed"),
+                                    &format!("{}\n\n{}", path.display(), e),
+                                    None,
+                                );
                             }
                         }
                     }
@@ -1073,7 +1087,11 @@ impl DesignerView {
                         }
                         Err(e) => {
                             error!("Error exporting SVG: {}", e);
-                            status_label.set_text(&format!("{} {}", t!("Error exporting SVG:"), e));
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Export Failed"),
+                                &format!("{}\n\n{}", path.display(), e),
+                                None,
+                            );
                         }
                     }
                 }

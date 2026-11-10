@@ -140,3 +140,32 @@ fn test_devicedb_tcp_host_round_trips_through_ui_model() {
         "an empty host is rejected for TCP profiles"
     );
 }
+
+#[test]
+fn test_devicedb_set_active_rolls_back_when_save_fails() {
+    // Review of #87: a failed save left the new profile active in memory.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("devices.json");
+    let manager = DeviceManager::new(path.clone());
+    let first = DeviceProfile {
+        id: "first".to_string(),
+        ..DeviceProfile::default()
+    };
+    let second = DeviceProfile {
+        id: "second".to_string(),
+        ..DeviceProfile::default()
+    };
+    manager.save_profile(first).expect("save first");
+    manager.save_profile(second).expect("save second");
+    manager.set_active_profile("first").expect("activate first");
+
+    // Make the next save fail: the profiles file becomes a directory.
+    std::fs::remove_file(&path).expect("remove file");
+    std::fs::create_dir(&path).expect("block path");
+
+    assert!(manager.set_active_profile("second").is_err());
+    assert_eq!(
+        manager.get_active_profile().map(|p| p.id),
+        Some("first".to_string())
+    );
+}

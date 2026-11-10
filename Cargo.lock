@@ -184,9 +184,9 @@ dependencies = [
 
 [[package]]
 name = "async-executor"
-version = "1.14.0"
+version = "1.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a"
+checksum = "f426a31126c735126297bc5ea7a521263c9faff4f63ca415267ee625651c4f37"
 dependencies = [
  "async-task",
  "concurrent-queue",
@@ -1371,7 +1371,6 @@ dependencies = [
  "cavalier_contours",
  "chrono",
  "csgrs",
- "dxf",
  "gcodekit5-core",
  "gcodekit5-devicedb",
  "gerber-types",
@@ -1428,10 +1427,7 @@ version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
  "gcodekit5-ui",
- "gettext-rs",
- "gtk4",
  "mutants",
- "serde",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1495,8 +1491,10 @@ dependencies = [
  "gettext-rs",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]
@@ -1504,7 +1502,6 @@ name = "gcodekit5-ui"
 version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
- "chrono",
  "dirs",
  "gcodekit5-camtools",
  "gcodekit5-communication",
@@ -1534,7 +1531,6 @@ dependencies = [
  "sourceview5",
  "tempfile",
  "tracing",
- "uuid",
  "windows-sys 0.52.0",
 ]
 
@@ -1543,14 +1539,11 @@ name = "gcodekit5-visualizer"
 version = "1.2.0-beta.2"
 dependencies = [
  "anyhow",
- "bytemuck",
  "chrono",
  "criterion",
  "gcodekit5-camtools",
  "gcodekit5-core",
- "gcodekit5-designer",
  "glam",
- "lyon",
  "proptest",
  "regex",
  "serde",
@@ -1558,7 +1551,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -3914,9 +3906,9 @@ dependencies = [
 
 [[package]]
 name = "serialport"
-version = "4.10.0"
+version = "4.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a2f4ac56b5d3af3c40fbbee17be96d532cba02fa5853926aacdb77d926272ab"
+checksum = "6ba5f8f29aa20853c4e3e85a33ec580eb66be1f057142e77a333834a318bacf2"
 dependencies = [
  "bitflags 2.13.1",
  "cfg-if",

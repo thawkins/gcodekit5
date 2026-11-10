@@ -200,9 +200,16 @@ impl ToolpathToGcode {
     }
 
     /// Generates the G-code header.
+    ///
+    /// `depth` is the deepest Z the program cuts to; it is printed as
+    /// `; Final Z` (per-shape headers give each cut depth).
+    ///
+    /// In CNC mode the header ends by starting the spindle clockwise at
+    /// `spindle_speed` (`M3 S<rpm>`); laser output leaves the laser off and
+    /// switches it on per cut instead.
     pub fn generate_header(
         &self,
-        _spindle_speed: u32,
+        spindle_speed: u32,
         _feed_rate: f64,
         tool_diameter: f64,
         depth: f64,
@@ -224,7 +231,7 @@ impl ToolpathToGcode {
             // stock thickness). Record it so viewers/simulators use the right origin.
             gcode.push_str("; Stock Z0: bottom\n");
             gcode.push_str(&format!("; Tool diameter: {:.2}mm\n", tool_diameter));
-            gcode.push_str(&format!("; Cut depth: {:.2}mm\n", depth));
+            gcode.push_str(&format!("; Final Z: {:.3}mm\n", depth));
             //            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
             //            gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
         }
@@ -236,14 +243,27 @@ impl ToolpathToGcode {
         gcode.push_str("G90         ; Absolute positioning\n");
         gcode.push_str("G21         ; Millimeter units\n");
         gcode.push_str("G17         ; XY plane\n");
-        gcode.push_str("M5          ; Laser OFF ->\n");
+        if self.is_laser_2d {
+            gcode.push_str("M5          ; Laser OFF ->\n");
+        } else {
+            gcode.push_str(&format!("M3 S{}     ; Spindle ON (CW)\n", spindle_speed));
+        }
 
         gcode
     }
 
-    /// Helper para formatear coordenadas a 2 decimales (centésimas)
+    /// Formats a coordinate to 3 decimals (micrometres). Two decimals are not
+    /// enough for arcs: GRBL rejects an arc whose start and end radii differ
+    /// by more than 0.005 mm (error:33), and 0.01 mm rounding of X, Y, I and J
+    /// together can exceed that on small radii.
     fn fmt_coord(&self, value: f64) -> String {
-        format!("{:.2}", value)
+        format!("{:.3}", value)
+    }
+
+    /// Rounds a value the way [`Self::fmt_coord`] prints it, so arc centre
+    /// offsets can be taken from the position the controller actually has.
+    fn round_coord(value: f64) -> f64 {
+        (value * 1000.0).round() / 1000.0
     }
 
     /// Helper para obtener prefijo de línea
@@ -283,8 +303,21 @@ impl ToolpathToGcode {
         let mut current_xy: Option<(f64, f64)> = None;
 
         let has_z = self.num_axes >= 3 && !self.is_laser_2d;
+        // CNC spindle speed in effect: the header (or the caller) started the
+        // spindle at the first segment's speed; a later change gets an `S`.
+        let mut cnc_speed = toolpath.segments.first().map(|s| s.spindle_speed);
 
         for segment in &toolpath.segments {
+            if !self.is_laser_2d
+                && segment.segment_type != ToolpathSegmentType::RapidMove
+                && cnc_speed != Some(segment.spindle_speed)
+            {
+                gcode.push_str(&format!(
+                    "S{}        ; Spindle speed\n",
+                    segment.spindle_speed
+                ));
+                cnc_speed = Some(segment.spindle_speed);
+            }
             match segment.segment_type {
                 ToolpathSegmentType::RapidMove => {
                     // Always turn off the laser before rapid movement
@@ -534,8 +567,10 @@ impl ToolpathToGcode {
                     } else {
                         // Arco normal → usar G02/G03
                         if let Some(center) = segment.center {
-                            let i = center.x - segment.start.x;
-                            let j = center.y - segment.start.y;
+                            // I/J are relative to the arc start as the controller
+                            // knows it: the previous endpoint as printed (rounded).
+                            let i = center.x - Self::round_coord(segment.start.x);
+                            let j = center.y - Self::round_coord(segment.start.y);
                             let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
                                 "G02"
                             } else {
@@ -653,6 +688,7 @@ impl ToolpathToGcode {
                 "G00 Z{:.2}   ; Raise tool to safe height\n",
                 self.safe_z
             ));
+            gcode.push_str("M5          ; Spindle OFF\n");
         }
 
         gcode.push_str("G00 X0 Y0   ; Return to origin\n");

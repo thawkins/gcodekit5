@@ -124,7 +124,7 @@ jobs:
         cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} "GCodeKit.app/Contents/MacOS/gcodekit5"
         
         # Copy app icon and other resources
-        cp assets/Pictures/com.github.thawkins.gcodekit5.png "GCodeKit.app/Contents/Resources/AppIcon.png"
+        cp assets/pictures/com.github.thawkins.gcodekit5.png "GCodeKit.app/Contents/Resources/AppIcon.png"
         
         # Create Info.plist
         cat > "GCodeKit.app/Contents/Info.plist" << 'EOF'
@@ -199,7 +199,7 @@ jobs:
           --appdir AppDir \
           --plugin gtk \
           --output appimage \
-          --icon-file assets/Pictures/com.github.thawkins.gcodekit5.png \
+          --icon-file assets/pictures/com.github.thawkins.gcodekit5.png \
           --desktop-file flatpak/com.github.thawkins.gcodekit5.desktop \
           --executable AppDir/usr/bin/${{ matrix.platform.bin }}
 

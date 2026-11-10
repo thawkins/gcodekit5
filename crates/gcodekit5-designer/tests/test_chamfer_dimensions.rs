@@ -78,3 +78,77 @@ fn collect_path_points(shape: &Shape) -> Vec<(f64, f64)> {
 
     points
 }
+
+/// Number of holes and the largest hole's half-width in `shape`.
+fn hole_stats(shape: &gcodekit5_designer::model::Shape) -> (usize, f64) {
+    use gcodekit5_designer::model::DesignerShape;
+    let mp = shape.as_csg().to_multipolygon();
+    let holes: Vec<_> = mp.0.iter().flat_map(|p| p.interiors().iter()).collect();
+    let half_width = holes
+        .iter()
+        .map(|ring| {
+            let xs = ring.0.iter().map(|c| c.x);
+            let (lo, hi) = xs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| {
+                (lo.min(x), hi.max(x))
+            });
+            (hi - lo) / 2.0
+        })
+        .fold(0.0, f64::max);
+    (holes.len(), half_width)
+}
+
+#[test]
+fn test_offset_keeps_holes_and_moves_them() {
+    // Audit C-04: offsetting a shape with a hole filled the hole in.
+    use gcodekit5_designer::model::{DesignCircle, Point, Shape};
+    use gcodekit5_designer::ops::{perform_boolean, perform_offset, BooleanOp};
+    let outer = Shape::Circle(DesignCircle::new(Point::new(0.0, 0.0), 20.0));
+    let inner = Shape::Circle(DesignCircle::new(Point::new(0.0, 0.0), 8.0));
+    let donut = perform_boolean(&outer, &inner, BooleanOp::Difference);
+    assert_eq!(hole_stats(&donut).0, 1);
+
+    let (holes, r) = hole_stats(&perform_offset(&donut, 1.0));
+    assert_eq!(holes, 1, "growing the shape must keep the hole");
+    assert!((r - 7.0).abs() < 0.1, "hole radius {r}, expected 7");
+
+    let (holes, r) = hole_stats(&perform_offset(&donut, -1.0));
+    assert_eq!(holes, 1, "shrinking the shape must keep the hole");
+    assert!((r - 9.0).abs() < 0.1, "hole radius {r}, expected 9");
+}
+
+/// A circle as polygon points.
+fn circle_pts(r: f64) -> Vec<[f64; 2]> {
+    (0..64)
+        .map(|i| {
+            let a = i as f64 / 64.0 * std::f64::consts::TAU;
+            [r * a.cos(), r * a.sin()]
+        })
+        .collect()
+}
+
+#[test]
+fn test_offset_keeps_an_island_inside_a_hole() {
+    // Review of #85: cutting one polygon's hole removed an island processed
+    // before it. The polygons are given in both orders.
+    use csgrs::sketch::Sketch;
+    use csgrs::traits::CSG;
+    use gcodekit5_designer::model::{DesignPath, DesignerShape, Shape};
+    use gcodekit5_designer::ops::perform_offset;
+    let donut: Sketch<()> = Sketch::polygon(&circle_pts(20.0), None)
+        .difference(&Sketch::polygon(&circle_pts(8.0), None));
+    let island: Sketch<()> = Sketch::polygon(&circle_pts(3.0), None);
+    for (first, second) in [(&island, &donut), (&donut, &island)] {
+        let mut geometry = first.geometry.clone();
+        geometry.0.extend(second.geometry.0.iter().cloned());
+        let shape = Shape::Path(DesignPath::from_csg(Sketch::from_geo(geometry, None)));
+        assert_eq!(
+            shape.as_csg().to_multipolygon().0.len(),
+            2,
+            "donut + island"
+        );
+        let grown = perform_offset(&shape, 1.0);
+        let polys = grown.as_csg().to_multipolygon().0.len();
+        assert_eq!(polys, 2, "the island must survive the offset");
+        assert_eq!(hole_stats(&grown).0, 1, "the donut keeps its hole");
+    }
+}

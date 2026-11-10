@@ -523,8 +523,15 @@ impl Config {
             ));
         };
 
-        std::fs::write(path, content)
+        // Write a sibling temp file and rename it over the config, so a crash
+        // mid-write cannot leave a truncated file that then fails to load.
+        let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
+        tmp_name.push(".tmp");
+        let tmp = path.with_file_name(tmp_name);
+        std::fs::write(&tmp, content)
             .map_err(|e| Error::other(format!("Failed to write config file: {}", e)))?;
+        std::fs::rename(&tmp, path)
+            .map_err(|e| Error::other(format!("Failed to replace config file: {}", e)))?;
 
         Ok(())
     }

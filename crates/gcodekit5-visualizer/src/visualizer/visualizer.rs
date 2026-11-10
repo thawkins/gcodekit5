@@ -5,11 +5,8 @@ use super::toolpath_cache::ToolpathCache;
 use super::viewport::Bounds;
 use crate::gcode::{arc, words};
 use gcodekit5_core::constants as core_constants;
-use gcodekit5_designer::toolpath::Toolpath;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
-use std::sync::mpsc;
 use tracing::{debug, trace};
 
 const _CANVAS_PADDING_2X: f32 = 40.0;
@@ -95,6 +92,9 @@ enum MotionMode {
     Linear, // G1
     ArcCW,  // G2
     ArcCCW, // G3
+    /// G38.2-G38.5: a probing move. It stops at contact, so it is drawn as
+    /// travel and never simulated as a cut.
+    Probe,
 }
 
 /// 6-Axis position including rotary axes
@@ -467,9 +467,6 @@ pub struct Visualizer {
     /// Dirty flag — set when vertex data needs regeneration
     dirty: bool,
 
-    toolpath_receiver: Rc<mpsc::Receiver<Vec<Toolpath>>>,
-    toolpath_sender: mpsc::Sender<Vec<Toolpath>>,
-    current_toolpaths: Vec<Toolpath>,
     /// Colors according to intensity
     pub min_intensity: f32,
     pub max_intensity: f32,
@@ -481,8 +478,6 @@ impl Visualizer {
     /// Create new visualizer
     #[allow(clippy::arc_with_non_send_sync)]
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
-
         Self {
             // Linear axis bounds
             min_x: -(core_constants::WORLD_EXTENT_MM as f32),
@@ -510,10 +505,6 @@ impl Visualizer {
             color_rotary_moves: true, // Enable rotary color coding by default
             toolpath_cache: ToolpathCache::new(),
             dirty: true,
-
-            toolpath_receiver: Rc::new(receiver),
-            toolpath_sender: sender,
-            current_toolpaths: Vec::new(),
 
             min_intensity: 0.0,
             max_intensity: 1000.0,
@@ -650,6 +641,7 @@ impl Visualizer {
                             (1, 0) => current_motion_mode = MotionMode::Linear,
                             (2, 0) => current_motion_mode = MotionMode::ArcCW,
                             (3, 0) => current_motion_mode = MotionMode::ArcCCW,
+                            (38, 2..=5) => current_motion_mode = MotionMode::Probe,
                             (4, 0) => dwell = true,
                             (10, _) | (28, 1) | (30, 1) | (43, 1) => axes_not_motion = true,
                             (17, 0) => plane = ArcPlane::XY,
@@ -851,6 +843,17 @@ impl Visualizer {
                         bounds.update(current_pos.x, current_pos.y, current_pos.z);
                         bounds.update(target.x, target.y, target.z);
                     }
+                    current_pos = target;
+                }
+                MotionMode::Probe => {
+                    commands.push(GCodeCommand::Move {
+                        from: current_pos,
+                        to: target,
+                        rapid: true,
+                        intensity: None,
+                    });
+                    bounds.update(current_pos.x, current_pos.y, current_pos.z);
+                    bounds.update(target.x, target.y, target.z);
                     current_pos = target;
                 }
                 MotionMode::None => {
@@ -1112,19 +1115,6 @@ impl Visualizer {
             GCodeCommand::Arc { from, .. } => *from,
             GCodeCommand::Dwell { pos, .. } => *pos,
         })
-    }
-
-    pub fn update(&mut self) {
-        if let Some(receiver) = Rc::get_mut(&mut self.toolpath_receiver) {
-            while let Ok(toolpaths) = receiver.try_recv() {
-                self.current_toolpaths = toolpaths;
-                self.dirty = true;
-            }
-        }
-    }
-
-    pub fn get_sender(&self) -> mpsc::Sender<Vec<Toolpath>> {
-        self.toolpath_sender.clone()
     }
 
     /// Obtain the color for a given intensity.

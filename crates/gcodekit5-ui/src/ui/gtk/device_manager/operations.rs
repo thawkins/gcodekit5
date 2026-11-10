@@ -193,6 +193,7 @@ impl DeviceManagerWindow {
             self.edit_has_spindle.set_active(profile.has_spindle);
             self.edit_has_laser.set_active(profile.has_laser);
             self.edit_has_coolant.set_active(profile.has_coolant);
+            self.edit_pen_mode.set_active(profile.pen_mode);
             self.edit_num_axes.set_text(profile.num_axes.trim());
             self.edit_max_s_value.set_text(profile.max_s_value.trim());
             self.edit_spindle_watts
@@ -358,6 +359,7 @@ impl DeviceManagerWindow {
             model.has_spindle = self.edit_has_spindle.is_active();
             model.has_laser = self.edit_has_laser.is_active();
             model.has_coolant = self.edit_has_coolant.is_active();
+            model.pen_mode = self.edit_pen_mode.is_active();
 
             let num_axes: u8 = match self.edit_num_axes.text().trim().parse() {
                 Ok(v) if (1..=6).contains(&v) => v,
@@ -484,7 +486,10 @@ impl DeviceManagerWindow {
             Some(&window),
             move |resp| {
                 if resp == ResponseType::Yes {
-                    let _ = view.controller.delete_profile(&model.id);
+                    if let Err(e) = view.controller.delete_profile(&model.id) {
+                        tracing::warn!(error = %e, "Failed to delete device profile");
+                        view.show_error_dialog("Delete failed", &e.to_string());
+                    }
                     view.load_devices();
                     view.cancel_edit();
                 }
@@ -495,7 +500,13 @@ impl DeviceManagerWindow {
     pub(crate) fn set_as_active(&self) {
         let id_opt = self.selected_device.borrow().as_ref().map(|d| d.id.clone());
         if let Some(id) = id_opt {
-            let _ = self.controller.set_active_profile(&id);
+            // Only switch the panel's axis count once the active device is saved,
+            // so the two cannot disagree.
+            if let Err(e) = self.controller.set_active_profile(&id) {
+                tracing::warn!(error = %e, "Failed to set the active device profile");
+                self.show_error_dialog("Set active failed", &e.to_string());
+                return;
+            }
             if let Some(profile) = self.selected_device.borrow().as_ref() {
                 let num: u8 = profile.num_axes.trim().parse().unwrap_or(3);
                 crate::device_status::set_active_num_axes(num);

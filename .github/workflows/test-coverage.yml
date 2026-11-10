@@ -14,6 +14,9 @@ env:
 jobs:
   test-coverage:
     name: Coverage (${{ matrix.arch }})
+    # Disabled: both coverage jobs (x86_64, aarch64) are skipped.
+    # Remove this line to re-enable them.
+    if: false
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

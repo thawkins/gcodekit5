@@ -45,9 +45,6 @@ struct CalculatorState {
 
 impl Default for CalculatorState {
     fn default() -> Self {
-        // Try to load the device manager from config
-        let device_manager = Self::load_device_manager();
-
         Self {
             selected_tool: None,
             selected_material: None,
@@ -57,33 +54,26 @@ impl Default for CalculatorState {
             tool_stick_out: 25.0,
             coolant_enabled: true,
             conservative: false,
-            device_manager,
+            device_manager: None,
         }
     }
 }
 
 impl CalculatorState {
-    /// Load the device manager from the config file
-    fn load_device_manager() -> Option<Arc<DeviceManager>> {
-        let config_dir = dirs::config_dir()?;
-        let device_config_path = config_dir.join("gcodekit5").join("devices.json");
-
-        eprintln!(
-            "[SpeedsFeeds] Loading device manager from: {:?}",
-            device_config_path
-        );
-
-        let manager = Arc::new(DeviceManager::new(device_config_path.clone()));
-        match manager.load() {
-            Ok(_) => {
-                eprintln!("[SpeedsFeeds] Device manager loaded successfully");
-                Some(manager)
-            }
-            Err(e) => {
-                eprintln!("[SpeedsFeeds] Failed to load device manager: {:?}", e);
-                None
-            }
+    /// A fresh calculator that reads the active machine from `device_manager`,
+    /// the application's live device database (so a change of active device or
+    /// spindle in the Device Manager is seen at once).
+    fn with_device_manager(device_manager: Option<Arc<DeviceManager>>) -> Self {
+        Self {
+            device_manager,
+            ..Self::default()
         }
+    }
+
+    /// Clears the selections and inputs back to their defaults, keeping the
+    /// live device database.
+    fn reset(&mut self) {
+        *self = Self::with_device_manager(self.device_manager.take());
     }
 
     /// Get the active device profile if available
@@ -119,15 +109,31 @@ struct ResultLabels {
 
 pub struct SpeedsFeedsTool {
     content: Box,
-    #[allow(dead_code)]
     state: Rc<RefCell<CalculatorState>>,
     #[allow(dead_code)]
     result_labels: Rc<RefCell<Option<ResultLabels>>>,
 }
 
 impl SpeedsFeedsTool {
-    pub fn new(stack: &Stack, _settings: Rc<SettingsController>) -> Self {
-        let state = Rc::new(RefCell::new(CalculatorState::default()));
+    /// Clears the calculator, as the Reset button does.
+    pub fn reset(&self) {
+        self.state.borrow_mut().reset();
+    }
+
+    /// Name of the machine the calculator uses: the active profile of the
+    /// application's device database, read when asked.
+    pub fn active_device_name(&self) -> Option<String> {
+        self.state.borrow().get_active_device().map(|p| p.name)
+    }
+
+    pub fn new(
+        stack: &Stack,
+        _settings: Rc<SettingsController>,
+        device_manager: Option<Arc<DeviceManager>>,
+    ) -> Self {
+        let state = Rc::new(RefCell::new(CalculatorState::with_device_manager(
+            device_manager.clone(),
+        )));
         let result_labels = Rc::new(RefCell::new(None));
         let content_box = Box::new(Orientation::Vertical, 0);
 
@@ -762,9 +768,7 @@ impl SpeedsFeedsTool {
         });
 
         let state_clone = state.clone();
-        reset_btn.connect_clicked(move |_| {
-            *state_clone.borrow_mut() = CalculatorState::default();
-        });
+        reset_btn.connect_clicked(move |_| state_clone.borrow_mut().reset());
 
         right_panel
     }

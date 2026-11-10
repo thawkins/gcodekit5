@@ -616,6 +616,11 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
     let mut result_sketch = csgrs::sketch::Sketch::new();
 
     for poly in mp.0 {
+        // Each polygon is offset on its own (outline minus its own holes) and
+        // then added, so cutting one polygon's holes cannot remove another
+        // polygon, such as an island inside the hole.
+        let mut poly_sketch = csgrs::sketch::Sketch::new();
+
         // --- CONTORNO EXTERIOR (Perfil del piñón / Triángulo) ---
         let mut ext_pline = Polyline::new();
         for coord in poly.exterior().0.iter() {
@@ -633,7 +638,7 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
             // Muestreamos con una tolerancia estricta de 0.01mm para máxima fidelidad en el piñón
             let pts = interpolate_polyline_arcs(&offset, 0.01);
             if pts.len() >= 3 {
-                result_sketch = result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
+                poly_sketch = poly_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
             }
         }
 
@@ -646,19 +651,25 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
             int_pline.set_is_closed(true);
             let int_pline = clean_polyline(int_pline);
 
+            // Holes wind the other way round, so the same outward offset of
+            // the shape is the opposite offset of the hole ring.
             let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                int_pline.parallel_offset(distance)
+                int_pline.parallel_offset(-distance)
             }))
             .unwrap_or_default();
 
+            // A hole's offset is cut out of the shape, as in `perform_chamfer`;
+            // a union would fill the hole in.
             for offset in offsets {
                 let pts = interpolate_polyline_arcs(&offset, 0.01);
                 if pts.len() >= 3 {
-                    result_sketch =
-                        result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
+                    poly_sketch =
+                        poly_sketch.difference(&csgrs::sketch::Sketch::polygon(&pts, None));
                 }
             }
         }
+
+        result_sketch = result_sketch.union(&poly_sketch);
     }
 
     let mut result_path = DesignPath::from_csg(result_sketch);

@@ -11,7 +11,7 @@
 //! - Documentation (Tasks 138-143): Architecture, API, user/dev guides, examples
 //! - CI/CD & Quality (Tasks 144-150): CI pipeline, release, testing, security, optimization
 //!
-//! Dependencies: anyhow, thiserror, serde, chrono, uuid, regex
+//! Dependencies: anyhow, thiserror, serde, chrono, regex
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};

@@ -518,3 +518,76 @@ fn test_visualizer_g53_retract_is_not_plotted_at_work_z() {
         g53_move.0.z
     );
 }
+
+/// Runs a stock simulation on a worker thread and fails if it does not
+/// finish within a few seconds (the old code looped ~1.8e19 times).
+fn simulate_within_deadline(width: f32, height: f32, segments: Vec<ToolpathSegment>) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut sim = StockSimulator3D::new(width, height, 5.0, 0.5, 1.0);
+        sim.simulate_toolpath(&segments);
+        let _ = tx.send(());
+    });
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_secs(10)).is_ok(),
+        "stock simulation did not finish"
+    );
+}
+
+#[test]
+fn test_stock_removal_cut_left_of_stock_finishes() {
+    // Audit D-01: a cut at negative X/Y made the voxel range wrap to usize::MAX.
+    simulate_within_deadline(
+        10.0,
+        10.0,
+        vec![linear((-10.0, -10.0, -2.0), (-8.0, -10.0, -2.0))],
+    );
+}
+
+#[test]
+fn test_stock_removal_zero_size_stock_finishes() {
+    simulate_within_deadline(0.0, 0.0, vec![linear((1.0, 1.0, -2.0), (2.0, 1.0, -2.0))]);
+}
+
+#[test]
+fn test_stock_dimensions_are_checked_before_allocating() {
+    // Audit E1-06: a full sheet needed ~15.7 GB and aborted the process.
+    use gcodekit5_visualizer::VoxelGrid;
+    assert!(VoxelGrid::check_dimensions(200.0, 200.0, 10.0, 0.19).is_ok());
+    assert!(VoxelGrid::check_dimensions(1220.0, 2440.0, 18.0, 0.19).is_err());
+    assert!(VoxelGrid::check_dimensions(0.0, 10.0, 10.0, 0.19).is_err());
+    assert!(VoxelGrid::check_dimensions(f32::NAN, 10.0, 10.0, 0.19).is_err());
+}
+
+#[test]
+fn test_stock_resolution_must_be_positive_and_finite() {
+    // #89 review: a bad resolution gave zero cells and passed the check.
+    use gcodekit5_visualizer::VoxelGrid;
+    for resolution in [0.0, -0.19, f32::NAN, f32::INFINITY] {
+        assert!(
+            VoxelGrid::check_dimensions(200.0, 200.0, 10.0, resolution).is_err(),
+            "{resolution}"
+        );
+    }
+}
+
+#[test]
+fn test_probe_move_is_drawn_as_travel_not_a_cut() {
+    // Audit D-02: G38.2 kept the previous G1 mode, so the probe and the
+    // following modal line were simulated as feed cuts.
+    let vis = parse("G1 X0 Y0 F100\nG38.2 Z-20 F100\nX10\n");
+    let moves: Vec<bool> = vis
+        .commands()
+        .iter()
+        .filter_map(|c| match c {
+            GCodeCommand::Move { rapid, .. } => Some(*rapid),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(moves.len(), 3, "{moves:?}");
+    assert!(moves[1], "probe move must be travel");
+    assert!(
+        moves[2],
+        "the modal line after G38.2 is still a probe, not a cut"
+    );
+}

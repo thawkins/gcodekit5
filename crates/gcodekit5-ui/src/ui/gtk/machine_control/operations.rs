@@ -34,7 +34,15 @@ impl MachineControlView {
         if *self.is_streaming.lock() {
             return;
         }
-        let content = self.prepare_job_content(content.to_string());
+        let content = match self.prepare_job_content(content.to_string()) {
+            Ok(content) => content,
+            Err(reason) => {
+                if let Some(c) = self.device_console.as_ref() {
+                    c.append_log(&format!("{} {reason}\n", t!("Job not started:")));
+                }
+                return;
+            }
+        };
         let content = content.as_str();
 
         let lines: Vec<String> = content
