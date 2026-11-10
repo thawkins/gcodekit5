@@ -201,6 +201,9 @@ impl ToolpathToGcode {
 
     /// Generates the G-code header.
     ///
+    /// `depth` is the deepest Z the program cuts to; it is printed as
+    /// `; Final Z` (per-shape headers give each cut depth).
+    ///
     /// In CNC mode the header ends by starting the spindle clockwise at
     /// `spindle_speed` (`M3 S<rpm>`); laser output leaves the laser off and
     /// switches it on per cut instead.
@@ -228,7 +231,7 @@ impl ToolpathToGcode {
             // stock thickness). Record it so viewers/simulators use the right origin.
             gcode.push_str("; Stock Z0: bottom\n");
             gcode.push_str(&format!("; Tool diameter: {:.2}mm\n", tool_diameter));
-            gcode.push_str(&format!("; Cut depth: {:.2}mm\n", depth));
+            gcode.push_str(&format!("; Final Z: {:.3}mm\n", depth));
             //            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
             //            gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
         }
@@ -260,9 +263,18 @@ impl ToolpathToGcode {
         gcode
     }
 
-    /// Helper para formatear coordenadas a 2 decimales (centésimas)
+    /// Formats a coordinate to 3 decimals (micrometres). Two decimals are not
+    /// enough for arcs: GRBL rejects an arc whose start and end radii differ
+    /// by more than 0.005 mm (error:33), and 0.01 mm rounding of X, Y, I and J
+    /// together can exceed that on small radii.
     fn fmt_coord(&self, value: f64) -> String {
-        format!("{:.2}", value)
+        format!("{:.3}", value)
+    }
+
+    /// Rounds a value the way [`Self::fmt_coord`] prints it, so arc centre
+    /// offsets can be taken from the position the controller actually has.
+    fn round_coord(value: f64) -> f64 {
+        (value * 1000.0).round() / 1000.0
     }
 
     /// Helper para obtener prefijo de línea
@@ -553,8 +565,10 @@ impl ToolpathToGcode {
                     } else {
                         // Arco normal → usar G02/G03
                         if let Some(center) = segment.center {
-                            let i = center.x - segment.start.x;
-                            let j = center.y - segment.start.y;
+                            // I/J are relative to the arc start as the controller
+                            // knows it: the previous endpoint as printed (rounded).
+                            let i = center.x - Self::round_coord(segment.start.x);
+                            let j = center.y - Self::round_coord(segment.start.y);
                             let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
                                 "G02"
                             } else {

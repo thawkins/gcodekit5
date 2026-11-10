@@ -539,7 +539,7 @@ impl DesignerState {
             .sum();
 
         // Use settings from first toolpath if available, or defaults
-        let (header_speed, header_feed, header_diam, header_depth) =
+        let (header_speed, header_feed, header_diam) =
             if let Some((_, tps, _)) = shape_toolpaths.first() {
                 if let Some(first) = tps.first() {
                     let s = first
@@ -552,13 +552,20 @@ impl DesignerState {
                         .first()
                         .map(|seg| seg.feed_rate)
                         .unwrap_or(100.0);
-                    (s, f, first.tool_diameter, first.depth)
+                    (s, f, first.tool_diameter)
                 } else {
-                    (3000, 100.0, 3.175, -5.0)
+                    (3000, 100.0, 3.175)
                 }
             } else {
-                (3000, 100.0, 3.175, -5.0)
+                (3000, 100.0, 3.175)
             };
+        // The header reports the deepest Z any pass reaches.
+        let header_depth = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .map(|tp| tp.depth)
+            .reduce(f64::min)
+            .unwrap_or(0.0);
 
         gcode.push_str(&gcode_gen.generate_header(
             header_speed,

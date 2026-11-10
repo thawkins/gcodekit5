@@ -1,3 +1,12 @@
+## [Unreleased] - 2026-11-10 (Designer G-code correctness)
+
+### Fixed
+- **Spindle start** (#75, C-01): Designer CNC programs now start the spindle with `M3 S<rpm>` after the header and stop it with `M5` after the final Z raise; the cutter no longer plunges with the spindle stopped
+- **Arc precision** (C-02): coordinates are written with 3 decimals and arc `I`/`J` are taken from the rounded start point, so GRBL no longer rejects small rotated arcs with error:33
+- **Ramp entry on dense paths** (C-03): when the ramp lap cap is reached, the remaining depth is cut in flat laps one step-down apart instead of one full-depth plunge
+- **Offset keeps holes** (C-04): offsetting a shape with holes (gears, boolean results) moves the holes with the outline instead of filling them in
+- **Header depth** (C-07): the header prints `; Final Z` (deepest cut) instead of a "Cut depth" that was the first pass Z
+
 ## [Unreleased] - 2026-11-10 (homing keeps the work zero)
 
 ### Fixed
