@@ -698,7 +698,12 @@ impl DesignerView {
             }
             Err(e) => {
                 error!("Error saving file: {}", e);
-                self.set_status(&format!("{} {}", t!("Error saving file:"), e));
+                let parent = crate::ui::gtk::file_dialog::parent_window(&self.canvas.widget);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Save Failed"),
+                    &format!("{}\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
             }
         }
     }
@@ -837,11 +842,11 @@ impl DesignerView {
                             }
                             Err(e) => {
                                 error!("Error exporting G-Code: {}", e);
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Error exporting G-Code:"),
-                                    e
-                                ));
+                                crate::ui::gtk::common::dialog::show_warning(
+                                    &t!("Export Failed"),
+                                    &format!("{}\n\n{}", path.display(), e),
+                                    None,
+                                );
                             }
                         }
                     }

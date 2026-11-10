@@ -141,6 +141,33 @@ pub struct DesignerToolbox {
     tool_settings_changed: Shared<Option<Rc<dyn Fn()>>>,
 }
 
+/// Fills `entry` from the model with `updating` set, so the entry's `changed`
+/// handler (which returns early while `updating` is set) does not write the
+/// rounded display value back into the model.
+pub fn fill_entry_from_model(entry: &gtk4::Entry, updating: &Cell<bool>, text: &str) {
+    updating.set(true);
+    entry.set_text(text);
+    updating.set(false);
+}
+
+/// Returns the value stored in `cell`, building and storing it with `build`
+/// on first use.
+///
+/// # Returns
+/// The value and whether it was built by this call, or `None` when `build`
+/// produced nothing (nothing is stored then, so the next call tries again).
+pub fn build_once<T: Clone>(
+    cell: &std::cell::RefCell<Option<T>>,
+    build: impl FnOnce() -> Option<T>,
+) -> Option<(T, bool)> {
+    if let Some(value) = cell.borrow().as_ref() {
+        return Some((value.clone(), false));
+    }
+    let value = build()?;
+    *cell.borrow_mut() = Some(value.clone());
+    Some((value, true))
+}
+
 impl DesignerToolbox {
     pub fn new(
         state: Shared<DesignerState>,
@@ -407,27 +434,24 @@ impl DesignerToolbox {
                 Rc::new(std::cell::RefCell::new(None));
 
             tool_settings_btn.connect_clicked(move |_| {
-                if let Some(dialog) = dialog_cell.borrow().as_ref() {
+                let built = build_once(&dialog_cell, || {
+                    let win = btn.root()?.downcast::<gtk4::Window>().ok()?;
+                    Some(Self::show_tool_settings_dialog(
+                        &win,
+                        state_dialog.clone(),
+                        settings_controller_dialog.clone(),
+                        current_units_dialog.clone(),
+                        refresh_callbacks_dialog.clone(),
+                        tool_settings_changed_dialog.clone(),
+                    ))
+                });
+                if let Some((dialog, false)) = built {
                     // Show the current machine mode and units.
                     let callbacks: Vec<Rc<dyn Fn()>> = refresh_callbacks_dialog.borrow().clone();
                     for callback in callbacks {
                         callback();
                     }
                     dialog.present();
-                    return;
-                }
-                if let Some(root) = btn.root() {
-                    if let Ok(win) = root.downcast::<gtk4::Window>() {
-                        let dialog = Self::show_tool_settings_dialog(
-                            &win,
-                            state_dialog.clone(),
-                            settings_controller_dialog.clone(),
-                            current_units_dialog.clone(),
-                            refresh_callbacks_dialog.clone(),
-                            tool_settings_changed_dialog.clone(),
-                        );
-                        *dialog_cell.borrow_mut() = Some(dialog);
-                    }
                 }
             });
         }
@@ -493,9 +517,7 @@ impl DesignerToolbox {
                         };
 
                         units_label.set_text(unit_str);
-                        updating.set(true);
-                        entry.set_text(&format!("{:.3}", val_display));
-                        updating.set(false);
+                        fill_entry_from_model(&entry, &updating, &format!("{:.3}", val_display));
                     })
                 };
 
@@ -910,9 +932,7 @@ impl DesignerToolbox {
                         };
 
                         units_label.set_text(unit_str);
-                        updating.set(true);
-                        entry.set_text(&format!("{:.3}", val_display));
-                        updating.set(false);
+                        fill_entry_from_model(&entry, &updating, &format!("{:.3}", val_display));
                     })
                 };
 
