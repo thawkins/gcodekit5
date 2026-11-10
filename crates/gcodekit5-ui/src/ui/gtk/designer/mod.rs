@@ -31,6 +31,32 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tracing::error;
 
+/// The XY working area the Designer checks its G-code against: the active
+/// device profile's axis limits, or, without an active profile, Preferences >
+/// Machine > X/Y limit (from 0). `None` when neither gives a usable area.
+pub(crate) fn designer_machine_limits(
+    device_manager: Option<&Arc<DeviceManager>>,
+    settings: &gcodekit5_settings::SettingsPersistence,
+) -> Option<gcodekit5_designer::gcode_gen::MachineLimits> {
+    if let Some(profile) = device_manager.and_then(|dm| dm.get_active_profile()) {
+        return Some(gcodekit5_designer::gcode_gen::MachineLimits {
+            x_min: profile.x_axis.min,
+            x_max: profile.x_axis.max,
+            y_min: profile.y_axis.min,
+            y_max: profile.y_axis.max,
+        });
+    }
+    let machine = &settings.config().machine;
+    (machine.x_limit > 0.0 && machine.y_limit > 0.0).then_some(
+        gcodekit5_designer::gcode_gen::MachineLimits {
+            x_min: 0.0,
+            x_max: machine.x_limit,
+            y_min: 0.0,
+            y_max: machine.y_limit,
+        },
+    )
+}
+
 // Complex type due to GTK widget and callback fields.
 #[allow(clippy::type_complexity)]
 pub struct DesignerView {
@@ -581,6 +607,7 @@ impl DesignerView {
         let canvas_gen = canvas.clone();
         let on_gen = on_gcode_generated.clone();
         let status_label_gen = status_label.clone();
+        let settings_for_limits = settings_controller.persistence.clone();
 
         toolbox.connect_generate_clicked(move || {
             let mut state = canvas_gen.state.borrow_mut();
@@ -715,20 +742,10 @@ impl DesignerView {
                 state.toolpath_generator.set_start_depth(start_depth);
                 state.toolpath_generator.set_step_in(tool_diameter * 0.4);
 
-                let limits = if let Some(dm) = &device_manager {
-                    if let Some(profile) = dm.get_active_profile() {
-                        Some(gcodekit5_designer::gcode_gen::MachineLimits {
-                            x_min: profile.x_axis.min,
-                            x_max: profile.x_axis.max,
-                            y_min: profile.y_axis.min,
-                            y_max: profile.y_axis.max,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                let limits = designer_machine_limits(
+                    device_manager.as_ref(),
+                    &settings_for_limits.borrow(),
+                );
 
                 let (gcode, has_out_of_limits_warning) = state.generate_gcode_with_warning_info(limits);
 

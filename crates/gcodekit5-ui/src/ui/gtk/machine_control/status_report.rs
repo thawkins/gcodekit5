@@ -264,6 +264,8 @@ impl MachineControlView {
         }
 
         self.update_job_controls();
+        // $130-$132 arrive with $$; picks up a change of the limit Preferences too.
+        self.refresh_limit_labels();
     }
 
     /// Shows rotary axes that a status report carries but the panel does not show yet.

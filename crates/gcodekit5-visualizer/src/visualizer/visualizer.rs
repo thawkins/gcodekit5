@@ -467,6 +467,10 @@ pub struct Visualizer {
     /// Dirty flag — set when vertex data needs regeneration
     dirty: bool,
 
+    /// Longest straight segment (mm) used to draw an arc; 0 keeps the default
+    /// angle-based segmentation. Set from Preferences > Arc Segment Length.
+    pub arc_segment_length: f32,
+
     /// Colors according to intensity
     pub min_intensity: f32,
     pub max_intensity: f32,
@@ -506,6 +510,7 @@ impl Visualizer {
             toolpath_cache: ToolpathCache::new(),
             dirty: true,
 
+            arc_segment_length: 0.0,
             min_intensity: 0.0,
             max_intensity: 1000.0,
             use_intensity_colors: true,
@@ -1128,6 +1133,16 @@ impl Visualizer {
         }
 
         intensity_to_color(intensity, self.max_intensity)
+    }
+
+    /// Sets the longest straight segment (mm) used to draw arcs (0 keeps
+    /// the default angle-based segmentation) and marks the vertex data stale.
+    pub fn set_arc_segment_length(&mut self, mm: f32) {
+        let mm = if mm.is_finite() { mm.max(0.0) } else { 0.0 };
+        if (mm - self.arc_segment_length).abs() > f32::EPSILON {
+            self.arc_segment_length = mm;
+            self.dirty = true;
+        }
     }
 
     /// Activate/deactivate colors by intensity
