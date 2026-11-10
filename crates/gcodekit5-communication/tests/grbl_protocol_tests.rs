@@ -1,6 +1,5 @@
 //! Regression tests for GRBL status report parsing.
 
-use gcodekit5_communication::firmware::device_status::{DeviceStatus, MachineStateType};
 use gcodekit5_communication::firmware::grbl::StatusParser;
 
 #[test]
@@ -36,18 +35,6 @@ fn test_status_parser_bare_state() {
         StatusParser::parse_machine_state("<Hold:0|MPos:0,0,0>").as_deref(),
         Some("Hold:0")
     );
-}
-
-#[test]
-fn test_device_status_fs_and_override_order() {
-    let status =
-        DeviceStatus::parse_grbl_status("<Hold:0|MPos:1.0,2.0,3.0|FS:500,8000|Ov:110,50,90>")
-            .expect("status should parse");
-    assert_eq!(status.state, MachineStateType::Hold);
-    assert_eq!(status.feed_rate, Some(500.0));
-    assert_eq!(status.spindle_speed, Some(8000));
-    let ov = status.overrides.expect("overrides");
-    assert_eq!((ov.feed_rate, ov.rapid, ov.spindle_speed), (110, 50, 90));
 }
 
 #[test]

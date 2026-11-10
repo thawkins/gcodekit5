@@ -15,41 +15,16 @@
 //! - Smoothieware: CNC control software
 //! - Marlin: 3D printer firmware
 
-pub mod capabilities;
-pub mod connection_watch;
-pub mod device_status;
-pub mod file_service;
-pub mod fluidnc;
-pub mod g2core;
 pub mod grbl;
-pub mod grblhal;
-pub mod override_manager;
 pub mod protocol_registry;
 pub mod repetier;
 pub mod sender;
-pub mod settings;
-pub mod smoothieware;
-pub mod tinyg;
-
-pub use capabilities::{CapabilitiesTrait, Capability, DefaultCapabilities};
-pub use connection_watch::{ConnectionWatchConfig, ConnectionWatchState, ConnectionWatcher};
-pub use file_service::{FileInfo, FileServiceTrait, NoOpFileService, StorageInfo};
-pub use fluidnc::{FluidNCCapabilities, FluidNCController, FluidNCVersion};
-pub use g2core::{G2CoreCapabilities, G2CoreController, G2CoreVersion as G2CoreVer};
-pub use grblhal::{GrblHalCapabilities, GrblHalVersion};
-pub use override_manager::{
-    DefaultOverrideManager, OverrideManagerTrait, OverrideState, RapidOverrideLevel,
-};
 
 pub use protocol_registry::{
     protocol_profile, ProtocolProfile, SenderKind, FALLBACK_PROFILE, PROTOCOLS,
 };
 
-pub use settings::{DefaultFirmwareSettings, FirmwareSetting, FirmwareSettingsTrait, SettingType};
-
 pub use sender::Sender;
-pub use smoothieware::{SmoothiewareCapabilities, SmoothiewareController, SmoothiewareVersion};
-pub use tinyg::{TinyGCapabilities, TinyGController, TinyGVersion as TinyGVer};
 
 /// Supported CNC controller types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

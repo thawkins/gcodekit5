@@ -23,7 +23,6 @@ const SEND_RETRY_LIMIT: Duration = Duration::from_secs(2);
 #[derive(Clone)]
 pub struct RepetierSender {
     tx_control: MpscSender<SenderCommand>,
-    communicator: ThreadSafe<SerialCommunicator>,
     is_streaming: ThreadSafe<bool>,
     /// Pen-plotter mode: rewrite laser on/off as pen down/up Z moves.
     pen_mode: Arc<AtomicBool>,
@@ -53,7 +52,6 @@ impl RepetierSender {
 
         // Clones for the struct. The `move` closure below takes ownership of
         // the originals, so we save copies here.
-        let communicator_for_struct = communicator.clone();
         let is_streaming_for_struct = is_streaming.clone();
         let pen_mode = Arc::new(AtomicBool::new(false));
         let pen_mode_for_struct = Arc::clone(&pen_mode);
@@ -292,7 +290,6 @@ impl RepetierSender {
         (
             Self {
                 tx_control,
-                communicator: communicator_for_struct,
                 is_streaming: is_streaming_for_struct,
                 pen_mode: pen_mode_for_struct,
             },

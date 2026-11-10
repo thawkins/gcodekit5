@@ -11,7 +11,6 @@
 //! - Event callbacks for connection state changes
 //! - Configurable connection parameters
 
-pub mod buffered;
 pub mod serial;
 pub mod tcp;
 
@@ -21,9 +20,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
 
-pub use buffered::{
-    BufferedCommand, BufferedCommunicatorConfig, BufferedCommunicatorWrapper, CommandStatus,
-};
 pub use serial::{list_ports, SerialPortInfo};
 pub use tcp::TcpConnectionInfo;
 

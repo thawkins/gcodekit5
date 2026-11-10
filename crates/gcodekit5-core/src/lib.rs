@@ -8,16 +8,14 @@ pub mod constants;
 pub mod core;
 pub mod data;
 pub mod error;
-pub mod event_bus;
 pub mod gcode;
 pub mod probe;
 pub mod types;
 pub mod units;
 
 pub use core::{
-    event::{ControllerEvent, EventDispatcher},
-    message::{Message, MessageDispatcher, MessageLevel},
-    ControllerListener, ControllerListenerHandle, ControllerTrait, OverrideState, SimpleController,
+    message::{Message, MessageLevel},
+    OverrideState,
 };
 
 pub use data::{
@@ -33,15 +31,8 @@ pub use probe::{
 pub use error::{ConnectionError, ControllerError, Error, FirmwareError, GcodeError, Result};
 
 pub use gcode::{
-    AxisLimits, CommandId, CommandListener, CommandListenerHandle, CommandNumberGenerator,
-    CommandResponse, CommandState, GcodeCommand, GcodeValidator, GcodeValidatorConfig,
-    NoOpCommandListener, ValidationReport, ValidationResult,
-};
-
-// Re-export event bus for convenience
-pub use event_bus::{
-    event_bus, AppEvent, EventBus, EventBusConfig, EventCategory, EventFilter, MachineEvent,
-    SubscriptionId,
+    CommandId, CommandListener, CommandListenerHandle, CommandNumberGenerator, CommandResponse,
+    CommandState, GcodeCommand, NoOpCommandListener,
 };
 
 // Re-export type aliases for convenience

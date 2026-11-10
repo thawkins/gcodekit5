@@ -4,7 +4,5 @@
 //! lifecycle management, state tracking, and listener traits.
 
 pub mod command;
-pub mod validator;
 
 pub use command::*;
-pub use validator::*;
