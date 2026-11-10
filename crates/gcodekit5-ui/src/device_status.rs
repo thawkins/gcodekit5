@@ -247,6 +247,63 @@ pub fn reports_in_inches() -> bool {
     get_grbl_setting_numeric(13).is_some_and(|v| v >= 1.0)
 }
 
+/// Whether a job is streaming to the controller. Kept up to date by the
+/// machine control panel.
+static JOB_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Records whether a job is streaming to the controller.
+pub fn set_job_active(active: bool) {
+    JOB_ACTIVE.store(active, Ordering::Relaxed);
+}
+
+/// Whether a job is streaming to the controller.
+pub fn is_job_active() -> bool {
+    JOB_ACTIVE.load(Ordering::Relaxed)
+}
+
+/// Why a manual command (console line, jog) must not be sent now, or `None`.
+///
+/// While a job streams, the job's sender owns the controller's responses: an
+/// extra line's `ok` would be credited to a job line and its `error:N` would
+/// stop the job.
+pub fn manual_command_blocked() -> Option<String> {
+    is_job_active().then(|| crate::t!("a job is running"))
+}
+
+/// Why a `$` settings command (`$$`, `$n=v`) must not be sent now, or `None`.
+///
+/// Besides the job rule of [`manual_command_blocked`], GRBL rejects `$`
+/// commands unless it is Idle (or in Alarm).
+pub fn settings_command_blocked() -> Option<String> {
+    if let Some(reason) = manual_command_blocked() {
+        return Some(reason);
+    }
+    let state = get_status().state;
+    let low = state.to_ascii_lowercase();
+    if low.is_empty() || low.starts_with("idle") || low.starts_with("alarm") {
+        None
+    } else {
+        Some(format!(
+            "{} ({state})",
+            crate::t!("the machine must be idle")
+        ))
+    }
+}
+
+/// Whether a GRBL state means the machine is not moving, so a soft reset
+/// will not lose its position: a completed hold (`Hold:0`), or any state that
+/// is not motion (`Idle`, `Alarm`, `Check`, `Door:0`, ...).
+pub fn machine_is_stopped(state: &str) -> bool {
+    let low = state.trim().to_ascii_lowercase();
+    if let Some(sub) = low
+        .strip_prefix("hold")
+        .or_else(|| low.strip_prefix("door"))
+    {
+        return sub.is_empty() || sub == ":0";
+    }
+    !(low.starts_with("run") || low.starts_with("jog") || low.starts_with("home"))
+}
+
 /// Get a snapshot of the current device status
 pub fn get_status() -> GrblDeviceStatus {
     DEVICE_STATUS.read().clone()

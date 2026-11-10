@@ -77,6 +77,9 @@ fn make_icon_label_toggle(icon: &str, label: &str) -> ToggleButton {
 /// Minimum width in px of the G-code editor/console column on Machine Control.
 const EDITOR_COLUMN_MIN_WIDTH: i32 = 360;
 
+/// Longest wait for a feed hold to complete before Stop sends the reset.
+const STOP_HOLD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Clone)]
 pub struct MachineControlView {
     pub widget: Paned,
@@ -485,7 +488,7 @@ impl MachineControlView {
 
         let stop_btn = make_icon_label_button("media-playback-stop-symbolic", &t!("Stop"));
         stop_btn.set_tooltip_text(Some(&t!(
-            "Stop job: abort streaming (does not reset controller)"
+            "Stop job: feed hold, then reset the controller once stopped (keeps position)"
         )));
         stop_btn.add_css_class("destructive-action");
         stop_btn.set_hexpand(true);
@@ -511,7 +514,7 @@ impl MachineControlView {
         trans_box.append(&trans_row2);
 
         let stop_hint = Label::new(Some(&t!(
-            "Stop aborts streaming; E‑Stop resets the controller."
+            "Stop holds the feed, then resets; E‑Stop resets the controller at once."
         )));
         stop_hint.add_css_class("dim-label");
         stop_hint.set_wrap(true);
@@ -1820,14 +1823,12 @@ impl MachineControlView {
                     sender.stop();
                 }
 
-                // GRBL-style controllers: soft reset. Flow-control protocols (Repetier)
-                // have no realtime reset; their sender's stop() ends the job.
+                // GRBL-style controllers: feed hold, then soft reset once the machine
+                // has stopped, so the reset does not raise "reset while in motion"
+                // and lose the position. Flow-control protocols (Repetier) have no
+                // realtime reset; their sender's stop() ends the job.
                 if !Self::is_flow_control_protocol() {
-                    if let Some(c) = console.as_ref() {
-                        c.append_log("> 0x18 (Stop)\n");
-                    }
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(&[0x18]);
+                    Self::feed_hold_then_reset(&communicator, &console);
                 }
 
                 *is_streaming.lock() = false;
@@ -2231,6 +2232,20 @@ impl MachineControlView {
                 console_clone.add_to_history(cmd.clone());
                 console_clone.reset_history_navigation();
 
+                // Realtime commands (feed hold, resume, status) are safe during a
+                // job; any other line would corrupt the job's ack accounting.
+                let realtime = matches!(cmd.as_str(), "!" | "~" | "?");
+                if !realtime {
+                    if let Some(reason) = device_status::manual_command_blocked() {
+                        console_clone.append_log(&format!(
+                            "{} {}\n",
+                            t!("Command not sent:"),
+                            reason
+                        ));
+                        return;
+                    }
+                }
+
                 // Send command (only log it as sent if it actually went out)
                 {
                     let mut comm = communicator.lock();
@@ -2477,6 +2492,51 @@ impl MachineControlView {
                 self.log(&format!("{}: {e}", t!("Error sending")));
             }
         }
+    }
+
+    /// Stops a GRBL machine without losing its position: sends feed hold
+    /// (`!`), waits until the controller reports the hold complete (or that
+    /// it is not moving), then sends the soft reset (0x18) that clears the
+    /// planner. If the hold does not complete within
+    /// [`STOP_HOLD_TIMEOUT`], the reset is sent anyway.
+    fn feed_hold_then_reset(
+        communicator: &ThreadSafe<SerialCommunicator>,
+        console: &Option<Rc<DeviceConsoleView>>,
+    ) {
+        let log = |text: &str| {
+            if let Some(c) = console.as_ref() {
+                c.append_log(&format!("{text}\n"));
+            }
+        };
+        log("> ! (Stop: feed hold)");
+        if let Err(e) = communicator.lock().send(b"!") {
+            tracing::warn!(error = %e, "Stop: feed hold not sent");
+        }
+
+        let communicator = communicator.clone();
+        let console = console.clone();
+        let started = std::time::Instant::now();
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            let state = device_status::get_status().state;
+            let stopped = device_status::machine_is_stopped(&state);
+            let timed_out = started.elapsed() >= STOP_HOLD_TIMEOUT;
+            if !stopped && !timed_out {
+                return glib::ControlFlow::Continue;
+            }
+            if let Some(c) = console.as_ref() {
+                if stopped {
+                    c.append_log("> 0x18 (Stop: reset)\n");
+                } else {
+                    c.append_log(&format!(
+                        "> 0x18 (Stop: reset; feed hold did not complete, state {state})\n"
+                    ));
+                }
+            }
+            if let Err(e) = communicator.lock().send(&[0x18]) {
+                tracing::warn!(error = %e, "Stop: soft reset not sent");
+            }
+            glib::ControlFlow::Break
+        });
     }
 
     /// Whether the active machine's protocol uses a flow-control sender (Repetier).

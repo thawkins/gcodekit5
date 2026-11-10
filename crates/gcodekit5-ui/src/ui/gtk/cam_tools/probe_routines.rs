@@ -738,7 +738,7 @@ impl ProbeRoutinesTool {
             .borrow()
             .as_ref()
             .is_some_and(|s| s.is_streaming());
-        if *mc.is_streaming.lock() || direct_running {
+        if mc.job_active() || direct_running {
             return Some(t!("A job is running."));
         }
         if mc.quick_probe.get() != Default::default() {
