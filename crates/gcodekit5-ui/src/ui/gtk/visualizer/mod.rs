@@ -28,6 +28,13 @@ use gcodekit5_settings::controller::SettingsController;
 use gcodekit5_visualizer::visualizer::{StockSimulator3D, StockZeroReference};
 use glam::Vec3;
 
+/// Value of the 3D view's vertical scrollbar for a camera target Y. The
+/// scrollbar grows downwards while world Y grows upwards, so the sign flips;
+/// the scrollbar's handler applies the inverse.
+fn vscroll_3d_value(target_y: f32) -> f64 {
+    -f64::from(target_y)
+}
+
 const STOCK_REMOVAL_RESOLUTION: f32 = 0.19; // Resolución cambiada de 0.25 a 0.19
 
 /// Colour (RGBA) of the Run-preview tool marker; the live machine marker is red.
@@ -433,7 +440,7 @@ impl GcodeVisualizer {
         };
 
         self.hadjustment_3d.set_value(target_x as f64);
-        self.vadjustment_3d.set_value(target_y as f64);
+        self.vadjustment_3d.set_value(vscroll_3d_value(target_y));
         self.gl_area.queue_render();
     }
 
@@ -1259,7 +1266,7 @@ impl GcodeVisualizer {
 
                 *is_updating_fit_3d.borrow_mut() = true;
                 hadj_fit_3d.set_value(cam.target.x as f64);
-                vadj_fit_3d.set_value(cam.target.y as f64);
+                vadj_fit_3d.set_value(vscroll_3d_value(cam.target.y));
                 *is_updating_fit_3d.borrow_mut() = false;
 
                 gl_area_fit_3d.queue_render();
@@ -1363,8 +1370,30 @@ impl GcodeVisualizer {
             let show_rapid_menu = show_rapid.clone();
             let show_cut_menu = show_cut.clone();
             right_click.connect_pressed(move |_g, _n, x, y| {
+                // The clicked point in world coordinates, for "Copy cursor coordinates".
+                {
+                    let v = vis_menu.borrow();
+                    let (width, height) = (da_menu.width() as f64, da_menu.height() as f64);
+                    let s = v.zoom_scale as f64;
+                    if width > 0.0 && height > 0.0 && s != 0.0 {
+                        let world_x = (x - width / 2.0) / s - v.x_offset as f64;
+                        let world_y = -((y - height / 2.0) / s) - v.y_offset as f64;
+                        *cursor_pos_menu.borrow_mut() = (world_x as f32, world_y as f32);
+                    }
+                }
+
                 let menu = Popover::new();
                 menu.set_parent(&da_menu);
+                // Unparent once closed, or every right-click leaks a popover.
+                // Clearing the child first drops the buttons, whose handlers
+                // hold the menu, so the popover itself can be freed.
+                menu.connect_closed(|m| {
+                    let m = m.clone();
+                    glib::idle_add_local_once(move || {
+                        m.set_child(None::<&gtk4::Widget>);
+                        m.unparent();
+                    });
+                });
                 menu.set_has_arrow(false);
                 let rect = gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
                 menu.set_pointing_to(Some(&rect));
@@ -1448,7 +1477,7 @@ impl GcodeVisualizer {
                     let cursor_pos = cursor_pos_menu.clone();
                     let settings = settings_menu.clone();
                     add_item(
-                        "Copy cursor coordinates",
+                        &t!("Copy cursor coordinates"),
                         std::boxed::Box::new(move || {
                             let (x, y) = *cursor_pos.borrow();
                             let system =
@@ -2112,6 +2141,23 @@ impl GcodeVisualizer {
                 if let Some(stock) = stock_material_stock.borrow().as_ref() {
                     // Run simulation in background thread
                     let stock_clone = stock.clone();
+                    if let Err(reason) = gcodekit5_visualizer::VoxelGrid::check_dimensions(
+                        stock_clone.width,
+                        stock_clone.height,
+                        stock_clone.thickness,
+                        STOCK_REMOVAL_RESOLUTION,
+                    ) {
+                        tracing::warn!("Stock simulation not started: {reason}");
+                        // Unchecking runs the cleanup branch below, which
+                        // clears the running flag and the progress UI.
+                        checkbox.set_active(false);
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Stock Simulation"),
+                            &reason,
+                            None,
+                        );
+                        return;
+                    }
                     let tool_radius_value = *tool_diameter_stock.borrow() / 2.0;
                     let stock_zero = *stock_zero_reference_stock.borrow();
                     let result_3d_ref = stock_simulator_3d_stock.clone();
@@ -2189,15 +2235,9 @@ impl GcodeVisualizer {
                     let render_ready_clone = render_ready.clone();
 
                     std::thread::spawn(move || {
-                        use gcodekit5_visualizer::{StockSimulator3D, VoxelGrid};
+                        use gcodekit5_visualizer::StockSimulator3D;
 
                         let resolution = STOCK_REMOVAL_RESOLUTION;
-                        let _grid = VoxelGrid::new(
-                            stock_clone.width,
-                            stock_clone.height,
-                            stock_clone.thickness,
-                            resolution,
-                        );
 
                         // The stock origin is the user's "Stock Z0 at" setting
                         // (defaulted from the program header when it records one);
@@ -2882,7 +2922,7 @@ impl GcodeVisualizer {
             // Update scrollbars
             *is_updating_3d_drag.borrow_mut() = true;
             hadj_3d_drag.set_value(cam.target.x as f64);
-            vadj_3d_drag.set_value(cam.target.y as f64);
+            vadj_3d_drag.set_value(vscroll_3d_value(cam.target.y));
             *is_updating_3d_drag.borrow_mut() = false;
 
             gl_area_drag.queue_render();
@@ -2912,6 +2952,7 @@ impl GcodeVisualizer {
             }
             let val = adj.value();
             let mut cam = camera_v.borrow_mut();
+            // Inverse of `vscroll_3d_value`.
             cam.target.y = -val as f32;
             gl_area_v.queue_render();
         });
@@ -2926,7 +2967,7 @@ impl GcodeVisualizer {
                 let c = cam.borrow();
                 *is_updating.borrow_mut() = true;
                 hadj.set_value(c.target.x as f64);
-                vadj.set_value(c.target.y as f64);
+                vadj.set_value(vscroll_3d_value(c.target.y));
 
                 // Update page size based on view extent
                 let fov_rad = c.fov.to_radians();
