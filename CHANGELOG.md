@@ -68,6 +68,18 @@
 
 ### Changed
 - The empty always-passing hatch test was removed and the Gerber rubout test moved to `tests/` (D-03)
+## [Unreleased] - 2026-11-10 (UI leaks and silent failures)
+
+### Fixed
+- **Tool Settings dialog** (#79, E1-04): built once and shown again, instead of leaking a hidden window and its callbacks on every open
+- **Rounded settings written back** (E1-05): refreshing the tool/stock settings no longer stores the 3-decimal display value (1000 mm/min became 999.998 in inches)
+- **Designer errors shown** (E1-07): failures to open, save or export a design, or to load/engrave an image, show a dialog; they went to a label that is never displayed
+- **Status bar notices** (E2-09): a notice's 4 s clear timer no longer clears a newer notice early
+- **Speeds & Feeds device** (E2-07): uses the application's device database, so a change of active machine or spindle is seen at once
+- **CAM presets** (E2-08): drill press and spoilboard grid/surfacing presets report save and load errors, and refuse to save a field that is not a valid number instead of saving a default
+
+### Removed
+- The Device Config "Restore" button (E2-06): it reported restoring settings but did nothing
 ## [Unreleased] - 2026-11-10 (release packaging and dependency diet)
 
 ### Fixed

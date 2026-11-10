@@ -297,7 +297,13 @@ impl DocumentHandles {
                         status_label.set_text(&format!("{} {}", t!("Loaded:"), path.display()));
                     }
                     Err(e) => {
-                        status_label.set_text(&format!("Error: {}", e));
+                        // The designer's status label is not shown: report it.
+                        error!("Error opening design {}: {}", path.display(), e);
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Open Failed"),
+                            &format!("{}\n\n{}", path.display(), e),
+                            None,
+                        );
                     }
                 }
             }
@@ -688,7 +694,11 @@ impl DesignerView {
                     }
                     Err(e) => {
                         error!("Error saving file: {}", e);
-                        status_label.set_text(&format!("{} {}", t!("Error saving file:"), e));
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Save Failed"),
+                            &format!("{}\n\n{}", path.display(), e),
+                            None,
+                        );
                     }
                 }
             }
@@ -703,7 +713,12 @@ impl DesignerView {
             }
             Err(e) => {
                 error!("Error saving file: {}", e);
-                self.set_status(&format!("{} {}", t!("Error saving file:"), e));
+                let parent = crate::ui::gtk::file_dialog::parent_window(&self.canvas.widget);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Save Failed"),
+                    &format!("{}\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
             }
         }
     }
@@ -842,11 +857,11 @@ impl DesignerView {
                             }
                             Err(e) => {
                                 error!("Error exporting G-Code: {}", e);
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Error exporting G-Code:"),
-                                    e
-                                ));
+                                crate::ui::gtk::common::dialog::show_warning(
+                                    &t!("Export Failed"),
+                                    &format!("{}\n\n{}", path.display(), e),
+                                    None,
+                                );
                             }
                         }
                     }
@@ -1072,7 +1087,11 @@ impl DesignerView {
                         }
                         Err(e) => {
                             error!("Error exporting SVG: {}", e);
-                            status_label.set_text(&format!("{} {}", t!("Error exporting SVG:"), e));
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Export Failed"),
+                                &format!("{}\n\n{}", path.display(), e),
+                                None,
+                            );
                         }
                     }
                 }

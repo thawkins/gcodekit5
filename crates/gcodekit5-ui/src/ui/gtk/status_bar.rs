@@ -8,6 +8,8 @@ use gcodekit5_core::units::{
 };
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::t;
 use gcodekit5_core::{shared_none, SharedOption};
@@ -35,6 +37,9 @@ pub struct StatusBar {
     cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>>,
     pub device_info_label: Label,
     pub alert_label: Label, // <-- NUEVA: Para los avisos de la derecha
+    /// Timer that clears `alert_label`; replaced by each new notice so an
+    /// older notice's timer cannot clear a newer one.
+    alert_timer: Rc<Cell<Option<glib::SourceId>>>,
 }
 
 impl Default for StatusBar {
@@ -205,6 +210,7 @@ impl StatusBar {
             cancel_action,
             device_info_label,
             alert_label,
+            alert_timer: Rc::new(Cell::new(None)),
         }
     }
 
@@ -280,10 +286,16 @@ impl StatusBar {
             self.alert_label.set_text(state);
             // Temporizador: Limpia automáticamente el aviso de la derecha tras 4 segundos (4000ms)
             let alert_label_clone = self.alert_label.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(4000), move || {
+            let timer = self.alert_timer.clone();
+            if let Some(previous) = self.alert_timer.take() {
+                previous.remove();
+            }
+            let id = glib::timeout_add_local(std::time::Duration::from_millis(4000), move || {
                 alert_label_clone.set_text("");
+                timer.set(None);
                 glib::ControlFlow::Break
             });
+            self.alert_timer.set(Some(id));
         }
     }
 

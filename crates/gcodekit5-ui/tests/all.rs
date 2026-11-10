@@ -29,3 +29,5 @@ mod test_job_preferences;
 mod test_machine_busy_guard;
 #[path = "test_report_units.rs"]
 mod test_report_units;
+#[path = "test_ui_leaks.rs"]
+mod test_ui_leaks;

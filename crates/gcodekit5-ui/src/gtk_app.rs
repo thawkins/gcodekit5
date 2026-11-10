@@ -355,6 +355,7 @@ pub fn main() {
                 editor_for_cam.grab_focus();
             },
             Some(designer.clone()),
+            Some(device_manager.clone()),
         );
 
         // ==========================================
