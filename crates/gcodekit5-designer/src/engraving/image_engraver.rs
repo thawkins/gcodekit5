@@ -20,17 +20,36 @@ pub enum ScanDirection {
     Vertical,
 }
 
-/*
-/// Halftoning method
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Halftoning method: how grey levels become on/off laser dots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HalftoneMethod {
+    /// Grey levels are engraved as laser power (no halftoning).
+    #[default]
     None,
+    /// Pixels at or above the threshold are white, the rest black.
     Threshold,
+    /// Ordered dithering with a 4x4 Bayer matrix.
     Bayer4x4,
+    /// Floyd-Steinberg error diffusion.
     FloydSteinberg,
+    /// Atkinson error diffusion.
     Atkinson,
 }
-*/
+
+impl HalftoneMethod {
+    /// The method for a raster image's `dithering` name (`"none"`,
+    /// `"threshold"`, `"floyd"`, `"atkinson"`, `"bayer"`); unknown names are
+    /// treated as `None`.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "threshold" => Self::Threshold,
+            "bayer" => Self::Bayer4x4,
+            "floyd" => Self::FloydSteinberg,
+            "atkinson" => Self::Atkinson,
+            _ => Self::None,
+        }
+    }
+}
 
 /// Structure containing the engraving parameters
 #[derive(Debug, Clone)]
@@ -48,8 +67,10 @@ pub struct EngravingParams {
     pub mirror_x: bool,
     pub mirror_y: bool,
     pub rotation: RotationAngle,
-    //    pub halftone: HalftoneMethod,
-    //    pub halftone_threshold: u8,
+    /// Halftoning applied after scaling (and inversion).
+    pub halftone: HalftoneMethod,
+    /// Cut-off for [`HalftoneMethod::Threshold`] (0-255).
+    pub halftone_threshold: u8,
     pub offset_x: f32,
     pub offset_y: f32,
     pub power_scale: f32,
@@ -72,8 +93,8 @@ impl Default for EngravingParams {
             mirror_x: false,
             mirror_y: false,
             rotation: RotationAngle::Degrees0,
-            //            halftone: HalftoneMethod::None,
-            //            halftone_threshold: 127,
+            halftone: HalftoneMethod::None,
+            halftone_threshold: 127,
             offset_x: 10.0,
             offset_y: 10.0,
             power_scale: 1000.0,
@@ -217,11 +238,7 @@ impl ImageEngraver {
         if params.invert {
             image::imageops::invert(&mut gray);
         }
-        /*
-                if params.halftone != HalftoneMethod::None {
-                    Self::apply_halftoning(&mut gray, &params)?;
-                }
-        */
+        Self::apply_halftoning(&mut gray, &params);
         Ok(Self {
             image: gray,
             params,
@@ -237,106 +254,99 @@ impl ImageEngraver {
             self.output_height as f32 / self.params.pixels_per_mm(),
         )
     }
-    /*
-        fn apply_halftoning(image: &mut GrayImage, params: &EngravingParams) -> Result<()> {
-            let dot_size = 1;
+    /// Turns the grey image into on/off dots with `params.halftone`.
+    fn apply_halftoning(image: &mut GrayImage, params: &EngravingParams) {
+        match params.halftone {
+            HalftoneMethod::Threshold => Self::threshold(image, params.halftone_threshold),
+            HalftoneMethod::Bayer4x4 => Self::bayer_dither(image),
+            HalftoneMethod::FloydSteinberg => Self::floyd_steinberg(image),
+            HalftoneMethod::Atkinson => Self::atkinson(image),
+            HalftoneMethod::None => {}
+        }
+    }
 
-            if dot_size > 1 {
-            } else {
-                match params.halftone {
-                    HalftoneMethod::Threshold => Self::threshold(image, params.halftone_threshold),
-                    HalftoneMethod::Bayer4x4 => Self::bayer_dither(image),
-                    HalftoneMethod::FloydSteinberg => Self::floyd_steinberg(image),
-                    HalftoneMethod::Atkinson => Self::atkinson(image),
-                    HalftoneMethod::None => {}
+    fn threshold(image: &mut GrayImage, threshold: u8) {
+        for pixel in image.pixels_mut() {
+            pixel.0[0] = if pixel.0[0] >= threshold { 255 } else { 0 };
+        }
+    }
+
+    fn bayer_dither(image: &mut GrayImage) {
+        let bayer = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+        for y in 0..image.height() {
+            for x in 0..image.width() {
+                let val = image.get_pixel(x, y).0[0];
+                let threshold = (bayer[(y % 4) as usize][(x % 4) as usize] * 16 + 8) as u8;
+                image.put_pixel(x, y, image::Luma([if val >= threshold { 255 } else { 0 }]));
+            }
+        }
+    }
+
+    fn floyd_steinberg(image: &mut GrayImage) {
+        let width = image.width();
+        let height = image.height();
+        let mut buffer: Vec<i16> = image.as_raw().iter().map(|&p| p as i16).collect();
+
+        for y in 0..height {
+            for x in 0..width {
+                let idx = (y * width + x) as usize;
+                let old = buffer[idx];
+                let new = if old > 127 { 255 } else { 0 };
+                buffer[idx] = new;
+                let err = old - new;
+
+                if x + 1 < width {
+                    buffer[(y * width + x + 1) as usize] += err * 7 / 16;
+                }
+                if x > 0 && y + 1 < height {
+                    buffer[((y + 1) * width + x - 1) as usize] += err * 3 / 16;
+                }
+                if y + 1 < height {
+                    buffer[((y + 1) * width + x) as usize] += err * 5 / 16;
+                }
+                if x + 1 < width && y + 1 < height {
+                    buffer[((y + 1) * width + x + 1) as usize] += err / 16;
                 }
             }
-            Ok(())
         }
 
-        fn threshold(image: &mut GrayImage, threshold: u8) {
-            for pixel in image.pixels_mut() {
-                pixel.0[0] = if pixel.0[0] >= threshold { 255 } else { 0 };
-            }
+        for (i, &val) in buffer.iter().enumerate() {
+            let x = (i as u32) % width;
+            let y = (i as u32) / width;
+            image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
         }
+    }
 
-        fn bayer_dither(image: &mut GrayImage) {
-            let bayer = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
-            for y in 0..image.height() {
-                for x in 0..image.width() {
-                    let val = image.get_pixel(x, y).0[0];
-                    let threshold = (bayer[(y % 4) as usize][(x % 4) as usize] * 16 + 8) as u8;
-                    image.put_pixel(x, y, image::Luma([if val >= threshold { 255 } else { 0 }]));
-                }
-            }
-        }
+    fn atkinson(image: &mut GrayImage) {
+        let width = image.width();
+        let height = image.height();
+        let mut buffer: Vec<i16> = image.as_raw().iter().map(|&p| p as i16).collect();
 
-        fn floyd_steinberg(image: &mut GrayImage) {
-            let width = image.width();
-            let height = image.height();
-            let mut buffer: Vec<i16> = image.as_raw().iter().map(|&p| p as i16).collect();
+        for y in 0..height {
+            for x in 0..width {
+                let idx = (y * width + x) as usize;
+                let old = buffer[idx];
+                let new = if old > 127 { 255 } else { 0 };
+                buffer[idx] = new;
+                let err = old - new;
 
-            for y in 0..height {
-                for x in 0..width {
-                    let idx = (y * width + x) as usize;
-                    let old = buffer[idx];
-                    let new = if old > 127 { 255 } else { 0 };
-                    buffer[idx] = new;
-                    let err = old - new;
-
-                    if x + 1 < width {
-                        buffer[(y * width + x + 1) as usize] += err * 7 / 16;
-                    }
-                    if x > 0 && y + 1 < height {
-                        buffer[((y + 1) * width + x - 1) as usize] += err * 3 / 16;
-                    }
-                    if y + 1 < height {
-                        buffer[((y + 1) * width + x) as usize] += err * 5 / 16;
-                    }
-                    if x + 1 < width && y + 1 < height {
-                        buffer[((y + 1) * width + x + 1) as usize] += err / 16;
-                    }
-                }
-            }
-
-            for (i, &val) in buffer.iter().enumerate() {
-                let x = (i as u32) % width;
-                let y = (i as u32) / width;
-                image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
-            }
-        }
-
-        fn atkinson(image: &mut GrayImage) {
-            let width = image.width();
-            let height = image.height();
-            let mut buffer: Vec<i16> = image.as_raw().iter().map(|&p| p as i16).collect();
-
-            for y in 0..height {
-                for x in 0..width {
-                    let idx = (y * width + x) as usize;
-                    let old = buffer[idx];
-                    let new = if old > 127 { 255 } else { 0 };
-                    buffer[idx] = new;
-                    let err = old - new;
-
-                    let neighbors = [(1, 0), (2, 0), (-1, 1), (0, 1), (1, 1), (0, 2)];
-                    for (dx, dy) in neighbors {
-                        let nx = x as isize + dx;
-                        let ny = y as isize + dy;
-                        if nx >= 0 && nx < width as isize && ny >= 0 && ny < height as isize {
-                            buffer[(ny as u32 * width + nx as u32) as usize] += err / 8;
-                        }
+                let neighbors = [(1, 0), (2, 0), (-1, 1), (0, 1), (1, 1), (0, 2)];
+                for (dx, dy) in neighbors {
+                    let nx = x as isize + dx;
+                    let ny = y as isize + dy;
+                    if nx >= 0 && nx < width as isize && ny >= 0 && ny < height as isize {
+                        buffer[(ny as u32 * width + nx as u32) as usize] += err / 8;
                     }
                 }
             }
-
-            for (i, &val) in buffer.iter().enumerate() {
-                let x = (i as u32) % width;
-                let y = (i as u32) / width;
-                image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
-            }
         }
-    */
+
+        for (i, &val) in buffer.iter().enumerate() {
+            let x = (i as u32) % width;
+            let y = (i as u32) / width;
+            image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
+        }
+    }
 
     fn intensity_to_power(&self, intensity: u8) -> u32 {
         let normalized = intensity as f32 / 255.0;
@@ -349,11 +359,10 @@ impl ImageEngraver {
     }
 
     fn quantize_power(&self, power: u32) -> u32 {
-        /*
-                if self.params.halftone != HalftoneMethod::None {
-                    return power;
-                }
-        */
+        // Halftoned images are already on/off: keep full and zero power.
+        if self.params.halftone != HalftoneMethod::None {
+            return power;
+        }
         // Reduce command churn by quantizing grayscale power levels.
         // This keeps tonal shading while avoiding one-pixel power changes.
         const LEVELS: u32 = 64;

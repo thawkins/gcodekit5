@@ -483,3 +483,46 @@ fn test_dxf_malformed_numbers_are_reported() {
         design.unsupported_entities
     );
 }
+
+/// Distinct laser power values (`S` words) in a program.
+fn power_levels(gcode: &str) -> std::collections::BTreeSet<u32> {
+    gcode
+        .split_whitespace()
+        .filter_map(|w| w.strip_prefix('S'))
+        .filter_map(|v| v.parse().ok())
+        .collect()
+}
+
+#[test]
+fn test_halftone_makes_an_on_off_engraving() {
+    // Owner decision: wire up dithering/halftone. A grey ramp engraves with
+    // many power levels without halftoning and only full/zero power with it.
+    use gcodekit5_designer::engraving::{EngravingParams, HalftoneMethod, ImageEngraver};
+    let ramp = image::GrayImage::from_fn(64, 8, |x, _| image::Luma([(x * 4) as u8]));
+    let engrave = |halftone| {
+        let params = EngravingParams {
+            width_mm: 16.0,
+            halftone,
+            ..EngravingParams::default()
+        };
+        ImageEngraver::from_image(image::DynamicImage::ImageLuma8(ramp.clone()), params)
+            .expect("engraver")
+            .generate_gcode()
+            .expect("gcode")
+    };
+    assert!(power_levels(&engrave(HalftoneMethod::None)).len() > 4);
+    for method in [
+        HalftoneMethod::Threshold,
+        HalftoneMethod::Bayer4x4,
+        HalftoneMethod::FloydSteinberg,
+        HalftoneMethod::Atkinson,
+    ] {
+        let levels = power_levels(&engrave(method));
+        assert!(levels.len() <= 2, "{method:?}: {levels:?}");
+    }
+    assert_eq!(
+        HalftoneMethod::from_name("floyd"),
+        HalftoneMethod::FloydSteinberg
+    );
+    assert_eq!(HalftoneMethod::from_name("unknown"), HalftoneMethod::None);
+}

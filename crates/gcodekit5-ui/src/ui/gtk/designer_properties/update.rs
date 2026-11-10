@@ -504,12 +504,12 @@ impl PropertiesPanel {
                             .set_active_id(Some(&r.scan_direction));
                         self.image_bidirectional_check.set_active(r.bidirectional);
                         self.image_invert_check.set_active(r.invert);
-                        //                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
-                        //Force lock aspect ratio and disable the button so it cannot be changed
-                        //                        if !*self.has_focus.borrow() {
-                        //                            self.image_halftone_threshold_entry
-                        //                                .set_text(&r.halftone_threshold.to_string());
-                        //                        }
+                        self.image_dithering_combo.set_active_id(Some(&r.dithering));
+                        if !*self.has_focus.borrow() {
+                            self.image_halftone_threshold_entry
+                                .set_text(&r.halftone_threshold.to_string());
+                        }
+                        // Force lock aspect ratio and disable the button so it cannot be changed
                         self.lock_aspect_ratio.set_active(true);
                         self.lock_aspect_ratio.set_sensitive(false);
                         // No rotation
