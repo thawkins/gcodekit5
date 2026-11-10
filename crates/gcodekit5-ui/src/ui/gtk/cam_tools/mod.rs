@@ -4,7 +4,7 @@
 //! including box makers, engravers, spoilboard tools, and more.
 
 mod bitmap_engraving;
-mod common;
+pub mod common;
 mod drill_press;
 mod gerber;
 mod jigsaw;
@@ -52,7 +52,7 @@ impl CamToolsView {
         machine_control: Option<MachineControlView>,
         on_generate: F,
     ) -> Self {
-        Self::new_with_designer(settings, machine_control, on_generate, None)
+        Self::new_with_designer(settings, machine_control, on_generate, None, None)
     }
 
     pub fn new_with_designer<F: Fn(String) + 'static>(
@@ -60,6 +60,7 @@ impl CamToolsView {
         machine_control: Option<MachineControlView>,
         on_generate: F,
         designer_view: Option<Rc<crate::ui::gtk::designer::DesignerView>>,
+        device_manager: Option<std::sync::Arc<gcodekit5_devicedb::DeviceManager>>,
     ) -> Self {
         let on_generate = Rc::new(on_generate);
         let stack = Stack::new();
@@ -93,7 +94,7 @@ impl CamToolsView {
                 stack.add_named(vector_tool.widget(), Some("laser_vector"));
         */
         // Speeds & Feeds Calculator
-        let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
+        let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone(), device_manager);
         stack.add_named(feeds_tool.widget(), Some("feeds"));
 
         // Spoilboard Surfacing
