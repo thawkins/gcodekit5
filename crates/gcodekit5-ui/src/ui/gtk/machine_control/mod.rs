@@ -2511,6 +2511,7 @@ impl MachineControlView {
             self.is_paused.clone(),
             self.waiting_for_ack.clone(),
         );
+        sender.set_pen_mode(device_status::get_active_pen_mode());
         let sender: Rc<dyn Sender> = Rc::new(sender);
         *self.active_sender.borrow_mut() = Some(sender.clone());
         *self.job_start_time.lock() = Some(std::time::Instant::now());
