@@ -1314,6 +1314,14 @@ impl GcodeVisualizer {
             }
         });
 
+        // The sidebar Fit button runs the same fit; it is the only Fit control
+        // in 2D mode, where the nav cube (and its Fit button) is hidden. The
+        // fit keeps the camera's orientation, so the 2D top view stays locked.
+        {
+            let nav_fit = nav_cube.fit_btn.clone();
+            fit_btn.connect_clicked(move |_| nav_fit.emit_clicked());
+        }
+
         // Visibility Logic
         let nav_widget = nav_cube.widget.clone();
         let float_box = floating_box.clone();
