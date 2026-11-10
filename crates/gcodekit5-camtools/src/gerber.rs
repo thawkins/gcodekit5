@@ -463,7 +463,7 @@ impl GerberConverter {
         let mut current_y = 0.0;
         let mut current_aperture_code = 0;
         let mut interpolation = InterpolationMode::Linear;
-        let mut _quadrant_mode = QuadrantMode::Single;
+        let mut quadrant_mode = QuadrantMode::Single;
 
         if let Some(fmt) = &doc.format_specification {
             debug!(
@@ -573,13 +573,35 @@ impl GerberConverter {
                                                 .map(|v| convert_coord(v, false))
                                                 .unwrap_or(0.0);
 
-                                            let cx = current_x + i_val;
-                                            let cy = current_y + j_val;
-
                                             let clockwise = matches!(
                                                 interpolation,
                                                 InterpolationMode::ClockwiseCircular
                                             );
+                                            let (cx, cy) =
+                                                if matches!(quadrant_mode, QuadrantMode::Single) {
+                                                    // G74: I/J are unsigned and the arc spans
+                                                    // at most 90 degrees; a zero-length arc
+                                                    // is a point, not a full circle.
+                                                    // It still paints the aperture there.
+                                                    if (x - current_x).hypot(y - current_y) < 1e-9 {
+                                                        sketches.push(Self::create_thick_segment(
+                                                            (current_x, current_y),
+                                                            (x, y),
+                                                            width,
+                                                        ));
+                                                        current_x = x;
+                                                        current_y = y;
+                                                        continue;
+                                                    }
+                                                    single_quadrant_center(
+                                                        (current_x, current_y),
+                                                        (x, y),
+                                                        (i_val, j_val),
+                                                        clockwise,
+                                                    )
+                                                } else {
+                                                    (current_x + i_val, current_y + j_val)
+                                                };
                                             if convex_outline.is_some() {
                                                 warn!(
                                                     aperture = current_aperture_code,
@@ -654,7 +676,7 @@ impl GerberConverter {
                             interpolation = *mode;
                         }
                         GGCode::QuadrantMode(mode) => {
-                            _quadrant_mode = *mode;
+                            quadrant_mode = *mode;
                         }
                         _ => {}
                     }
@@ -1199,4 +1221,56 @@ impl GerberConverter {
         }
         Ok(())
     }
+}
+
+/// The centre of a single-quadrant (G74) arc.
+///
+/// In G74 mode `I`/`J` are unsigned distances and the arc spans at most 90
+/// degrees, so of the four sign combinations the centre is the one that is
+/// equidistant from both endpoints (within coordinate rounding) with the
+/// shortest sweep in the arc's direction.
+///
+/// # Arguments
+/// * `start` / `end` - Arc endpoints.
+/// * `offset` - The `I`, `J` values (their signs are ignored).
+/// * `clockwise` - Arc direction.
+pub fn single_quadrant_center(
+    start: (f64, f64),
+    end: (f64, f64),
+    offset: (f64, f64),
+    clockwise: bool,
+) -> (f64, f64) {
+    let (i, j) = (offset.0.abs(), offset.1.abs());
+    let sweep = |c: (f64, f64)| {
+        let a0 = (start.1 - c.1).atan2(start.0 - c.0);
+        let a1 = (end.1 - c.1).atan2(end.0 - c.0);
+        let ccw = (a1 - a0).rem_euclid(std::f64::consts::TAU);
+        if clockwise {
+            (std::f64::consts::TAU - ccw) % std::f64::consts::TAU
+        } else {
+            ccw
+        }
+    };
+    let mismatch = |c: (f64, f64)| {
+        ((start.0 - c.0).hypot(start.1 - c.1) - (end.0 - c.0).hypot(end.1 - c.1)).abs()
+    };
+    let candidates =
+        [(i, j), (-i, j), (i, -j), (-i, -j)].map(|(di, dj)| (start.0 + di, start.1 + dj));
+    // A centre is consistent when both endpoints are on its circle, within
+    // what rounded file coordinates allow. Of those, the arc takes the
+    // shortest sweep (at most 90 degrees in a valid file); a rounded endpoint
+    // can push that a little past 90, so the sweep is not a hard limit.
+    let tolerance = |c: (f64, f64)| (1e-3 * (start.0 - c.0).hypot(start.1 - c.1)).max(1e-3);
+    candidates
+        .iter()
+        .copied()
+        .filter(|c| mismatch(*c) <= tolerance(*c))
+        .min_by(|a, b| sweep(*a).total_cmp(&sweep(*b)))
+        .or_else(|| {
+            candidates
+                .iter()
+                .copied()
+                .min_by(|a, b| mismatch(*a).total_cmp(&mismatch(*b)))
+        })
+        .unwrap_or((start.0 + i, start.1 + j))
 }

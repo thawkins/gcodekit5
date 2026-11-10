@@ -56,6 +56,18 @@
 - **3D view scrollbar** (E1-01): the vertical scrollbar uses one sign convention, so loading a file no longer jumps the view to mirrored Y
 - **Copy cursor coordinates** (E1-03): copies the right-clicked point instead of 0,0
 - **Context menu leak** (E1-02): the 2D view's right-click menu is released when it closes
+## [Unreleased] - 2026-11-10 (CAM input validation and imports)
+
+### Fixed
+- **Drill press** (#78, D-05): rejects safe Z at or below the top, bottom above top, non-numbers, non-positive diameters/rates and a negative or absurdly small peck, instead of emitting `G1 ZNaN` or rapids through the stock
+- **Tabbed box** (D-06): rejects 0 laser passes (no cuts), negative step-down and non-number dimensions
+- **Gerber single-quadrant arcs** (D-04): `G74` arcs pick their centre from the unsigned I/J (sweep of 90 degrees or less), and a zero-length `G74` arc is no longer a full ring
+- **DXF numbers** (C-08): values that are not numbers (or are NaN/infinite) are reported as an import warning instead of silently becoming 0
+- **STL shadow import** (C-05): the shadow is the mesh's outline (boundary edges of the up-facing triangles), built in linear time; a 20 000-triangle model took about 26 s and produced thousands of wireframe shapes
+- **STL slicing** (C-06): slicing exactly through a vertex keeps the triangle, and degenerate triangles get a zero normal instead of NaN
+
+### Changed
+- The empty always-passing hatch test was removed and the Gerber rubout test moved to `tests/` (D-03)
 
 ## [Unreleased] - 2026-11-10 (homing keeps the work zero)
 
