@@ -2849,6 +2849,17 @@ msgstr "Bloco"
 msgid "Stock Z0 at:"
 msgstr "Z0 do bloco em:"
 
+msgid "Lower left"
+msgstr "Inferior esquerdo"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Onde fica o X0 Y0 de trabalho do programa no bloco: o canto inferior esquerdo ou o centro do bloco."
+
+msgid "Stock XY0 at:"
+msgstr "XY0 do bloco em:"
+
 msgid "Simulation"
 msgstr "Simulação"
 

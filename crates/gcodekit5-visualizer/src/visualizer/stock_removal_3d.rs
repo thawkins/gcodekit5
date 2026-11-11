@@ -1,77 +1,177 @@
 //! # 3D Stock Removal Simulation
 //!
-//! Simulates material removal from the stock block as the toolpath
-//! is executed. Uses a heightmap or voxel approach to visualize
-//! the workpiece after cutting operations.
+//! Simulates material removal from a rectangular stock block as the toolpath
+//! is executed, and builds a surface mesh of what is left.
+//!
+//! ## Model
+//! The cutter is a flat end mill, which removes everything above its tip.
+//! Every cut therefore lowers the top of a stock column and never makes an
+//! undercut, so the remaining stock is fully described by a [`HeightMap`]:
+//! one material height per XY cell. Heights are exact (not quantised to the
+//! cell size); a cell is cut when its centre lies under the tool.
 //!
 //! ## Coordinate convention
-//! [`StockSimulator3D`] takes toolpaths in G-code work coordinates (mm). The
-//! top face of the stock is at `stock_top_z` (Z0 by default, as most CAM
-//! output assumes; see [`StockZeroReference`] for programs zeroed on the stock
-//! bottom), so the material occupies `stock_top_z - thickness ..=
-//! stock_top_z`, and material is removed only where the tool tip is below the
-//! stock top (`tip.z < stock_top_z`). The [`VoxelGrid`] itself is indexed from
-//! the stock bottom (grid Z 0 = bottom face); [`StockSimulator3D::get_mesh`]
-//! translates the mesh back into work coordinates.
+//! [`StockSimulator3D`] takes toolpaths in G-code work coordinates (mm).
+//! * XY: the stock's lower-left corner is at `stock_origin_xy` (work
+//!   `(0, 0)` by default), so the stock covers
+//!   `origin.x ..= origin.x + width` and `origin.y ..= origin.y + height`.
+//! * Z: the top face of the stock is at `stock_top_z` (Z0 by default, as most
+//!   CAM output assumes; see [`StockZeroReference`] for programs zeroed on the
+//!   stock bottom), so the material occupies
+//!   `stock_top_z - thickness ..= stock_top_z` and material is removed only
+//!   where the tool tip is below the stock top.
+//!
+//! The [`HeightMap`] itself uses stock-local coordinates (lower-left bottom
+//! corner at the origin); [`StockSimulator3D::get_mesh`] translates the mesh
+//! back into work coordinates.
 
 use glam::Vec3;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+use super::visualizer::GCodeCommand;
+
+/// Kind of motion a [`ToolpathSegment`] describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolpathSegmentType {
+    /// G0 rapid move (still cuts if it passes through the stock).
     RapidMove,
+    /// G1 feed move.
     LinearMove,
+    /// G2 clockwise arc in the XY plane.
     ArcCW,
+    /// G3 counter-clockwise arc in the XY plane.
     ArcCCW,
 }
 
-#[derive(Debug, Clone)]
+/// One tool motion in work coordinates (mm).
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolpathSegment {
+    /// Motion kind.
     pub segment_type: ToolpathSegmentType,
+    /// Start point (X, Y, Z).
     pub start: (f32, f32, f32),
+    /// End point (X, Y, Z).
     pub end: (f32, f32, f32),
+    /// Arc centre (X, Y); `None` for straight moves.
     pub center: Option<(f32, f32)>,
-    pub feed_rate: f32,
-    pub spindle_speed: f32,
 }
 
+/// Convert parsed visualizer commands into simulator segments.
+///
+/// Dwells do not move the tool and are dropped. Arcs outside the XY plane are
+/// already tessellated into straight moves by the parser.
+///
+/// The parser starts from an assumed `(0, 0, 0)`, so the real start position
+/// is unknown. Rapids are therefore dropped until every axis has moved at
+/// least once; otherwise the opening `G0 Z10` of a bottom-zeroed program would
+/// cut a false hole at XY0. Later rapids are kept and cut where they pass
+/// through the stock. Feed moves are always kept.
+///
+/// # Arguments
+/// * `commands` - Commands produced by [`super::Visualizer`].
+///
+/// # Returns
+/// The simulator segments, in program order.
+pub fn toolpath_from_commands(commands: &[GCodeCommand]) -> Vec<ToolpathSegment> {
+    let mut known = [false; 3];
+    let mut segments = Vec::with_capacity(commands.len());
+    for cmd in commands {
+        let (from, to, segment_type, center) = match cmd {
+            GCodeCommand::Move {
+                from, to, rapid, ..
+            } => {
+                let kind = if *rapid {
+                    ToolpathSegmentType::RapidMove
+                } else {
+                    ToolpathSegmentType::LinearMove
+                };
+                (from, to, kind, None)
+            }
+            GCodeCommand::Arc {
+                from,
+                to,
+                center,
+                clockwise,
+                ..
+            } => {
+                let kind = if *clockwise {
+                    ToolpathSegmentType::ArcCW
+                } else {
+                    ToolpathSegmentType::ArcCCW
+                };
+                (from, to, kind, Some((center.x, center.y)))
+            }
+            GCodeCommand::Dwell { .. } => continue,
+        };
+        let start_known = known.iter().all(|&k| k);
+        for (axis, (a, b)) in known
+            .iter_mut()
+            .zip([(from.x, to.x), (from.y, to.y), (from.z, to.z)])
+        {
+            if a != b {
+                *axis = true;
+            }
+        }
+        if segment_type == ToolpathSegmentType::RapidMove && !start_known {
+            continue;
+        }
+        segments.push(ToolpathSegment {
+            segment_type,
+            start: (from.x, from.y, from.z),
+            end: (to.x, to.y, to.z),
+            center,
+        });
+    }
+    segments
+}
+
+/// Largest number of XY cells the simulation allocates (4 bytes each):
+/// 2^27 cells, 512 MiB. A full 1220 x 2440 mm sheet at 0.19 mm needs
+/// about 82 M cells.
+pub const MAX_STOCK_CELLS: u64 = 1 << 27;
+
+/// Heights below this (mm) count as cut through.
+const CUT_THROUGH_EPSILON: f32 = 1e-4;
+
+/// Number of cells covering `size` mm at `resolution` mm per cell. A size that
+/// is a whole number of cells (up to float error) gets no extra cell.
+fn cell_count(size: f32, resolution: f32) -> u64 {
+    ((size / resolution) - 1e-4).ceil().max(1.0) as u64
+}
+
+/// Material height per XY cell of a rectangular stock block.
+///
+/// Cell `(col, row)` covers `col * resolution ..` in X and `row * resolution
+/// ..` in Y, clipped to the stock size, so the last column and row may be
+/// narrower than `resolution`. Heights are measured from the stock bottom and
+/// lie in `0 ..= thickness`.
 #[derive(Debug, Clone)]
-pub enum ToolpathSegment3D {
-    RapidMove { to: Vec3 },
-    LinearMove { to: Vec3 },
-    ArcCW { to: Vec3, center: Vec3 },
-    ArcCCW { to: Vec3, center: Vec3 },
-}
-
-/// A simple voxel grid for stock simulation
-pub struct VoxelGrid {
-    width: usize,
-    height: usize,
-    depth: usize,
+pub struct HeightMap {
+    cols: usize,
+    rows: usize,
     resolution: f32,
-    voxels: Vec<u8>, // 255 = material present, 0 = removed
+    size_x: f32,
+    size_y: f32,
+    thickness: f32,
+    heights: Vec<f32>,
 }
 
-/// Largest grid the stock simulation allocates (one byte per voxel):
-/// 1 GiB. A full 1220 x 2440 x 18 mm sheet at 0.19 mm needs about 15.7 GB.
-pub const MAX_STOCK_VOXELS: u64 = 1 << 30;
-
-impl VoxelGrid {
-    /// Checks that a stock of `width x height x depth` mm can be simulated at
-    /// `resolution` mm per voxel.
+impl HeightMap {
+    /// Checks that a stock of `width x height x thickness` mm can be simulated
+    /// at `resolution` mm per cell.
     ///
     /// # Errors
     /// A message when a dimension or the resolution is not a positive finite
-    /// number, or the grid would exceed [`MAX_STOCK_VOXELS`].
+    /// number, or the map would exceed [`MAX_STOCK_CELLS`].
     pub fn check_dimensions(
         width: f32,
         height: f32,
-        depth: f32,
+        thickness: f32,
         resolution: f32,
     ) -> Result<(), String> {
         for (name, value) in [
             ("width", width),
             ("height", height),
-            ("thickness", depth),
+            ("thickness", thickness),
             ("resolution", resolution),
         ] {
             if !value.is_finite() || value <= 0.0 {
@@ -80,296 +180,439 @@ impl VoxelGrid {
                 ));
             }
         }
-        let cells = |v: f32| (v / resolution).ceil() as u64;
-        let total = cells(width)
-            .saturating_mul(cells(height))
-            .saturating_mul(cells(depth));
-        if total > MAX_STOCK_VOXELS {
+        let total = cell_count(width, resolution).saturating_mul(cell_count(height, resolution));
+        if total > MAX_STOCK_CELLS {
             return Err(format!(
-                "Stock {width} x {height} x {depth} mm is too large to simulate \
-                 ({:.1} GB at {resolution} mm resolution; the limit is {:.1} GB)",
-                total as f64 / 1e9,
-                MAX_STOCK_VOXELS as f64 / 1e9
+                "Stock {width} x {height} mm is too large to simulate at {resolution} mm \
+                 resolution ({total} cells; the limit is {MAX_STOCK_CELLS})"
             ));
         }
         Ok(())
     }
 
-    pub fn new(width: f32, height: f32, depth: f32, resolution: f32) -> Self {
-        let w = (width / resolution).ceil() as usize;
-        let h = (height / resolution).ceil() as usize;
-        let d = (depth / resolution).ceil() as usize;
-        let total_voxels = w * h * d;
-        Self {
-            width: w,
-            height: h,
-            depth: d,
+    /// Create an uncut stock block.
+    ///
+    /// # Arguments
+    /// * `width`, `height`, `thickness` - Stock size in mm (X, Y, Z).
+    /// * `resolution` - Cell edge length in mm.
+    ///
+    /// # Errors
+    /// See [`HeightMap::check_dimensions`].
+    pub fn new(width: f32, height: f32, thickness: f32, resolution: f32) -> Result<Self, String> {
+        Self::check_dimensions(width, height, thickness, resolution)?;
+        let cols = cell_count(width, resolution) as usize;
+        let rows = cell_count(height, resolution) as usize;
+        Ok(Self {
+            cols,
+            rows,
             resolution,
-            voxels: vec![255; total_voxels],
-        }
+            size_x: width,
+            size_y: height,
+            thickness,
+            heights: vec![thickness; cols * rows],
+        })
     }
 
-    pub fn width(&self) -> usize {
-        self.width
+    /// Number of cells along X.
+    pub fn cols(&self) -> usize {
+        self.cols
     }
-    pub fn height(&self) -> usize {
-        self.height
+
+    /// Number of cells along Y.
+    pub fn rows(&self) -> usize {
+        self.rows
     }
-    pub fn depth(&self) -> usize {
-        self.depth
-    }
+
+    /// Cell edge length (mm).
     pub fn resolution(&self) -> f32 {
         self.resolution
     }
 
-    pub fn dimensions(&self) -> (usize, usize, usize) {
-        (self.width, self.height, self.depth)
+    /// Uncut stock thickness (mm).
+    pub fn thickness(&self) -> f32 {
+        self.thickness
     }
 
-    pub fn data(&self) -> &[u8] {
-        &self.voxels
+    /// All cell heights, row-major (`row * cols + col`).
+    pub fn heights(&self) -> &[f32] {
+        &self.heights
     }
 
-    pub fn get_at_position(&self, x: usize, y: usize, z: usize) -> u8 {
-        if x >= self.width || y >= self.height || z >= self.depth {
-            return 0;
+    /// Material height (mm above the stock bottom) of a cell, or `None`
+    /// outside the map.
+    pub fn height_at(&self, col: usize, row: usize) -> Option<f32> {
+        (col < self.cols && row < self.rows).then(|| self.heights[row * self.cols + col])
+    }
+
+    /// Lower edge (mm) of cell `index` along an axis of `size` mm, clipped to
+    /// the stock.
+    fn edge(&self, index: usize, size: f32) -> f32 {
+        (index as f32 * self.resolution).min(size)
+    }
+
+    /// Range of cell indices whose span overlaps `lo ..= hi` (mm) along an
+    /// axis with `len` cells, or `None` when it misses the stock.
+    fn index_span(&self, lo: f32, hi: f32, len: usize) -> Option<std::ops::RangeInclusive<usize>> {
+        let lo = (lo / self.resolution).floor();
+        let hi = (hi / self.resolution).floor();
+        if lo.is_nan() || hi.is_nan() || hi < 0.0 || lo >= len as f32 {
+            return None;
         }
-        self.voxels[z * self.width * self.height + y * self.width + x]
+        Some(lo.max(0.0) as usize..=(hi as usize).min(len - 1))
     }
 
-    pub fn set_at_position(&mut self, x: usize, y: usize, z: usize, value: u8) {
-        if x >= self.width || y >= self.height || z >= self.depth {
+    /// Cut with a flat end mill: every cell whose centre lies within `radius`
+    /// of `(x, y)` is lowered to `tip_z`.
+    ///
+    /// # Arguments
+    /// * `x`, `y` - Tool axis position in stock-local mm.
+    /// * `tip_z` - Tool tip height above the stock bottom (mm).
+    /// * `radius` - Tool radius (mm).
+    pub fn cut_flat(&mut self, x: f32, y: f32, tip_z: f32, radius: f32) {
+        if tip_z.is_nan() || tip_z >= self.thickness {
             return;
         }
-        self.voxels[z * self.width * self.height + y * self.width + x] = value;
-    }
-
-    pub fn remove_sphere(&mut self, center: Vec3, radius: f32) {
-        let cx = (center.x / self.resolution) as i32;
-        let cy = (center.y / self.resolution) as i32;
-        let cz = (center.z / self.resolution) as i32;
-        let r_grid = (radius / self.resolution).ceil() as i32;
-        let r_sq = (radius / self.resolution).powi(2);
-
-        let (Some(xs), Some(ys), Some(zs)) = (
-            grid_span(cx, r_grid, self.width),
-            grid_span(cy, r_grid, self.height),
-            grid_span(cz, r_grid, self.depth),
+        let new_height = tip_z.max(0.0);
+        let (Some(cols), Some(rows)) = (
+            self.index_span(x - radius, x + radius, self.cols),
+            self.index_span(y - radius, y + radius, self.rows),
         ) else {
             return;
         };
-
-        for z in zs {
-            for y in ys.clone() {
-                for x in xs.clone() {
-                    let dx = x as f32 - center.x / self.resolution;
-                    let dy = y as f32 - center.y / self.resolution;
-                    let dz = z as f32 - center.z / self.resolution;
-
-                    if dx * dx + dy * dy + dz * dz <= r_sq {
-                        self.set_at_position(x, y, z, 0);
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn remove_cylinder_from_base(&mut self, base_center: Vec3, radius: f32) {
-        let cx = (base_center.x / self.resolution) as i32;
-        let cy = (base_center.y / self.resolution) as i32;
-        let r_grid = (radius / self.resolution).ceil() as i32;
-        let r_sq = (radius / self.resolution).powi(2);
-
-        // A tool entirely off the grid removes nothing.
-        let (Some(xs), Some(ys)) = (
-            grid_span(cx, r_grid, self.width),
-            grid_span(cy, r_grid, self.height),
-        ) else {
-            return;
-        };
-
-        // The circular base at Z removes everything above that base level.
-        let min_z = (base_center.z / self.resolution).ceil().max(0.0) as usize;
-        if min_z >= self.depth {
-            return;
-        }
-
-        for y in ys {
-            for x in xs.clone() {
-                let dx = x as f32 - base_center.x / self.resolution;
-                let dy = y as f32 - base_center.y / self.resolution;
+        let r_sq = radius * radius;
+        for row in rows {
+            let cy = 0.5 * (self.edge(row, self.size_y) + self.edge(row + 1, self.size_y));
+            let dy = cy - y;
+            for col in cols.clone() {
+                let cx = 0.5 * (self.edge(col, self.size_x) + self.edge(col + 1, self.size_x));
+                let dx = cx - x;
                 if dx * dx + dy * dy <= r_sq {
-                    for z in min_z..self.depth {
-                        self.set_at_position(x, y, z, 0);
+                    let h = &mut self.heights[row * self.cols + col];
+                    if *h > new_height {
+                        *h = new_height;
                     }
                 }
             }
         }
     }
+
+    /// Copy with each `factor x factor` block of cells averaged into one cell,
+    /// for meshing maps too detailed to mesh at full resolution.
+    fn coarsened(&self, factor: usize) -> Self {
+        let cols = self.cols.div_ceil(factor);
+        let rows = self.rows.div_ceil(factor);
+        let mut heights = Vec::with_capacity(cols * rows);
+        for row in 0..rows {
+            let (r0, r1) = (row * factor, ((row + 1) * factor).min(self.rows));
+            for col in 0..cols {
+                let (c0, c1) = (col * factor, ((col + 1) * factor).min(self.cols));
+                let sum: f32 = (r0..r1)
+                    .map(|r| {
+                        self.heights[r * self.cols + c0..r * self.cols + c1]
+                            .iter()
+                            .sum::<f32>()
+                    })
+                    .sum();
+                heights.push(sum / ((r1 - r0) * (c1 - c0)) as f32);
+            }
+        }
+        Self {
+            cols,
+            rows,
+            resolution: self.resolution * factor as f32,
+            size_x: self.size_x,
+            size_y: self.size_y,
+            thickness: self.thickness,
+            heights,
+        }
+    }
+
+    /// Height with cut-through cells snapped to zero; `0.0` outside the map.
+    fn solid_height(&self, col: isize, row: isize) -> f32 {
+        if col < 0 || row < 0 {
+            return 0.0;
+        }
+        match self.height_at(col as usize, row as usize) {
+            Some(h) if h > CUT_THROUGH_EPSILON => h,
+            _ => 0.0,
+        }
+    }
 }
 
-/// The grid cells `center - r ..= center + r` clipped to `0 .. len`, or
-/// `None` when the span lies entirely outside the grid (or the grid is
-/// empty). Computed in `i32` so a span left of the grid cannot wrap to a
-/// huge `usize` range.
-fn grid_span(center: i32, r: i32, len: usize) -> Option<std::ops::RangeInclusive<usize>> {
-    let lo = center.saturating_sub(r).max(0);
-    let hi = center
-        .saturating_add(r)
-        .min(i32::try_from(len).unwrap_or(i32::MAX) - 1);
-    (hi >= lo).then_some(lo as usize..=hi as usize)
+/// Stock colour (steel grey, opaque).
+const STOCK_COLOR: [f32; 4] = [0.44, 0.50, 0.56, 1.0];
+
+/// Floats per mesh vertex: position (3), normal (3), colour (4).
+pub const MESH_FLOATS_PER_VERTEX: usize = 10;
+
+/// Largest mesh built, in floats (128 MiB). A map whose mesh would be larger
+/// (a finely varying 3D surface on large stock) is meshed from a coarser,
+/// block-averaged copy instead; the simulation itself keeps full resolution.
+pub const MAX_MESH_FLOATS: usize = 32 << 20;
+
+/// Why a mesh build stopped early.
+enum MeshAbort {
+    /// The mesh would exceed its float budget.
+    OverBudget,
+    /// The caller asked to stop.
+    Cancelled,
 }
 
-// ---
-pub fn generate_surface_mesh(grid: &VoxelGrid) -> Vec<f32> {
-    let mut vertices = Vec::new();
+/// Collects mesh vertices up to a float budget.
+struct MeshBuilder<'a> {
+    vertices: Vec<f32>,
+    max_floats: usize,
+    cancel: &'a dyn Fn() -> bool,
+}
 
-    // Color para el stock (gris acero) - sin transparencia
-    let color = [0.44, 0.50, 0.56, 1.0];
+impl MeshBuilder<'_> {
+    /// Append a quad as two triangles. `corners` must be counter-clockwise
+    /// when seen from the side `normal` points to.
+    fn push_quad(&mut self, corners: [Vec3; 4], normal: Vec3) -> Result<(), MeshAbort> {
+        if self.vertices.len() + 6 * MESH_FLOATS_PER_VERTEX > self.max_floats {
+            return Err(MeshAbort::OverBudget);
+        }
+        for index in [0, 1, 2, 0, 2, 3] {
+            let v = corners[index];
+            self.vertices
+                .extend_from_slice(&[v.x, v.y, v.z, normal.x, normal.y, normal.z]);
+            self.vertices.extend_from_slice(&STOCK_COLOR);
+        }
+        Ok(())
+    }
 
-    // Color para caras internas (más oscuro para dar profundidad)
-    let color_inner = [0.35, 0.40, 0.45, 1.0];
+    /// Fails with [`MeshAbort::Cancelled`] once the caller asks to stop.
+    fn check_cancel(&self) -> Result<(), MeshAbort> {
+        if (self.cancel)() {
+            Err(MeshAbort::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
 
-    let mut add_quad = |v1: Vec3, v2: Vec3, v3: Vec3, v4: Vec3, normal: Vec3, is_outer: bool| {
-        let c = if is_outer { color } else { color_inner };
+    /// Most quads that still fit in the budget.
+    fn quads_left(&self) -> usize {
+        (self.max_floats.saturating_sub(self.vertices.len())) / (6 * MESH_FLOATS_PER_VERTEX)
+    }
+}
 
-        // Triangle 1: v1, v2, v3
-        vertices.push(v1.x);
-        vertices.push(v1.y);
-        vertices.push(v1.z);
-        vertices.push(normal.x);
-        vertices.push(normal.y);
-        vertices.push(normal.z);
-        vertices.extend_from_slice(&c);
+/// A merged rectangle of cells: `(col0, row0, col1, row1, key)` with
+/// exclusive upper bounds.
+type CellRect<K> = (usize, usize, usize, usize, K);
 
-        vertices.push(v2.x);
-        vertices.push(v2.y);
-        vertices.push(v2.z);
-        vertices.push(normal.x);
-        vertices.push(normal.y);
-        vertices.push(normal.z);
-        vertices.extend_from_slice(&c);
+/// Merge the cells of a `cols x rows` grid into rectangles of equal key.
+///
+/// Greedy meshing: from each unvisited cell with a key, grow a run along X,
+/// then grow it along Y while the whole run matches. Cells whose key is
+/// `None` are skipped. Stops with [`MeshAbort::OverBudget`] past `max_rects`
+/// rectangles, and checks `builder` for cancellation once per row.
+fn greedy_rects<K: PartialEq + Copy>(
+    cols: usize,
+    rows: usize,
+    max_rects: usize,
+    builder: &MeshBuilder<'_>,
+    key: impl Fn(usize, usize) -> Option<K>,
+) -> Result<Vec<CellRect<K>>, MeshAbort> {
+    let mut visited = vec![false; cols * rows];
+    let mut rects = Vec::new();
+    for row in 0..rows {
+        builder.check_cancel()?;
+        for col in 0..cols {
+            if visited[row * cols + col] {
+                continue;
+            }
+            let Some(k) = key(col, row) else {
+                continue;
+            };
+            if rects.len() >= max_rects {
+                return Err(MeshAbort::OverBudget);
+            }
+            let matches = |c: usize, r: usize| !visited[r * cols + c] && key(c, r) == Some(k);
+            let mut col1 = col + 1;
+            while col1 < cols && matches(col1, row) {
+                col1 += 1;
+            }
+            let mut row1 = row + 1;
+            while row1 < rows && (col..col1).all(|c| matches(c, row1)) {
+                row1 += 1;
+            }
+            for r in row..row1 {
+                visited[r * cols + col..r * cols + col1].fill(true);
+            }
+            rects.push((col, row, col1, row1, k));
+        }
+    }
+    Ok(rects)
+}
 
-        vertices.push(v3.x);
-        vertices.push(v3.y);
-        vertices.push(v3.z);
-        vertices.push(normal.x);
-        vertices.push(normal.y);
-        vertices.push(normal.z);
-        vertices.extend_from_slice(&c);
+/// Build the mesh of `map` at its own resolution, within `builder`'s budget.
+fn build_mesh(map: &HeightMap, builder: &mut MeshBuilder<'_>) -> Result<(), MeshAbort> {
+    let (cols, rows) = (map.cols, map.rows);
+    let ex = |c: usize| map.edge(c, map.size_x);
+    let ey = |r: usize| map.edge(r, map.size_y);
+    let solid = |c: usize, r: usize| map.solid_height(c as isize, r as isize);
 
-        // Triangle 2: v1, v3, v4
-        vertices.push(v1.x);
-        vertices.push(v1.y);
-        vertices.push(v1.z);
-        vertices.push(normal.x);
-        vertices.push(normal.y);
-        vertices.push(normal.z);
-        vertices.extend_from_slice(&c);
+    // Top faces, merged by equal height.
+    let tops = greedy_rects(cols, rows, builder.quads_left(), builder, |c, r| {
+        let h = solid(c, r);
+        (h > 0.0).then_some(h)
+    })?;
+    for (c0, r0, c1, r1, h) in tops {
+        let (x0, x1, y0, y1) = (ex(c0), ex(c1), ey(r0), ey(r1));
+        builder.push_quad(
+            [
+                Vec3::new(x0, y0, h),
+                Vec3::new(x1, y0, h),
+                Vec3::new(x1, y1, h),
+                Vec3::new(x0, y1, h),
+            ],
+            Vec3::Z,
+        )?;
+    }
 
-        vertices.push(v3.x);
-        vertices.push(v3.y);
-        vertices.push(v3.z);
-        vertices.push(normal.x);
-        vertices.push(normal.y);
-        vertices.push(normal.z);
-        vertices.extend_from_slice(&c);
+    // Bottom faces under every column that still has material.
+    let bottoms = greedy_rects(cols, rows, builder.quads_left(), builder, |c, r| {
+        (solid(c, r) > 0.0).then_some(())
+    })?;
+    for (c0, r0, c1, r1, ()) in bottoms {
+        let (x0, x1, y0, y1) = (ex(c0), ex(c1), ey(r0), ey(r1));
+        builder.push_quad(
+            [
+                Vec3::new(x1, y0, 0.0),
+                Vec3::new(x0, y0, 0.0),
+                Vec3::new(x0, y1, 0.0),
+                Vec3::new(x1, y1, 0.0),
+            ],
+            Vec3::NEG_Z,
+        )?;
+    }
 
-        vertices.push(v4.x);
-        vertices.push(v4.y);
-        vertices.push(v4.z);
-        vertices.push(normal.x);
-        vertices.push(normal.y);
-        vertices.push(normal.z);
-        vertices.extend_from_slice(&c);
-    };
+    // Walls facing X: boundary `b` lies between columns b-1 and b. The quad
+    // corners are the same either way; only the normal (and so the side that
+    // is front-facing) depends on which column is taller.
+    for b in 0..=cols {
+        builder.check_cancel()?;
+        let x = ex(b);
+        let pair = |r: usize| {
+            (
+                map.solid_height(b as isize - 1, r as isize),
+                map.solid_height(b as isize, r as isize),
+            )
+        };
+        let mut row = 0;
+        while row < rows {
+            let (left, right) = pair(row);
+            let mut end = row + 1;
+            while end < rows && pair(end) == (left, right) {
+                end += 1;
+            }
+            if left != right {
+                let (y0, y1) = (ey(row), ey(end));
+                builder.push_quad(
+                    [
+                        Vec3::new(x, y0, left),
+                        Vec3::new(x, y0, right),
+                        Vec3::new(x, y1, right),
+                        Vec3::new(x, y1, left),
+                    ],
+                    if left > right { Vec3::X } else { Vec3::NEG_X },
+                )?;
+            }
+            row = end;
+        }
+    }
 
-    // Recorremos todas las celdas del grid
-    for z in 0..grid.depth {
-        for y in 0..grid.height {
-            for x in 0..grid.width {
-                if grid.get_at_position(x, y, z) == 0 {
-                    continue;
+    // Walls facing Y: boundary `b` lies between rows b-1 and b.
+    for b in 0..=rows {
+        builder.check_cancel()?;
+        let y = ey(b);
+        let pair = |c: usize| {
+            (
+                map.solid_height(c as isize, b as isize - 1),
+                map.solid_height(c as isize, b as isize),
+            )
+        };
+        let mut col = 0;
+        while col < cols {
+            let (below, above) = pair(col);
+            let mut end = col + 1;
+            while end < cols && pair(end) == (below, above) {
+                end += 1;
+            }
+            if below != above {
+                let (x0, x1) = (ex(col), ex(end));
+                builder.push_quad(
+                    [
+                        Vec3::new(x0, y, below),
+                        Vec3::new(x1, y, below),
+                        Vec3::new(x1, y, above),
+                        Vec3::new(x0, y, above),
+                    ],
+                    if below > above { Vec3::Y } else { Vec3::NEG_Y },
+                )?;
+            }
+            col = end;
+        }
+    }
+    Ok(())
+}
+
+/// Surface mesh of the remaining stock in stock-local coordinates.
+///
+/// Flat regions are merged into large quads (see [`greedy_rects`]), and walls
+/// are emitted only where neighbouring columns differ in height, merged along
+/// their length. Layout: [`MESH_FLOATS_PER_VERTEX`] floats per vertex, three
+/// vertices per triangle, counter-clockwise front faces. A mesh that would
+/// exceed [`MAX_MESH_FLOATS`] is built from a coarser copy of the map.
+pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
+    generate_surface_mesh_within(map, MAX_MESH_FLOATS, &|| false).unwrap_or_default()
+}
+
+/// [`generate_surface_mesh`] with an explicit float budget and cancellation.
+///
+/// The map is meshed at full resolution if the mesh fits in `max_floats`;
+/// otherwise it is averaged over 2x2, 4x4, ... cell blocks until it fits.
+///
+/// # Arguments
+/// * `map` - Height map to mesh.
+/// * `max_floats` - Largest mesh to build, in floats.
+/// * `cancel` - Polled during meshing; return `true` to stop.
+///
+/// # Returns
+/// The mesh, or `None` when cancelled (or when even a single-cell map does
+/// not fit in `max_floats`).
+pub fn generate_surface_mesh_within(
+    map: &HeightMap,
+    max_floats: usize,
+    cancel: &dyn Fn() -> bool,
+) -> Option<Vec<f32>> {
+    let mut factor = 1;
+    loop {
+        let coarse;
+        let current = if factor == 1 {
+            map
+        } else {
+            coarse = map.coarsened(factor);
+            &coarse
+        };
+        let mut builder = MeshBuilder {
+            vertices: Vec::new(),
+            max_floats,
+            cancel,
+        };
+        match build_mesh(current, &mut builder) {
+            Ok(()) => return Some(builder.vertices),
+            Err(MeshAbort::Cancelled) => return None,
+            Err(MeshAbort::OverBudget) => {
+                if current.cols <= 1 && current.rows <= 1 {
+                    return None;
                 }
-
-                let px = x as f32 * grid.resolution;
-                let py = y as f32 * grid.resolution;
-                let pz = z as f32 * grid.resolution;
-                let s = grid.resolution;
-
-                // Verificar si la cara es visible (borde del material)
-                // Cara -X
-                if x == 0 || grid.get_at_position(x - 1, y, z) == 0 {
-                    add_quad(
-                        Vec3::new(px, py, pz),
-                        Vec3::new(px, py, pz + s),
-                        Vec3::new(px, py + s, pz + s),
-                        Vec3::new(px, py + s, pz),
-                        Vec3::new(-1.0, 0.0, 0.0),
-                        true,
-                    );
-                }
-                // Cara +X
-                if x == grid.width - 1 || grid.get_at_position(x + 1, y, z) == 0 {
-                    add_quad(
-                        Vec3::new(px + s, py, pz + s),
-                        Vec3::new(px + s, py, pz),
-                        Vec3::new(px + s, py + s, pz),
-                        Vec3::new(px + s, py + s, pz + s),
-                        Vec3::new(1.0, 0.0, 0.0),
-                        true,
-                    );
-                }
-                // Cara -Y
-                if y == 0 || grid.get_at_position(x, y - 1, z) == 0 {
-                    add_quad(
-                        Vec3::new(px, py, pz),
-                        Vec3::new(px + s, py, pz),
-                        Vec3::new(px + s, py, pz + s),
-                        Vec3::new(px, py, pz + s),
-                        Vec3::new(0.0, -1.0, 0.0),
-                        true,
-                    );
-                }
-                // Cara +Y
-                if y == grid.height - 1 || grid.get_at_position(x, y + 1, z) == 0 {
-                    add_quad(
-                        Vec3::new(px, py + s, pz + s),
-                        Vec3::new(px + s, py + s, pz + s),
-                        Vec3::new(px + s, py + s, pz),
-                        Vec3::new(px, py + s, pz),
-                        Vec3::new(0.0, 1.0, 0.0),
-                        true,
-                    );
-                }
-                // Cara -Z (inferior)
-                if z == 0 || grid.get_at_position(x, y, z - 1) == 0 {
-                    add_quad(
-                        Vec3::new(px + s, py, pz),
-                        Vec3::new(px, py, pz),
-                        Vec3::new(px, py + s, pz),
-                        Vec3::new(px + s, py + s, pz),
-                        Vec3::new(0.0, 0.0, -1.0),
-                        true,
-                    );
-                }
-                // Cara +Z (superior)
-                if z == grid.depth - 1 || grid.get_at_position(x, y, z + 1) == 0 {
-                    add_quad(
-                        Vec3::new(px, py, pz + s),
-                        Vec3::new(px + s, py, pz + s),
-                        Vec3::new(px + s, py + s, pz + s),
-                        Vec3::new(px, py + s, pz + s),
-                        Vec3::new(0.0, 0.0, 1.0),
-                        true,
-                    );
-                }
+                factor *= 2;
+                tracing::debug!(factor, "Stock mesh over budget; meshing a coarser map");
             }
         }
     }
-    vertices
 }
-// ---
 
 /// Which face of the stock block the program's work Z0 is set on.
 ///
@@ -418,6 +661,48 @@ impl StockZeroReference {
     /// * `index` - Selector index as returned by [`StockZeroReference::index`].
     pub fn from_index(index: u32) -> Self {
         if index == 1 { Self::Bottom } else { Self::Top }
+    }
+}
+
+/// Where on the stock the program's work X0 Y0 is set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StockXyReference {
+    /// Work X0 Y0 is the stock's lower-left corner (default).
+    #[default]
+    LowerLeft,
+    /// Work X0 Y0 is the centre of the stock.
+    Centre,
+}
+
+impl StockXyReference {
+    /// Work XY (mm) of the stock's lower-left corner for this convention.
+    ///
+    /// # Arguments
+    /// * `width`, `height` - Stock size in mm.
+    pub fn stock_origin_xy(self, width: f32, height: f32) -> (f32, f32) {
+        match self {
+            Self::LowerLeft => (0.0, 0.0),
+            Self::Centre => (-width / 2.0, -height / 2.0),
+        }
+    }
+
+    /// Stable index of this variant, for UI selectors (`LowerLeft` = 0,
+    /// `Centre` = 1).
+    pub fn index(self) -> u32 {
+        match self {
+            Self::LowerLeft => 0,
+            Self::Centre => 1,
+        }
+    }
+
+    /// Variant for a UI selector index; anything other than 1 maps to
+    /// `LowerLeft`.
+    pub fn from_index(index: u32) -> Self {
+        if index == 1 {
+            Self::Centre
+        } else {
+            Self::LowerLeft
+        }
     }
 }
 
@@ -481,39 +766,187 @@ pub fn detect_stock_zero_reference(gcode: &str) -> Option<StockZeroReference> {
     designer_fallback
 }
 
+/// Report progress at most once per this many tool positions.
+const PROGRESS_STRIDE: usize = 64;
+
+/// Tool positions sampled per cell edge length along a segment.
+const SAMPLES_PER_CELL: f32 = 2.0;
+
+/// A segment prepared for sampling, in work coordinates.
+enum SegmentPath {
+    Line {
+        start: Vec3,
+        end: Vec3,
+    },
+    Arc {
+        center: (f32, f32),
+        start: Vec3,
+        end: Vec3,
+        r0: f32,
+        r1: f32,
+        a0: f32,
+        span: f32,
+    },
+}
+
+impl SegmentPath {
+    /// Prepare `segment`; `None` for an arc without a centre or with zero
+    /// radius, which cannot be sampled.
+    fn new(segment: &ToolpathSegment) -> Option<Self> {
+        let start = Vec3::from(segment.start);
+        let end = Vec3::from(segment.end);
+        match segment.segment_type {
+            ToolpathSegmentType::RapidMove | ToolpathSegmentType::LinearMove => {
+                Some(Self::Line { start, end })
+            }
+            ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
+                let center = segment.center?;
+                let (sx, sy) = (start.x - center.0, start.y - center.1);
+                let (ex, ey) = (end.x - center.0, end.y - center.1);
+                let r0 = sx.hypot(sy);
+                if r0.is_nan() || r0 < 0.001 {
+                    return None;
+                }
+                let span = gcodekit5_core::gcode::arc::angular_travel(
+                    (f64::from(sx), f64::from(sy)),
+                    (f64::from(ex), f64::from(ey)),
+                    segment.segment_type == ToolpathSegmentType::ArcCW,
+                ) as f32;
+                Some(Self::Arc {
+                    center,
+                    start,
+                    end,
+                    r0,
+                    r1: ex.hypot(ey),
+                    a0: sy.atan2(sx),
+                    span,
+                })
+            }
+        }
+    }
+
+    /// Path length (mm), including Z travel.
+    fn length(&self) -> f32 {
+        match *self {
+            Self::Line { start, end } => start.distance(end),
+            Self::Arc {
+                start,
+                end,
+                r0,
+                r1,
+                span,
+                ..
+            } => {
+                let arc = 0.5 * (r0 + r1) * span.abs();
+                arc.hypot(end.z - start.z)
+            }
+        }
+    }
+
+    /// Lowest Z reached along the path.
+    fn min_z(&self) -> f32 {
+        match *self {
+            Self::Line { start, end } | Self::Arc { start, end, .. } => start.z.min(end.z),
+        }
+    }
+
+    /// Point at parameter `t` in `0 ..= 1`. Arcs interpolate the radius
+    /// linearly so they end exactly on `end` even when the programmed start
+    /// and end radii differ slightly.
+    fn point(&self, t: f32) -> Vec3 {
+        match *self {
+            Self::Line { start, end } => start.lerp(end, t),
+            Self::Arc {
+                center,
+                start,
+                end,
+                r0,
+                r1,
+                a0,
+                span,
+            } => {
+                let r = r0 + (r1 - r0) * t;
+                let a = a0 + span * t;
+                Vec3::new(
+                    center.0 + r * a.cos(),
+                    center.1 + r * a.sin(),
+                    start.z + (end.z - start.z) * t,
+                )
+            }
+        }
+    }
+}
+
 /// Material-removal simulator for a rectangular stock block.
 ///
 /// See the module docs for the coordinate convention.
+#[derive(Debug, Clone)]
 pub struct StockSimulator3D {
-    grid: VoxelGrid,
+    map: HeightMap,
     tool_radius: f32,
     /// Work Z (mm) of the top face of the stock.
     stock_top_z: f32,
-    /// Stock thickness (mm).
-    thickness: f32,
+    /// Work XY (mm) of the stock's lower-left corner.
+    origin_xy: (f32, f32),
 }
 
 impl StockSimulator3D {
-    /// Create a simulator whose stock top face is at work Z0.
+    /// Create a simulator whose stock top face is at work Z0 and whose
+    /// lower-left corner is at work X0 Y0.
     ///
     /// # Arguments
-    /// * `width`, `height`, `depth` - Stock size in mm (X, Y, thickness).
-    /// * `resolution` - Voxel edge length in mm.
+    /// * `width`, `height`, `thickness` - Stock size in mm (X, Y, Z).
+    /// * `resolution` - Cell edge length in mm.
     /// * `tool_radius` - Flat end mill radius in mm.
-    pub fn new(width: f32, height: f32, depth: f32, resolution: f32, tool_radius: f32) -> Self {
-        Self {
-            grid: VoxelGrid::new(width, height, depth, resolution),
+    ///
+    /// # Errors
+    /// A message when the stock is invalid or too large (see
+    /// [`HeightMap::check_dimensions`]) or the tool radius is not a positive
+    /// finite number.
+    pub fn new(
+        width: f32,
+        height: f32,
+        thickness: f32,
+        resolution: f32,
+        tool_radius: f32,
+    ) -> Result<Self, String> {
+        Self::validate(width, height, thickness, resolution, tool_radius)?;
+        Ok(Self {
+            map: HeightMap::new(width, height, thickness, resolution)?,
             tool_radius,
             stock_top_z: 0.0,
-            thickness: depth,
+            origin_xy: (0.0, 0.0),
+        })
+    }
+
+    /// Check the arguments of [`StockSimulator3D::new`] without allocating,
+    /// so a UI can reject bad input before handing the (possibly large)
+    /// allocation to a worker thread.
+    ///
+    /// # Errors
+    /// The message [`StockSimulator3D::new`] would return.
+    pub fn validate(
+        width: f32,
+        height: f32,
+        thickness: f32,
+        resolution: f32,
+        tool_radius: f32,
+    ) -> Result<(), String> {
+        if !tool_radius.is_finite() || tool_radius <= 0.0 {
+            return Err(format!(
+                "Tool diameter must be a positive number (got {})",
+                tool_radius * 2.0
+            ));
         }
+        HeightMap::check_dimensions(width, height, thickness, resolution)
     }
 
     /// Set the work Z (mm) of the top face of the stock (default 0).
     ///
     /// # Arguments
     /// * `stock_top_z` - Work Z of the stock top; use `thickness` for programs
-    ///   that zero on the machine bed / bottom of the stock.
+    ///   that zero on the machine bed / bottom of the stock. Non-finite values
+    ///   are ignored.
     ///
     /// # Returns
     /// The simulator, for chaining.
@@ -532,8 +965,33 @@ impl StockSimulator3D {
     /// # Returns
     /// The simulator, for chaining.
     pub fn with_stock_zero_reference(self, reference: StockZeroReference) -> Self {
-        let top = reference.stock_top_z(self.thickness);
+        let top = reference.stock_top_z(self.map.thickness);
         self.with_stock_top_z(top)
+    }
+
+    /// Set the work XY (mm) of the stock's lower-left corner (default 0, 0).
+    ///
+    /// # Arguments
+    /// * `x`, `y` - Work coordinates of the corner; use `-width / 2`,
+    ///   `-height / 2` for a program zeroed on the stock centre. Non-finite
+    ///   values are ignored.
+    ///
+    /// # Returns
+    /// The simulator, for chaining.
+    pub fn with_stock_origin_xy(mut self, x: f32, y: f32) -> Self {
+        if x.is_finite() && y.is_finite() {
+            self.origin_xy = (x, y);
+        }
+        self
+    }
+
+    /// Place the stock for a program whose work X0 Y0 is at `reference`.
+    ///
+    /// # Returns
+    /// The simulator, for chaining.
+    pub fn with_stock_xy_reference(self, reference: StockXyReference) -> Self {
+        let (x, y) = reference.stock_origin_xy(self.map.size_x, self.map.size_y);
+        self.with_stock_origin_xy(x, y)
     }
 
     /// Work Z (mm) of the top face of the stock.
@@ -541,81 +999,44 @@ impl StockSimulator3D {
         self.stock_top_z
     }
 
-    pub fn get_grid(&self) -> &VoxelGrid {
-        &self.grid
+    /// Work XY (mm) of the stock's lower-left corner.
+    pub fn stock_origin_xy(&self) -> (f32, f32) {
+        self.origin_xy
     }
 
+    /// The material height map, in stock-local coordinates.
+    pub fn height_map(&self) -> &HeightMap {
+        &self.map
+    }
+
+    /// Run the whole toolpath without progress reporting.
     pub fn simulate_toolpath(&mut self, toolpath: &[ToolpathSegment]) {
         let _ = self.simulate_toolpath_with_progress(toolpath, |_| true);
     }
 
-    /// Remove stock using a flat-end cylindrical cutter whose tip (the
-    /// circular base plane of the cutter) is at `tip` in work coordinates.
-    ///
-    /// Nothing is removed while the tip is at or above the stock top.
+    /// Cut with the tool tip at `tip` (work coordinates).
     fn remove_at_tool_tip(&mut self, tip: Vec3) {
-        if tip.z.is_nan() || tip.z >= self.stock_top_z {
-            return;
-        }
-        let stock_bottom_z = self.stock_top_z - self.thickness;
-        let grid_tip = Vec3::new(tip.x, tip.y, tip.z - stock_bottom_z);
-        self.grid
-            .remove_cylinder_from_base(grid_tip, self.tool_radius);
+        let stock_bottom_z = self.stock_top_z - self.map.thickness;
+        self.map.cut_flat(
+            tip.x - self.origin_xy.0,
+            tip.y - self.origin_xy.1,
+            tip.z - stock_bottom_z,
+            self.tool_radius,
+        );
     }
 
-    /// Calculate the total distance of all segments in the toolpath
-    fn calculate_total_distance(&self, toolpath: &[ToolpathSegment]) -> f32 {
-        let mut total = 0.0;
-        for segment in toolpath {
-            total += self.calculate_segment_distance(segment);
-        }
-        total.max(0.001) // Evitar división por cero
-    }
-
-    /// Calculate the distance of a single segment
-    fn calculate_segment_distance(&self, segment: &ToolpathSegment) -> f32 {
-        match segment.segment_type {
-            ToolpathSegmentType::RapidMove | ToolpathSegmentType::LinearMove => {
-                let start = Vec3::new(segment.start.0, segment.start.1, segment.start.2);
-                let end = Vec3::new(segment.end.0, segment.end.1, segment.end.2);
-                start.distance(end)
-            }
-            ToolpathSegmentType::ArcCW | ToolpathSegmentType::ArcCCW => {
-                let start = Vec3::new(segment.start.0, segment.start.1, segment.start.2);
-                let end = Vec3::new(segment.end.0, segment.end.1, segment.end.2);
-                if let Some(center_tuple) = segment.center {
-                    let center = Vec3::new(center_tuple.0, center_tuple.1, start.z);
-                    let radius = (start - center).length();
-                    if radius < 0.001 {
-                        return 0.0;
-                    }
-                    let angle_span = arc_span(
-                        start,
-                        end,
-                        center,
-                        segment.segment_type == ToolpathSegmentType::ArcCW,
-                    );
-
-                    // Incluir la componente Z en la distancia
-                    let dz = end.z - start.z;
-                    let arc_length = radius * angle_span.abs();
-                    (arc_length * arc_length + dz * dz).sqrt()
-                } else {
-                    0.0
-                }
-            }
-        }
-    }
-
-    /// Calculate the number of steps for a segment based on resolution
-    fn calculate_segment_steps(&self, segment: &ToolpathSegment) -> usize {
-        let distance = self.calculate_segment_distance(segment);
-        let steps = (distance / (self.grid.resolution * 0.5)).ceil() as usize;
-        steps.max(1)
-    }
-
-    /// Simulate material removal with an optional progress callback.
-    /// Progress is calculated based on actual distance traveled, not segment count.
+    /// Simulate material removal, reporting progress by distance travelled.
+    ///
+    /// Every move cuts, rapids included: a rapid through the stock removes
+    /// material just as it would on the machine.
+    ///
+    /// # Arguments
+    /// * `toolpath` - Segments in work coordinates.
+    /// * `on_progress` - Called with the completed fraction (`0.0 ..= 1.0`);
+    ///   return `false` to cancel.
+    ///
+    /// # Returns
+    /// `false` if the run was cancelled.
     pub fn simulate_toolpath_with_progress<F>(
         &mut self,
         toolpath: &[ToolpathSegment],
@@ -624,303 +1045,72 @@ impl StockSimulator3D {
     where
         F: FnMut(f32) -> bool,
     {
-        // Calcular distancia total para tener una referencia de progreso
-        let total_distance = self.calculate_total_distance(toolpath);
-        let mut accumulated_distance = 0.0;
+        let paths: Vec<Option<(SegmentPath, f32)>> = toolpath
+            .iter()
+            .map(|segment| {
+                let path = SegmentPath::new(segment)?;
+                let length = path.length();
+                length.is_finite().then_some((path, length))
+            })
+            .collect();
+        let total: f32 = paths.iter().flatten().map(|(_, length)| length).sum();
+        let total = total.max(0.001);
+        let step = self.map.resolution / SAMPLES_PER_CELL;
+        let mut done = 0.0;
+        let mut since_report = 0;
 
-        // Llamar con progreso 0% al inicio
         if !on_progress(0.0) {
             return false;
         }
-
-        for segment in toolpath.iter() {
-            let segment_distance = self.calculate_segment_distance(segment);
-            let steps = self.calculate_segment_steps(segment);
-
-            match segment.segment_type {
-                ToolpathSegmentType::LinearMove => {
-                    let start = Vec3::new(segment.start.0, segment.start.1, segment.start.2);
-                    let end = Vec3::new(segment.end.0, segment.end.1, segment.end.2);
-                    if !self.remove_linear_with_progress(
-                        start,
-                        end,
-                        segment_distance,
-                        total_distance,
-                        steps,
-                        &mut accumulated_distance,
-                        &mut on_progress,
-                    ) {
-                        return false;
-                    }
-                }
-                ToolpathSegmentType::ArcCW => {
-                    let start = Vec3::new(segment.start.0, segment.start.1, segment.start.2);
-                    let end = Vec3::new(segment.end.0, segment.end.1, segment.end.2);
-                    if let Some(center_tuple) = segment.center {
-                        let center = Vec3::new(center_tuple.0, center_tuple.1, start.z);
-                        if !self.remove_arc_with_progress(
-                            start,
-                            end,
-                            center,
-                            true,
-                            segment_distance,
-                            total_distance,
-                            steps,
-                            &mut accumulated_distance,
-                            &mut on_progress,
-                        ) {
+        for (path, length) in paths.iter().flatten() {
+            // A segment that stays at or above the stock top cannot cut.
+            if path.min_z() < self.stock_top_z {
+                let steps = ((length / step).ceil() as usize).max(1);
+                for i in 0..=steps {
+                    let t = i as f32 / steps as f32;
+                    self.remove_at_tool_tip(path.point(t));
+                    since_report += 1;
+                    if since_report >= PROGRESS_STRIDE {
+                        since_report = 0;
+                        if !on_progress(((done + length * t) / total).min(1.0)) {
                             return false;
                         }
-                    }
-                }
-                ToolpathSegmentType::ArcCCW => {
-                    let start = Vec3::new(segment.start.0, segment.start.1, segment.start.2);
-                    let end = Vec3::new(segment.end.0, segment.end.1, segment.end.2);
-                    if let Some(center_tuple) = segment.center {
-                        let center = Vec3::new(center_tuple.0, center_tuple.1, start.z);
-                        if !self.remove_arc_with_progress(
-                            start,
-                            end,
-                            center,
-                            false,
-                            segment_distance,
-                            total_distance,
-                            steps,
-                            &mut accumulated_distance,
-                            &mut on_progress,
-                        ) {
-                            return false;
-                        }
-                    }
-                }
-                _ => {
-                    // Movimientos rápidos: no remueven material, pero avanzan el progreso
-                    accumulated_distance += segment_distance;
-                    let progress = (accumulated_distance / total_distance).clamp(0.0, 1.0);
-                    if !on_progress(progress) {
-                        return false;
                     }
                 }
             }
+            done += length;
         }
-
-        // Asegurar 100% al final
         on_progress(1.0)
     }
 
-    /// Remove material along a linear path with distance-based progress tracking
-    #[allow(clippy::too_many_arguments)]
-    fn remove_linear_with_progress<F>(
-        &mut self,
-        start: Vec3,
-        end: Vec3,
-        segment_distance: f32,
-        total_distance: f32,
-        steps: usize,
-        accumulated_distance: &mut f32,
-        on_progress: &mut F,
-    ) -> bool
-    where
-        F: FnMut(f32) -> bool,
-    {
-        let steps = steps.max(1);
-        let block_size = 8; // Bloques más pequeños para progreso más suave
-        let num_blocks = steps.div_ceil(block_size).max(1);
-
-        for block in 0..num_blocks {
-            let block_start = block * block_size;
-            let block_end = ((block + 1) * block_size).min(steps);
-
-            // Calcular distancia acumulada al inicio del bloque
-            let block_start_fraction = block_start as f32 / steps as f32;
-            let distance_at_block_start =
-                *accumulated_distance + segment_distance * block_start_fraction;
-
-            // Progreso basado en distancia real recorrida
-            let progress = (distance_at_block_start / total_distance).clamp(0.0, 1.0);
-
-            // Llamar al callback con el progreso (pero no en cada iteración para no saturar)
-            if !on_progress(progress) {
-                return false;
-            }
-
-            for i in block_start..=block_end {
-                let t = i as f32 / steps as f32;
-                let pos = start.lerp(end, t);
-                self.remove_at_tool_tip(pos);
-            }
-        }
-
-        *accumulated_distance += segment_distance;
-        true
-    }
-
-    /// Remove material along an arc path with distance-based progress tracking
-    #[allow(clippy::too_many_arguments)]
-    fn remove_arc_with_progress<F>(
-        &mut self,
-        start: Vec3,
-        end: Vec3,
-        center: Vec3,
-        clockwise: bool,
-        segment_distance: f32,
-        total_distance: f32,
-        steps: usize,
-        accumulated_distance: &mut f32,
-        on_progress: &mut F,
-    ) -> bool
-    where
-        F: FnMut(f32) -> bool,
-    {
-        let radius = (start - center).length();
-        if radius < 0.001 || steps == 0 {
-            *accumulated_distance += segment_distance;
-            return true;
-        }
-
-        let start_angle = (start.y - center.y).atan2(start.x - center.x);
-        let angle_span = arc_span(start, end, center, clockwise);
-
-        let steps = steps.max(1);
-        let block_size = 8; // Bloques más pequeños para progreso más suave
-        let num_blocks = steps.div_ceil(block_size).max(1);
-
-        for block in 0..num_blocks {
-            let block_start = block * block_size;
-            let block_end = ((block + 1) * block_size).min(steps);
-
-            // Calcular distancia acumulada al inicio del bloque
-            let block_start_fraction = block_start as f32 / steps as f32;
-            let distance_at_block_start =
-                *accumulated_distance + segment_distance * block_start_fraction;
-
-            // Progreso basado en distancia real recorrida
-            let progress = (distance_at_block_start / total_distance).clamp(0.0, 1.0);
-
-            // Llamar al callback con el progreso
-            if !on_progress(progress) {
-                return false;
-            }
-
-            for i in block_start..=block_end {
-                let t = i as f32 / steps as f32;
-                let angle = start_angle + angle_span * t;
-                let point = Vec3::new(
-                    center.x + radius * angle.cos(),
-                    center.y + radius * angle.sin(),
-                    start.z + (end.z - start.z) * t,
-                );
-                self.remove_at_tool_tip(point);
-            }
-        }
-
-        *accumulated_distance += segment_distance;
-        true
-    }
-    /*
-        // Métodos legacy para compatibilidad
-        #[allow(dead_code)]
-        fn remove_linear(&mut self, start: Vec3, end: Vec3) {
-            let dist = start.distance(end);
-            let steps = ((dist / (self.grid.resolution * 0.5)).ceil() as usize).max(1);
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                let pos = start.lerp(end, t);
-                self.remove_at_tool_tip(pos);
-            }
-        }
-
-        #[allow(dead_code)]
-        fn remove_linear_cancellable<F>(&mut self, start: Vec3, end: Vec3, _on_progress: &mut F) -> bool
-        where
-            F: FnMut(f32) -> bool,
-        {
-            let dist = start.distance(end);
-            let steps = ((dist / (self.grid.resolution * 0.5)).ceil() as usize).max(1);
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                let pos = start.lerp(end, t);
-                self.remove_at_tool_tip(pos);
-            }
-            true
-        }
-
-        #[allow(dead_code)]
-        fn remove_arc(&mut self, start: Vec3, end: Vec3, center: Vec3, clockwise: bool) {
-            let radius = (start - center).length();
-            let start_angle = (start.y - center.y).atan2(start.x - center.x);
-            let angle_span = arc_span(start, end, center, clockwise);
-            let arc_length = radius * angle_span.abs();
-            let resolution = self.grid.resolution;
-            let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
-            let steps = steps.max(1);
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                let angle = start_angle + angle_span * t;
-                let point = Vec3::new(
-                    center.x + radius * angle.cos(),
-                    center.y + radius * angle.sin(),
-                    start.z + (end.z - start.z) * t,
-                );
-                self.remove_at_tool_tip(point);
-            }
-        }
-
-        #[allow(dead_code)]
-        fn remove_arc_cancellable<F>(
-            &mut self,
-            start: Vec3,
-            end: Vec3,
-            center: Vec3,
-            clockwise: bool,
-            _on_progress: &mut F,
-        ) -> bool
-        where
-            F: FnMut(f32) -> bool,
-        {
-            let radius = (start - center).length();
-            let start_angle = (start.y - center.y).atan2(start.x - center.x);
-            let angle_span = arc_span(start, end, center, clockwise);
-            let arc_length = radius * angle_span.abs();
-            let resolution = self.grid.resolution;
-            let steps = (arc_length / (resolution * 0.5)).ceil() as usize;
-            let steps = steps.max(1);
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                let angle = start_angle + angle_span * t;
-                let point = Vec3::new(
-                    center.x + radius * angle.cos(),
-                    center.y + radius * angle.sin(),
-                    start.z + (end.z - start.z) * t,
-                );
-                self.remove_at_tool_tip(point);
-            }
-            true
-        }
-    */
     /// Surface mesh of the remaining stock in work coordinates.
     ///
-    /// Same layout as [`generate_surface_mesh`] (position, normal, colour; 10
-    /// floats per vertex) with Z shifted so the stock top is at `stock_top_z`.
+    /// Same layout as [`generate_surface_mesh`] ([`MESH_FLOATS_PER_VERTEX`]
+    /// floats per vertex), translated so the stock lower-left corner is at
+    /// `stock_origin_xy` and its top at `stock_top_z`.
     pub fn get_mesh(&self) -> Vec<f32> {
-        let mut mesh = generate_surface_mesh(&self.grid);
-        let z_offset = self.stock_top_z - self.thickness;
-        if z_offset != 0.0 {
-            for vertex in mesh.as_chunks_mut::<10>().0 {
-                vertex[2] += z_offset;
+        self.get_mesh_cancellable(&|| false).unwrap_or_default()
+    }
+
+    /// [`StockSimulator3D::get_mesh`] that stops early when `cancel` returns
+    /// `true`.
+    ///
+    /// # Returns
+    /// The mesh, or `None` when cancelled.
+    pub fn get_mesh_cancellable(&self, cancel: &dyn Fn() -> bool) -> Option<Vec<f32>> {
+        let mut mesh = generate_surface_mesh_within(&self.map, MAX_MESH_FLOATS, cancel)?;
+        let offset = Vec3::new(
+            self.origin_xy.0,
+            self.origin_xy.1,
+            self.stock_top_z - self.map.thickness,
+        );
+        if offset != Vec3::ZERO {
+            for vertex in mesh.as_chunks_mut::<MESH_FLOATS_PER_VERTEX>().0 {
+                vertex[0] += offset.x;
+                vertex[1] += offset.y;
+                vertex[2] += offset.z;
             }
         }
-        mesh
+        Some(mesh)
     }
-}
-
-/// Signed angle (radians, negative for clockwise) an arc sweeps from `start`
-/// to `end` around `center` in the XY plane, using the shared G-code arc rule
-/// (coincident start and end make a full circle).
-fn arc_span(start: Vec3, end: Vec3, center: Vec3, clockwise: bool) -> f32 {
-    gcodekit5_core::gcode::arc::angular_travel(
-        (f64::from(start.x - center.x), f64::from(start.y - center.y)),
-        (f64::from(end.x - center.x), f64::from(end.y - center.y)),
-        clockwise,
-    ) as f32
 }

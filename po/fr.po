@@ -2862,6 +2862,17 @@ msgstr "Brut"
 msgid "Stock Z0 at:"
 msgstr "Z0 du brut sur :"
 
+msgid "Lower left"
+msgstr "En bas à gauche"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Où se trouve le X0 Y0 de travail du programme sur le brut : le coin inférieur gauche ou le centre du brut."
+
+msgid "Stock XY0 at:"
+msgstr "XY0 du brut sur :"
+
 msgid "Simulation"
 msgstr "Simulation"
 

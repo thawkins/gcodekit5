@@ -2005,13 +2005,11 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 ## Visualizer Updates (December 2025)
 
 ### 3D Stock Removal Simulation
-- **Voxel Engine**: Implemented a 400x400x20 voxel grid (0.5mm resolution) for real-time material removal simulation.
-- **Rendering**: Face-based mesh generation with efficient culling of hidden faces.
-- **Visualization**:
-  - Depth-based coloring (Yellow -> Red -> Blue) to indicate cut depth.
-  - Edge highlighting for better geometry perception.
-  - Configurable stock dimensions and tool radius.
-- **Performance**: Background thread processing to keep UI responsive.
+- **Engine**: Height map with one material height per XY cell (0.19 mm cells). The tool is a flat end mill, so a cut lowers every cell whose centre lies under the tool to the tool tip; depths are exact, not rounded to the cell size. Rapids through the stock cut too.
+- **Placement**: "Stock Z0 at: Top / Bottom" (defaulted from the program header when it records one) and "Stock XY0 at: Lower left / Center" place the stock in work coordinates.
+- **Limits**: Up to 2^27 cells (512 MiB), enough for a full 1220 x 2440 mm sheet; larger stock is refused with a message before allocating.
+- **Rendering**: Surface mesh with coplanar faces and walls merged into large quads, drawn in a single shaded steel-grey colour with back-face culling.
+- **Performance**: Simulation and mesh building run on a background thread with progress and cancel; each run has its own cancel token. Loading or editing G-code clears the result.
 - **Integration**: Fully integrated into the GTK4 Visualizer widget with toggle controls.
 
 ### 3D View Improvements

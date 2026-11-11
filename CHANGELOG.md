@@ -1,3 +1,26 @@
+## [Unreleased] - 2026-11-11 (3D stock removal simulation rework)
+
+### Fixed
+- **Stock XY origin**: a new "Stock XY0 at: Lower left / Center" option places the stock for programs zeroed on the stock centre; before, the stock was always assumed to start at X0 Y0 and centre-zeroed programs only cut one quarter
+- **Cut placement**: a cell is cut when its centre is under the tool, so cuts are no longer drawn half a cell towards +X/+Y
+- **Exact depths and stock size**: cut depths are exact instead of rounded to the 0.19 mm cell size, and the stock mesh is the stock size (a 10 mm stock no longer renders 10.07 mm)
+- **Overlapping runs**: each simulation run has its own cancel token, so quickly unchecking and re-checking "Show Stock Removal" can no longer let an older run overwrite the newer one
+- **Stale result**: loading or editing G-code clears the stock removal result instead of showing the previous program's
+- **Rapids through the stock** now remove material, so a crash rapid shows as a gouge instead of looking safe
+- **Validation**: the simulator refuses a zero, negative or non-finite stock size or tool diameter instead of allocating or cutting nothing silently
+- **GL state**: drawing the stock restores the blend state the later passes expect
+- **Opening retract**: rapids are not simulated until every axis has moved once, so the opening `G0 Z10` of a bottom-zeroed program no longer cuts a false hole at XY0 (the parser's start position is only assumed)
+- **Mesh memory**: the surface mesh is capped at 128 MiB; a finely varying 3D surface on large stock is meshed from a block-averaged copy instead of exhausting memory
+- **Cancel while meshing**: cancelling stops the worker during meshing too, so repeated toggles do not pile up work
+- **Reference changes**: changing "Stock Z0 at" or "Stock XY0 at" while the simulation is shown re-runs it with the new setting
+- **UI thread**: the height map is allocated on the worker thread; the UI only validates the settings
+
+### Changed
+- **Height map instead of voxels**: a flat end mill only lowers columns, so the simulator stores one height per XY cell. Memory falls by the stock depth in cells (about 53x at default settings), and full sheets (e.g. 1220 x 2440 mm at 0.19 mm) can now be simulated
+- **Mesh off the UI thread and merged**: the surface mesh is built on the worker thread, and flat areas and walls are merged into large quads (an uncut stock is 6 quads instead of millions)
+- **Progress**: the worker sends progress only when the whole percentage changes
+- Removed dead code (commented-out legacy removal functions, unused `ToolpathSegment3D`, `remove_sphere`, the empty 2D `StockRemovalVisualization` placeholder, the unused progress counter) and the made-up `feed_rate`/`spindle_speed` segment fields; comments translated to English. G-code commands are converted with the new `toolpath_from_commands`
+
 ## [Unreleased] - 2026-11-11 (visualiser 2D/3D toggle, quiet start-up, review fixes)
 
 ### Added

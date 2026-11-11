@@ -2853,6 +2853,17 @@ msgstr "Rohteil"
 msgid "Stock Z0 at:"
 msgstr "Rohteil-Z0 bei:"
 
+msgid "Lower left"
+msgstr "Unten links"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Wo auf dem Rohteil der Werkstücknullpunkt X0 Y0 des Programms liegt: an der unteren linken Ecke oder in der Mitte des Rohteils."
+
+msgid "Stock XY0 at:"
+msgstr "Rohteil-XY0 bei:"
+
 msgid "Simulation"
 msgstr "Simulation"
 
