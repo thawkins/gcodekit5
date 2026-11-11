@@ -16,8 +16,20 @@ pub struct MaterialsManagerBackend {
 }
 
 impl MaterialsManagerBackend {
+    /// Creates the backend with the standard library plus the custom materials
+    /// saved in the user's configuration directory (`gcodekit5/custom_materials.json`).
     pub fn new() -> Self {
-        let storage_path = Self::get_storage_path();
+        Self::with_storage_path(Self::get_storage_path())
+    }
+
+    /// Creates the backend with custom materials loaded from, and saved to,
+    /// `storage_path` instead of the user's configuration directory.
+    ///
+    /// Tests use this so they never read or overwrite the user's library.
+    ///
+    /// # Arguments
+    /// * `storage_path` - the JSON file holding the custom materials
+    pub fn with_storage_path(storage_path: PathBuf) -> Self {
         let mut library = gcodekit5_core::data::materials::init_standard_library();
 
         // Load custom materials from disk if they exist

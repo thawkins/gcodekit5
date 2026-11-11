@@ -96,8 +96,20 @@ pub struct ToolsManagerBackend {
 }
 
 impl ToolsManagerBackend {
+    /// Creates the backend with the standard library plus the custom tools
+    /// saved in the user's configuration directory (`gcodekit5/custom_tools.json`).
     pub fn new() -> Self {
-        let storage_path = Self::get_storage_path();
+        Self::with_storage_path(Self::get_storage_path())
+    }
+
+    /// Creates the backend with custom tools loaded from, and saved to,
+    /// `storage_path` instead of the user's configuration directory.
+    ///
+    /// Tests use this so they never read or overwrite the user's library.
+    ///
+    /// # Arguments
+    /// * `storage_path` - the JSON file holding the custom tools
+    pub fn with_storage_path(storage_path: PathBuf) -> Self {
         let mut library = gcodekit5_core::data::tools::init_standard_library();
 
         // Load custom tools from disk if they exist
