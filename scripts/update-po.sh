@@ -12,7 +12,7 @@ mkdir -p po
 # shell's globstar option, which `**` needs to recurse.
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
 git ls-files 'crates/*.rs' 'src/*.rs' | grep -v '/tests/' | \
-    xargs xgettext --language=Rust --keyword=gettext --keyword=t! --keyword=t --keyword=_ \
+    xargs xgettext --language=Rust --keyword=gettext --keyword=t! --keyword=t --keyword=n_! --keyword=_ \
     --from-code=UTF-8 --add-comments --sort-by-file --no-location \
     --package-name="GCodeKit5" --package-version="$VERSION" \
     --output=po/gcodekit5.pot

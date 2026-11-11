@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 06:41+0700\n"
+"POT-Creation-Date: 2026-11-11 07:01+0700\n"
 "PO-Revision-Date: 2026-11-11 07:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Italian\n"
@@ -979,6 +979,68 @@ msgstr "Sì"
 msgid "OK"
 msgstr "OK"
 
+#. / Setting categories offered by the category filter (also the filter ids).
+#. /
+#. / Each is marked with `n_!` so it is extracted for translation: the labels
+#. / are translated through a variable (`t!(*category)`), which `xgettext`
+#. / cannot follow.
+msgid "All"
+msgstr "Tutte"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Motion"
+msgstr "Movimento"
+
+msgid "Steps Per Unit"
+msgstr "Passi per unità"
+
+msgid "Max Rate"
+msgstr "Velocità max."
+
+msgid "Acceleration"
+msgstr "Accelerazione"
+
+msgid "Max Travel"
+msgstr "Corsa max."
+
+msgid "Homing"
+msgstr "Homing"
+
+msgid "Spindle"
+msgstr "Mandrino"
+
+msgid "Network"
+msgstr "Rete"
+
+msgid "Drivers"
+msgstr "Driver"
+
+msgid "Tool"
+msgstr "Utensile"
+
+msgid "I/O"
+msgstr "I/O"
+
+msgid "Startup"
+msgstr "Avvio"
+
+msgid "Plasma"
+msgstr "Plasma"
+
+msgid "Encoder"
+msgstr "Encoder"
+
+msgid "Modbus"
+msgstr "Modbus"
+
+msgid "RS485"
+msgstr "RS485"
+
+msgid "Other"
+msgstr "Altro"
+
 msgid "Retrieve"
 msgstr "Recupera"
 
@@ -1927,9 +1989,6 @@ msgstr "Laser"
 
 msgid "Laser cutter/engraver (laser mode on, $32=1)"
 msgstr "Taglio/incisione laser (modalità laser attivata, $32=1)"
-
-msgid "Other"
-msgstr "Altro"
 
 msgid "Other device type ($32 unchanged)"
 msgstr "Altro tipo di dispositivo ($32 invariato)"

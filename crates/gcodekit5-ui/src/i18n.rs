@@ -49,3 +49,15 @@ macro_rules! t {
         format!(gettextrs::gettext($s), $($args)*)
     };
 }
+
+/// Marks a string literal for translation extraction without translating it.
+///
+/// Use it where the literal is stored or compared untranslated (an id) and
+/// translated later through a variable, e.g. `t!(*category)`, which
+/// `xgettext` cannot see. `scripts/update-po.sh` passes `--keyword=n_!`.
+#[macro_export]
+macro_rules! n_ {
+    ($s:literal) => {
+        $s
+    };
+}

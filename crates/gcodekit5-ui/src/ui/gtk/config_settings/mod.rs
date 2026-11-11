@@ -68,34 +68,38 @@ impl From<&Setting> for ConfigSettingRow {
     }
 }
 
-use crate::t;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::device_info::DeviceInfoView;
 use crate::ui::gtk::help_browser;
+use crate::{n_, t};
 use gcodekit5_core::{Shared, SharedOption, ThreadSafe, shared, shared_none};
 
 /// Setting categories offered by the category filter (also the filter ids).
-pub(crate) const SETTING_CATEGORIES: &[&str] = &[
-    "All",
-    "System",
-    "Motion",
-    "Steps Per Unit",
-    "Max Rate",
-    "Acceleration",
-    "Max Travel",
-    "Homing",
-    "Spindle",
-    "Network",
-    "Drivers",
-    "Tool",
-    "I/O",
-    "Startup",
-    "Plasma",
-    "Encoder",
-    "Modbus",
-    "RS485",
-    "Other",
+///
+/// Each is marked with `n_!` so it is extracted for translation: the labels
+/// are translated through a variable (`t!(*category)`), which `xgettext`
+/// cannot follow.
+pub const SETTING_CATEGORIES: &[&str] = &[
+    n_!("All"),
+    n_!("System"),
+    n_!("Motion"),
+    n_!("Steps Per Unit"),
+    n_!("Max Rate"),
+    n_!("Acceleration"),
+    n_!("Max Travel"),
+    n_!("Homing"),
+    n_!("Spindle"),
+    n_!("Network"),
+    n_!("Drivers"),
+    n_!("Tool"),
+    n_!("I/O"),
+    n_!("Startup"),
+    n_!("Plasma"),
+    n_!("Encoder"),
+    n_!("Modbus"),
+    n_!("RS485"),
+    n_!("Other"),
 ];
 
 pub struct ConfigSettingsView {

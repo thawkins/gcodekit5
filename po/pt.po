@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 06:41+0700\n"
+"POT-Creation-Date: 2026-11-11 07:01+0700\n"
 "PO-Revision-Date: 2026-11-11 07:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Portuguese (Portugal) <pt_PT@li.org>\n"
@@ -977,6 +977,68 @@ msgstr "Sim"
 msgid "OK"
 msgstr "OK"
 
+#. / Setting categories offered by the category filter (also the filter ids).
+#. /
+#. / Each is marked with `n_!` so it is extracted for translation: the labels
+#. / are translated through a variable (`t!(*category)`), which `xgettext`
+#. / cannot follow.
+msgid "All"
+msgstr "Todas"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Motion"
+msgstr "Movimento"
+
+msgid "Steps Per Unit"
+msgstr "Passos por unidade"
+
+msgid "Max Rate"
+msgstr "Velocidade máx."
+
+msgid "Acceleration"
+msgstr "Aceleração"
+
+msgid "Max Travel"
+msgstr "Curso máx."
+
+msgid "Homing"
+msgstr "Referenciação"
+
+msgid "Spindle"
+msgstr "Árvore"
+
+msgid "Network"
+msgstr "Rede"
+
+msgid "Drivers"
+msgstr "Controladores"
+
+msgid "Tool"
+msgstr "Ferramenta"
+
+msgid "I/O"
+msgstr "E/S"
+
+msgid "Startup"
+msgstr "Arranque"
+
+msgid "Plasma"
+msgstr "Plasma"
+
+msgid "Encoder"
+msgstr "Codificador"
+
+msgid "Modbus"
+msgstr "Modbus"
+
+msgid "RS485"
+msgstr "RS485"
+
+msgid "Other"
+msgstr "Outro"
+
 msgid "Retrieve"
 msgstr "Obter"
 
@@ -1924,9 +1986,6 @@ msgstr "Laser"
 
 msgid "Laser cutter/engraver (laser mode on, $32=1)"
 msgstr "Cortador/gravador laser (modo laser ligado, $32=1)"
-
-msgid "Other"
-msgstr "Outro"
 
 msgid "Other device type ($32 unchanged)"
 msgstr "Outro tipo de dispositivo ($32 inalterado)"
