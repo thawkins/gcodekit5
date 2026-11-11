@@ -2856,6 +2856,17 @@ msgstr "Material"
 msgid "Stock Z0 at:"
 msgstr "Z0 del material en:"
 
+msgid "Lower left"
+msgstr "Abajo a la izquierda"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Dónde está el X0 Y0 de trabajo del programa en el material: la esquina inferior izquierda o el centro del material."
+
+msgid "Stock XY0 at:"
+msgstr "XY0 del material en:"
+
 msgid "Simulation"
 msgstr "Simulación"
 

@@ -25,7 +25,9 @@ use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_designer::DesignerState;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_settings::controller::SettingsController;
-use gcodekit5_visualizer::visualizer::{StockSimulator3D, StockZeroReference};
+use gcodekit5_visualizer::visualizer::{
+    StockSimulator3D, StockXyReference, StockZeroReference, ToolpathSegment, toolpath_from_commands,
+};
 use glam::Vec3;
 
 /// Value of the 3D view's vertical scrollbar for a camera target Y. The
@@ -35,7 +37,54 @@ fn vscroll_3d_value(target_y: f32) -> f64 {
     -f64::from(target_y)
 }
 
-const STOCK_REMOVAL_RESOLUTION: f32 = 0.19; // Resolución cambiada de 0.25 a 0.19
+/// Stock removal simulation cell size (mm).
+const STOCK_REMOVAL_RESOLUTION: f32 = 0.19;
+
+/// Message from the stock removal worker thread to the UI poller.
+enum StockSimMessage {
+    /// Whole-percent progress (0..=100); sent only when it changes.
+    Progress(u8),
+    /// Finished: the remaining stock's surface mesh in work coordinates.
+    Done(Vec<f32>),
+}
+
+/// Run a stock removal simulation and build its mesh. Runs on a worker
+/// thread so neither the cutting nor the meshing blocks the UI.
+///
+/// # Arguments
+/// * `simulator` - Configured simulator for the stock.
+/// * `toolpath` - Program toolpath in work coordinates.
+/// * `cancel` - Set by the UI to stop the run; no result is sent then.
+/// * `tx` - Channel to the UI poller.
+fn run_stock_simulation(
+    mut simulator: StockSimulator3D,
+    toolpath: &[ToolpathSegment],
+    cancel: &std::sync::atomic::AtomicBool,
+    tx: &std::sync::mpsc::Sender<StockSimMessage>,
+) {
+    let mut last_pct = u8::MAX;
+    let completed = simulator.simulate_toolpath_with_progress(toolpath, |fraction| {
+        let pct = (fraction * 100.0).round().clamp(0.0, 100.0) as u8;
+        if pct != last_pct {
+            last_pct = pct;
+            let _ = tx.send(StockSimMessage::Progress(pct));
+        }
+        !cancel.load(std::sync::atomic::Ordering::SeqCst)
+    });
+    if completed {
+        let _ = tx.send(StockSimMessage::Done(simulator.get_mesh()));
+    }
+}
+
+/// Hide the stock removal progress panel and clear the status bar progress.
+fn finish_stock_simulation_ui(panel: &Box, label: &Label, status_bar: Option<&StatusBar>) {
+    panel.set_visible(false);
+    label.set_text("");
+    if let Some(sb) = status_bar {
+        sb.set_progress(0.0, "", "");
+        sb.set_cancel_action(None);
+    }
+}
 
 /// Colour (RGBA) of the Run-preview tool marker; the live machine marker is red.
 const PREVIEW_MARKER_COLOR: [f32; 4] = [0.0, 0.85, 1.0, 0.55];
@@ -65,9 +114,6 @@ struct GcodeDebounce {
     force_fit: bool,
 }
 
-#[derive(Clone)]
-pub(crate) struct StockRemovalVisualization;
-
 pub enum RunPreviewResult {
     Started,
     EmptyInput,
@@ -88,7 +134,7 @@ use tracing::debug;
 
 use gl_loader::load_gl_func;
 
-use gcodekit5_core::{Shared, SharedOption, shared, shared_none, thread_safe_none};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gtk4::prelude::{BoxExt, ButtonExt, CheckButtonExt, WidgetExt};
 use gtk4::{
     Adjustment, Box, Button, CheckButton, DrawingArea, Entry, EventControllerScroll,
@@ -140,10 +186,10 @@ pub struct GcodeVisualizer {
     pub(crate) show_stock_removal: CheckButton,
     #[allow(dead_code)]
     pub(crate) stock_material: SharedOption<StockMaterial>,
-    pub(crate) _simulation_visualization: SharedOption<StockRemovalVisualization>,
-    pub(crate) _simulation_running: Shared<bool>,
-    // Stock removal simulation (3D)
-    pub(crate) _stock_simulator_3d: SharedOption<StockSimulator3D>,
+    // Stock removal simulation (3D): cancel token of the running simulation,
+    // and the finished surface mesh (work coordinates).
+    pub(crate) _stock_simulation_run: SharedOption<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub(crate) _stock_removal_mesh: SharedOption<Vec<f32>>,
     pub(crate) _stock_simulation_3d_pending: Shared<bool>,
     #[allow(dead_code)]
     pub(crate) hadjustment: Adjustment,
@@ -665,6 +711,26 @@ impl GcodeVisualizer {
             });
         }
 
+        let stock_xy_reference = shared(StockXyReference::default());
+        let stock_xy_dropdown = {
+            let lower_left = t!("Lower left");
+            let centre = t!("Center");
+            let model = gtk4::StringList::new(&[lower_left.as_str(), centre.as_str()]);
+            let dropdown = gtk4::DropDown::new(Some(model), None::<gtk4::Expression>);
+            dropdown.set_selected(StockXyReference::default().index());
+            dropdown.set_hexpand(true);
+            dropdown.set_tooltip_text(Some(&t!(
+                "Where on the stock the program's work X0 Y0 is set: the lower-left corner \
+                 or the centre of the stock."
+            )));
+            let stock_xy_reference = stock_xy_reference.clone();
+            dropdown.connect_selected_notify(move |dropdown| {
+                *stock_xy_reference.borrow_mut() =
+                    StockXyReference::from_index(dropdown.selected());
+            });
+            dropdown
+        };
+
         // Group toggles into sections
         let toolpath_box = Box::new(Orientation::Vertical, 6);
         toolpath_box.set_margin_start(6);
@@ -723,6 +789,14 @@ impl GcodeVisualizer {
             label.set_halign(gtk4::Align::Start);
             row.append(&label);
             row.append(&stock_zero_dropdown);
+            stock_box.append(&row);
+        }
+        {
+            let row = Box::new(Orientation::Horizontal, 6);
+            let label = Label::new(Some(&t!("Stock XY0 at:")));
+            label.set_halign(gtk4::Align::Start);
+            row.append(&label);
+            row.append(&stock_xy_dropdown);
             stock_box.append(&row);
         }
 
@@ -1015,9 +1089,8 @@ impl GcodeVisualizer {
         });
         let stock_material = shared(initial_stock);
         let tool_diameter = shared(3.175f32); // Default 1/8" end mill
-        let simulation_visualization = shared_none::<StockRemovalVisualization>();
-        let simulation_running = shared(false);
-        let stock_simulator_3d = shared_none();
+        let sim_run = shared_none::<std::sync::Arc<std::sync::atomic::AtomicBool>>();
+        let stock_removal_mesh = shared_none::<Vec<f32>>();
         let stock_simulation_3d_pending = shared(false);
 
         // Overlay for floating controls
@@ -1214,8 +1287,6 @@ impl GcodeVisualizer {
         sidebar_show_panel.set_visible(!sidebar_visible_init);
 
         // Stock removal progress (non-blocking) + cancel
-        let sim_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let sim_progress = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let sim_spinner = Spinner::new();
         sim_spinner.start();
@@ -1243,19 +1314,9 @@ impl GcodeVisualizer {
         sim_panel.set_visible(false);
 
         {
-            let cancel_flag = sim_cancel.clone();
+            // Unchecking cancels the run and cleans up the progress UI.
             let show_stock = show_stock_removal.clone();
-            let panel = sim_panel.clone();
-            let sb = status_bar.clone();
-            sim_cancel_btn.connect_clicked(move |_| {
-                cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                panel.set_visible(false);
-                show_stock.set_active(false);
-                if let Some(sb) = sb.as_ref() {
-                    sb.set_progress(0.0, "", "");
-                    sb.set_cancel_action(None);
-                }
-            });
+            sim_cancel_btn.connect_clicked(move |_| show_stock.set_active(false));
         }
 
         overlay.add_overlay(&floating_box);
@@ -2157,299 +2218,133 @@ impl GcodeVisualizer {
             da_update.queue_draw();
             gl_update.queue_render();
         });
-        let _da_update = drawing_area.clone();
         let gl_update = gl_area.clone();
         let visualizer_stock = visualizer.clone();
-        let _simulation_visualization_stock = simulation_visualization.clone();
         let stock_material_stock = stock_material.clone();
         let tool_diameter_stock = tool_diameter.clone();
         let stock_zero_reference_stock = stock_zero_reference.clone();
-        let simulation_running_flag = simulation_running.clone();
-        let stock_simulator_3d_stock = stock_simulator_3d.clone();
-        let stock_simulation_3d_pending_toggle = stock_simulation_3d_pending.clone();
+        let stock_xy_reference_stock = stock_xy_reference.clone();
+        let sim_run_stock = sim_run.clone();
+        let stock_mesh_stock = stock_removal_mesh.clone();
+        let stock_mesh_pending_toggle = stock_simulation_3d_pending.clone();
         let sim_panel_toggle = sim_panel.clone();
-        let sim_cancel_flag = sim_cancel.clone();
-        let sim_progress_flag = sim_progress.clone();
         let sim_progress_label_toggle = sim_progress_label.clone();
         let status_bar_sim = status_bar.clone();
 
-        // ============================================================
-        // STOCK REMOVAL TOGGLED - VERSIÓN CON CANAL PARA PROGRESO
-        // ============================================================
+        // Stock removal toggle: start a background simulation when checked,
+        // cancel it and drop its result when unchecked.
         show_stock_removal.connect_toggled(move |checkbox| {
-            if checkbox.is_active() {
-                // Check if simulation is already running
-                if *simulation_running_flag.borrow() {
+            if !checkbox.is_active() {
+                if let Some(token) = sim_run_stock.borrow_mut().take() {
+                    token.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                *stock_mesh_stock.borrow_mut() = None;
+                finish_stock_simulation_ui(
+                    &sim_panel_toggle,
+                    &sim_progress_label_toggle,
+                    status_bar_sim.as_ref(),
+                );
+                gl_update.queue_render();
+                return;
+            }
+            if sim_run_stock.borrow().is_some() {
+                return;
+            }
+
+            let Some(stock) = stock_material_stock.borrow().clone() else {
+                checkbox.set_active(false);
+                return;
+            };
+            // `new` validates the stock size and tool diameter.
+            let simulator = match StockSimulator3D::new(
+                stock.width,
+                stock.height,
+                stock.thickness,
+                STOCK_REMOVAL_RESOLUTION,
+                *tool_diameter_stock.borrow() / 2.0,
+            ) {
+                Ok(simulator) => simulator
+                    .with_stock_zero_reference(*stock_zero_reference_stock.borrow())
+                    .with_stock_xy_reference(*stock_xy_reference_stock.borrow()),
+                Err(reason) => {
+                    tracing::warn!("Stock simulation not started: {reason}");
+                    checkbox.set_active(false);
+                    crate::ui::gtk::common::dialog::show_warning(
+                        &t!("Stock Simulation"),
+                        &reason,
+                        None,
+                    );
                     return;
                 }
+            };
+            let toolpath = toolpath_from_commands(visualizer_stock.borrow().commands());
 
-                sim_cancel_flag.store(false, std::sync::atomic::Ordering::SeqCst);
-                sim_progress_flag.store(0, std::sync::atomic::Ordering::Relaxed);
-                sim_progress_label_toggle.set_text("0%");
-                sim_panel_toggle.set_visible(true);
+            // Each run gets its own cancel token, so a stale run or poller can
+            // never be revived by a later run.
+            let token = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            *sim_run_stock.borrow_mut() = Some(token.clone());
+            sim_progress_label_toggle.set_text("0%");
+            sim_panel_toggle.set_visible(true);
+            if let Some(sb) = status_bar_sim.as_ref() {
+                let checkbox = checkbox.clone();
+                sb.set_progress(0.1, "0s", "");
+                sb.set_cancel_action(Some(std::boxed::Box::new(move || {
+                    checkbox.set_active(false);
+                })));
+            }
 
-                if let Some(sb) = status_bar_sim.as_ref() {
-                    let cancel_flag = sim_cancel_flag.clone();
-                    let show_stock = checkbox.clone();
-                    let panel = sim_panel_toggle.clone();
-                    sb.set_progress(0.1, "0s", "");
-                    sb.set_cancel_action(Some(std::boxed::Box::new(move || {
-                        cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                        panel.set_visible(false);
-                        show_stock.set_active(false);
-                    })));
+            let (tx, rx) = std::sync::mpsc::channel();
+            let worker_token = token.clone();
+            std::thread::spawn(move || {
+                run_stock_simulation(simulator, &toolpath, &worker_token, &tx);
+            });
+
+            let started_at = std::time::Instant::now();
+            let checkbox = checkbox.clone();
+            let sim_run = sim_run_stock.clone();
+            let mesh_ref = stock_mesh_stock.clone();
+            let pending_flag = stock_mesh_pending_toggle.clone();
+            let panel = sim_panel_toggle.clone();
+            let label = sim_progress_label_toggle.clone();
+            let sb = status_bar_sim.clone();
+            let gl = gl_update.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                // Unchecking already cleaned up the UI for a cancelled run.
+                if token.load(std::sync::atomic::Ordering::SeqCst) {
+                    return glib::ControlFlow::Break;
                 }
-
-                *simulation_running_flag.borrow_mut() = true;
-
-                let started_at = std::time::Instant::now();
-
-                // Run simulation when enabled
-                let vis = visualizer_stock.borrow();
-
-                if let Some(stock) = stock_material_stock.borrow().as_ref() {
-                    // Run simulation in background thread
-                    let stock_clone = stock.clone();
-                    if let Err(reason) = gcodekit5_visualizer::VoxelGrid::check_dimensions(
-                        stock_clone.width,
-                        stock_clone.height,
-                        stock_clone.thickness,
-                        STOCK_REMOVAL_RESOLUTION,
-                    ) {
-                        tracing::warn!("Stock simulation not started: {reason}");
-                        // Unchecking runs the cleanup branch below, which
-                        // clears the running flag and the progress UI.
-                        checkbox.set_active(false);
-                        crate::ui::gtk::common::dialog::show_warning(
-                            &t!("Stock Simulation"),
-                            &reason,
-                            None,
-                        );
-                        return;
-                    }
-                    let tool_radius_value = *tool_diameter_stock.borrow() / 2.0;
-                    let stock_zero = *stock_zero_reference_stock.borrow();
-                    let result_3d_ref = stock_simulator_3d_stock.clone();
-                    let gl_ref = gl_update.clone();
-
-                    // Convert GCode commands to toolpath segments for 3D
-                    use gcodekit5_visualizer::{ToolpathSegment, ToolpathSegmentType};
-                    let mut toolpath_segments_3d = Vec::new();
-
-                    for cmd in vis.commands() {
-                        match cmd {
-                            GCodeCommand::Move {
-                                from, to, rapid, ..
-                            } => {
-                                let seg_type = if *rapid {
-                                    ToolpathSegmentType::RapidMove
-                                } else {
-                                    ToolpathSegmentType::LinearMove
-                                };
-                                let start_z = from.z;
-                                let end_z = to.z;
-                                toolpath_segments_3d.push(ToolpathSegment {
-                                    segment_type: seg_type,
-                                    start: (from.x, from.y, start_z),
-                                    end: (to.x, to.y, end_z),
-                                    center: None,
-                                    feed_rate: 100.0,
-                                    spindle_speed: 3000.0,
-                                });
-                            }
-                            GCodeCommand::Arc {
-                                from,
-                                to,
-                                center,
-                                clockwise,
-                                ..
-                            } => {
-                                let seg_type = if *clockwise {
-                                    ToolpathSegmentType::ArcCW
-                                } else {
-                                    ToolpathSegmentType::ArcCCW
-                                };
-                                let start_z = from.z;
-                                let end_z = to.z;
-                                toolpath_segments_3d.push(ToolpathSegment {
-                                    segment_type: seg_type,
-                                    start: (from.x, from.y, start_z),
-                                    end: (to.x, to.y, end_z),
-                                    center: Some((center.x, center.y)),
-                                    feed_rate: 100.0,
-                                    spindle_speed: 3000.0,
-                                });
-                            }
-                            GCodeCommand::Dwell { .. } => {
-                                // Dwell commands don't remove material, skip
-                            }
-                        }
-                    }
-
-                    // Use Arc<Mutex<>> for thread-safe sharing
-                    let result_arc = thread_safe_none();
-                    let result_arc_clone = result_arc.clone();
-
-                    let cancel_thread = sim_cancel_flag.clone();
-                    let progress_thread = sim_progress_flag.clone();
-
-                    // ============================================================
-                    // CREAR CANAL PARA EL PROGRESO
-                    // ============================================================
-                    let (progress_tx, progress_rx) = std::sync::mpsc::channel();
-
-                    // Shared with the worker thread as Arc<AtomicBool>
-                    let render_ready =
-                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                    let render_ready_clone = render_ready.clone();
-
-                    std::thread::spawn(move || {
-                        use gcodekit5_visualizer::StockSimulator3D;
-
-                        let resolution = STOCK_REMOVAL_RESOLUTION;
-
-                        // The stock origin is the user's "Stock Z0 at" setting
-                        // (defaulted from the program header when it records one);
-                        // it is never guessed from the toolpath's Z values.
-                        let mut simulator = StockSimulator3D::new(
-                            stock_clone.width,
-                            stock_clone.height,
-                            stock_clone.thickness,
-                            resolution,
-                            tool_radius_value,
-                        )
-                        .with_stock_zero_reference(stock_zero);
-
-                        let cancel = cancel_thread.clone();
-                        let progress = progress_thread.clone();
-                        let tx = progress_tx.clone();
-
-                        let _ =
-                            simulator.simulate_toolpath_with_progress(&toolpath_segments_3d, |p| {
-                                // Enviar progreso por el canal
-                                let _ = tx.send(p);
-
-                                // Actualizar también la variable atómica para compatibilidad
-                                if p > 0.0 {
-                                    progress.store(
-                                        (p * 100.0).round() as usize,
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                }
-                                !cancel.load(std::sync::atomic::Ordering::SeqCst)
-                            });
-
-                        progress.store(100, std::sync::atomic::Ordering::Relaxed);
-                        // Enviar 100% al final
-                        let _ = progress_tx.send(1.0);
-
-                        let result_sim = simulator;
-
-                        // Store in Arc
-                        *result_arc_clone.lock() = Some(result_sim);
-                        // Atomic store (no RefCell borrow across threads)
-                        render_ready_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-                    });
-
-                    // ============================================================
-                    // IMPROVED POLLER WITH CHANNEL
-                    // ============================================================
-                    let result_arc_poll = result_arc.clone();
-                    let sim_running_poll = simulation_running_flag.clone();
-                    let pending_flag = stock_simulation_3d_pending_toggle.clone();
-                    let sim_cancel_flag_poll = sim_cancel_flag.clone();
-                    let sim_panel_toggle_poll = sim_panel_toggle.clone();
-                    let sim_progress_label_poll = sim_progress_label_toggle.clone();
-                    let sb_poll = status_bar_sim.clone();
-                    let render_ready_poll = render_ready.clone();
-
-                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                        // 1. Actualizar progreso desde el canal
-                        while let Ok(p) = progress_rx.try_recv() {
-                            let pct = (p * 100.0).round() as usize;
-                            sim_progress_label_poll.set_text(&format!("{}%", pct));
-                            if let Some(sb) = sb_poll.as_ref() {
+                loop {
+                    match rx.try_recv() {
+                        Ok(StockSimMessage::Progress(pct)) => {
+                            label.set_text(&format!("{pct}%"));
+                            if let Some(sb) = sb.as_ref() {
                                 let elapsed = started_at.elapsed().as_secs_f64();
                                 sb.set_progress(
-                                    (pct as f64).max(0.1),
-                                    &format!("{:.0}s", elapsed),
+                                    f64::from(pct).max(0.1),
+                                    &format!("{elapsed:.0}s"),
                                     "",
                                 );
                             }
                         }
-
-                        // 2. Verificar cancelación
-                        if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
-                            *sim_running_poll.borrow_mut() = false;
-                            sim_panel_toggle_poll.set_visible(false);
-                            if let Some(sb) = sb_poll.as_ref() {
-                                sb.set_progress(0.0, "", "");
-                                sb.set_cancel_action(None);
-                            }
-                            return glib::ControlFlow::Break;
-                        }
-
-                        // 3. Verificar si el renderizado está listo
-                        // Atomic load (no RefCell borrow across threads)
-                        if render_ready_poll.load(std::sync::atomic::Ordering::SeqCst)
-                            && let Some(mut guard) = result_arc_poll.try_lock()
-                            && let Some(result_simulator) = guard.take()
-                        {
-                            if sim_cancel_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
-                                *sim_running_poll.borrow_mut() = false;
-                                sim_panel_toggle_poll.set_visible(false);
-                                if let Some(sb) = sb_poll.as_ref() {
-                                    sb.set_progress(0.0, "", "");
-                                    sb.set_cancel_action(None);
-                                }
-                                return glib::ControlFlow::Break;
-                            }
-
-                            // Asignar el simulador
-                            *result_3d_ref.borrow_mut() = Some(result_simulator);
+                        Ok(StockSimMessage::Done(mesh)) => {
+                            *mesh_ref.borrow_mut() = Some(mesh);
                             *pending_flag.borrow_mut() = true;
-                            *sim_running_poll.borrow_mut() = false;
-
-                            // Ocultar panel de progreso
-                            sim_panel_toggle_poll.set_visible(false);
-                            if let Some(sb) = sb_poll.as_ref() {
-                                sb.set_progress(0.0, "", "");
-                                sb.set_cancel_action(None);
-                            }
-
-                            // Forzar renderizado
-                            gl_ref.queue_render();
-
-                            // Stop the poller now
+                            *sim_run.borrow_mut() = None;
+                            finish_stock_simulation_ui(&panel, &label, sb.as_ref());
+                            gl.queue_render();
                             return glib::ControlFlow::Break;
                         }
-
-                        glib::ControlFlow::Continue
-                    });
-                } else {
-                    if let Some(sb) = status_bar_sim.as_ref() {
-                        sb.set_progress(0.0, "", "");
-                        sb.set_cancel_action(None);
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            return glib::ControlFlow::Continue;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            tracing::error!("Stock simulation stopped without a result");
+                            checkbox.set_active(false);
+                            return glib::ControlFlow::Break;
+                        }
                     }
-                    *stock_simulator_3d_stock.borrow_mut() = None;
-                    *simulation_running_flag.borrow_mut() = false;
-                    sim_panel_toggle.set_visible(false);
                 }
-            } else {
-                // Clear simulation when disabled
-                sim_cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                sim_progress_flag.store(0, std::sync::atomic::Ordering::Relaxed);
-                sim_progress_label_toggle.set_text("");
-                if let Some(sb) = status_bar_sim.as_ref() {
-                    sb.set_progress(0.0, "", "");
-                    sb.set_cancel_action(None);
-                }
-
-                *stock_simulator_3d_stock.borrow_mut() = None;
-                *simulation_running_flag.borrow_mut() = false;
-                sim_panel_toggle.set_visible(false);
-                gl_update.queue_render();
-            }
+            });
         });
 
         // Stock dimension entry handlers
@@ -2532,8 +2427,7 @@ impl GcodeVisualizer {
         let current_pos_3d = current_pos.clone();
         let preview_pos_3d = preview_pos.clone();
         let device_manager_3d = device_manager.clone();
-        let stock_simulator_3d_render = stock_simulator_3d.clone();
-        let _stock_material_3d = stock_material.clone();
+        let stock_removal_mesh_render = stock_removal_mesh.clone();
         let stock_simulation_3d_pending_render = stock_simulation_3d_pending.clone();
 
         // Capture checkbox states
@@ -2756,9 +2650,14 @@ impl GcodeVisualizer {
 
                 state.shader.unbind();
 
-                // Draw 3D Stock Removal - CON BACK-FACE CULLING
+                // Draw 3D stock removal (opaque, back-face culled).
+                let stock_mesh = stock_removal_mesh_render.borrow();
+                if stock_mesh.is_none() {
+                    // Release the GPU copy of a cleared result.
+                    state.stock_removal_buffers = None;
+                }
                 if show_stock_removal_3d.is_active() {
-                    if let Some(simulator) = stock_simulator_3d_render.borrow().as_ref() {
+                    if let Some(mesh_vertices) = stock_mesh.as_ref() {
                         // Initialize stock removal shader if needed
                         if state.stock_removal_shader.is_none() {
                             match StockRemovalShaderProgram::new(gl.clone()) {
@@ -2771,10 +2670,9 @@ impl GcodeVisualizer {
                         if state.stock_removal_buffers.is_none()
                             || *stock_simulation_3d_pending_render.borrow()
                         {
-                            let mesh_vertices = simulator.get_mesh();
                             match RenderBuffers::new(gl.clone(), glow::TRIANGLES) {
                                 Ok(mut buffers) => {
-                                    buffers.update_mesh(&mesh_vertices);
+                                    buffers.update_mesh(mesh_vertices);
                                     state.stock_removal_buffers = Some(buffers);
                                 }
                                 Err(e) => {
@@ -2787,10 +2685,14 @@ impl GcodeVisualizer {
                         if let (Some(shader), Some(buffers)) =
                             (&state.stock_removal_shader, &state.stock_removal_buffers)
                         {
-                            // Set render state to opaque solid
+                            // Set render state to opaque solid, remembering the
+                            // state later passes expect.
                             // SAFETY: runs in the GLArea callback, where GTK has made this GL
                             // context current; the arguments are valid GL enums and
                             // objects/locations created in this context.
+                            #[allow(unsafe_code)]
+                            let blend_was_enabled = unsafe { gl.is_enabled(glow::BLEND) };
+                            // SAFETY: as above.
                             #[allow(unsafe_code)]
                             unsafe {
                                 // Disable blending to avoid transparency
@@ -2858,15 +2760,19 @@ impl GcodeVisualizer {
                             #[allow(unsafe_code)]
                             unsafe {
                                 gl.disable(glow::CULL_FACE);
+                                if blend_was_enabled {
+                                    gl.enable(glow::BLEND);
+                                }
                                 // Do NOT disable depth testing, as the toolpath requires it
                             }
 
                             shader.unbind();
                         }
                     } else {
-                        debug!("No stock simulator available for rendering");
+                        debug!("No stock removal mesh available for rendering");
                     }
                 }
+                drop(stock_mesh);
 
                 // After drawing the stock removal, draw the toolpath
                 // Draw Toolpath (ensure it is drawn on top of the stock)
@@ -3133,9 +3039,8 @@ impl GcodeVisualizer {
             show_laser,
             show_stock_removal,
             stock_material,
-            _simulation_visualization: shared_none(),
-            _simulation_running: simulation_running,
-            _stock_simulator_3d: stock_simulator_3d,
+            _stock_simulation_run: sim_run,
+            _stock_removal_mesh: stock_removal_mesh,
             _stock_simulation_3d_pending: stock_simulation_3d_pending,
             hadjustment,
             vadjustment,
@@ -3251,6 +3156,11 @@ impl GcodeVisualizer {
         // Any G-code reload invalidates prior preview trajectory.
         self.stop_run_preview();
         self.run_preview_points.borrow_mut().clear();
+        // The stock removal result belongs to the previous program: drop it
+        // (unchecking cancels any running simulation).
+        if self.show_stock_removal.is_active() {
+            self.show_stock_removal.set_active(false);
+        }
 
         if reset == ViewReset::Fit {
             self.apply_recorded_stock_zero(gcode);

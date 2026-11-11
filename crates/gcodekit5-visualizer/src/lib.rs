@@ -16,6 +16,7 @@ pub use gcode::{
     stream::{FileStreamReader, GcodeStreamReader, PausableStream, StringStreamReader},
 };
 pub use visualizer::{
-    Camera, Camera3D, GCodeCommand, Point3D, Renderer, Scene, StockSimulator3D, ToolpathSegment,
-    ToolpathSegmentType, Visualizer, VisualizerControls, VoxelGrid, generate_surface_mesh,
+    Camera, Camera3D, GCodeCommand, HeightMap, Point3D, Renderer, Scene, StockSimulator3D,
+    ToolpathSegment, ToolpathSegmentType, Visualizer, VisualizerControls, generate_surface_mesh,
+    toolpath_from_commands,
 };

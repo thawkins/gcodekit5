@@ -2856,6 +2856,17 @@ msgstr "Grezzo"
 msgid "Stock Z0 at:"
 msgstr "Z0 del grezzo a:"
 
+msgid "Lower left"
+msgstr "In basso a sinistra"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Dove si trova l'X0 Y0 di lavoro del programma sul grezzo: l'angolo in basso a sinistra o il centro del grezzo."
+
+msgid "Stock XY0 at:"
+msgstr "XY0 del grezzo a:"
+
 msgid "Simulation"
 msgstr "Simulazione"
 

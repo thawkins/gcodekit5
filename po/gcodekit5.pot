@@ -2777,6 +2777,17 @@ msgstr ""
 msgid "Stock Z0 at:"
 msgstr ""
 
+msgid "Lower left"
+msgstr ""
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr ""
+
+msgid "Stock XY0 at:"
+msgstr ""
+
 msgid "Simulation"
 msgstr ""
 
