@@ -25,11 +25,6 @@ impl MachineControlView {
         self.refresh_connection_target();
     }
 
-    /// Returns the jog step size in mm.
-    pub fn get_step_size(&self) -> f64 {
-        *self.jog_step_mm.lock() as f64
-    }
-
     /// Starts a line-by-line job (one line in flight; the status poller sends the next
     /// line after each ack). Used by tools such as the drill press.
     ///
@@ -39,7 +34,15 @@ impl MachineControlView {
         if *self.is_streaming.lock() {
             return;
         }
-        let content = self.prepare_job_content(content.to_string());
+        let content = match self.prepare_job_content(content.to_string()) {
+            Ok(content) => content,
+            Err(reason) => {
+                if let Some(c) = self.device_console.as_ref() {
+                    c.append_log(&format!("{} {reason}\n", t!("Job not started:")));
+                }
+                return;
+            }
+        };
         let content = content.as_str();
 
         let lines: Vec<String> = content
@@ -65,31 +68,27 @@ impl MachineControlView {
 
             let upper = line.to_ascii_uppercase();
 
-            if !found_f {
-                if let Some(idx) = upper.find('F') {
-                    let rest = &upper[idx + 1..];
-                    let val_str: String = rest
-                        .chars()
-                        .take_while(|c| c.is_ascii_digit() || *c == '.')
-                        .collect();
-                    if let Ok(val) = val_str.parse::<f32>() {
-                        device_status::update_commanded_feed_rate(val);
-                        found_f = true;
-                    }
+            if !found_f && let Some(idx) = upper.find('F') {
+                let rest = &upper[idx + 1..];
+                let val_str: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                if let Ok(val) = val_str.parse::<f32>() {
+                    device_status::update_commanded_feed_rate(val);
+                    found_f = true;
                 }
             }
 
-            if !found_s {
-                if let Some(idx) = upper.find('S') {
-                    let rest = &upper[idx + 1..];
-                    let val_str: String = rest
-                        .chars()
-                        .take_while(|c| c.is_ascii_digit() || *c == '.')
-                        .collect();
-                    if let Ok(val) = val_str.parse::<f32>() {
-                        device_status::update_commanded_spindle_speed(val);
-                        found_s = true;
-                    }
+            if !found_s && let Some(idx) = upper.find('S') {
+                let rest = &upper[idx + 1..];
+                let val_str: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                if let Ok(val) = val_str.parse::<f32>() {
+                    device_status::update_commanded_spindle_speed(val);
+                    found_s = true;
                 }
             }
         }
@@ -123,18 +122,26 @@ impl MachineControlView {
         self.update_job_controls();
     }
 
-    /// Emergency stop: stops any job and soft-resets the controller (Ctrl-X).
+    /// Emergency stop: stops any job and halts the controller.
+    ///
+    /// GRBL-style controllers get a soft reset (Ctrl-X, `0x18`); flow-control protocols
+    /// (Repetier) have no realtime reset and get their firmware emergency stop, `M112`.
     pub fn emergency_stop(&self) {
-        // Signal the DirectSender worker *before* sending the reset. The worker re-checks
+        // Signal the sender's worker *before* sending the reset. The GRBL worker re-checks
         // this flag while holding the communicator lock, so once we hold the lock below no
         // further job lines can be written after the soft reset.
-        if let Some(sender) = self.direct_sender.lock().as_ref() {
+        let sender = self.active_sender.borrow().clone();
+        if let Some(sender) = sender.as_ref() {
             sender.stop();
         }
 
         {
             let mut comm = self.communicator.lock();
-            let _ = comm.send(&[0x18]);
+            if Self::is_flow_control_protocol() {
+                let _ = comm.send_command("M112");
+            } else {
+                let _ = comm.send(&[0x18]);
+            }
         }
 
         *self.is_streaming.lock() = false;
@@ -159,7 +166,12 @@ impl MachineControlView {
 
         // Match StatusBar eStop behavior
         if let Some(c) = self.device_console.as_ref() {
-            c.append_log(&format!("{}\n", t!("Emergency stop (Ctrl-X)")));
+            let msg = if Self::is_flow_control_protocol() {
+                t!("Emergency stop (M112)")
+            } else {
+                t!("Emergency stop (Ctrl-X)")
+            };
+            c.append_log(&format!("{}\n", msg));
         }
     }
 }

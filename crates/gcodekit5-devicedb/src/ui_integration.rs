@@ -1,3 +1,4 @@
+//! gcodekit5-devicedb/src/ui_integration.rs
 //! # Device Database UI Integration
 //!
 //! Provides helper functions and view models for displaying
@@ -38,6 +39,8 @@ pub struct DeviceProfileUiModel {
     pub tcp_port: String,
     pub timeout_ms: String,
     pub auto_reconnect: bool,
+    /// Repetier pen-plotter mode (see [`DeviceProfile::pen_mode`]).
+    pub pen_mode: bool,
     pub is_active: bool,
 }
 
@@ -71,6 +74,7 @@ impl From<DeviceProfile> for DeviceProfileUiModel {
             tcp_port: p.tcp_port.to_string(),
             timeout_ms: p.timeout_ms.to_string(),
             auto_reconnect: p.auto_reconnect,
+            pen_mode: p.pen_mode,
             is_active: false, // Set separately
         }
     }
@@ -119,17 +123,10 @@ impl DeviceUiController {
             _ => anyhow::bail!("Unknown device type: {}", ui_model.device_type),
         };
 
-        profile.controller_type = match ui_model.controller_type.as_str() {
-            "GRBL" => ControllerType::Grbl,
-            // Must match ControllerType's Display output, or grblHAL profiles can't be saved
-            "grblHAL" => ControllerType::GrblHal,
-            "TinyG" => ControllerType::TinyG,
-            "g2core" => ControllerType::G2Core,
-            "Smoothieware" => ControllerType::Smoothieware,
-            "FluidNC" => ControllerType::FluidNC,
-            "Marlin" => ControllerType::Marlin,
-            _ => anyhow::bail!("Unknown controller type: {}", ui_model.controller_type),
-        };
+        profile.controller_type =
+            ControllerType::from_name(&ui_model.controller_type).ok_or_else(|| {
+                anyhow::anyhow!("Unknown controller type: {}", ui_model.controller_type)
+            })?;
 
         let mut x_min: f64 = ui_model
             .x_min
@@ -182,6 +179,7 @@ impl DeviceUiController {
         profile.has_spindle = ui_model.has_spindle;
         profile.has_laser = ui_model.has_laser;
         profile.has_coolant = ui_model.has_coolant;
+        profile.pen_mode = ui_model.pen_mode;
 
         profile.num_axes = ui_model.num_axes.trim().parse().with_context(|| {
             format!(

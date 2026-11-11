@@ -239,7 +239,7 @@ pub fn setup_invert_handler(
     });
 }
 
-/// Setup handler for image dithering combo box.
+/// Setup handler for image dithering combo box
 pub fn setup_dithering_handler(
     combo: &DropDown,
     state: Shared<DesignerState>,
@@ -261,7 +261,7 @@ pub fn setup_dithering_handler(
     });
 }
 
-/// Setup handler for the halftone threshold entry (0-255).
+// Handler for halftone_threshold
 pub fn setup_halftone_threshold_handler(
     entry: &Entry,
     state: Shared<DesignerState>,

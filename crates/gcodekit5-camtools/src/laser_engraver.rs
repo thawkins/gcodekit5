@@ -118,7 +118,7 @@ pub struct EngravingParameters {
     pub offset_y: f32,
     /// Number of axes on the target device (default 3).
     pub num_axes: u8,
-    /// Home (`$H`) and clear the G54 X/Y offset before engraving (default `false`).
+    /// Home (`$H`) before engraving, keeping the G54 work offsets (default `false`).
     ///
     /// See [`crate::job_preamble`]. The engraver never moves Z, so the focus height set by
     /// the user is kept either way.
@@ -351,70 +351,71 @@ impl BitmapImageEngraver {
         Ok(())
     }
 
-    /// Apply Floyd-Steinberg error diffusion
+    /// Apply Floyd-Steinberg error diffusion (Corregido con aritmética flotante)
     fn apply_floyd_steinberg_image(image: &mut GrayImage) -> Result<()> {
         let width = image.width();
         let height = image.height();
 
-        // We need to work with i16 to handle error propagation without overflow
-        // Copy to buffer
-        let mut buffer: Vec<i16> = image.as_raw().iter().map(|&p| p as i16).collect();
+        // Trabajamos con f32 para preservar con total precisión la dispersión del error
+        let mut buffer: Vec<f32> = image.as_raw().iter().map(|&p| p as f32).collect();
 
         for y in 0..height {
             for x in 0..width {
                 let idx = (y * width + x) as usize;
                 let old_pixel = buffer[idx];
-                let new_pixel = if old_pixel > 127 { 255 } else { 0 };
+
+                // Determinamos el blanco o negro puro basado en el umbral
+                let new_pixel = if old_pixel > 127.0 { 255.0 } else { 0.0 };
 
                 buffer[idx] = new_pixel;
                 let error = old_pixel - new_pixel;
 
-                // Distribute error
+                // Distribuimos el error usando coeficientes estándar de Floyd-Steinberg (f32)
                 if x + 1 < width {
-                    let neighbor_idx = (y * width + (x + 1)) as usize;
-                    buffer[neighbor_idx] = buffer[neighbor_idx].saturating_add(error * 7 / 16);
+                    let n_idx = (y * width + (x + 1)) as usize;
+                    buffer[n_idx] += error * (7.0 / 16.0);
                 }
                 if x > 0 && y + 1 < height {
-                    let neighbor_idx = ((y + 1) * width + (x - 1)) as usize;
-                    buffer[neighbor_idx] = buffer[neighbor_idx].saturating_add(error * 3 / 16);
+                    let n_idx = ((y + 1) * width + (x - 1)) as usize;
+                    buffer[n_idx] += error * (3.0 / 16.0);
                 }
                 if y + 1 < height {
-                    let neighbor_idx = ((y + 1) * width + x) as usize;
-                    buffer[neighbor_idx] = buffer[neighbor_idx].saturating_add(error * 5 / 16);
+                    let n_idx = ((y + 1) * width + x) as usize;
+                    buffer[n_idx] += error * (5.0 / 16.0);
                 }
                 if x + 1 < width && y + 1 < height {
-                    let neighbor_idx = ((y + 1) * width + (x + 1)) as usize;
-                    buffer[neighbor_idx] = buffer[neighbor_idx].saturating_add(error / 16);
+                    let n_idx = ((y + 1) * width + (x + 1)) as usize;
+                    buffer[n_idx] += error * (1.0 / 16.0);
                 }
             }
         }
 
-        // Copy back
+        // Copiamos de vuelta al formato u8 original de la imagen clampeando los valores
         for (i, &val) in buffer.iter().enumerate() {
             let x = (i as u32) % width;
             let y = (i as u32) / width;
-            image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
+            image.put_pixel(x, y, image::Luma([val.clamp(0.0, 255.0) as u8]));
         }
         Ok(())
     }
 
-    /// Apply Atkinson error diffusion
+    /// Apply Atkinson error diffusion (Corregido con aritmética flotante)
     fn apply_atkinson_image(image: &mut GrayImage) -> Result<()> {
         let width = image.width();
         let height = image.height();
 
-        let mut buffer: Vec<i16> = image.as_raw().iter().map(|&p| p as i16).collect();
+        let mut buffer: Vec<f32> = image.as_raw().iter().map(|&p| p as f32).collect();
 
         for y in 0..height {
             for x in 0..width {
                 let idx = (y * width + x) as usize;
                 let old_pixel = buffer[idx];
-                let new_pixel = if old_pixel > 127 { 255 } else { 0 };
+                let new_pixel = if old_pixel > 127.0 { 255.0 } else { 0.0 };
 
                 buffer[idx] = new_pixel;
                 let error = old_pixel - new_pixel;
 
-                // Atkinson distributes 1/8 of error to 6 neighbors
+                // Atkinson distribuye exactamente 1/8 del error a 6 vecinos específicos
                 let neighbors = [(1, 0), (2, 0), (-1, 1), (0, 1), (1, 1), (0, 2)];
 
                 for (dx, dy) in neighbors {
@@ -423,7 +424,7 @@ impl BitmapImageEngraver {
 
                     if nx >= 0 && nx < width as isize && ny >= 0 && ny < height as isize {
                         let n_idx = ny as usize * width as usize + nx as usize;
-                        buffer[n_idx] = buffer[n_idx].saturating_add(error / 8);
+                        buffer[n_idx] += error * (1.0 / 8.0);
                     }
                 }
             }
@@ -432,7 +433,7 @@ impl BitmapImageEngraver {
         for (i, &val) in buffer.iter().enumerate() {
             let x = (i as u32) % width;
             let y = (i as u32) / width;
-            image.put_pixel(x, y, image::Luma([val.clamp(0, 255) as u8]));
+            image.put_pixel(x, y, image::Luma([val.clamp(0.0, 255.0) as u8]));
         }
         Ok(())
     }
@@ -514,11 +515,6 @@ impl BitmapImageEngraver {
         ));
         gcode.push('\n');
 
-        gcode.push_str("M5 ; Laser off\n");
-        gcode.push('\n');
-
-        progress_callback(0.0);
-
         // Image is already resized in from_image
         progress_callback(0.1);
 
@@ -550,7 +546,12 @@ impl BitmapImageEngraver {
 
         gcode.push_str("\n; End of engraving\n");
         gcode.push_str("M5 ; Laser off\n");
-        gcode.push_str("G0 X0 Y0 ; Return to origin\n");
+        gcode.push('\n');
+
+        gcode.push_str(&format!(
+            "G0 X{:.3} Y{:.3} ; Return to work origin offset\n",
+            self.params.offset_x, self.params.offset_y
+        ));
 
         progress_callback(1.0);
 
@@ -595,7 +596,8 @@ impl BitmapImageEngraver {
             let y_pos = line as f32 * line_spacing;
 
             // Turn off laser before rapid movement
-            gcode.push_str("M5\n");
+            gcode.push_str("M5 ; Laser off\n");
+            gcode.push('\n');
 
             let start_x = if forward {
                 0.0

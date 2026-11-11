@@ -1,11 +1,10 @@
-//! # GCodeKit4 CAM Tools
+//! # GCodeKit5 CAM Tools
 //!
 //! This crate provides specialized CAM (Computer-Aided Manufacturing) tools and
 //! processing operations for generating G-Code for various CNC applications.
 //!
 //! ## CAM Tools Included
 //!
-//! - **Advanced Features**: Cutting feeds, threading, speeds, and advanced machining operations
 //! - **Jigsaw Puzzle Maker**: Generate G-Code for cutting interlocking puzzle pieces
 //! - **Tabbed Box Maker**: Create finger-jointed box designs with customizable parameters
 //! - **Drill Press**: Specialized drilling cycles including peck drilling and helical interpolation
@@ -16,28 +15,20 @@
 //!
 //! ## Supporting Infrastructure
 //!
-//! - **Core Infrastructure**: Application state, configuration, logging, and telemetry
 //! - **Optimizer**: G-Code optimization and minimization
 //! - **Validator**: G-Code validation and safety checks
 //! - **Comment Processor**: G-Code comment stripping and word tokenizing
 //! - **Job Preamble**: Optional homing preamble shared by the laser generators
 //! - **CAM Presets**: Unit-aware saved parameter files for the bitmap and probe tools
 //! - **Statistics**: G-Code statistics and analysis
-//!
-//! ## UI Components
-//!
-//! - **Advanced Features Panel**: UI panel for controlling CAM tools
+#![deny(unsafe_code)]
 
-pub mod advanced_features;
 pub mod arc_expander;
 pub mod cam_presets;
 pub mod comment_processor;
-pub mod core_infrastructure;
 pub mod drill_press;
-pub mod error;
 pub mod gerber;
 pub mod hatch_generator;
-mod hatch_test;
 pub mod jigsaw_puzzle;
 pub mod job_preamble;
 pub mod laser_engraver;
@@ -52,19 +43,11 @@ pub mod validator;
 pub mod wcs_service;
 
 // UI module
-pub mod advanced_features_panel;
 
 // Re-export commonly used items
-pub use advanced_features::{
-    CommandHistory, ProbingSystem, SimulationMode, SoftLimits, ToolLibrary, WorkCoordinateManager,
-};
 pub use arc_expander::ArcExpander;
 pub use comment_processor::CommentProcessor;
-pub use core_infrastructure::{AppConfig, ApplicationState, Logger, TelemetryData};
 pub use drill_press::{DrillPressGenerator, DrillPressParameters};
-pub use error::{
-    CamToolError, CamToolResult, FileFormatError, FileFormatResult, ParameterError, ParameterResult,
-};
 pub use gerber::{GerberConverter, GerberLayerType, GerberParameters};
 pub use jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 pub use laser_engraver::{
@@ -73,13 +56,13 @@ pub use laser_engraver::{
 };
 pub use optimizer::GCodeOptimizer;
 pub use probe_routines::{
-    defaults as probe_defaults, ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput,
+    ProbeCycle, ProbeOptions, ProbeRoutineEngine, ProbeRoutineOutput, defaults as probe_defaults,
 };
 pub use speeds_feeds::{
-    calculate_speeds_feeds, CalculationInput, CalculationResult, DeviceLimits,
-    DeviceRecommendations, FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors,
-    OperationType, SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
-    SpeedsFeedsMaterialService, SpeedsFeedsToolService,
+    CalculationInput, CalculationResult, DeviceLimits, DeviceRecommendations,
+    FeedsSpeedsLookupTable, GeometryAdjustments, MaterialSpeedFactors, OperationType,
+    SpeedsFeedsCalculator, SpeedsFeedsDataContext, SpeedsFeedsDeviceService,
+    SpeedsFeedsMaterialService, SpeedsFeedsToolService, calculate_speeds_feeds,
 };
 pub use spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
 pub use spoilboard_surfacing::{SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters};

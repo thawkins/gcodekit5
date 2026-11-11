@@ -3,18 +3,19 @@
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, Align, Box, Button, CheckButton, Entry, Image,
-    Label, Orientation, Paned, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, Entry, Image, Label, Orientation, Paned, ScrolledWindow,
+    Stack, accessible::Property as AccessibleProperty,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
-use serde_json;
 use std::cell::Cell;
-use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use super::common::{
+    create_dimension_row, load_preset_json, preset_length, save_preset_json,
+    set_paned_initial_fraction,
+};
 use crate::device_status;
 use crate::t;
 use crate::ui::gtk::help_browser;
@@ -486,28 +487,40 @@ impl DrillPressTool {
         dialog.set_initial_name(Some("drill_params.json"));
 
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        let params = DrillPressParameters {
-            hole_diameter: units::parse_length(&w.hole_diameter.text(), system).unwrap_or(10.0)
-                as f64,
-            tool_diameter: units::parse_length(&w.tool_diameter.text(), system).unwrap_or(6.0)
-                as f64,
-            top_z: units::parse_length(&w.top_z.text(), system).unwrap_or(0.0) as f64,
-            bottom_z: units::parse_length(&w.bottom_z.text(), system).unwrap_or(-10.0) as f64,
-            peck_depth: units::parse_length(&w.peck_depth.text(), system).unwrap_or(2.0) as f64,
-            plunge_rate: w.plunge_rate.text().parse().unwrap_or(100.0),
-            feed_rate: w.feed_rate.text().parse().unwrap_or(500.0),
-            spindle_speed: w.spindle_speed.text().parse().unwrap_or(10000.0),
-            safe_z: units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0) as f64,
-            x: units::parse_length(&w.x.text(), system).unwrap_or(0.0) as f64,
-            y: units::parse_length(&w.y.text(), system).unwrap_or(0.0) as f64,
-            home_before_job: w.home_before.is_active(),
+        let length = |name: &str, e: &Entry| preset_length(name, e, system).map(f64::from);
+        let number = |name: &str, e: &Entry| {
+            e.text()
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| format!("{name}: \"{}\" is not a number", e.text()))
+        };
+        let params = (|| -> Result<DrillPressParameters, String> {
+            Ok(DrillPressParameters {
+                hole_diameter: length("Hole diameter", &w.hole_diameter)?,
+                tool_diameter: length("Tool diameter", &w.tool_diameter)?,
+                top_z: length("Top Z", &w.top_z)?,
+                bottom_z: length("Bottom Z", &w.bottom_z)?,
+                peck_depth: length("Peck depth", &w.peck_depth)?,
+                plunge_rate: number("Plunge rate", &w.plunge_rate)?,
+                feed_rate: number("Feed rate", &w.feed_rate)?,
+                spindle_speed: number("Spindle speed", &w.spindle_speed)?,
+                safe_z: length("Safe Z", &w.safe_z)?,
+                x: length("X", &w.x)?,
+                y: length("Y", &w.y)?,
+                home_before_job: w.home_before.is_active(),
+            })
+        })();
+        let params = match params {
+            Ok(params) => params,
+            Err(e) => {
+                CamToolsView::show_error_dialog(&t!("Save Error"), &e);
+                return;
+            }
         };
 
         dialog.pick_save(None::<&gtk4::Window>, move |file| {
             if let Some(path) = file.path() {
-                if let Ok(json) = serde_json::to_string_pretty(&params) {
-                    let _ = fs::write(path, json);
-                }
+                save_preset_json(&path, &params);
             }
         });
     }
@@ -532,13 +545,11 @@ impl DrillPressTool {
         let settings_clone = settings.clone();
 
         dialog.pick_open(None::<&gtk4::Window>, move |file| {
-            if let Some(path) = file.path() {
-                if let Ok(content) = fs::read_to_string(path) {
-                    if let Ok(params) = serde_json::from_str::<DrillPressParameters>(&content) {
-                        Self::apply_params(&w_clone, &params, &settings_clone);
-                        home_before_clone.set_active(params.home_before_job);
-                    }
-                }
+            if let Some(path) = file.path()
+                && let Some(params) = load_preset_json::<DrillPressParameters>(&path)
+            {
+                Self::apply_params(&w_clone, &params, &settings_clone);
+                home_before_clone.set_active(params.home_before_job);
             }
         });
     }

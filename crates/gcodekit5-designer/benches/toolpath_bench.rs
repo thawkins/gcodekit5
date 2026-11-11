@@ -1,7 +1,7 @@
 //! Performance benchmarks for toolpath generation, G-code generation,
 //! spatial index operations, and DXF parsing.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use gcodekit5_core::Units;
 use gcodekit5_designer::dxf_parser::DxfParser;
 use gcodekit5_designer::gcode_gen::ToolpathToGcode;
@@ -19,42 +19,42 @@ use std::hint::black_box;
 
 fn bench_rectangle_contour(c: &mut Criterion) {
     let rect = Rectangle::new(50.0, 50.0, 100.0, 60.0);
-    let mut gen = ToolpathGenerator::new();
-    gen.set_tool_diameter(3.175);
-    gen.set_cut_depth(2.0);
-    gen.set_feed_rate(500.0);
-    gen.set_spindle_speed(12000);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_tool_diameter(3.175);
+    generator.set_cut_depth(2.0);
+    generator.set_feed_rate(500.0);
+    generator.set_spindle_speed(12000);
     c.bench_function("toolpath_rectangle_contour", |b| {
         b.iter(|| {
-            let _ = gen.generate_rectangle_contour(black_box(&rect), 0.0);
+            let _ = generator.generate_rectangle_contour(black_box(&rect), 0.0);
         });
     });
 }
 
 fn bench_circle_contour(c: &mut Criterion) {
     let circle = Circle::new(Point::new(50.0, 50.0), 25.0);
-    let mut gen = ToolpathGenerator::new();
-    gen.set_tool_diameter(3.0);
-    gen.set_cut_depth(1.5);
-    gen.set_feed_rate(400.0);
-    gen.set_spindle_speed(10000);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_tool_diameter(3.0);
+    generator.set_cut_depth(1.5);
+    generator.set_feed_rate(400.0);
+    generator.set_spindle_speed(10000);
     c.bench_function("toolpath_circle_contour", |b| {
         b.iter(|| {
-            let _ = gen.generate_circle_contour(black_box(&circle), 0.0);
+            let _ = generator.generate_circle_contour(black_box(&circle), 0.0);
         });
     });
 }
 
 fn bench_rectangle_contour_multipass(c: &mut Criterion) {
     let rect = Rectangle::new(50.0, 50.0, 100.0, 60.0);
-    let mut gen = ToolpathGenerator::new();
-    gen.set_tool_diameter(3.175);
-    gen.set_cut_depth(6.0);
-    gen.set_feed_rate(500.0);
-    gen.set_spindle_speed(12000);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_tool_diameter(3.175);
+    generator.set_cut_depth(6.0);
+    generator.set_feed_rate(500.0);
+    generator.set_spindle_speed(12000);
     c.bench_function("toolpath_rectangle_contour_multipass", |b| {
         b.iter(|| {
-            let _ = gen.generate_rectangle_contour(black_box(&rect), 1.0);
+            let _ = generator.generate_rectangle_contour(black_box(&rect), 1.0);
         });
     });
 }
@@ -85,30 +85,30 @@ fn make_large_toolpath(n_segments: usize) -> Toolpath {
 
 fn bench_gcode_generation_small(c: &mut Criterion) {
     let tp = make_large_toolpath(20);
-    let gen = ToolpathToGcode::new(Units::MM, 5.0);
+    let generator = ToolpathToGcode::new(Units::MM, 5.0);
     c.bench_function("gcode_gen_20_segments", |b| {
         b.iter(|| {
-            let _ = gen.generate(black_box(&tp));
+            let _ = generator.generate(black_box(&tp));
         });
     });
 }
 
 fn bench_gcode_generation_medium(c: &mut Criterion) {
     let tp = make_large_toolpath(200);
-    let gen = ToolpathToGcode::new(Units::MM, 5.0);
+    let generator = ToolpathToGcode::new(Units::MM, 5.0);
     c.bench_function("gcode_gen_200_segments", |b| {
         b.iter(|| {
-            let _ = gen.generate(black_box(&tp));
+            let _ = generator.generate(black_box(&tp));
         });
     });
 }
 
 fn bench_gcode_generation_large(c: &mut Criterion) {
     let tp = make_large_toolpath(2000);
-    let gen = ToolpathToGcode::new(Units::MM, 5.0);
+    let generator = ToolpathToGcode::new(Units::MM, 5.0);
     c.bench_function("gcode_gen_2000_segments", |b| {
         b.iter(|| {
-            let _ = gen.generate(black_box(&tp));
+            let _ = generator.generate(black_box(&tp));
         });
     });
 }

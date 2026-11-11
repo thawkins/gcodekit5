@@ -125,7 +125,7 @@ pub struct BoxParameters {
     /// Number of axes on the target device (default 3).
     #[serde(default = "default_num_axes")]
     pub num_axes: u8,
-    /// Home (`$H`) and clear the G54 X/Y offset before cutting (default `false`).
+    /// Home (`$H`) before cutting, keeping the G54 work offsets (default `false`).
     /// See [`crate::job_preamble`].
     #[serde(default)]
     pub home_before_job: bool,
@@ -175,10 +175,11 @@ impl Point {
 }
 
 pub fn push_unique_point(path: &mut Vec<Point>, point: Point) {
-    if let Some(last) = path.last() {
-        if (point.x - last.x).abs() < 0.01 && (point.y - last.y).abs() < 0.01 {
-            return;
-        }
+    if let Some(last) = path.last()
+        && (point.x - last.x).abs() < 0.01
+        && (point.y - last.y).abs() < 0.01
+    {
+        return;
     }
     path.push(point);
 }

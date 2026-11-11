@@ -17,7 +17,7 @@ pub struct SpoilboardGridParameters {
     pub feed_rate: f64,
     pub laser_power: f64,
     pub laser_mode: String, // "M3" or "M4"
-    /// Home (`$H`) and clear the G54 X/Y offset before engraving (default `false`).
+    /// Home (`$H`) before engraving, keeping the G54 work offsets (default `false`).
     pub home_before_job: bool,
 }
 

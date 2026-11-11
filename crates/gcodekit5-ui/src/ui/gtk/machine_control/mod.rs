@@ -4,7 +4,7 @@
 //! homing, work coordinate setting, spindle/laser control,
 //! and job execution (start/pause/stop).
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_communication::firmware::grbl::status_parser::{
     FeedSpindleState, OverrideState, StatusParser, WorkCoordinateOffset,
 };
@@ -12,15 +12,15 @@ use gcodekit5_communication::{
     Communicator, ConnectionDriver, ConnectionParams, SerialCommunicator,
 };
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
 };
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    accessible::Property as AccessibleProperty, pango::EllipsizeMode, Align, Box, Button,
-    CheckButton, DropDown, EventControllerKey, Grid, Image, Label, Orientation, Overlay, Paned,
-    PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
+    Align, Box, Button, CheckButton, DropDown, EventControllerKey, Grid, Image, Label, Orientation,
+    Overlay, Paned, PolicyType, ScrolledWindow, SizeGroup, SizeGroupMode, SpinButton, ToggleButton,
+    accessible::Property as AccessibleProperty, pango::EllipsizeMode,
 };
 use std::cell::Cell;
 
@@ -29,7 +29,7 @@ use crate::t;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::editor::GcodeEditor;
 use crate::ui::gtk::help_browser;
-use crate::ui::gtk::machine_control::continuous_jog::{numpad_jog, ContinuousJogState};
+use crate::ui::gtk::machine_control::continuous_jog::{ContinuousJogState, numpad_jog};
 use crate::ui::gtk::machine_control::direct_sender::{DirectSender, JobOutcome, SenderEvent};
 use crate::ui::gtk::machine_control::grbl_stream::{
     format_probe_move, jog_step_presets, nearest_jog_step_preset, parse_jog_feed,
@@ -37,9 +37,12 @@ use crate::ui::gtk::machine_control::grbl_stream::{
 use crate::ui::gtk::machine_control::status_report::QuickProbeState;
 use crate::ui::gtk::status_bar::StatusBar;
 use crate::ui::gtk::visualizer::GcodeVisualizer;
+use gcodekit5_communication::firmware::Sender;
+use gcodekit5_communication::firmware::repetier::RepetierSender;
 use gcodekit5_core::{
-    thread_safe, thread_safe_deque, thread_safe_none, ThreadSafe, ThreadSafeDeque, ThreadSafeOption,
+    ThreadSafe, ThreadSafeDeque, ThreadSafeOption, thread_safe, thread_safe_deque, thread_safe_none,
 };
+use std::cell::RefCell;
 use std::rc::Rc;
 
 mod connection;
@@ -73,6 +76,9 @@ fn make_icon_label_toggle(icon: &str, label: &str) -> ToggleButton {
 
 /// Minimum width in px of the G-code editor/console column on Machine Control.
 const EDITOR_COLUMN_MIN_WIDTH: i32 = 360;
+
+/// Longest wait for a feed hold to complete before Stop sends the reset.
+const STOP_HOLD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct MachineControlView {
@@ -193,6 +199,10 @@ pub struct MachineControlView {
     pub jog_feed_entry: gtk4::Entry,
     pub jog_feed_units: Label,
     pub jog_step_mm: ThreadSafe<f32>,
+    /// Rotary jog step in degrees (Preferences > Machine > Rotary Jog Step).
+    pub jog_step_deg: ThreadSafe<f32>,
+    /// Preferences, read when a job is prepared.
+    settings_controller: Option<Rc<SettingsController>>,
     pub jog_feed_mm_per_min: ThreadSafe<f32>,
     pub current_feed_units: ThreadSafe<FeedRateUnits>,
     pub jog_x_pos: Button,
@@ -215,9 +225,17 @@ pub struct MachineControlView {
     pub current_units: ThreadSafe<MeasurementSystem>,
     pub last_overrides: ThreadSafe<OverrideState>,
     pub job_start_time: ThreadSafeOption<std::time::Instant>,
-    pub direct_sender: ThreadSafeOption<DirectSender>,
+    /// The sender of the current (or last) job, whatever the protocol.
+    pub active_sender: Rc<RefCell<Option<Rc<dyn Sender>>>>,
     /// Last Work Coordinate Offset reported (GRBL only sends WCO in some reports).
     pub(crate) last_wco: Rc<Cell<Option<WorkCoordinateOffset>>>,
+    /// Set when a status report shows the machine running again after a
+    /// pause the panel did not end (cycle-start button, console `~`); the
+    /// poller then sends the next queued line.
+    pub(crate) resumed_externally: Rc<Cell<bool>>,
+    /// The report units (`$13`) `last_wco` was read in; when they change the
+    /// cached offset is dropped until the controller sends a new one.
+    pub(crate) wco_in_inches: Rc<Cell<bool>>,
     /// Progress of a quick probe started from the panel.
     pub(crate) quick_probe: Rc<Cell<QuickProbeState>>,
     /// Bumped on every connect so a stale status poller stops itself.
@@ -481,7 +499,7 @@ impl MachineControlView {
 
         let stop_btn = make_icon_label_button("media-playback-stop-symbolic", &t!("Stop"));
         stop_btn.set_tooltip_text(Some(&t!(
-            "Stop job: abort streaming (does not reset controller)"
+            "Stop job: feed hold, then reset the controller once stopped (keeps position)"
         )));
         stop_btn.add_css_class("destructive-action");
         stop_btn.set_hexpand(true);
@@ -507,7 +525,7 @@ impl MachineControlView {
         trans_box.append(&trans_row2);
 
         let stop_hint = Label::new(Some(&t!(
-            "Stop aborts streaming; E‑Stop resets the controller."
+            "Stop holds the feed, then resets; E‑Stop resets the controller at once."
         )));
         stop_hint.add_css_class("dim-label");
         stop_hint.set_wrap(true);
@@ -665,6 +683,23 @@ impl MachineControlView {
         let (a_box, a_dro, a_zero_btn) = create_dro("A", "WA");
         let (b_box, b_dro, b_zero_btn) = create_dro("B", "WB");
         let (c_box, c_dro, c_zero_btn) = create_dro("C", "WC");
+
+        // Rotary jog buttons sit in their axis's DRO row and show with it.
+        let rotary_jog = |axis_box: &gtk4::Box, axis: char| -> (Button, Button) {
+            let neg = Button::with_label("-");
+            neg.set_tooltip_text(Some(&format!("{} {axis}-", t!("Jog"))));
+            let pos = Button::with_label("+");
+            pos.set_tooltip_text(Some(&format!("{} {axis}+", t!("Jog"))));
+            for btn in [&neg, &pos] {
+                btn.add_css_class("circular");
+                btn.set_valign(Align::Center);
+                axis_box.append(btn);
+            }
+            (neg, pos)
+        };
+        let (jog_a_neg, jog_a_pos) = rotary_jog(&a_box, 'A');
+        let (jog_b_neg, jog_b_pos) = rotary_jog(&b_box, 'B');
+        let (jog_c_neg, jog_c_pos) = rotary_jog(&c_box, 'C');
 
         // Hide rotary axis DROs initially
         a_box.set_visible(false);
@@ -1186,16 +1221,33 @@ impl MachineControlView {
         };
         let current_feed_units = thread_safe(initial_feed_units);
 
-        // Populate jog UI from initial settings
+        // Populate jog UI from Preferences > Machine (jog step, jog feed and
+        // per-axis direction inversion).
         {
+            let (step_pref, feed_pref) = match &settings_controller {
+                Some(controller) => {
+                    let p = controller.persistence.borrow();
+                    let machine = &p.config().machine;
+                    for axis in ['X', 'Y', 'Z', 'A', 'B', 'C'] {
+                        let inverted = machine
+                            .axis_direction_invert
+                            .get(&axis.to_string())
+                            .copied()
+                            .unwrap_or(false);
+                        device_status::set_jog_inverted(axis, inverted);
+                    }
+                    (machine.jog_increment as f32, machine.jog_feed_rate as f32)
+                }
+                None => (1.0, 2000.0),
+            };
             let unit_label = get_unit_label(initial_units);
             step_label.set_text(&format!("{} ({unit_label}):", t!("Step")));
-            let step_mm = Self::populate_step_presets(&step_combo, initial_units, 1.0);
+            let step_mm = Self::populate_exact_step(&step_combo, initial_units, step_pref);
             *jog_step_mm.lock() = step_mm;
 
             jog_feed_units.set_text(&initial_feed_units.to_string());
-            jog_feed_entry.set_text(&format_feed_rate(2000.0, initial_feed_units));
-            *jog_feed_mm_per_min.lock() = 2000.0;
+            jog_feed_entry.set_text(&format_feed_rate(feed_pref, initial_feed_units));
+            *jog_feed_mm_per_min.lock() = feed_pref;
         }
 
         // Listen for unit changes
@@ -1218,6 +1270,31 @@ impl MachineControlView {
             ];
 
             controller.on_setting_changed(move |key, value| {
+                if let Some(axis) = key.strip_prefix("invert_")
+                    && let Some(axis) = axis.chars().next()
+                {
+                    device_status::set_jog_inverted(axis.to_ascii_uppercase(), value == "true");
+                }
+
+                if key == "jog_increment_linear"
+                    && let Ok(step) = value.parse::<f32>()
+                {
+                    let units = *units_clone.lock();
+                    let step_mm = Self::populate_exact_step(&step_combo_clone, units, step);
+                    *jog_step_mm_clone.lock() = step_mm;
+                }
+
+                if key == "jog_feed_rate"
+                    && let Ok(feed) = value.parse::<f32>()
+                    && feed > 0.0
+                {
+                    *jog_feed_mm_per_min_clone.lock() = feed;
+                    // Read the units first: set_text runs the entry's
+                    // changed handler, which locks the same mutex.
+                    let units = *feed_units_clone.lock();
+                    jog_feed_entry_clone.set_text(&format_feed_rate(feed, units));
+                }
+
                 if key == "measurement_system" {
                     let new_units = match value {
                         "Imperial" => MeasurementSystem::Imperial,
@@ -1322,13 +1399,19 @@ impl MachineControlView {
             a_dro_container: Some(a_box),
             b_dro_container: Some(b_box),
             c_dro_container: Some(c_box),
-            // Rotary axis jog buttons (initially None)
-            jog_a_pos: None,
-            jog_a_neg: None,
-            jog_b_pos: None,
-            jog_b_neg: None,
-            jog_c_pos: None,
-            jog_c_neg: None,
+            // Rotary axis jog buttons
+            jog_a_pos: Some(jog_a_pos),
+            jog_a_neg: Some(jog_a_neg),
+            jog_b_pos: Some(jog_b_pos),
+            jog_b_neg: Some(jog_b_neg),
+            jog_c_pos: Some(jog_c_pos),
+            jog_c_neg: Some(jog_c_neg),
+            jog_step_deg: thread_safe(
+                settings_controller
+                    .as_ref()
+                    .map(|c| c.persistence.borrow().config().machine.jog_increment_rotary as f32)
+                    .unwrap_or(1.0),
+            ),
             // Rotary axis zero buttons
             a_zero_btn: Some(a_zero_btn),
             b_zero_btn: Some(b_zero_btn),
@@ -1365,6 +1448,7 @@ impl MachineControlView {
             jog_feed_entry,
             jog_feed_units,
             jog_step_mm: jog_step_mm.clone(),
+            settings_controller: settings_controller.clone(),
             jog_feed_mm_per_min: jog_feed_mm_per_min.clone(),
             current_feed_units: current_feed_units.clone(),
             jog_x_pos,
@@ -1391,8 +1475,10 @@ impl MachineControlView {
                 spindle: 100,
             }),
             job_start_time: thread_safe_none(),
-            direct_sender: thread_safe_none(),
+            active_sender: Rc::new(RefCell::new(None)),
             last_wco: Rc::new(Cell::new(None)),
+            resumed_externally: Rc::new(Cell::new(false)),
+            wco_in_inches: Rc::new(Cell::new(false)),
             quick_probe: Rc::new(Cell::new(QuickProbeState::Idle)),
             poll_generation: Rc::new(Cell::new(0)),
             active_wcs: Rc::new(Cell::new(0)),
@@ -1417,10 +1503,10 @@ impl MachineControlView {
         {
             let jog_step_mm = view.jog_step_mm.clone();
             view.step_combo.connect_changed(move |c| {
-                if let Some(id) = c.active_id() {
-                    if let Ok(v) = id.parse::<f32>() {
-                        *jog_step_mm.lock() = v;
-                    }
+                if let Some(id) = c.active_id()
+                    && let Ok(v) = id.parse::<f32>()
+                {
+                    *jog_step_mm.lock() = v;
                 }
             });
         }
@@ -1463,22 +1549,74 @@ impl MachineControlView {
 
         // Disable all controls initially (until connected)
         view.set_connection_controls(false);
-        // Setup jog button handlers
-        /// Returns true (and logs why) when a job is streaming, so manual motion /
-        /// offset commands are not interleaved with the job's G-code.
-        fn job_running(
-            is_streaming: &ThreadSafe<bool>,
-            console: &Option<Rc<DeviceConsoleView>>,
-        ) -> bool {
-            if *is_streaming.lock() {
-                if let Some(c) = console {
-                    c.append_log(&format!("{}\n", t!("Command ignored: a job is running.")));
-                }
-                return true;
-            }
-            false
+        Self::wire_jog_controls(&view);
+        Self::wire_rotary_controls(&view);
+        view.refresh_limit_labels();
+        Self::wire_job_controls(&view);
+        Self::wire_machine_state_controls(&view);
+        Self::wire_estop_probe_console(&view);
+
+        // Quick probe buttons (Milestone 6). Distances/feeds are fixed in mm (sent with
+        // G21); the log and tooltips show them in the display units.
+        for (btn, name, axis_move) in [
+            (&probe_z_btn, t!("Quick Z-touch probe"), PROBE_Z_MOVE),
+            (
+                &probe_x_neg_btn,
+                t!("Probe X- edge"),
+                ('X', -PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_x_pos_btn,
+                t!("Probe X+ edge"),
+                ('X', PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_y_neg_btn,
+                t!("Probe Y- edge"),
+                ('Y', -PROBE_EDGE_DISTANCE_MM),
+            ),
+            (
+                &probe_y_pos_btn,
+                t!("Probe Y+ edge"),
+                ('Y', PROBE_EDGE_DISTANCE_MM),
+            ),
+        ] {
+            let view_probe = view.clone();
+            btn.connect_clicked(move |_| view_probe.start_quick_probe(&name, axis_move));
         }
 
+        // Setup override handlers
+        Self::setup_override_handlers(&view);
+
+        view
+    }
+
+    /// True (and logs why) when a job is streaming or a Stop is in progress,
+    /// so a manual command must not be sent.
+    fn job_running(
+        is_streaming: &ThreadSafe<bool>,
+        console: &Option<Rc<DeviceConsoleView>>,
+    ) -> bool {
+        if *is_streaming.lock() {
+            if let Some(c) = console {
+                c.append_log(&format!("{}\n", t!("Command ignored: a job is running.")));
+            }
+            return true;
+        }
+        if device_status::stop_pending() {
+            if let Some(c) = console {
+                c.append_log(&format!(
+                    "{}\n",
+                    t!("Command ignored: the machine is stopping.")
+                ));
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Connects the panel's handlers: jog buttons, numpad shortcuts and continuous jog.
+    fn wire_jog_controls(view: &Self) {
         fn send_jog(
             axis: char,
             delta: f32,
@@ -1499,6 +1637,8 @@ impl MachineControlView {
             if !comm.is_connected() {
                 return;
             }
+            // Preferences > Machine > Invert reverses an axis's jog direction.
+            let delta = delta * device_status::jog_direction(axis);
             // G21 makes the jog explicitly metric: internal jog values are always mm and
             // mm/min, regardless of the controller's current G20/G21 modal state.
             let jog_cmd = format!("$J=G21 G91 {axis}{delta} F{feed_mm_per_min}\n");
@@ -1622,20 +1762,20 @@ impl MachineControlView {
             let console_entry_release = console_entry.clone();
             let view_release = view.clone();
             controller.connect_key_released(move |_, key, _, _| {
-                if let Some(entry) = console_entry_release.as_ref() {
-                    if entry.has_focus() {
-                        return;
-                    }
+                if let Some(entry) = console_entry_release.as_ref()
+                    && entry.has_focus()
+                {
+                    return;
                 }
                 if key.to_unicode().and_then(numpad_jog).is_some() {
                     view_release.stop_continuous_jog();
                 }
             });
             controller.connect_key_pressed(move |_, key, _, _| {
-                if let Some(entry) = console_entry.as_ref() {
-                    if entry.has_focus() {
-                        return glib::Propagation::Proceed;
-                    }
+                if let Some(entry) = console_entry.as_ref()
+                    && entry.has_focus()
+                {
+                    return glib::Propagation::Proceed;
                 }
 
                 let Some(ch) = key.to_unicode() else {
@@ -1695,7 +1835,145 @@ impl MachineControlView {
         view.refresh_btn.connect_clicked(move |_| {
             view_clone.refresh_ports();
         });
+    }
 
+    /// Fills the "Machine Limits" rows: X/Y/Z from the controller's max
+    /// travel (`$130`-`$132`) once read, otherwise Preferences > Machine >
+    /// X/Y/Z limit; A/B/C from Preferences (degrees).
+    pub(crate) fn refresh_limit_labels(&self) {
+        let machine = self
+            .settings_controller
+            .as_ref()
+            .map(|c| c.persistence.borrow().config().machine.clone());
+        let pref = |axis: char| -> Option<f64> {
+            let m = machine.as_ref()?;
+            Some(match axis {
+                'X' => m.x_limit,
+                'Y' => m.y_limit,
+                'Z' => m.z_limit,
+                'A' => m.a_limit,
+                'B' => m.b_limit,
+                _ => m.c_limit,
+            })
+        };
+        let units = *self.current_units.lock();
+        for (label, axis, grbl) in [
+            (&self.limits_x, 'X', Some(130)),
+            (&self.limits_y, 'Y', Some(131)),
+            (&self.limits_z, 'Z', Some(132)),
+            (&self.limits_a, 'A', None),
+            (&self.limits_b, 'B', None),
+            (&self.limits_c, 'C', None),
+        ] {
+            let Some(label) = label else {
+                continue;
+            };
+            let max = grbl
+                .and_then(device_status::get_grbl_setting_numeric)
+                .or_else(|| pref(axis));
+            let Some(max) = max else {
+                continue;
+            };
+            let text = if grbl.is_some() {
+                format!(
+                    "0 - {} {}",
+                    format_length(max as f32, units),
+                    get_unit_label(units)
+                )
+            } else {
+                format!("0 - {max:.1}\u{b0}")
+            };
+            if label.text() != text {
+                label.set_text(&text);
+            }
+        }
+    }
+
+    /// Connects the rotary axis controls and Preferences: the A/B/C jog
+    /// buttons (rotary jog step, in degrees, at the jog feed), the rotary jog
+    /// step itself, and steps per degree, which is sent to the controller
+    /// (`$103`-`$105`) when changed while it is connected and idle.
+    fn wire_rotary_controls(view: &Self) {
+        for (btn, axis, direction) in [
+            (&view.jog_a_neg, 'A', -1.0_f32),
+            (&view.jog_a_pos, 'A', 1.0),
+            (&view.jog_b_neg, 'B', -1.0),
+            (&view.jog_b_pos, 'B', 1.0),
+            (&view.jog_c_neg, 'C', -1.0),
+            (&view.jog_c_pos, 'C', 1.0),
+        ] {
+            let Some(btn) = btn else {
+                continue;
+            };
+            let communicator = view.communicator.clone();
+            let step = view.jog_step_deg.clone();
+            let feed = view.jog_feed_mm_per_min.clone();
+            let console = view.device_console.clone();
+            let is_streaming = view.is_streaming.clone();
+            btn.connect_clicked(move |_| {
+                if Self::job_running(&is_streaming, &console) {
+                    return;
+                }
+                let delta = *step.lock() * direction * device_status::jog_direction(axis);
+                let cmd = grbl_stream::rotary_jog_command(axis, delta, *feed.lock());
+                let mut comm = communicator.lock();
+                if !comm.is_connected() {
+                    return;
+                }
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("> {}\n", cmd.trim()));
+                }
+                if let Err(e) = comm.send(cmd.as_bytes()) {
+                    tracing::warn!(error = %e, "Rotary jog not sent");
+                }
+            });
+        }
+
+        let Some(controller) = view.settings_controller.as_ref() else {
+            return;
+        };
+        let step = view.jog_step_deg.clone();
+        let communicator = view.communicator.clone();
+        let console = view.device_console.clone();
+        controller.on_setting_changed(move |key, value| {
+            if key == "jog_increment_rotary"
+                && let Ok(deg) = value.parse::<f32>()
+                && deg > 0.0
+            {
+                *step.lock() = deg;
+            }
+            let setting = match key {
+                "steps_per_degree_a" => 103,
+                "steps_per_degree_b" => 104,
+                "steps_per_degree_c" => 105,
+                _ => return,
+            };
+            let Some(steps) = grbl_stream::steps_per_degree_to_send(value) else {
+                return;
+            };
+            let log = |text: String| {
+                if let Some(c) = console.as_ref() {
+                    c.append_log(&format!("{text}\n"));
+                }
+            };
+            let mut comm = communicator.lock();
+            if !comm.is_connected() {
+                return;
+            }
+            if let Some(reason) = device_status::settings_command_blocked() {
+                log(format!("${setting} {}: {reason}", t!("not sent")));
+                return;
+            }
+            let cmd = format!("${setting}={steps}");
+            log(format!("> {cmd}"));
+            if let Err(e) = comm.send_command(&cmd) {
+                log(format!("{} {e}", t!("Error sending")));
+            }
+        });
+    }
+
+    /// Connects the panel's handlers: send, pause, resume and stop of a job.
+    fn wire_job_controls(view: &Self) {
         // Transmission Controls
         {
             let communicator = view.communicator.clone();
@@ -1720,14 +1998,16 @@ impl MachineControlView {
                     .map(|v| v == 1)
                     .unwrap_or(false); // ← Default: CNC
 
-                let sender = view_pause.direct_sender.lock().clone();
-                match sender.as_ref().filter(|s| s.is_running()) {
-                    // DirectSender sends the raw feed-hold byte itself.
+                let flow_control = Self::is_flow_control_protocol();
+                let sender = view_pause.active_sender.borrow().clone();
+                match sender.as_ref().filter(|s| s.is_streaming()) {
+                    // The sender sends its protocol's pause itself (GRBL: feed hold `!`).
                     Some(sender) => sender.pause(),
-                    None => {
+                    None if !flow_control => {
                         let mut comm = communicator.lock();
                         let _ = comm.send(b"!");
                     }
+                    None => {}
                 }
 
                 // CNC: stop the spindle with the realtime spindle-stop override (0x9E).
@@ -1736,7 +2016,7 @@ impl MachineControlView {
                 // GRBL restores the spindle automatically on resume (~). Only send it on the
                 // first pause, because 0x9E toggles and a second press would restore it.
                 // Láser: solo enviar ! (GRBL apaga el láser automáticamente)
-                if !is_laser && !already_paused {
+                if !flow_control && !is_laser && !already_paused {
                     let mut comm = communicator.lock();
                     let _ = comm.send(&[0x9E]);
                     if let Some(c) = console.as_ref() {
@@ -1766,13 +2046,14 @@ impl MachineControlView {
                     c.append_log("> ~ (Resume)\n");
                 }
                 // Send the cycle-start byte exactly once (DirectSender sends it itself).
-                let sender = view_resume.direct_sender.lock().clone();
-                match sender.as_ref().filter(|s| s.is_running()) {
+                let sender = view_resume.active_sender.borrow().clone();
+                match sender.as_ref().filter(|s| s.is_streaming()) {
                     Some(sender) => sender.resume(),
-                    None => {
+                    None if !Self::is_flow_control_protocol() => {
                         let mut comm = communicator.lock();
                         let _ = comm.send(b"~");
                     }
+                    None => {}
                 }
                 *is_paused.lock() = false;
                 view_resume.update_job_controls();
@@ -1806,18 +2087,25 @@ impl MachineControlView {
             let view_stop = view.clone();
 
             view.stop_btn.connect_clicked(move |_| {
-                // Stop DirectSender before the reset so it cannot write lines after it
-                // (the worker re-checks this flag while holding the communicator lock).
-                if let Some(sender) = view_stop.direct_sender.lock().as_ref() {
+                // Stop the sender before the reset so it cannot write lines after it
+                // (the GRBL worker re-checks this flag while holding the communicator lock).
+                let sender = view_stop.active_sender.borrow().clone();
+                if let Some(sender) = sender.as_ref() {
                     sender.stop();
                 }
 
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> 0x18 (Stop)\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send(&[0x18]);
+                // GRBL-style controllers: feed hold, then soft reset once the machine
+                // has stopped, so the reset does not raise "reset while in motion"
+                // and lose the position. Flow-control protocols (Repetier) have no
+                // realtime reset; their sender's stop() ends the job.
+                let flow_control = Self::is_flow_control_protocol();
+                if !flow_control {
+                    let view_done = view_stop.clone();
+                    Self::feed_hold_then_reset(&communicator, &console, move || {
+                        // The machine is stopped: Send is available again.
+                        view_done.send_btn.set_sensitive(true);
+                        view_done.update_job_controls();
+                    });
                 }
 
                 *is_streaming.lock() = false;
@@ -1829,8 +2117,9 @@ impl MachineControlView {
                 if let Some(sb) = status_bar.as_ref() {
                     sb.set_progress(0.0, "", "");
                 }
-                // Re-enable Send; Pause/Resume/Stop follow the (now ended) job state.
-                view_stop.send_btn.set_sensitive(true);
+                // Pause/Resume/Stop follow the (now ended) job state. Send stays off
+                // until a GRBL stop sequence has reset the controller.
+                view_stop.send_btn.set_sensitive(flow_control);
                 view_stop.update_job_controls();
             });
         }
@@ -1845,11 +2134,14 @@ impl MachineControlView {
                 // Never start a second stream on top of a running one (DirectSender::new
                 // would otherwise reset the shared streaming flag mid-job).
                 let previous_still_running = view_clone
-                    .direct_sender
-                    .lock()
+                    .active_sender
+                    .borrow()
                     .as_ref()
-                    .is_some_and(|s| s.is_running());
-                if *view_clone.is_streaming.lock() || previous_still_running {
+                    .is_some_and(|s| s.is_streaming());
+                if *view_clone.is_streaming.lock()
+                    || previous_still_running
+                    || device_status::stop_pending()
+                {
                     if let Some(c) = view_clone.device_console.as_ref() {
                         c.append_log(&format!("{}\n", t!("A job is already running.")));
                     }
@@ -1871,16 +2163,36 @@ impl MachineControlView {
 
                     return;
                 }
-                let content = view_clone.prepare_job_content(content);
+                let content = match view_clone.prepare_job_content(content) {
+                    Ok(content) => content,
+                    Err(reason) => {
+                        let parent = widget_for_dialog.root().and_downcast::<gtk4::Window>();
+                        crate::ui::gtk::common::dialog::show_error(
+                            &t!("Cannot Send G-Code"),
+                            &format!(
+                                "{reason}\n\n{}",
+                                t!("The limit is set in Preferences > File Processing > Max Line Length.")
+                            ),
+                            parent.as_ref(),
+                        );
+                        return;
+                    }
+                };
 
                 // Send is disabled while the job runs; Pause/Stop follow the job state.
                 view_clone.send_btn.set_sensitive(false);
 
+                *view_clone.is_paused.lock() = false;
+
+                if Self::is_flow_control_protocol() {
+                    view_clone.start_flow_control_job(&content);
+                    return;
+                }
+
                 let (sender, receiver) =
                     DirectSender::new(communicator_clone.clone(), view_clone.is_streaming.clone());
                 // Keep the sender for pause/stop/E-stop.
-                *view_clone.direct_sender.lock() = Some(sender.clone());
-                *view_clone.is_paused.lock() = false;
+                *view_clone.active_sender.borrow_mut() = Some(Rc::new(sender.clone()));
 
                 let view_timeout = view_clone.clone();
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
@@ -1917,14 +2229,17 @@ impl MachineControlView {
                 sender.send_gcode(&content);
             });
         }
+    }
 
+    /// Connects the panel's handlers: home, unlock, reset, work coordinate systems and zeroing.
+    fn wire_machine_state_controls(view: &Self) {
         // Machine State Controls
         {
             let communicator = view.communicator.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.home_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 if let Some(c) = console.as_ref() {
@@ -1942,12 +2257,17 @@ impl MachineControlView {
             let view_unlock = view.clone();
 
             view.unlock_btn.connect_clicked(move |_| {
-                if let Some(c) = console.as_ref() {
-                    c.append_log("> $X\n");
-                }
-                {
-                    let mut comm = communicator.lock();
-                    let _ = comm.send_command("$X");
+                let sender = view_unlock.active_sender.borrow().clone();
+                match sender.as_ref() {
+                    // The sender sends its protocol's unlock (GRBL `$X`; Repetier: none).
+                    Some(sender) => sender.unlock(),
+                    None => {
+                        if let Some(c) = console.as_ref() {
+                            c.append_log("> $X\n");
+                        }
+                        let mut comm = communicator.lock();
+                        let _ = comm.send_command("$X");
+                    }
                 }
                 view_unlock.update_job_controls();
             });
@@ -1996,7 +2316,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.x_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2020,7 +2340,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.y_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2044,7 +2364,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.z_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2075,8 +2395,9 @@ impl MachineControlView {
             let wcs_btns = view.wcs_btns.clone();
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
+            let settings = view.settings_controller.clone();
             btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let p = wcs_btns
@@ -2084,7 +2405,21 @@ impl MachineControlView {
                     .position(|b| b.is_active())
                     .map(|i| i + 1)
                     .unwrap_or(1);
-                let cmd = format!("G10 L20 P{p} {axis}0");
+                // Preferences > Machine > Calibration: the current position
+                // becomes the axis's calibration offset instead of exactly 0.
+                let calibration = settings
+                    .as_ref()
+                    .and_then(|c| {
+                        c.persistence
+                            .borrow()
+                            .config()
+                            .machine
+                            .rotary_calibration
+                            .get(&axis.to_string())
+                            .copied()
+                    })
+                    .unwrap_or(0.0);
+                let cmd = format!("G10 L20 P{p} {axis}{calibration}");
                 if let Some(c) = console.as_ref() {
                     c.append_log(&format!("> {}\n", cmd));
                 }
@@ -2099,7 +2434,7 @@ impl MachineControlView {
             let console = view.device_console.clone();
             let is_streaming = view.is_streaming.clone();
             view.zero_all_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 let communicator = communicator.clone();
@@ -2137,7 +2472,7 @@ impl MachineControlView {
             let is_streaming = view.is_streaming.clone();
             let include_z_check = view.goto_zero_include_z.clone();
             view.goto_zero_btn.connect_clicked(move |_| {
-                if job_running(&is_streaming, &console) {
+                if Self::job_running(&is_streaming, &console) {
                     return;
                 }
                 // Explicit G90: in G91 (e.g. left over from a console command) "G0 X0 Y0"
@@ -2156,42 +2491,16 @@ impl MachineControlView {
                 }
             });
         }
+    }
 
+    /// Connects the panel's handlers: e-stop, quick probes, the console and the connect button.
+    fn wire_estop_probe_console(view: &Self) {
         // E-Stop
         {
             let view_clone = view.clone();
             view.estop_btn.connect_clicked(move |_| {
                 view_clone.emergency_stop();
             });
-        }
-
-        // Quick probe buttons (Milestone 6). Distances/feeds are fixed in mm (sent with
-        // G21); the log and tooltips show them in the display units.
-        for (btn, name, axis_move) in [
-            (&probe_z_btn, t!("Quick Z-touch probe"), PROBE_Z_MOVE),
-            (
-                &probe_x_neg_btn,
-                t!("Probe X- edge"),
-                ('X', -PROBE_EDGE_DISTANCE_MM),
-            ),
-            (
-                &probe_x_pos_btn,
-                t!("Probe X+ edge"),
-                ('X', PROBE_EDGE_DISTANCE_MM),
-            ),
-            (
-                &probe_y_neg_btn,
-                t!("Probe Y- edge"),
-                ('Y', -PROBE_EDGE_DISTANCE_MM),
-            ),
-            (
-                &probe_y_pos_btn,
-                t!("Probe Y+ edge"),
-                ('Y', PROBE_EDGE_DISTANCE_MM),
-            ),
-        ] {
-            let view_probe = view.clone();
-            btn.connect_clicked(move |_| view_probe.start_quick_probe(&name, axis_move));
         }
 
         // Console Command Send
@@ -2210,6 +2519,14 @@ impl MachineControlView {
                 console_clone.add_to_history(cmd.clone());
                 console_clone.reset_history_navigation();
 
+                // Realtime commands (feed hold, resume, status) are safe during a
+                // job; any other line would corrupt the job's ack accounting.
+                let realtime = matches!(cmd.as_str(), "!" | "~" | "?");
+                if !realtime && let Some(reason) = device_status::manual_command_blocked() {
+                    console_clone.append_log(&format!("{} {}\n", t!("Command not sent:"), reason));
+                    return;
+                }
+
                 // Send command (only log it as sent if it actually went out)
                 {
                     let mut comm = communicator.lock();
@@ -2217,8 +2534,18 @@ impl MachineControlView {
                         console_clone.append_log(&format!("{}\n", t!("Not connected")));
                         return;
                     }
-                    match comm.send_command(&cmd) {
-                        Ok(_) => console_clone.append_log(&format!("> {}\n", cmd)),
+                    // Realtime characters go out bare: with a newline GRBL would
+                    // answer an extra `ok` that a running job would miscount.
+                    let sent = if realtime {
+                        comm.send(cmd.as_bytes()).map(|_| ())
+                    } else {
+                        comm.send_command(&cmd)
+                    };
+                    match sent {
+                        Ok(_) => {
+                            device_status::note_setting_sent(&cmd);
+                            console_clone.append_log(&format!("> {}\n", cmd))
+                        }
                         Err(e) => {
                             console_clone.append_log(&format!("{}: {}\n", t!("Error sending"), e))
                         }
@@ -2244,11 +2571,6 @@ impl MachineControlView {
         let view_clone = view.clone();
         view.connect_btn
             .connect_clicked(move |_| view_clone.on_connect_clicked());
-
-        // Setup override handlers
-        Self::setup_override_handlers(&view);
-
-        view
     }
 
     // Update progress
@@ -2376,6 +2698,19 @@ impl MachineControlView {
     ///
     /// # Returns
     /// The selected step in mm.
+    /// Fills the step list and selects `step_mm` exactly (adding it when it
+    /// is not a preset). Used for the Preferences jog step, which must not be
+    /// rounded to a neighbouring preset.
+    fn populate_exact_step(combo: &DropDown, units: MeasurementSystem, step_mm: f32) -> f32 {
+        let (choices, selected) = grbl_stream::jog_step_choices(units, step_mm);
+        combo.remove_all();
+        for choice in &choices {
+            combo.append(Some(&format!("{}", choice.mm)), &choice.label);
+        }
+        combo.set_active_id(Some(&format!("{}", choices[selected].mm)));
+        choices[selected].mm
+    }
+
     fn populate_step_presets(combo: &DropDown, units: MeasurementSystem, step_mm: f32) -> f32 {
         let presets = jog_step_presets(units);
         combo.remove_all();
@@ -2458,6 +2793,148 @@ impl MachineControlView {
         }
     }
 
+    /// Stops a GRBL machine without losing its position: sends feed hold
+    /// (`!`), waits until the controller reports the hold complete (or that
+    /// it is not moving), then sends the soft reset (0x18) that clears the
+    /// planner. If the hold does not complete within
+    /// [`STOP_HOLD_TIMEOUT`], the reset is sent anyway.
+    fn feed_hold_then_reset(
+        communicator: &ThreadSafe<SerialCommunicator>,
+        console: &Option<Rc<DeviceConsoleView>>,
+        on_done: impl Fn() + 'static,
+    ) {
+        // While this runs, jobs and manual commands are refused.
+        let token = device_status::begin_stop();
+        let log = |text: &str| {
+            if let Some(c) = console.as_ref() {
+                c.append_log(&format!("{text}\n"));
+            }
+        };
+        log("> ! (Stop: feed hold)");
+        // Ask for a status right after the hold, and only trust reports that
+        // arrive after it: an older Idle/Hold:0 does not mean the machine stopped.
+        let seq_at_hold = device_status::status_seq();
+        {
+            let mut comm = communicator.lock();
+            if let Err(e) = comm.send(b"!") {
+                tracing::warn!(error = %e, "Stop: feed hold not sent");
+            }
+            if let Err(e) = comm.send(b"?") {
+                tracing::debug!(error = %e, "Stop: status request not sent");
+            }
+        }
+
+        let communicator = communicator.clone();
+        let console = console.clone();
+        let started = std::time::Instant::now();
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            if !device_status::stop_is_current(token) {
+                // The connection was replaced or closed: nothing to reset.
+                on_done();
+                return glib::ControlFlow::Break;
+            }
+            let state = device_status::get_status().state;
+            let fresh = device_status::status_seq() > seq_at_hold;
+            let stopped = fresh && device_status::machine_is_stopped(&state);
+            let timed_out = started.elapsed() >= STOP_HOLD_TIMEOUT;
+            if !stopped && !timed_out {
+                return glib::ControlFlow::Continue;
+            }
+            if let Some(c) = console.as_ref() {
+                if stopped {
+                    c.append_log("> 0x18 (Stop: reset)\n");
+                } else {
+                    c.append_log(&format!(
+                        "> 0x18 (Stop: reset; feed hold did not complete, state {state})\n"
+                    ));
+                }
+            }
+            if let Err(e) = communicator.lock().send(&[0x18]) {
+                tracing::warn!(error = %e, "Stop: soft reset not sent");
+            }
+            device_status::end_stop(token);
+            on_done();
+            glib::ControlFlow::Break
+        });
+    }
+
+    /// Whether the active machine's protocol uses a flow-control sender (Repetier).
+    ///
+    /// Such protocols have no GRBL realtime bytes (`!`, `~`, `0x18`, `?`), so the panel
+    /// must not send them.
+    pub(crate) fn is_flow_control_protocol() -> bool {
+        let active_ct = device_status::get_active_controller_type();
+        gcodekit5_communication::firmware::protocol_profile(active_ct.as_deref().unwrap_or(""))
+            .sender
+            == gcodekit5_communication::firmware::SenderKind::FlowControl
+    }
+
+    /// Streams `content` with the flow-control (Repetier) sender.
+    ///
+    /// The sender reports through text messages: lines starting with `>` are logged,
+    /// `*NN%` updates the progress bar, and a "Completed" message ends the job.
+    ///
+    /// # Arguments
+    /// * `content` - The prepared G-code program.
+    fn start_flow_control_job(&self, content: &str) {
+        let (sender, receiver) = RepetierSender::new(
+            self.communicator.clone(),
+            self.is_streaming.clone(),
+            self.is_paused.clone(),
+            self.waiting_for_ack.clone(),
+        );
+        sender.set_pen_mode(device_status::get_active_pen_mode());
+        let sender: Rc<dyn Sender> = Rc::new(sender);
+        *self.active_sender.borrow_mut() = Some(sender.clone());
+        *self.job_start_time.lock() = Some(std::time::Instant::now());
+        self.update_job_controls();
+        sender.send_gcode(content);
+
+        let view = self.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            while let Ok(message) = receiver.try_recv() {
+                if message.starts_with('>') {
+                    view.log(&message);
+                    continue;
+                }
+                if let Some(percent) = message
+                    .strip_prefix('*')
+                    .and_then(|m| m.trim().trim_end_matches('%').parse::<f64>().ok())
+                {
+                    Self::update_progress(
+                        &view.status_bar,
+                        &view.job_start_time,
+                        percent,
+                        None,
+                        None,
+                        None,
+                    );
+                }
+                if message.to_ascii_lowercase().contains("completed") {
+                    view.finish_flow_control_job();
+                    return glib::ControlFlow::Break;
+                }
+            }
+            // Stopped (Stop/E-stop/disconnect): nothing more will arrive.
+            if !*view.is_streaming.lock() && view.job_start_time.lock().is_none() {
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    /// Resets the panel after a flow-control job completes.
+    fn finish_flow_control_job(&self) {
+        *self.is_streaming.lock() = false;
+        *self.is_paused.lock() = false;
+        *self.job_start_time.lock() = None;
+        if let Some(sb) = self.status_bar.as_ref() {
+            sb.set_progress(0.0, "", "");
+        }
+        self.send_btn.set_sensitive(true);
+        self.update_job_controls();
+    }
+
     /// Updates the panel when a DirectSender job ends.
     ///
     /// # Arguments
@@ -2500,23 +2977,33 @@ impl MachineControlView {
         self.update_job_controls();
     }
 
-    /// Returns the job content to stream, prefixed with `G90` when a failed quick probe
-    /// left the controller in incremental mode.
-    fn prepare_job_content(&self, content: String) -> String {
-        if self.quick_probe.get() == QuickProbeState::NeedsAbsoluteRestore {
-            self.quick_probe.set(QuickProbeState::Idle);
-            self.log(&t!(
-                "Restoring absolute mode (G90) before the job (a probe failed)."
-            ));
-            format!("G90\n{content}")
-        } else {
-            content
-        }
-    }
-
-    /// Get the current axis count
-    pub fn get_axis_count(&self) -> u8 {
-        self.axis_count.get()
+    /// Returns the job content to stream: comments handled and line length
+    /// checked per Preferences > File Processing, and prefixed with `G90` when a
+    /// failed quick probe left the controller in incremental mode.
+    ///
+    /// # Errors
+    /// Returns a message when a line is longer than the configured maximum.
+    fn prepare_job_content(&self, content: String) -> Result<String, String> {
+        let (preserve_comments, max_line_length) = match &self.settings_controller {
+            Some(controller) => {
+                let p = controller.persistence.borrow();
+                let file = &p.config().file_processing;
+                (file.preserve_comments, file.max_line_length as usize)
+            }
+            None => (true, 0),
+        };
+        let content = grbl_stream::prepare_program(&content, preserve_comments, max_line_length)?;
+        Ok(
+            if self.quick_probe.get() == QuickProbeState::NeedsAbsoluteRestore {
+                self.quick_probe.set(QuickProbeState::Idle);
+                self.log(&t!(
+                    "Restoring absolute mode (G90) before the job (a probe failed)."
+                ));
+                format!("G90\n{content}")
+            } else {
+                content
+            },
+        )
     }
 }
 mod operations;

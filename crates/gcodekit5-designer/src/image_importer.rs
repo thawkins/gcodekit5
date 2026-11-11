@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use image::GenericImageView;
 use std::path::Path;
 
-use crate::model::{Point, RasterImage};
 use crate::Shape;
+use crate::model::{Point, RasterImage};
 
 pub struct ImageImporter;
 

@@ -7,6 +7,7 @@
 //! - Tool operations
 //! - Toolpath preview generation
 
+pub mod array_dialog;
 mod editing;
 mod input;
 mod rendering;
@@ -18,7 +19,7 @@ use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use gcodekit5_core::constants as core_constants;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
+use gcodekit5_core::{Shared, SharedOption, SharedVec, shared, shared_none};
 use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
 use gcodekit5_designer::model::{Point, Shape};
 use gcodekit5_designer::toolpath::Toolpath;
@@ -30,8 +31,8 @@ use gtk4::{
     CheckButton, DrawingArea, DropDown, Entry, EventControllerMotion, GestureClick, GestureDrag,
 };
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 pub(crate) const MM_PER_PT: f64 = 25.4 / 72.0;
 
@@ -60,15 +61,15 @@ pub(crate) fn parse_font_points_mm(s: &str) -> Option<f64> {
 pub(crate) fn compute_device_bbox(
     device_manager: &Option<Arc<DeviceManager>>,
 ) -> (f64, f64, f64, f64) {
-    if let Some(dm) = device_manager {
-        if let Some(profile) = dm.get_active_profile() {
-            return (
-                profile.x_axis.min,
-                profile.y_axis.min,
-                profile.x_axis.max,
-                profile.y_axis.max,
-            );
-        }
+    if let Some(dm) = device_manager
+        && let Some(profile) = dm.get_active_profile()
+    {
+        return (
+            profile.x_axis.min,
+            profile.y_axis.min,
+            profile.x_axis.max,
+            profile.y_axis.max,
+        );
     }
     (
         0.0,
@@ -142,6 +143,7 @@ pub struct DesignerCanvas {
     pub(crate) text_tool_pending_pos: SharedOption<(f64, f64)>,
     pub(crate) device_manager: Option<Arc<DeviceManager>>,
     pub(crate) status_bar: Option<crate::ui::gtk::status_bar::StatusBar>,
+    pub(crate) settings_controller: Option<Rc<SettingsController>>,
 }
 
 impl DesignerCanvas {
@@ -263,6 +265,7 @@ impl DesignerCanvas {
             text_tool_pending_pos: shared_none(),
             device_manager: device_manager.clone(),
             status_bar,
+            settings_controller: settings_controller.clone(),
         });
 
         // Mouse motion tracking
@@ -695,7 +698,8 @@ impl DesignerCanvas {
         use crate::ui::gtk::file_dialog::FileDialogHelpers;
 
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        let dialog = crate::ui::gtk::file_dialog::open_dialog("Import Image");
+        let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Import Image"));
+        let filter_name_str = t!("Image files");
 
         let filter = gtk4::FileFilter::new();
         filter.add_mime_type("image/jpeg");
@@ -703,12 +707,25 @@ impl DesignerCanvas {
         filter.add_mime_type("image/bmp");
         filter.add_mime_type("image/tiff");
         filter.add_mime_type("image/webp");
-        filter.set_name(Some("Image files"));
+        filter.set_name(Some(&filter_name_str));
         dialog.add_filter(&filter);
 
+        crate::ui::gtk::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
+
         let canvas = self.clone();
+        let settings_controller = self.settings_controller.clone();
         dialog.pick_open(parent.as_ref(), move |file| {
             if let Some(path) = file.path() {
+                // Persist the last-used directory so later dialogs default to it.
+                if let Some(controller) = settings_controller.as_ref()
+                    && let Ok(mut persistence) = controller.persistence.try_borrow_mut()
+                {
+                    persistence.config_mut().file_processing.output_directory = path.clone();
+                    persistence.persist_or_log();
+                }
                 canvas.process_imported_image(path);
             }
         });
@@ -718,7 +735,7 @@ impl DesignerCanvas {
     fn process_imported_image(&self, path: std::path::PathBuf) {
         use gcodekit5_designer::image_importer::ImageImporter;
         if let Some(status_bar) = &self.status_bar {
-            status_bar.set_state("Importing image...");
+            status_bar.set_state(&t!("Importing image..."));
         }
 
         let canvas = self.clone();
@@ -734,13 +751,13 @@ impl DesignerCanvas {
                     canvas.notify_model_changed();
 
                     if let Some(status_bar) = &status_bar {
-                        status_bar.set_state("Image imported successfully");
+                        status_bar.set_state(&t!("Image imported successfully"));
                     }
                 }
                 Err(e) => {
                     tracing::error!("Image import failed: {}", e);
                     if let Some(status_bar) = &status_bar {
-                        status_bar.set_state(&format!("Import error: {}", e));
+                        status_bar.set_state(&format!("{}: {}", t!("Import error"), e));
                     }
                 }
             }

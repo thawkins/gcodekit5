@@ -9,6 +9,31 @@ use crate::model::DesignerShape;
 use crate::model::Shape;
 use crate::spatial_index::Bounds;
 
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub enum DesignerCommand {
+    AddShape(AddShape),
+    RemoveShape(RemoveShape),
+    MoveShapes(MoveShapes),
+    ResizeShape(ResizeShape),
+    ChangeProperty(ChangeProperty),
+    GroupShapes(GroupShapes),
+    UngroupShapes(UngroupShapes),
+    PasteShapes(PasteShapes),
+    Reorder(Reorder),
+    CompositeCommand(CompositeCommand),
+    /// A shape removal that remembers the draw-order index the shape occupied.
+    ///
+    /// `RemoveShape` commands are converted to this variant the first time they are
+    /// applied, so undo can put the shape back at its original z-order position.
+    RemoveShapeAt(RemoveShapeAt),
+    /// A grouping that remembers each shape's previous group membership.
+    ///
+    /// `GroupShapes` commands are converted to this variant the first time they are
+    /// applied, so undo restores earlier groups instead of clearing them.
+    GroupShapesTracked(GroupShapesTracked),
+}
+
 /// A command that can be executed and undone on the canvas.
 pub trait Command {
     /// Executes the command.
@@ -30,6 +55,13 @@ pub trait Command {
 pub struct AddShapeCommand {
     id: u64,
     shape: Option<DrawingObject>, // Stored here when undone
+}
+
+#[derive(Debug, Clone)]
+pub struct Reorder {
+    pub before: Vec<u64>,
+    pub after: Vec<u64>,
+    pub name: String,
 }
 
 impl AddShapeCommand {
@@ -68,35 +100,6 @@ impl Command for AddShapeCommand {
     fn name(&self) -> &str {
         "Add Shape"
     }
-}
-
-// We need a way to wrap these commands.
-// Since we have different structs, we can use an enum or Box<dyn Command>.
-// Enum is usually better for performance and serialization.
-
-#[derive(Debug, Clone)]
-// Variant size disparity is acceptable — commands are short-lived and not stored in bulk.
-#[allow(clippy::large_enum_variant)]
-pub enum DesignerCommand {
-    AddShape(AddShape),
-    RemoveShape(RemoveShape),
-    MoveShapes(MoveShapes),
-    ResizeShape(ResizeShape),
-    ChangeProperty(ChangeProperty),
-    GroupShapes(GroupShapes),
-    UngroupShapes(UngroupShapes),
-    PasteShapes(PasteShapes),
-    CompositeCommand(CompositeCommand),
-    /// A shape removal that remembers the draw-order index the shape occupied.
-    ///
-    /// `RemoveShape` commands are converted to this variant the first time they are
-    /// applied, so undo can put the shape back at its original z-order position.
-    RemoveShapeAt(RemoveShapeAt),
-    /// A grouping that remembers each shape's previous group membership.
-    ///
-    /// `GroupShapes` commands are converted to this variant the first time they are
-    /// applied, so undo restores earlier groups instead of clearing them.
-    GroupShapesTracked(GroupShapesTracked),
 }
 
 /// Removal of a shape together with the draw-order index it was removed from.
@@ -246,19 +249,19 @@ impl DesignerCommand {
             }
             DesignerCommand::ResizeShape(cmd) => {
                 // If we stored shapes, swap them
-                if let Some(new_shape) = &cmd.new_shape {
-                    if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let old_bounds = Bounds::new(x1, y1, x2, y2);
+                if let Some(new_shape) = &cmd.new_shape
+                    && let Some(obj) = canvas.get_shape_mut(cmd.id)
+                {
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
+                    let old_bounds = Bounds::new(x1, y1, x2, y2);
 
-                        obj.shape = new_shape.clone();
+                    obj.shape = new_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
-                        let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
+                    let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
-                        canvas.remove_from_index(cmd.id, &old_bounds);
-                        canvas.insert_into_index(cmd.id, &new_bounds);
-                    }
+                    canvas.remove_from_index(cmd.id, &old_bounds);
+                    canvas.insert_into_index(cmd.id, &new_bounds);
                 }
             }
             DesignerCommand::ChangeProperty(cmd) => {
@@ -307,6 +310,9 @@ impl DesignerCommand {
                     sub_cmd.apply(canvas);
                 }
             }
+            DesignerCommand::Reorder(cmd) => {
+                canvas.shape_store.apply_order(cmd.after.clone());
+            }
         }
     }
 
@@ -345,19 +351,19 @@ impl DesignerCommand {
                 }
             }
             DesignerCommand::ResizeShape(cmd) => {
-                if let Some(old_shape) = &cmd.old_shape {
-                    if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let old_bounds = Bounds::new(x1, y1, x2, y2);
+                if let Some(old_shape) = &cmd.old_shape
+                    && let Some(obj) = canvas.get_shape_mut(cmd.id)
+                {
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
+                    let old_bounds = Bounds::new(x1, y1, x2, y2);
 
-                        obj.shape = old_shape.clone();
+                    obj.shape = old_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
-                        let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
+                    let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
-                        canvas.remove_from_index(cmd.id, &old_bounds);
-                        canvas.insert_into_index(cmd.id, &new_bounds);
-                    }
+                    canvas.remove_from_index(cmd.id, &old_bounds);
+                    canvas.insert_into_index(cmd.id, &new_bounds);
                 }
             }
             DesignerCommand::ChangeProperty(cmd) => {
@@ -399,10 +405,13 @@ impl DesignerCommand {
                 // Remove pasted shapes
                 cmd.objects.clear();
                 for id in &cmd.ids {
-                    if let Some(obj) = canvas.remove_shape_return(*id) {
-                        cmd.objects.push(Some(obj));
-                    } else {
-                        cmd.objects.push(None); // Should not happen
+                    match canvas.remove_shape_return(*id) {
+                        Some(obj) => {
+                            cmd.objects.push(Some(obj));
+                        }
+                        _ => {
+                            cmd.objects.push(None); // Should not happen
+                        }
                     }
                 }
             }
@@ -410,6 +419,9 @@ impl DesignerCommand {
                 for sub_cmd in cmd.commands.iter_mut().rev() {
                     sub_cmd.undo(canvas);
                 }
+            }
+            DesignerCommand::Reorder(cmd) => {
+                canvas.shape_store.apply_order(cmd.before.clone());
             }
         }
     }

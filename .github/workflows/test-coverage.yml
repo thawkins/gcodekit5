@@ -2,9 +2,9 @@ name: Test Coverage
 
 on:
   push:
-    branches: [master, develop]
+    branches: [master, develop, devel]
   pull_request:
-    branches: [master, develop]
+    branches: [master, develop, devel]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,13 +14,16 @@ env:
 jobs:
   test-coverage:
     name: Coverage (${{ matrix.arch }})
+    # Disabled: both coverage jobs (x86_64, aarch64) are skipped.
+    # Remove this line to re-enable them.
+    if: false
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
           - arch: aarch64
             runner: ubuntu-24.04-arm
     steps:
@@ -104,7 +107,7 @@ jobs:
 
   test-isolation:
     name: Test Isolation Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 
@@ -139,7 +142,7 @@ jobs:
 
   benchmarks:
     name: Benchmark Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 

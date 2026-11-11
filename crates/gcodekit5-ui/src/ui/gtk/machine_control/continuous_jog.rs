@@ -63,14 +63,15 @@ impl MachineControlView {
     pub(crate) fn start_continuous_jog(&self, axis: char, direction: f32) {
         let feed = *self.jog_feed_mm_per_min.lock();
         let step = feed / 60.0 * CONTINUOUS_JOG_TICK.as_secs_f32();
-        let signed = step.copysign(direction);
+        let signed = step.copysign(direction * crate::device_status::jog_direction(axis));
 
         {
             let state = self.continuous_jog.lock();
-            if let Some((a, s, _)) = state.active {
-                if a == axis && s.signum() == signed.signum() {
-                    return;
-                }
+            if let Some((a, s, _)) = state.active
+                && a == axis
+                && s.signum() == signed.signum()
+            {
+                return;
             }
         }
         self.stop_continuous_jog();

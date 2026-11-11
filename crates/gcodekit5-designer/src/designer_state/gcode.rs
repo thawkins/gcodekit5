@@ -1,14 +1,25 @@
 //! G-code generation for designer state
 
 use super::DesignerState;
+use crate::ToolpathToGcode;
 use crate::canvas::DrawingObject;
 use crate::designer_state::MachineMode;
 use crate::gcode_gen::MachineLimits;
 use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
-use crate::ToolpathToGcode;
 use gcodekit5_core::Units;
+
+/// Comment block added when a toolpath leaves the machine's working area.
+const LIMIT_WARNING: &str = ";
+; *********************************************
+; ********** WARNING: OUT OF LIMITS ***********
+; ** This toolpath contains coordinates      **
+; ** outside the machine working area.       **
+; ** Risk of collision if no limit switches! **
+; *********************************************
+;
+";
 
 impl DesignerState {
     fn shape_embedded_laser_use_global(shape: &DrawingObject) -> bool {
@@ -163,14 +174,9 @@ impl DesignerState {
         effective
     }
 
-    /// Generates G-code from the current design and reports whether any toolpath
-    /// falls outside the machine limits.
-    #[allow(clippy::collapsible_else_if)]
-    pub fn generate_gcode_with_warning_info(
-        &mut self,
-        machine_limits: Option<MachineLimits>,
-    ) -> (String, bool) {
-        let mut gcode = String::new();
+    /// Phase 1 of G-code generation: the G-code writer set up for the
+    /// stock (safe Z, Z floor), the machine limits and the machine mode.
+    fn configured_gcode_generator(&self, machine_limits: Option<MachineLimits>) -> ToolpathToGcode {
         // Get safe_z from stock_material, default to 10.0 if not set
         let safe_z = self
             .stock_material
@@ -211,6 +217,16 @@ impl DesignerState {
                 MachineMode::Cnc3D => {}
             }
         }
+        gcode_gen
+    }
+
+    /// Phase 2 of G-code generation: the toolpaths of every shape to cut
+    /// (the selection, or all shapes), in machining order, with whether a
+    /// pocket fell back to a profile cut.
+    fn build_shape_toolpaths(
+        &mut self,
+        gcode_gen: &ToolpathToGcode,
+    ) -> Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> {
         // Store shape-to-toolpath mapping
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
@@ -305,10 +321,10 @@ impl DesignerState {
 
             // Keep shape-embedded laser params in sync with the effective
             // per-object/global choice so 2D toolpath generation cannot drift.
-            if gcode_gen.is_laser_2d {
-                if let Some(params) = effective_params {
-                    Self::apply_laser_params_to_shape(&mut effective_shape, params);
-                }
+            if gcode_gen.is_laser_2d
+                && let Some(params) = effective_params
+            {
+                Self::apply_laser_params_to_shape(&mut effective_shape, params);
             }
 
             // ============================================================
@@ -531,70 +547,23 @@ impl DesignerState {
             shape_toolpaths.push((effective_shape_obj, toolpaths, pocket_fallback_to_profile));
         }
 
-        // Calculate total length from all toolpaths
-        let total_length: f64 = shape_toolpaths
-            .iter()
-            .flat_map(|(_, tps, _)| tps.iter())
-            .map(|tp| tp.total_length())
-            .sum();
+        shape_toolpaths
+    }
 
-        // Use settings from first toolpath if available, or defaults
-        let (header_speed, header_feed, header_diam, header_depth) =
-            if let Some((_, tps, _)) = shape_toolpaths.first() {
-                if let Some(first) = tps.first() {
-                    let s = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.spindle_speed)
-                        .unwrap_or(3000);
-                    let f = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.feed_rate)
-                        .unwrap_or(100.0);
-                    (s, f, first.tool_diameter, first.depth)
-                } else {
-                    (3000, 100.0, 3.175, -5.0)
-                }
-            } else {
-                (3000, 100.0, 3.175, -5.0)
-            };
-
-        gcode.push_str(&gcode_gen.generate_header(
-            header_speed,
-            header_feed,
-            header_diam,
-            header_depth,
-            total_length,
-        ));
-
-        // ========== ADVERTENCIA DE LÍMITES  ==========
-        let mut has_violation = false;
-        for (_, toolpaths, _) in &shape_toolpaths {
-            for toolpath in toolpaths {
-                if gcode_gen.has_boundary_violation(toolpath) {
-                    has_violation = true;
-                    break;
-                }
-            }
-            if has_violation {
-                break;
-            }
-        }
-
-        if has_violation {
-            gcode.push_str(";\n");
-            gcode.push_str("; *********************************************\n");
-            gcode.push_str("; ********** WARNING: OUT OF LIMITS ***********\n");
-            gcode.push_str("; ** This toolpath contains coordinates      **\n");
-            gcode.push_str("; ** outside the machine working area.       **\n");
-            gcode.push_str("; ** Risk of collision if no limit switches! **\n");
-            gcode.push_str("; *********************************************\n");
-            gcode.push_str(";\n");
-        }
-        // =============== FIN ADVERTENCIA ===============
-
+    /// Phase 3 of G-code generation: appends each shape's comment header
+    /// and passes to `gcode`, numbering lines from 10 in steps of 10.
+    /// `header_speed` is the CNC spindle speed the header started.
+    fn emit_shapes_gcode(
+        &mut self,
+        gcode: &mut String,
+        gcode_gen: &ToolpathToGcode,
+        shape_toolpaths: &[(DrawingObject, Vec<crate::Toolpath>, bool)],
+        header_speed: u32,
+    ) {
         let mut line_number = 10;
+        // The header starts the CNC spindle at `header_speed`; a later shape
+        // that asks for another speed gets an `S` word before it cuts.
+        let mut spindle_speed = header_speed;
 
         // ------ Loop Shape --------
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
@@ -661,8 +630,8 @@ impl DesignerState {
                     mirror_x: false,
                     mirror_y: false,
                     rotation: crate::engraving::RotationAngle::Degrees0,
-                    halftone: crate::engraving::HalftoneMethod::None,
-                    halftone_threshold: 128,
+                    halftone: crate::engraving::HalftoneMethod::from_name(&raster.dithering),
+                    halftone_threshold: raster.halftone_threshold,
                     offset_x: start_x as f32,
                     offset_y: start_y as f32,
                     power_scale: 1000.0,
@@ -718,7 +687,7 @@ impl DesignerState {
             }
 
             // Add shape-specific data
-            Self::append_shape_metadata(&mut gcode, shape);
+            Self::append_shape_metadata(gcode, shape);
 
             if shape.operation_type == OperationType::Pocket {
                 gcode.push_str(&format!(
@@ -786,6 +755,12 @@ impl DesignerState {
                 } else {
                     // CNC mode without optimization
                     for toolpath in toolpaths {
+                        if let Some(speed) = toolpath.segments.first().map(|s| s.spindle_speed)
+                            && speed != spindle_speed
+                        {
+                            gcode.push_str(&format!("S{}        ; Spindle speed\n", speed));
+                            spindle_speed = speed;
+                        }
                         let (body_gcode, final_z) =
                             gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
                         gcode.push_str(&body_gcode);
@@ -794,15 +769,64 @@ impl DesignerState {
                     }
                 }
             }
-
-            if let Some(last_tp) = toolpaths.last() {
-                for seg in last_tp.segments.iter().rev() {
-                    if seg.end.x != 0.0 || seg.end.y != 0.0 {
-                        break;
-                    }
-                }
-            }
         } // for (shape, toolpaths, pocket_fallback_to_profile)
+    }
+
+    /// Generates G-code from the current design and reports whether any toolpath
+    /// falls outside the machine limits.
+    #[allow(clippy::collapsible_else_if)]
+    pub fn generate_gcode_with_warning_info(
+        &mut self,
+        machine_limits: Option<MachineLimits>,
+    ) -> (String, bool) {
+        let mut gcode = String::new();
+        let gcode_gen = self.configured_gcode_generator(machine_limits);
+        let shape_toolpaths = self.build_shape_toolpaths(&gcode_gen);
+
+        // Calculate total length from all toolpaths
+        let total_length: f64 = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .map(|tp| tp.total_length())
+            .sum();
+
+        // Use settings from first toolpath if available, or defaults
+        // Taken from the first toolpath that cuts anything: a shape can yield
+        // empty toolpaths (e.g. a pocket smaller than the cutter).
+        let (header_speed, header_feed, header_diam) = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .find_map(|tp| {
+                tp.segments
+                    .first()
+                    .map(|seg| (seg.spindle_speed, seg.feed_rate, tp.tool_diameter))
+            })
+            .unwrap_or((3000, 100.0, 3.175));
+        // The header reports the deepest Z any pass reaches.
+        let header_depth = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .map(|tp| tp.depth)
+            .reduce(f64::min)
+            .unwrap_or(0.0);
+
+        gcode.push_str(&gcode_gen.generate_header(
+            header_speed,
+            header_feed,
+            header_diam,
+            header_depth,
+            total_length,
+        ));
+
+        let has_violation = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .any(|tp| gcode_gen.has_boundary_violation(tp));
+        if has_violation {
+            gcode.push_str(LIMIT_WARNING);
+        }
+
+        self.emit_shapes_gcode(&mut gcode, &gcode_gen, &shape_toolpaths, header_speed);
 
         gcode.push_str(&gcode_gen.generate_footer());
 

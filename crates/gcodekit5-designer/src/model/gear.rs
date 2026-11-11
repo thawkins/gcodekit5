@@ -10,7 +10,7 @@
 //! and pressure angle. Generates accurate involute tooth profiles
 //! for CNC cutting.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 

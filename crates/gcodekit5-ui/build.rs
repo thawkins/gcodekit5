@@ -1,14 +1,9 @@
-use chrono::Utc;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    // Generate build timestamp
-    let build_date = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    println!("cargo:rustc-env=BUILD_DATE={}", build_date);
-
     // Compile PO files
     let po_dir = Path::new("../../po");
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
@@ -41,12 +36,6 @@ fn main() {
             }
         }
     }
-
-    glib_build_tools::compile_resources(
-        &["resources"],
-        "resources/gresources.xml",
-        "gcodekit5.gresource",
-    );
 
     // Expose the locale directory to the code
     println!("cargo:rustc-env=LOCALE_DIR={}", locale_dir.display());

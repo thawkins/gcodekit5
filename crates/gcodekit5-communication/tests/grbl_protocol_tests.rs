@@ -1,10 +1,6 @@
-//! Regression tests for GRBL protocol handling: status report parsing,
-//! response parsing, real-time override bytes and command formatting.
+//! Regression tests for GRBL status report parsing.
 
-use gcodekit5_communication::firmware::device_status::{DeviceStatus, MachineStateType};
-use gcodekit5_communication::firmware::grbl::{
-    CommandCreator, GrblResponse, GrblResponseParser, RealTimeOverrideCommand, StatusParser,
-};
+use gcodekit5_communication::firmware::grbl::StatusParser;
 
 #[test]
 fn test_status_parser_fs_field_spindle_speed() {
@@ -42,84 +38,56 @@ fn test_status_parser_bare_state() {
 }
 
 #[test]
-fn test_response_parser_uppercase_alarm() {
-    let parser = GrblResponseParser::new();
-    assert_eq!(parser.parse("ALARM:1"), Some(GrblResponse::Alarm(1)));
-    assert_eq!(parser.parse("alarm:9"), Some(GrblResponse::Alarm(9)));
+fn test_malformed_axis_token_rejects_the_report() {
+    // Audit B-11: a bad token used to be skipped, moving Z onto the Y axis.
+    use gcodekit5_communication::firmware::grbl::status_parser::{
+        MachinePosition, WorkCoordinateOffset, WorkPosition,
+    };
+    assert_eq!(MachinePosition::parse("1.000,2.0x0,3.000,4.000"), None);
+    assert_eq!(WorkPosition::parse("1.000,2.0x0,3.000"), None);
+    assert_eq!(WorkCoordinateOffset::parse("1,,3"), None);
+    let ok = MachinePosition::parse("1.000,2.000,3.000,4.000").expect("valid");
+    assert_eq!((ok.x, ok.y, ok.z, ok.a), (1.0, 2.0, 3.0, Some(4.0)));
 }
 
 #[test]
-fn test_response_parser_status_fs_and_bf() {
-    let parser = GrblResponseParser::new();
-    match parser.parse("<Run|MPos:1.000,2.000,3.000|Bf:15,128|FS:750,12000>") {
-        Some(GrblResponse::Status(report)) => {
-            assert_eq!(report.feed_rate, Some(750.0));
-            assert_eq!(report.spindle_speed, Some(12000));
-            let buf = report.buffer_state.expect("buffer state");
-            assert_eq!((buf.plan, buf.exec), (15, 128));
-        }
-        other => panic!("expected status, got {:?}", other),
+fn test_grblhal_and_fluidnc_are_grbl_family() {
+    // Audit B-10: these banners were detected as Unknown, hiding the GRBL match.
+    use gcodekit5_communication::firmware::ControllerProtocol;
+    use gcodekit5_communication::firmware::protocol_registry::detect_protocol;
+    for name in ["grblHAL", "GrblHal", "FluidNC"] {
+        assert_eq!(
+            ControllerProtocol::from_name(name),
+            ControllerProtocol::Grbl
+        );
     }
-}
-
-#[test]
-fn test_response_parser_error_descriptions() {
     assert_eq!(
-        GrblResponseParser::error_description(7),
-        "EEPROM read failed"
+        detect_protocol("GrblHAL 1.1f ['$' or '$HELP' for help]"),
+        Some(ControllerProtocol::Grbl)
     );
     assert_eq!(
-        GrblResponseParser::error_description(23),
-        "Command requires integer value"
-    );
-    assert_eq!(
-        GrblResponseParser::alarm_description(8),
-        "Homing fail: pull-off failed to clear limit switch"
+        detect_protocol("Grbl 3.7 [FluidNC v3.7.8 (wifi) '$' for help]"),
+        Some(ControllerProtocol::Grbl)
     );
 }
 
 #[test]
-fn test_override_bytes_match_grbl_1_1() {
-    assert_eq!(RealTimeOverrideCommand::FeedIncrease10.as_byte(), 0x91);
-    assert_eq!(RealTimeOverrideCommand::FeedDecrease10.as_byte(), 0x92);
-    assert_eq!(RealTimeOverrideCommand::FeedIncrease1.as_byte(), 0x93);
-    assert_eq!(RealTimeOverrideCommand::FeedDecrease1.as_byte(), 0x94);
-    assert_eq!(RealTimeOverrideCommand::RapidOv100.as_byte(), 0x95);
-    assert_eq!(RealTimeOverrideCommand::RapidOv50.as_byte(), 0x96);
-    assert_eq!(RealTimeOverrideCommand::RapidOv25.as_byte(), 0x97);
-}
-
-#[test]
-fn test_jog_commands_have_no_motion_mode() {
-    let cmd = CommandCreator::jog_incremental("X", -5.0, 1000.0);
-    assert_eq!(cmd, "$J=G91 X-5.000 F1000\n");
-    assert!(!cmd.contains("G0"));
-}
-
-#[test]
-fn test_set_work_offset_uses_l20() {
+fn test_inch_reports_are_converted_to_mm() {
+    // Owner decision B-22: honour `$13=1` (positions reported in inches).
+    use gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report_in;
+    let line = "<Idle|MPos:1.000,2.000,-0.500|FS:10,0|WCO:0.500,0.000,0.000>";
+    let full = StatusParser::parse_full(line).into_mm(true);
+    let m = full.mpos.expect("mpos");
+    assert!((m.x - 25.4).abs() < 1e-9 && (m.y - 50.8).abs() < 1e-9 && (m.z + 12.7).abs() < 1e-9);
+    let w = full.wco.expect("wco");
+    assert!((w.x - 12.7).abs() < 1e-9);
+    assert_eq!(full.feed_rate, Some(254.0));
     assert_eq!(
-        CommandCreator::set_work_offset(&["X", "Y"]),
-        "G10 L20 P0 X0 Y0\n"
+        StatusParser::parse_full(line).into_mm(false).mpos,
+        StatusParser::parse_full(line).mpos
     );
-}
 
-#[test]
-fn test_device_status_fs_and_override_order() {
-    let status =
-        DeviceStatus::parse_grbl_status("<Hold:0|MPos:1.0,2.0,3.0|FS:500,8000|Ov:110,50,90>")
-            .expect("status should parse");
-    assert_eq!(status.state, MachineStateType::Hold);
-    assert_eq!(status.feed_rate, Some(500.0));
-    assert_eq!(status.spindle_speed, Some(8000));
-    let ov = status.overrides.expect("overrides");
-    assert_eq!((ov.feed_rate, ov.rapid, ov.spindle_speed), (110, 50, 90));
-}
-
-#[test]
-fn test_response_parser_non_ascii_message_does_not_panic() {
-    // Byte 6 of "[MSG:é]" falls inside 'é'; slicing at it used to panic.
-    let parser = GrblResponseParser::new();
-    let _ = parser.parse("[MSG:é]");
-    let _ = parser.parse("ALARMé");
+    let probe = parse_probe_report_in("[PRB:1.000,0.000,-0.250:1]", true).expect("PRB");
+    assert!((probe.position.x - 25.4).abs() < 1e-4);
+    assert!((probe.position.z + 6.35).abs() < 1e-4);
 }

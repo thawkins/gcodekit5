@@ -1,3 +1,4 @@
+//! gcodekit5-ui/src/ui/gtk/device_manager/operations.rs
 //! Event handlers and operations for the device manager window.
 
 use super::*;
@@ -151,11 +152,14 @@ impl DeviceManagerWindow {
     }
 
     pub(crate) fn start_create_new(&self) {
-        if let Ok(id) = self.controller.create_new_profile() {
-            self.load_devices();
-            self.load_device_for_edit(&id);
-        } else {
-            self.load_devices();
+        match self.controller.create_new_profile() {
+            Ok(id) => {
+                self.load_devices();
+                self.load_device_for_edit(&id);
+            }
+            _ => {
+                self.load_devices();
+            }
         }
     }
 
@@ -192,6 +196,7 @@ impl DeviceManagerWindow {
             self.edit_has_spindle.set_active(profile.has_spindle);
             self.edit_has_laser.set_active(profile.has_laser);
             self.edit_has_coolant.set_active(profile.has_coolant);
+            self.edit_pen_mode.set_active(profile.pen_mode);
             self.edit_num_axes.set_text(profile.num_axes.trim());
             self.edit_max_s_value.set_text(profile.max_s_value.trim());
             self.edit_spindle_watts
@@ -269,8 +274,8 @@ impl DeviceManagerWindow {
             if let Some(txt) = self.edit_device_type.active_text() {
                 model.device_type = txt.to_string();
             }
-            if let Some(txt) = self.edit_controller_type.active_text() {
-                model.controller_type = txt.to_string();
+            if let Some(id) = self.edit_controller_type.active_id() {
+                model.controller_type = id.to_string();
             }
 
             // Connection
@@ -357,6 +362,7 @@ impl DeviceManagerWindow {
             model.has_spindle = self.edit_has_spindle.is_active();
             model.has_laser = self.edit_has_laser.is_active();
             model.has_coolant = self.edit_has_coolant.is_active();
+            model.pen_mode = self.edit_pen_mode.is_active();
 
             let num_axes: u8 = match self.edit_num_axes.text().trim().parse() {
                 Ok(v) if (1..=6).contains(&v) => v,
@@ -428,11 +434,29 @@ impl DeviceManagerWindow {
             } else {
                 0.0
             };
+
             model.max_feed_rate = format!("{:.0}", max_feed_mm_per_min);
             model.max_s_value = format!("{:.0}", max_s_value);
             model.max_spindle_speed_rpm = max_spindle_speed_rpm.to_string();
             model.cnc_spindle_watts = format!("{:.0}", spindle_watts);
             model.laser_watts = format!("{:.0}", laser_watts);
+
+            // Validación específica: rechazar protocolos no soportados
+            // antes de intentar guardar. El registro de protocolos es la
+            // fuente de verdad sobre qué está implementado.
+            let protocol =
+                gcodekit5_communication::firmware::protocol_profile(&model.controller_type);
+            if !protocol.is_supported {
+                self.show_error_dialog(
+                    "Unsupported controller",
+                    &format!(
+                        "The selected controller \"{}\" is not supported yet. \
+                         Please choose a supported one and try again.",
+                        protocol.display_name
+                    ),
+                );
+                return;
+            }
 
             // Save
             if let Err(e) = self.controller.update_profile_from_ui(model) {
@@ -465,7 +489,10 @@ impl DeviceManagerWindow {
             Some(&window),
             move |resp| {
                 if resp == ResponseType::Yes {
-                    let _ = view.controller.delete_profile(&model.id);
+                    if let Err(e) = view.controller.delete_profile(&model.id) {
+                        tracing::warn!(error = %e, "Failed to delete device profile");
+                        view.show_error_dialog("Delete failed", &e.to_string());
+                    }
                     view.load_devices();
                     view.cancel_edit();
                 }
@@ -476,7 +503,13 @@ impl DeviceManagerWindow {
     pub(crate) fn set_as_active(&self) {
         let id_opt = self.selected_device.borrow().as_ref().map(|d| d.id.clone());
         if let Some(id) = id_opt {
-            let _ = self.controller.set_active_profile(&id);
+            // Only switch the panel's axis count once the active device is saved,
+            // so the two cannot disagree.
+            if let Err(e) = self.controller.set_active_profile(&id) {
+                tracing::warn!(error = %e, "Failed to set the active device profile");
+                self.show_error_dialog("Set active failed", &e.to_string());
+                return;
+            }
             if let Some(profile) = self.selected_device.borrow().as_ref() {
                 let num: u8 = profile.num_axes.trim().parse().unwrap_or(3);
                 crate::device_status::set_active_num_axes(num);
@@ -510,52 +543,38 @@ impl DeviceManagerWindow {
         };
 
         // Update dimensions from $130, $131, $132 (X/Y/Z max travel)
-        if let Some(x_max) = status.grbl_settings.get(&130) {
-            if let Ok(val) = x_max.parse::<f64>() {
-                model.x_max = format!("{:.2}", val);
-            }
+        if let Some(x_max) = status.grbl_settings.get(&130)
+            && let Ok(val) = x_max.parse::<f64>()
+        {
+            model.x_max = format!("{:.2}", val);
         }
-        if let Some(y_max) = status.grbl_settings.get(&131) {
-            if let Ok(val) = y_max.parse::<f64>() {
-                model.y_max = format!("{:.2}", val);
-            }
+        if let Some(y_max) = status.grbl_settings.get(&131)
+            && let Ok(val) = y_max.parse::<f64>()
+        {
+            model.y_max = format!("{:.2}", val);
         }
-        if let Some(z_max) = status.grbl_settings.get(&132) {
-            if let Ok(val) = z_max.parse::<f64>() {
-                model.z_max = format!("{:.2}", val);
-            }
+        if let Some(z_max) = status.grbl_settings.get(&132)
+            && let Ok(val) = z_max.parse::<f64>()
+        {
+            model.z_max = format!("{:.2}", val);
         }
 
         // Update max spindle speed from $30 (Max spindle speed, RPM)
-        if let Some(max_rpm) = status.grbl_settings.get(&30) {
-            if let Ok(val) = max_rpm.parse::<u32>() {
-                model.max_spindle_speed_rpm = val.to_string();
-                model.max_s_value = format!("{:.0}", val as f32);
-                if val > 0 {
-                    model.has_spindle = true;
-                }
+        if let Some(max_rpm) = status.grbl_settings.get(&30)
+            && let Ok(val) = max_rpm.parse::<u32>()
+        {
+            model.max_spindle_speed_rpm = val.to_string();
+            model.max_s_value = format!("{:.0}", val as f32);
+            if val > 0 {
+                model.has_spindle = true;
             }
         }
 
         // Check for laser mode from $32 (Laser mode enable)
-        if let Some(laser_mode) = status.grbl_settings.get(&32) {
-            if let Ok(val) = laser_mode.parse::<u32>() {
-                model.has_laser = val == 1;
-            }
-        }
-
-        // Update firmware version if available
-        if let Some(fw_version) = &status.firmware_version {
-            model.description = format!(
-                "{} (Firmware: {})",
-                model
-                    .description
-                    .split('(')
-                    .next()
-                    .unwrap_or(&model.description)
-                    .trim(),
-                fw_version
-            );
+        if let Some(laser_mode) = status.grbl_settings.get(&32)
+            && let Ok(val) = laser_mode.parse::<u32>()
+        {
+            model.has_laser = val == 1;
         }
 
         // Reload the updated model into the form
@@ -578,6 +597,10 @@ impl DeviceManagerWindow {
             return;
         };
 
-        crate::ui::gtk::common::dialog::show_info("Device Information Updated", "Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.", Some(&window));
+        crate::ui::gtk::common::dialog::show_info(
+            "Device Information Updated",
+            "Device dimensions, spindle speed, and capabilities have been updated from the connected device. Click Save to apply changes.",
+            Some(&window),
+        );
     }
 }

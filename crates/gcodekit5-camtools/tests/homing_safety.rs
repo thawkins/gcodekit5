@@ -1,18 +1,18 @@
 //! Regression tests for the optional homing preamble and GRBL `$` system commands.
 //!
-//! - After `$H` the generators keep the G54 Z offset, so work Z0 is not machine Z0. Every Z
+//! - After `$H` the generators keep every G54 offset (no `G10`), so work Z0 is not machine
+//!   Z0 and X/Y run from the user's work zero, inside the travel (issue #70). Every Z
 //!   travel/retract move after homing must be a `G53` machine-coordinate move at Z <= 0, so
 //!   it can never rise above the homed position whatever the Z offset is (simulated here with
-//!   G54 Z offsets of +10 mm, 0 and -40 mm). This covers the jigsaw, tabbed box, bitmap
+//!   G54 Z offsets of +10 mm, 0 and -40 mm). This covers the tabbed box, bitmap
 //!   engraver, spoilboard surfacing, spoilboard grid and drill press.
 //! - With homing off no generator emits `$H`, `G10` or `G53`.
 //! - The validator, stats calculator and optimizer must treat GRBL system commands (`$H`,
 //!   `$X`, `$$`, `$J=...`) as commands, not as G-code words with unparsable values.
 
-use gcodekit5_camtools::comment_processor::{system_command, SystemCommand};
+use gcodekit5_camtools::comment_processor::{SystemCommand, system_command};
 use gcodekit5_camtools::drill_press::{DrillPressGenerator, DrillPressParameters};
-use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
-use gcodekit5_camtools::job_preamble::{travel_z_line, HOMED_TRAVEL_Z_MACHINE};
+use gcodekit5_camtools::job_preamble::{HOMED_TRAVEL_Z_MACHINE, travel_z_line};
 use gcodekit5_camtools::laser_engraver::{BitmapImageEngraver, EngravingParameters};
 use gcodekit5_camtools::optimizer::GCodeOptimizer;
 use gcodekit5_camtools::spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
@@ -53,11 +53,7 @@ fn z_moves(gcode: &str) -> Vec<ZMove<'_>> {
 
 /// Machine Z reached by a move, given the G54 Z offset (machine Z of work Z0).
 fn machine_z(m: &ZMove<'_>, g54_z_offset: f32) -> f32 {
-    if m.machine {
-        m.z
-    } else {
-        m.z + g54_z_offset
-    }
+    if m.machine { m.z } else { m.z + g54_z_offset }
 }
 
 /// `true` for a cutting / focus height move (measured from the work Z0 the user set): a feed
@@ -102,16 +98,6 @@ fn assert_homed_z_safe(gcode: &str) {
         );
         assert!(m.z <= 0.0, "travel above machine Z0: {}", m.line);
     }
-}
-
-fn jigsaw(home: bool) -> String {
-    let mut maker = JigsawPuzzleMaker::new(PuzzleParameters {
-        home_before_job: home,
-        ..Default::default()
-    })
-    .expect("jigsaw setup");
-    maker.generate().expect("jigsaw generate");
-    maker.to_gcode(500.0, 1.0)
 }
 
 fn tabbed_box(home: bool, passes: i32) -> String {
@@ -194,7 +180,6 @@ fn drill(home: bool, helical: bool) -> String {
 /// Every generator's output with homing on or off.
 fn all_programs(home: bool) -> Vec<(&'static str, String)> {
     vec![
-        ("jigsaw", jigsaw(home)),
         ("tabbed box", tabbed_box(home, 2)),
         ("engraver", engraver(home)),
         ("surfacing", surfacing(home)),
@@ -237,11 +222,6 @@ fn test_travel_z_line_homed_uses_g53_below_machine_zero() {
 }
 
 #[test]
-fn test_jigsaw_homed_travel_never_above_homed_position() {
-    assert_homed_z_safe(&jigsaw(true));
-}
-
-#[test]
 fn test_tabbed_box_homed_travel_never_above_homed_position() {
     for passes in [1, 3] {
         let gcode = tabbed_box(true, passes);
@@ -264,9 +244,9 @@ fn test_engraver_homed_never_moves_z() {
 fn test_spoilboard_surfacing_homed_travel_never_above_homed_position() {
     let gcode = surfacing(true);
     assert_homed_z_safe(&gcode);
-    // Only X/Y are re-zeroed: the spoilboard surface (Z work offset) is kept.
-    let g10: Vec<&str> = gcode.lines().filter(|l| l.starts_with("G10")).collect();
-    assert_eq!(g10, vec!["G10 L2 P1 X0 Y0 ; Clear G54 X/Y offset"]);
+    // No offset is rewritten: the user's G54 X/Y zero and the spoilboard surface (Z work
+    // offset) are both kept.
+    assert!(!gcode.lines().any(|l| l.starts_with("G10")), "{gcode}");
     // Z is cleared before the first X/Y move.
     let first_z = gcode
         .lines()
@@ -303,10 +283,29 @@ fn test_no_homing_preamble_without_homing() {
         );
         assert!(!gcode.contains("G53"), "{name}: G53 without homing");
     }
-    // Without homing the jigsaw still travels at a positive work safe height.
-    assert!(z_moves(&jigsaw(false))
-        .iter()
-        .any(|m| !m.machine && m.z > 0.0));
+    // Without homing, surfacing still travels at a positive work safe height.
+    assert!(
+        z_moves(&surfacing(false))
+            .iter()
+            .any(|m| !m.machine && m.z > 0.0)
+    );
+}
+
+#[test]
+fn test_homed_programs_keep_g54_offsets() {
+    // Clearing G54 X/Y after `$H` put work zero at the homing switches, outside GRBL's
+    // negative travel range (issue #70). Every homed program must leave G54 untouched.
+    for (name, gcode) in all_programs(true) {
+        assert!(gcode.contains("$H"), "{name}: no $H");
+        assert!(
+            !gcode.lines().any(|l| l.starts_with("G10")),
+            "{name}: homed program rewrites a work offset"
+        );
+        assert!(
+            gcode.lines().any(|l| l.starts_with("G54")),
+            "{name}: no G54"
+        );
+    }
 }
 
 // ---- GRBL `$` commands ----

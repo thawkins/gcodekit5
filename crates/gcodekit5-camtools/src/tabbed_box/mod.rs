@@ -79,6 +79,37 @@ impl TabbedBoxMaker {
     }
 
     fn validate_parameters(params: &BoxParameters) -> Result<(), String> {
+        // `NaN < 20.0` is false, so non-numbers must be rejected explicitly.
+        let numbers = [
+            params.x,
+            params.y,
+            params.h,
+            params.thickness,
+            params.z_step_down,
+            params.finger_joint.space,
+            params.finger_joint.finger,
+            params.finger_joint.surrounding_spaces,
+            params.finger_joint.play,
+            params.finger_joint.extra_length,
+            params.finger_joint.dimple_height,
+            params.finger_joint.dimple_length,
+            params.burn,
+            params.feed_rate,
+            params.offset_x,
+            params.offset_y,
+        ];
+        if numbers.iter().any(|v| !v.is_finite()) {
+            return Err("All dimensions must be numbers".to_string());
+        }
+
+        if params.laser_passes < 1 {
+            return Err("Laser passes must be at least 1".to_string());
+        }
+
+        if params.z_step_down < 0.0 {
+            return Err("Z step down must not be negative".to_string());
+        }
+
         if params.x < 20.0 || params.y < 20.0 || params.h < 20.0 {
             return Err("All dimensions must be at least 20mm".to_string());
         }
@@ -231,18 +262,10 @@ impl TabbedBoxMaker {
 
                 let bulge_dir = if y2 < y1 {
                     // tip -> base (Right side)
-                    if positive {
-                        1.0
-                    } else {
-                        -1.0
-                    }
+                    if positive { 1.0 } else { -1.0 }
                 } else {
                     // base -> tip (Left side)
-                    if positive {
-                        -1.0
-                    } else {
-                        1.0
-                    }
+                    if positive { -1.0 } else { 1.0 }
                 };
 
                 path.push(Point::new(x + dimple_h * bulge_dir, mid_y));
@@ -715,10 +738,10 @@ impl TabbedBoxMaker {
         let half_kerf = kerf / 2.0;
         let slot_depth = height / 2.0;
         let slot_width = self.t - kerf; // Slot is a hole, so subtract kerf? No, hole needs to be wider?
-                                        // If we want a hole of size T, we cut T-kerf? No.
-                                        // If we cut a line, the kerf makes the hole wider.
-                                        // So if we want hole T, we draw T-kerf.
-                                        // Yes.
+        // If we want a hole of size T, we cut T-kerf? No.
+        // If we cut a line, the kerf makes the hole wider.
+        // So if we want hole T, we draw T-kerf.
+        // Yes.
 
         // Bottom edge (0)
         if let Some(&c) = edge_chars.first() {

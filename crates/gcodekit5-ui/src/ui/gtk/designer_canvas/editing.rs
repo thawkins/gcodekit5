@@ -20,9 +20,6 @@ fn assign_fresh_group_ids(
     }
 }
 
-/// Offset (mm, in X and Y) applied to each successive paste.
-const PASTE_OFFSET_MM: f64 = 10.0;
-
 impl DesignerCanvas {
     /// Deletes all selected shapes as a single undo step.
     pub fn delete_selected(&self) {
@@ -407,46 +404,21 @@ impl DesignerCanvas {
         self.delete_selected();
     }
 
-    pub fn paste(&self) {
+    /// Pega el portapapeles centrado en las coordenadas world `(target_x, target_y)`.
+    pub fn paste_at(&self, target_x: f64, target_y: f64) {
         let mut state = self.state.borrow_mut();
         if state.clipboard.is_empty() {
             return;
         }
-
-        // Clone clipboard before using it
-        let clipboard = state.clipboard.clone();
-
-        // Deselect all current shapes
-        for obj in state.canvas.shapes_mut() {
-            obj.selected = false;
-        }
-
-        // Create copies offset from the clipboard contents.
-        let mut new_objects = Vec::new();
-        for obj in &clipboard {
-            let mut new_obj = obj.clone();
-            new_obj.id = state.canvas.generate_id();
-            new_obj.shape.translate(PASTE_OFFSET_MM, PASTE_OFFSET_MM);
-            new_obj.selected = true;
-            new_objects.push(new_obj);
-        }
-        assign_fresh_group_ids(&mut state, &mut new_objects);
-
-        // Advance the clipboard by the same offset so the next paste lands one step
-        // further instead of stacking exactly on top of this one.
-        for obj in state.clipboard.iter_mut() {
-            obj.shape.translate(PASTE_OFFSET_MM, PASTE_OFFSET_MM);
-        }
-
-        let cmd = DesignerCommand::PasteShapes(PasteShapes {
-            ids: new_objects.iter().map(|o| o.id).collect(),
-            objects: new_objects.into_iter().map(Some).collect(),
-        });
-        state.push_command(cmd);
-
+        state.paste_at_location(target_x, target_y);
         drop(state);
-
         self.notify_model_changed();
+    }
+
+    /// Pega el portapapeles en la posición actual del cursor del canvas.
+    pub fn paste(&self) {
+        let (x, y) = *self.mouse_pos.borrow();
+        self.paste_at(x, y);
     }
 
     pub fn undo(&self) {

@@ -1,6 +1,6 @@
 //! Spoilboard Grid Tool
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
@@ -11,11 +11,14 @@ use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
 use serde_json;
 use std::cell::Cell;
-use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use super::common::{
+    create_dimension_row, load_preset_json, preset_length, save_preset_json,
+    set_paned_initial_fraction,
+};
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::spoilboard_grid::{SpoilboardGridGenerator, SpoilboardGridParameters};
 use gcodekit5_core::units;
@@ -303,17 +306,26 @@ impl SpoilboardGridTool {
         dialog.set_initial_name(Some("grid_params.json"));
 
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        let w_clone = Rc::new((
-            units::parse_length(&w.width.text(), system).unwrap_or(400.0),
-            units::parse_length(&w.height.text(), system).unwrap_or(300.0),
-            units::parse_length(&w.grid_spacing.text(), system).unwrap_or(10.0),
-            w.feed_rate.text().to_string(),
-            w.laser_power.text().to_string(),
-            w.laser_mode
-                .active_id()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "M4".to_string()),
-        ));
+        let values = (|| -> Result<_, String> {
+            Ok((
+                preset_length("width", &w.width, system)?,
+                preset_length("height", &w.height, system)?,
+                preset_length("grid spacing", &w.grid_spacing, system)?,
+                w.feed_rate.text().to_string(),
+                w.laser_power.text().to_string(),
+                w.laser_mode
+                    .active_id()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "M4".to_string()),
+            ))
+        })();
+        let w_clone = match values {
+            Ok(values) => Rc::new(values),
+            Err(e) => {
+                CamToolsView::show_error_dialog(&t!("Save Error"), &e);
+                return;
+            }
+        };
 
         dialog.pick_save(None::<&gtk4::Window>, move |file| {
             if let Some(path) = file.path() {
@@ -325,10 +337,7 @@ impl SpoilboardGridTool {
                     "laser_power": w_clone.4,
                     "laser_mode": w_clone.5,
                 });
-                let _ = fs::write(
-                    path,
-                    serde_json::to_string_pretty(&json).unwrap_or_default(),
-                );
+                save_preset_json(&path, &json);
             }
         });
     }
@@ -347,33 +356,33 @@ impl SpoilboardGridTool {
         let settings_clone = settings.clone();
 
         dialog.pick_open(None::<&gtk4::Window>, move |file| {
-            if let Some(path) = file.path() {
-                if let Ok(content) = fs::read_to_string(path) {
-                    if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content) {
-                        let system = settings_clone
-                            .persistence
-                            .borrow()
-                            .config()
-                            .ui
-                            .measurement_system;
-                        if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
-                            w_clone.0.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
-                            w_clone.1.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_f64()) {
-                            w_clone.2.set_text(&units::format_length(v as f32, system));
-                        }
-                        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-                            w_clone.3.set_text(v);
-                        }
-                        if let Some(v) = params.get("laser_power").and_then(|v| v.as_str()) {
-                            w_clone.4.set_text(v);
-                        }
-                        if let Some(v) = params.get("laser_mode").and_then(|v| v.as_str()) {
-                            w_clone.5.set_active_id(Some(v));
-                        }
+            if let Some(path) = file.path()
+                && let Some(params) = load_preset_json::<serde_json::Value>(&path)
+            {
+                {
+                    let system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                        w_clone.0.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                        w_clone.1.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("grid_spacing").and_then(|v| v.as_f64()) {
+                        w_clone.2.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                        w_clone.3.set_text(v);
+                    }
+                    if let Some(v) = params.get("laser_power").and_then(|v| v.as_str()) {
+                        w_clone.4.set_text(v);
+                    }
+                    if let Some(v) = params.get("laser_mode").and_then(|v| v.as_str()) {
+                        w_clone.5.set_active_id(Some(v));
                     }
                 }
             }

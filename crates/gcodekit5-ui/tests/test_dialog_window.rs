@@ -10,8 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gcodekit5_ui::ui::gtk::common::dialog_window::DialogWindow;
-use gtk4::prelude::*;
 use gtk4::ResponseType;
+use gtk4::prelude::*;
 
 /// Runs pending main-loop work so signals and redraws are processed.
 fn drain_main_loop() {

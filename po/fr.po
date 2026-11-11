@@ -2,8 +2,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: GCodeKit5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-12 09:36+0700\n"
-"PO-Revision-Date: 2025-12-11 12:00+0000\n"
+"POT-Creation-Date: 2026-11-11 07:12+0700\n"
+"PO-Revision-Date: 2026-11-11 07:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
 "Language: fr_FR\n"
@@ -12,109 +12,103 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-msgid "About"
-msgstr "À propos"
+msgid "Measurement System"
+msgstr "Système de mesure"
 
-msgid "CAM Tools"
-msgstr "Outils FAO"
+msgid "Units for display and input (Metric/mm or Imperial/inch)"
+msgstr "Unités d'affichage et de saisie (métrique/mm ou impérial/pouce)"
 
-msgid "CNC Tools"
-msgstr "Outils CNC"
+msgid "Feed Rate Units"
+msgstr "Unités d'avance"
 
-msgid "Connect"
-msgstr "Connecter"
+msgid "Units for feed rate display and input"
+msgstr "Unités d'affichage et de saisie de l'avance"
 
-msgid "Copy"
-msgstr "Copier"
+msgid "Default Directory"
+msgstr "Dossier par défaut"
 
-msgid "Cut"
-msgstr "Couper"
+msgid "Default directory for file operations"
+msgstr "Dossier par défaut pour les opérations sur les fichiers"
 
-msgid "Designer"
-msgstr "Concepteur"
+msgid "Theme"
+msgstr "Thème"
 
-msgid "Device Config"
-msgstr "Config périphérique"
-
-msgid "Device Manager"
-msgstr "Gestionnaire de périphériques"
-
-msgid "Disconnect"
-msgstr "Déconnecter"
-
-msgid "Documentation"
-msgstr "Documentation"
-
-msgid "Edit"
-msgstr "Édition"
-
-msgid "Emergency stop (Ctrl-X)"
+msgid "Application color theme (Light, Dark, or System default)"
 msgstr ""
+"Thème de couleur de l'application (Clair, Sombre ou par défaut du système)"
 
-msgid "Export G-Code..."
-msgstr "Exporter G-Code..."
+msgid "Language"
+msgstr "Langue"
 
-msgid "Export SVG..."
-msgstr "Exporter SVG..."
+msgid "User interface language (requires restart)"
+msgstr "Langue de l'interface (redémarrage requis)"
 
-msgid "File"
-msgstr "Fichier"
+msgid "Startup Tab"
+msgstr "Onglet de démarrage"
 
-#. Polling is now handled centrally by MachineControlView to avoid race conditions on serial read
-#. Add Editor to Stack
-msgid "G-Code Editor"
-msgstr "Éditeur G-Code"
+msgid "Tab to show when application starts"
+msgstr "Onglet affiché au démarrage de l'application"
 
-msgid "GCode Toolkit for CNC/Laser Machines"
-msgstr "Boîte à outils GCode pour machines CNC/Laser"
+msgid "Show About on Startup"
+msgstr "Afficher « À propos » au démarrage"
 
-msgid "GCodeKit Contributors"
-msgstr "Tim Hawkins avec les contributeurs GCodeKit"
+msgid "Show the About dialog for 15 seconds when the application starts"
+msgstr ""
+"Afficher la boîte « À propos » pendant 15 secondes au démarrage de "
+"l'application"
+
+msgid "Grid Major Line Width (px)"
+msgstr "Épaisseur des lignes principales de la grille (px)"
+
+msgid "Thickness in pixels for coarse grid lines (default: 2)"
+msgstr "Épaisseur en pixels des lignes de grille larges (par défaut : 2)"
+
+msgid "Grid Minor Line Width (px)"
+msgstr "Épaisseur des lignes secondaires de la grille (px)"
+
+msgid "Thickness in pixels for fine grid lines (default: 1)"
+msgstr "Épaisseur en pixels des lignes de grille fines (par défaut : 1)"
+
+msgid "Preserve Comments"
+msgstr "Conserver les commentaires"
+
+msgid "Keep G-code comments during file processing"
+msgstr "Conserver les commentaires G-code lors du traitement du fichier"
+
+msgid "the machine must be idle"
+msgstr "la machine doit être au repos"
+
+msgid "Language saved"
+msgstr "Langue enregistrée"
+
+msgid ""
+"A job is running. The new language will be used the next time GCodeKit5 "
+"starts."
+msgstr ""
+"Un travail est en cours. La nouvelle langue sera utilisée au prochain "
+"démarrage de GCodeKit5."
+
+msgid "Restart to change language?"
+msgstr "Redémarrer pour changer de langue ?"
+
+msgid ""
+"GCodeKit5 must restart to use the new language. The machine connection will "
+"be closed. Restart now?"
+msgstr ""
+"GCodeKit5 doit redémarrer pour utiliser la nouvelle langue. La connexion à "
+"la machine sera fermée. Redémarrer maintenant ?"
 
 msgid "GCodeKit5"
 msgstr "GCodeKit5"
 
-msgid "Help"
-msgstr "Aide"
+msgid "New 2D"
+msgstr "Nouveau 2D"
 
-msgid "Home"
-msgstr "Origine"
-
-msgid "Import"
-msgstr "Importer"
-
-msgid "Machine"
-msgstr "Machine"
-
-msgid "Machine Control"
-msgstr "Contrôle machine"
-
-msgid "Materials"
-msgstr "Matériaux"
-
-msgid "New"
-msgstr "Nouveau"
+msgid "New 3D"
+msgstr "Nouveau 3D"
 
 msgid "Open"
 msgstr "Ouvrir"
-
-msgid "Paste"
-msgstr "Coller"
-
-msgid "Preferences"
-msgstr "Préférences"
-
-msgid "Quit"
-msgstr "Quitter"
-
-msgid "Redo"
-msgstr "Rétablir"
-
-msgid "Reset"
-msgstr "Réinitialiser"
-
-msgid "Run"
-msgstr "Exécuter"
 
 msgid "Save"
 msgstr "Enregistrer"
@@ -122,15 +116,2836 @@ msgstr "Enregistrer"
 msgid "Save As..."
 msgstr "Enregistrer sous..."
 
+msgid "Import"
+msgstr "Importer"
+
+msgid "Import Image..."
+msgstr "Importer une image..."
+
+msgid "Export G-Code..."
+msgstr "Exporter G-Code..."
+
+msgid "Export SVG..."
+msgstr "Exporter SVG..."
+
+msgid "Run"
+msgstr "Exécuter"
+
+msgid "Quit"
+msgstr "Quitter"
+
+msgid "File"
+msgstr "Fichier"
+
 msgid "Undo"
 msgstr "Annuler"
 
-#. 4. Visualizer (Already created)
+msgid "Redo"
+msgstr "Rétablir"
+
+#. Edit - only show items that are actionable
+msgid "Cut"
+msgstr "Couper"
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "Paste"
+msgstr "Coller"
+
+msgid "Preferences"
+msgstr "Préférences"
+
+msgid "Edit"
+msgstr "Édition"
+
+msgid "Connect"
+msgstr "Connecter"
+
+msgid "Disconnect"
+msgstr "Déconnecter"
+
+msgid "Home"
+msgstr "Origine"
+
+msgid "Reset"
+msgstr "Réinitialiser"
+
+msgid "Machine"
+msgstr "Machine"
+
+msgid "Documentation"
+msgstr "Documentation"
+
+msgid "About"
+msgstr "À propos"
+
+#. Título
+msgid "Help"
+msgstr "Aide"
+
+#. ==========================================
+#. AÑADIR PESTAÑAS AL STACK (ORDEN)
+#. ==========================================
+#. 1. Diseñador
+msgid "Designer"
+msgstr "Concepteur"
+
+#. 2. Visualizador
 msgid "Visualizer"
 msgstr "Visualiseur"
 
-#~ msgid "Device Console"
-#~ msgstr "Console du périphérique"
+msgid "Machine Control"
+msgstr "Contrôle machine"
 
-#~ msgid "Device Info"
-#~ msgstr "Info périphérique"
+#. 4. Herramientas CAM
+msgid "CAM Tools"
+msgstr "Outils FAO"
+
+msgid "Device Manager"
+msgstr "Gestionnaire de périphériques"
+
+msgid "Device Config"
+msgstr "Config périphérique"
+
+#. 7. Herramientas CNC
+msgid "CNC Tools"
+msgstr "Outils CNC"
+
+msgid "Materials"
+msgstr "Matériaux"
+
+msgid "CNC Device"
+msgstr "Machine CNC"
+
+msgid "Unknown"
+msgstr "Inconnu"
+
+msgid "No G-code to run"
+msgstr "Aucun G-code à exécuter"
+
+msgid "Generate or open G-code before using Run."
+msgstr "Générez ou ouvrez du G-code avant d'utiliser Exécuter."
+
+msgid "No motion commands found"
+msgstr "Aucune commande de mouvement trouvée"
+
+msgid "The loaded G-code has no G0/G1/G2/G3 movement to preview."
+msgstr ""
+"Le G-code chargé ne contient aucun mouvement G0/G1/G2/G3 à prévisualiser."
+
+msgid "No preview trajectory generated"
+msgstr "Aucune trajectoire d'aperçu générée"
+
+msgid "Run could not build a visible preview path from the current G-code."
+msgstr ""
+"Exécuter n'a pas pu construire de trajectoire d'aperçu visible à partir du G-"
+"code actuel."
+
+msgid "GCode Toolkit for CNC/Laser Machines"
+msgstr "Boîte à outils GCode pour machines CNC/Laser"
+
+msgid ""
+"Tim Hawkins and GCodeKit Contributors: \n"
+" (feveal)"
+msgstr ""
+"Tim Hawkins et les contributeurs de GCodeKit : \n"
+" (feveal)"
+
+msgid "Settings could not be loaded"
+msgstr "Impossible de charger les paramètres"
+
+msgid ""
+"Default settings are in use. The settings file will be backed up before it "
+"is replaced."
+msgstr ""
+"Les paramètres par défaut sont utilisés. Le fichier de paramètres sera "
+"sauvegardé avant d'être remplacé."
+
+msgid "Laser Image Engraver"
+msgstr "Gravure laser d'images"
+
+msgid ""
+"Convert bitmap images to G-code for laser engraving. Supports various "
+"halftoning methods and image transformations."
+msgstr ""
+"Convertit des images bitmap en G-code pour la gravure laser. Prend en charge "
+"plusieurs méthodes de tramage et transformations d'image."
+
+msgid "No image selected"
+msgstr "Aucune image sélectionnée"
+
+#. Widgets
+msgid "Width:"
+msgstr "Largeur :"
+
+#. Groups
+msgid "Image File"
+msgstr "Fichier image"
+
+msgid "Image Path:"
+msgstr "Chemin de l'image :"
+
+msgid "Browse..."
+msgstr "Parcourir..."
+
+msgid "Output Settings"
+msgstr "Paramètres de sortie"
+
+#. Feed Rate
+msgid "Feed Rate:"
+msgstr "Avance :"
+
+#. Travel Rate
+msgid "Travel Rate:"
+msgstr "Vitesse de déplacement :"
+
+msgid "Laser Power"
+msgstr "Puissance laser"
+
+msgid "Min Power (%):"
+msgstr "Puissance min. (%) :"
+
+msgid "Max Power (%):"
+msgstr "Puissance max. (%) :"
+
+msgid "Power Scale (S):"
+msgstr "Échelle de puissance (S) :"
+
+msgid "Scanning"
+msgstr "Balayage"
+
+msgid "Scan Direction:"
+msgstr "Direction de balayage :"
+
+msgid "Pixels per mm:"
+msgstr "Pixels par mm :"
+
+msgid "Line Spacing:"
+msgstr "Interligne :"
+
+#. Bidirectional
+msgid "Bidirectional:"
+msgstr "Bidirectionnel :"
+
+msgid "Image Transformations"
+msgstr "Transformations d'image"
+
+msgid ""
+"Off (default): dark areas get more laser power, so a photo engraves as a "
+"positive. On: engrave the light areas instead (negative)."
+msgstr ""
+"Désactivé (par défaut) : les zones sombres reçoivent plus de puissance "
+"laser, une photo est donc gravée en positif. Activé : grave les zones "
+"claires à la place (négatif)."
+
+#. Invert
+msgid "Invert:"
+msgstr "Inverser :"
+
+msgid "Engrave light areas instead of dark ones"
+msgstr "Graver les zones claires au lieu des zones sombres"
+
+msgid "Mirror X:"
+msgstr "Miroir X :"
+
+msgid "Mirror Y:"
+msgstr "Miroir Y :"
+
+msgid "Rotation:"
+msgstr "Rotation :"
+
+msgid "Halftoning"
+msgstr "Tramage"
+
+msgid "Method:"
+msgstr "Méthode :"
+
+msgid "Dot Size:"
+msgstr "Taille du point :"
+
+msgid "Threshold:"
+msgstr "Seuil :"
+
+msgid "Work Offsets"
+msgstr "Décalages de travail"
+
+msgid "Home Device Before Start"
+msgstr "Prise d'origine avant le démarrage"
+
+msgid ""
+"Runs $H, then engraves from the G54 work zero you set. The engraver never "
+"moves Z."
+msgstr ""
+"Exécute $H, puis grave à partir du zéro pièce G54 défini. Le graveur ne "
+"déplace jamais Z."
+
+msgid "Load"
+msgstr "Charger"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Generate"
+msgstr "Générer"
+
+msgid "Select Image"
+msgstr "Sélectionner une image"
+
+msgid "No Image Selected"
+msgstr "Aucune image sélectionnée"
+
+msgid "Please select an image file first."
+msgstr "Veuillez d'abord sélectionner un fichier image."
+
+msgid "Generating Engraving"
+msgstr "Génération de la gravure"
+
+msgid "Processing image..."
+msgstr "Traitement de l'image..."
+
+msgid "Loading image..."
+msgstr "Chargement de l'image..."
+
+msgid "Generating G-code..."
+msgstr "Génération du G-code..."
+
+msgid "Finalizing..."
+msgstr "Finalisation..."
+
+msgid "Engraving Generation Failed"
+msgstr "Échec de la génération de la gravure"
+
+msgid "Failed to generate engraving"
+msgstr "Impossible de générer la gravure"
+
+msgid "Save Error"
+msgstr "Erreur d'enregistrement"
+
+msgid "Save Parameters"
+msgstr "Enregistrer les paramètres"
+
+msgid "Load Parameters"
+msgstr "Charger les paramètres"
+
+msgid "Load Error"
+msgstr "Erreur de chargement"
+
+msgid "E-STOP"
+msgstr "ARRÊT D'URGENCE"
+
+msgid "Emergency stop (soft reset Ctrl-X)"
+msgstr "Arrêt d'urgence (réinitialisation logicielle Ctrl-X)"
+
+msgid "Emergency stop"
+msgstr "Arrêt d'urgence"
+
+msgid "Jigsaw Puzzle Generator"
+msgstr "Générateur de puzzles"
+
+msgid ""
+"Create custom jigsaw puzzle patterns from images or blank material. Features "
+"Draradech's algorithm for unique pieces."
+msgstr ""
+"Crée des motifs de puzzle personnalisés à partir d'images ou de matériau "
+"vierge. Utilise l'algorithme de Draradech pour des pièces uniques."
+
+msgid "Height:"
+msgstr "Hauteur :"
+
+msgid "Corner Radius:"
+msgstr "Rayon d'angle :"
+
+msgid "Puzzle Dimensions"
+msgstr "Dimensions du puzzle"
+
+msgid "Grid Configuration"
+msgstr "Configuration de la grille"
+
+msgid "Pieces Across:"
+msgstr "Pièces en largeur :"
+
+msgid "Pieces Down:"
+msgstr "Pièces en hauteur :"
+
+msgid "Puzzle Parameters"
+msgstr "Paramètres du puzzle"
+
+msgid "Tab Size (%):"
+msgstr "Taille des tenons (%) :"
+
+msgid "Jitter (%):"
+msgstr "Variation aléatoire (%) :"
+
+msgid "Random Seed:"
+msgstr "Graine aléatoire :"
+
+msgid "Generating Puzzle"
+msgstr "Génération du puzzle"
+
+msgid "Generating puzzle pieces..."
+msgstr "Génération des pièces du puzzle..."
+
+msgid "Cancelled by user"
+msgstr "Annulé par l'utilisateur"
+
+msgid "Puzzle Generation Failed"
+msgstr "Échec de la génération du puzzle"
+
+msgid "Failed to generate puzzle"
+msgstr "Impossible de générer le puzzle"
+
+msgid "Create custom jigsaw puzzle patterns from images"
+msgstr "Créer des motifs de puzzle personnalisés à partir d'images"
+
+msgid "Tabbed Box Maker"
+msgstr "Générateur de boîtes à encoches"
+
+msgid "Generate G-code for laser/CNC cut boxes with finger joints"
+msgstr ""
+"Générer du G-code pour des boîtes à assemblage à entailles découpées au "
+"laser ou CNC"
+
+msgid "Convert raster images to G-code for laser engraving"
+msgstr "Convertir des images matricielles en G-code pour la gravure laser"
+
+msgid "Speeds and Feeds Calculator"
+msgstr "Calculateur de vitesses et d'avances"
+
+msgid "Calculate cutting speeds and feeds for your materials"
+msgstr "Calculer les vitesses de coupe et les avances pour vos matériaux"
+
+msgid "Spoilboard Surfacing"
+msgstr "Surfaçage de la martyre"
+
+msgid "Generate surfacing toolpaths to flatten your spoilboard"
+msgstr "Générer des parcours de surfaçage pour aplanir votre martyre"
+
+msgid "Create Spoilboard Grid"
+msgstr "Créer une grille sur la martyre"
+
+msgid "Generate grid patterns for spoilboard alignment"
+msgstr "Générer des motifs de grille pour l'alignement sur la martyre"
+
+msgid "Gerber to G-Code"
+msgstr "Gerber vers G-code"
+
+msgid "Convert Gerber files to G-Code for PCB milling"
+msgstr ""
+"Convertir des fichiers Gerber en G-code pour le fraisage de circuits imprimés"
+
+msgid "Drill Press"
+msgstr "Perceuse à colonne"
+
+msgid "Emulate a drill press with peck drilling and helical cycles"
+msgstr ""
+"Émuler une perceuse à colonne avec cycles de perçage par débourrage et "
+"hélicoïdaux"
+
+msgid "Probe Tools"
+msgstr "Outils de palpage"
+
+msgid ""
+"Touch probe routines for WCS setup: Z-touch, edge find, corner find, bore/"
+"boss center, tool length"
+msgstr ""
+"Routines de palpage pour le réglage du repère pièce : palpage Z, recherche "
+"d'arête, de coin, centre d'alésage/de bossage, longueur d'outil"
+
+msgid "Select a tool"
+msgstr "Sélectionner un outil"
+
+msgid "Choose a tool from the list to see details."
+msgstr "Choisissez un outil dans la liste pour voir les détails."
+
+msgid ""
+"Configure and run touch probe routines for work coordinate setup. Includes Z-"
+"touch, edge find, corner find, bore/boss center, and tool length measurement."
+msgstr ""
+"Configurer et exécuter des routines de palpage pour le réglage des "
+"coordonnées pièce. Comprend palpage Z, recherche d'arête et de coin, centre "
+"d'alésage/de bossage et mesure de longueur d'outil."
+
+msgid "Device connection required to use Probe Tools"
+msgstr ""
+"Une connexion à la machine est requise pour utiliser les outils de palpage"
+
+msgid "Generate G-code"
+msgstr "Générer le G-code"
+
+msgid "Probe"
+msgstr "Palper"
+
+msgid "Invalid Parameters"
+msgstr "Paramètres invalides"
+
+msgid "Probe Generation Error"
+msgstr "Erreur de génération du palpage"
+
+msgid "Save Probe Preset"
+msgstr "Enregistrer le préréglage de palpage"
+
+msgid "Load Probe Preset"
+msgstr "Charger un préréglage de palpage"
+
+msgid "The machine is not connected."
+msgstr "La machine n'est pas connectée."
+
+msgid "A probe run is still in progress."
+msgstr "Un palpage est encore en cours."
+
+msgid "A job is running."
+msgstr "Un travail est en cours."
+
+msgid "A quick probe from the machine panel is in progress."
+msgstr "Un palpage rapide depuis le panneau machine est en cours."
+
+msgid "The machine must be Idle"
+msgstr "La machine doit être au repos (Idle)"
+
+msgid "Machine control is not available."
+msgstr "Le contrôle machine n'est pas disponible."
+
+msgid "The device console is needed to read probe reports."
+msgstr ""
+"La console du périphérique est nécessaire pour lire les rapports de palpage."
+
+msgid "Cannot Probe"
+msgstr "Palpage impossible"
+
+msgid "The probe program was not started."
+msgstr "Le programme de palpage n'a pas été lancé."
+
+msgid "Probing"
+msgstr "Palpage en cours"
+
+msgid "Probe aborted: the machine was disconnected."
+msgstr "Palpage interrompu : la machine a été déconnectée."
+
+msgid "Controller reported"
+msgstr "Le contrôleur a signalé"
+
+msgid "Probe failed"
+msgstr "Échec du palpage"
+
+msgid ""
+"Clear any alarm ($X); absolute mode (G90) is restored once the machine is "
+"Idle."
+msgstr ""
+"Effacez toute alarme ($X) ; le mode absolu (G90) est rétabli dès que la "
+"machine est au repos."
+
+msgid "Apply to WCS"
+msgstr "Appliquer au repère pièce"
+
+msgid "Run a probe first."
+msgstr "Effectuez d'abord un palpage."
+
+msgid "Cannot Apply"
+msgstr "Impossible d'appliquer"
+
+#. Add active machine name to status bar
+msgid "No device selected"
+msgstr "Aucune machine sélectionnée"
+
+msgid "Calculated Results"
+msgstr "Résultats calculés"
+
+msgid "Spindle Speed (RPM):"
+msgstr "Vitesse de broche (tr/min) :"
+
+msgid "Feed Rate (mm/min):"
+msgstr "Avance (mm/min) :"
+
+msgid "Surface Speed (SFM):"
+msgstr "Vitesse de coupe (SFM) :"
+
+msgid "Chip Load (mm/tooth):"
+msgstr "Avance par dent (mm/dent) :"
+
+msgid "MRR (mm³/min):"
+msgstr "Débit copeaux (mm³/min) :"
+
+msgid "Power (W):"
+msgstr "Puissance (W) :"
+
+msgid "Est. Deflection (mm):"
+msgstr "Flexion estimée (mm) :"
+
+#. Warnings Section
+msgid "Warnings"
+msgstr "Avertissements"
+
+msgid "No warnings"
+msgstr "Aucun avertissement"
+
+msgid "Active Device"
+msgstr "Machine active"
+
+msgid "Device:"
+msgstr "Machine :"
+
+msgid "Loading..."
+msgstr "Chargement..."
+
+msgid "Max RPM:"
+msgstr "Vitesse max. :"
+
+msgid "Spindle Power:"
+msgstr "Puissance de broche :"
+
+msgid "Max Feed Rate:"
+msgstr "Avance max. :"
+
+#. Selection Group
+msgid "Selections"
+msgstr "Sélections"
+
+#. Tool Selection Row
+msgid "Select Tool..."
+msgstr "Sélectionner un outil..."
+
+msgid "No tool selected"
+msgstr "Aucun outil sélectionné"
+
+msgid "Tool:"
+msgstr "Outil :"
+
+#. Material Selection Row
+msgid "Select Material..."
+msgstr "Sélectionner un matériau..."
+
+msgid "No material selected"
+msgstr "Aucun matériau sélectionné"
+
+msgid "Material:"
+msgstr "Matériau :"
+
+#. Operation Group
+msgid "Operation"
+msgstr "Opération"
+
+msgid "Slotting"
+msgstr "Rainurage"
+
+msgid "Pocketing"
+msgstr "Poche"
+
+msgid "Profiling"
+msgstr "Contournage"
+
+msgid "Adaptive / HSM"
+msgstr "Adaptatif / UGV"
+
+msgid "Drilling"
+msgstr "Perçage"
+
+msgid "Plunging"
+msgstr "Plongée"
+
+msgid "Operation Type:"
+msgstr "Type d'opération :"
+
+msgid "Cutting Parameters"
+msgstr "Paramètres de coupe"
+
+msgid "Depth of Cut (mm):"
+msgstr "Profondeur de passe (mm) :"
+
+msgid "0 = Use operation default"
+msgstr "0 = valeur par défaut de l'opération"
+
+msgid "Stepover (mm):"
+msgstr "Pas latéral (mm) :"
+
+msgid "Tool Stick-out (mm):"
+msgstr "Dépassement d'outil (mm) :"
+
+#. Options Group
+msgid "Options"
+msgstr "Options"
+
+#. Coolant - disabled if device doesn't support coolant
+msgid "Coolant Enabled"
+msgstr "Arrosage activé"
+
+msgid "Device does not support coolant"
+msgstr "La machine ne prend pas en charge l'arrosage"
+
+msgid "Coolant:"
+msgstr "Arrosage :"
+
+#. Conservative calculation - default to ON (true)
+msgid "Conservative Calculation"
+msgstr "Calcul prudent"
+
+msgid "Safety Factor:"
+msgstr "Facteur de sécurité :"
+
+msgid "Reduce calculated values by 20%"
+msgstr "Réduire les valeurs calculées de 20 %"
+
+msgid "Calculate"
+msgstr "Calculer"
+
+msgid ""
+"The active device does not have a spindle configured. Please configure a "
+"spindle in the Device Manager."
+msgstr ""
+"La machine active n'a pas de broche configurée. Veuillez configurer une "
+"broche dans le gestionnaire de périphériques."
+
+msgid "No Spindle Configured"
+msgstr "Aucune broche configurée"
+
+msgid "Spindle Configuration Required"
+msgstr "Configuration de broche requise"
+
+msgid "Select Tool"
+msgstr "Sélectionner un outil"
+
+msgid "Select"
+msgstr "Sélectionner"
+
+msgid "Search tools..."
+msgstr "Rechercher des outils..."
+
+msgid "No tools available"
+msgstr "Aucun outil disponible"
+
+msgid "Add tools in the CNC Tools manager"
+msgstr "Ajoutez des outils dans le gestionnaire d'outils CNC"
+
+msgid "Select Material"
+msgstr "Sélectionner un matériau"
+
+msgid "Search materials..."
+msgstr "Rechercher des matériaux..."
+
+msgid "All Categories"
+msgstr "Toutes les catégories"
+
+msgid "Metals"
+msgstr "Métaux"
+
+msgid "Wood"
+msgstr "Bois"
+
+msgid "Plastics"
+msgstr "Plastiques"
+
+msgid "Composites"
+msgstr "Composites"
+
+msgid "No materials available"
+msgstr "Aucun matériau disponible"
+
+msgid "Add materials in the Materials manager"
+msgstr "Ajoutez des matériaux dans le gestionnaire de matériaux"
+
+msgid ""
+"Generate G-code for laser/CNC cut boxes with finger joints based on the "
+"boxes.py algorithm. For more cases involving boxes and other objects, it is "
+"recommended to use the "
+msgstr ""
+"Générer du G-code pour des boîtes à entailles découpées au laser ou CNC, "
+"basé sur l'algorithme boxes.py. Pour d'autres cas avec des boîtes et "
+"d'autres objets, il est recommandé d'utiliser l'extension "
+
+msgid "Boxes"
+msgstr "Boxes"
+
+msgid ""
+". Install the Extension in Inkscape. There, generate the models and save "
+"them as SVG files. Then import the SVG file into the Designer, rearrange the "
+"objects as needed, and generate the G-code to send to the machine."
+msgstr ""
+". Installez l'extension dans Inkscape. Générez-y les modèles et enregistrez-"
+"les en fichiers SVG. Importez ensuite le fichier SVG dans le Concepteur, "
+"réorganisez les objets si nécessaire et générez le G-code à envoyer à la "
+"machine."
+
+msgid "X (Width):"
+msgstr "X (largeur) :"
+
+msgid "Y (Depth):"
+msgstr "Y (profondeur) :"
+
+msgid "H (Height):"
+msgstr "H (hauteur) :"
+
+msgid "Thickness:"
+msgstr "Épaisseur :"
+
+msgid "Burn / Tool Dia:"
+msgstr "Saignée / Ø outil :"
+
+msgid "Play (fit tolerance):"
+msgstr "Jeu (tolérance d'ajustement) :"
+
+msgid "Extra Length:"
+msgstr "Longueur supplémentaire :"
+
+msgid "Full Box"
+msgstr "Boîte complète"
+
+msgid "No Top"
+msgstr "Sans dessus"
+
+msgid "No Bottom"
+msgstr "Sans fond"
+
+msgid "No Sides"
+msgstr "Sans côtés"
+
+msgid "No Front/Back"
+msgstr "Sans avant/arrière"
+
+msgid "No Left/Right"
+msgstr "Sans gauche/droite"
+
+msgid "Walls and Floor"
+msgstr "Parois et fond"
+
+msgid "Walls Only"
+msgstr "Parois seulement"
+
+msgid "Floor Only"
+msgstr "Fond seulement"
+
+msgid "None"
+msgstr "Aucun"
+
+msgid "Z Step Down:"
+msgstr "Pas de descente Z :"
+
+msgid "Offset X:"
+msgstr "Décalage X :"
+
+msgid "Offset Y:"
+msgstr "Décalage Y :"
+
+msgid "Box Dimensions"
+msgstr "Dimensions de la boîte"
+
+msgid "Outside Dims:"
+msgstr "Dimensions extérieures :"
+
+msgid "Box Configuration"
+msgstr "Configuration de la boîte"
+
+msgid "Box Type:"
+msgstr "Type de boîte :"
+
+msgid "Dividers X:"
+msgstr "Séparateurs X :"
+
+msgid "Dividers Y:"
+msgstr "Séparateurs Y :"
+
+msgid "Divider Keying:"
+msgstr "Encastrement des séparateurs :"
+
+msgid "Optimize Layout:"
+msgstr "Optimiser la disposition :"
+
+msgid "Material Settings"
+msgstr "Paramètres du matériau"
+
+msgid "Finger Joint Settings (multiples of thickness)"
+msgstr "Paramètres des entailles (multiples de l'épaisseur)"
+
+msgid "Finger Width:"
+msgstr "Largeur des tenons :"
+
+msgid "Space Width:"
+msgstr "Largeur des espaces :"
+
+msgid "Laser Settings"
+msgstr "Paramètres laser"
+
+#. Passes
+msgid "Passes:"
+msgstr "Passes :"
+
+msgid "Power (S):"
+msgstr "Puissance (S) :"
+
+msgid "Work Origin Offsets"
+msgstr "Décalages de l'origine pièce"
+
+msgid ""
+"Runs $H, then cuts from the G54 work zero you set. Travel/retract moves then "
+"use machine Z-1 (G53), never above the homed position. Off: uses the work "
+"zero you set."
+msgstr ""
+"Exécute $H, puis découpe à partir du zéro pièce G54 défini. Les déplacements "
+"et dégagements utilisent alors Z machine -1 (G53), jamais au-dessus de la "
+"position d'origine. Désactivé : utilise le zéro pièce défini."
+
+msgid "Generate Shapes"
+msgstr "Générer les formes"
+
+msgid "Generating Box"
+msgstr "Génération de la boîte"
+
+msgid "Generating box panels..."
+msgstr "Génération des panneaux de la boîte..."
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "No"
+msgstr "Non"
+
+msgid "Yes"
+msgstr "Oui"
+
+#. `Ok` and any future variant of this non-exhaustive GTK enum.
+msgid "OK"
+msgstr "OK"
+
+#. / Setting categories offered by the category filter (also the filter ids).
+#. /
+#. / Each is marked with `n_!` so it is extracted for translation: the labels
+#. / are translated through a variable (`t!(*category)`), which `xgettext`
+#. / cannot follow.
+msgid "All"
+msgstr "Toutes"
+
+msgid "System"
+msgstr "Système"
+
+msgid "Motion"
+msgstr "Mouvement"
+
+msgid "Steps Per Unit"
+msgstr "Pas par unité"
+
+msgid "Max Rate"
+msgstr "Vitesse max."
+
+msgid "Acceleration"
+msgstr "Accélération"
+
+msgid "Max Travel"
+msgstr "Course max."
+
+msgid "Homing"
+msgstr "Prise d'origine"
+
+msgid "Spindle"
+msgstr "Broche"
+
+msgid "Network"
+msgstr "Réseau"
+
+msgid "Drivers"
+msgstr "Pilotes"
+
+msgid "Tool"
+msgstr "Outil"
+
+msgid "I/O"
+msgstr "E/S"
+
+msgid "Startup"
+msgstr "Démarrage"
+
+msgid "Plasma"
+msgstr "Plasma"
+
+msgid "Encoder"
+msgstr "Codeur"
+
+msgid "Modbus"
+msgstr "Modbus"
+
+msgid "RS485"
+msgstr "RS485"
+
+msgid "Other"
+msgstr "Autre"
+
+msgid "Retrieve"
+msgstr "Récupérer"
+
+msgid "Retrieve Settings from Device ($$)"
+msgstr "Récupérer les paramètres de la machine ($$)"
+
+msgid "Save Settings to File"
+msgstr "Enregistrer les paramètres dans un fichier"
+
+msgid "Load Settings from File"
+msgstr "Charger les paramètres depuis un fichier"
+
+msgid "Restore"
+msgstr "Restaurer"
+
+msgid "Restore Settings to Device"
+msgstr "Restaurer les paramètres sur la machine"
+
+msgid "Filter:"
+msgstr "Filtre :"
+
+msgid "Search settings..."
+msgstr "Rechercher des paramètres..."
+
+msgid "Category:"
+msgstr "Catégorie :"
+
+msgid "ID"
+msgstr "ID"
+
+#. Compact info rows
+msgid "Name"
+msgstr "Nom"
+
+msgid "Value"
+msgstr "Valeur"
+
+msgid "Unit"
+msgstr "Unité"
+
+msgid "Category"
+msgstr "Catégorie"
+
+msgid "Description"
+msgstr "Description"
+
+msgid "Not connected"
+msgstr "Non connecté"
+
+msgid "settings"
+msgstr "paramètres"
+
+msgid "Connected - settings loaded"
+msgstr "Connecté – paramètres chargés"
+
+msgid "Connected - loading settings..."
+msgstr "Connecté – chargement des paramètres..."
+
+msgid "Cannot retrieve settings:"
+msgstr "Impossible de récupérer les paramètres :"
+
+msgid "Retrieving settings from device..."
+msgstr "Récupération des paramètres de la machine..."
+
+msgid "Error sending $$:"
+msgstr "Erreur lors de l'envoi de $$ :"
+
+msgid "Settings retrieved from device:"
+msgstr "Paramètres récupérés de la machine :"
+
+msgid "Not connected - showing defaults"
+msgstr "Non connecté – affichage des valeurs par défaut"
+
+msgid "Edit Setting"
+msgstr "Modifier le paramètre"
+
+msgid "Name:"
+msgstr "Nom :"
+
+msgid "Description:"
+msgstr "Description :"
+
+msgid "Value:"
+msgstr "Valeur :"
+
+msgid "not connected"
+msgstr "non connecté"
+
+msgid "Setting not changed"
+msgstr "Paramètre non modifié"
+
+msgid "Export Settings"
+msgstr "Exporter les paramètres"
+
+msgid "Exported settings to"
+msgstr "Paramètres exportés vers"
+
+msgid "Export failed:"
+msgstr "Échec de l'export :"
+
+msgid "Import Settings"
+msgstr "Importer les paramètres"
+
+msgid "Imported settings from"
+msgstr "Paramètres importés depuis"
+
+msgid "Import failed:"
+msgstr "Échec de l'import :"
+
+msgid "Unsaved changes"
+msgstr "Modifications non enregistrées"
+
+msgid "The current design has unsaved changes. Discard them and continue?"
+msgstr ""
+"Le dessin actuel contient des modifications non enregistrées. Les abandonner "
+"et continuer ?"
+
+msgid "New 2D design created"
+msgstr "Nouveau dessin 2D créé"
+
+msgid "New 3D design created"
+msgstr "Nouveau dessin 3D créé"
+
+msgid "Open Design File"
+msgstr "Ouvrir un fichier de dessin"
+
+msgid "GCodeKit Design Files"
+msgstr "Fichiers de dessin GCodeKit"
+
+msgid "All Files"
+msgstr "Tous les fichiers"
+
+msgid "Loaded:"
+msgstr "Chargé :"
+
+msgid "Open Failed"
+msgstr "Échec de l'ouverture"
+
+msgid "Import SVG File"
+msgstr "Importer un fichier SVG"
+
+msgid "Import DXF File"
+msgstr "Importer un fichier DXF"
+
+msgid "Import STL File (3D Shadow)"
+msgstr "Importer un fichier STL (ombre 3D)"
+
+msgid "Import Design File"
+msgstr "Importer un fichier de dessin"
+
+msgid "SVG Files"
+msgstr "Fichiers SVG"
+
+msgid "DXF Files"
+msgstr "Fichiers DXF"
+
+msgid "STL Files"
+msgstr "Fichiers STL"
+
+msgid "Supported Files"
+msgstr "Fichiers pris en charge"
+
+msgid "Imported:"
+msgstr "Importé :"
+
+msgid "3D depth detected"
+msgstr "Profondeur 3D détectée"
+
+msgid "Object with depth: Switching to CNC 3D mode."
+msgstr "Objet avec profondeur : passage en mode CNC 3D."
+
+msgid "Unsupported 3D solids discarded"
+msgstr "Solides 3D non pris en charge ignorés"
+
+msgid ""
+"This DXF file contains ACIS solid entities (3D solids) that are not "
+"supported and were discarded:"
+msgstr ""
+"Ce fichier DXF contient des entités solides ACIS (solides 3D) non prises en "
+"charge qui ont été ignorées :"
+
+msgid "Invalid numbers replaced"
+msgstr "Nombres invalides remplacés"
+
+msgid ""
+"values in this DXF file were not numbers and were replaced by defaults, so "
+"some geometry may be wrong."
+msgstr ""
+"valeurs de ce fichier DXF n'étaient pas des nombres et ont été remplacées "
+"par des valeurs par défaut ; une partie de la géométrie peut donc être "
+"erronée."
+
+msgid "Error importing file:"
+msgstr "Erreur lors de l'import du fichier :"
+
+msgid "Save Design File"
+msgstr "Enregistrer le fichier de dessin"
+
+msgid "Saved:"
+msgstr "Enregistré :"
+
+msgid "Save Failed"
+msgstr "Échec de l'enregistrement"
+
+msgid "Export G-Code"
+msgstr "Exporter le G-code"
+
+msgid "Export blocked: objects at/above Safe Z"
+msgstr "Export bloqué : objets au niveau ou au-dessus du Z de sécurité"
+
+msgid "Invalid Z positioning"
+msgstr "Positionnement Z invalide"
+
+msgid "One or more objects are positioned at or above the Safe Z height."
+msgstr ""
+"Un ou plusieurs objets sont positionnés au niveau ou au-dessus de la hauteur "
+"Z de sécurité."
+
+msgid "Lower object Z positions before exporting G-code."
+msgstr "Abaissez les positions Z des objets avant d'exporter le G-code."
+
+msgid "Safe Z"
+msgstr "Z de sécurité"
+
+msgid "Objects in conflict"
+msgstr "Objets en conflit"
+
+msgid "highest start Z"
+msgstr "Z de départ le plus haut"
+
+msgid "Out of limits warning"
+msgstr "Avertissement hors limites"
+
+msgid ""
+"The generated G-code contains coordinates outside the machine working area "
+"(Negative values). Review the path before sending it to the machine."
+msgstr ""
+"Le G-code généré contient des coordonnées hors de la zone de travail de la "
+"machine (valeurs négatives). Vérifiez le parcours avant de l'envoyer à la "
+"machine."
+
+msgid "Exported G-Code:"
+msgstr "G-code exporté :"
+
+msgid "Export Failed"
+msgstr "Échec de l'export"
+
+msgid "Export SVG"
+msgstr "Exporter en SVG"
+
+msgid "Nothing to export"
+msgstr "Rien à exporter"
+
+msgid "Exported SVG:"
+msgstr "SVG exporté :"
+
+msgid "Raster image import is only available in 2D mode"
+msgstr "L'import d'images matricielles n'est disponible qu'en mode 2D"
+
+msgid "Inspector"
+msgstr "Inspecteur"
+
+msgid "Hide Properties"
+msgstr "Masquer les propriétés"
+
+msgid "Hide"
+msgstr "Masquer"
+
+msgid "Unhide Properties"
+msgstr "Afficher les propriétés"
+
+msgid "Unhide"
+msgstr "Afficher"
+
+msgid "G-Code generated for image"
+msgstr "G-code généré pour l'image"
+
+msgid "Image Engraving Failed"
+msgstr "Échec de la gravure de l'image"
+
+msgid "Image Load Failed"
+msgstr "Échec du chargement de l'image"
+
+msgid "G-code blocked: objects at/above Safe Z"
+msgstr "G-code bloqué : objets au niveau ou au-dessus du Z de sécurité"
+
+msgid "Lower object Z positions before generating G-code."
+msgstr "Abaissez les positions Z des objets avant de générer le G-code."
+
+msgid "G-Code generated"
+msgstr "G-code généré"
+
+msgid "Untitled"
+msgstr "Sans titre"
+
+#. Grid toggle
+msgid "Show Grid"
+msgstr "Afficher la grille"
+
+msgid "Grid spacing"
+msgstr "Espacement de la grille"
+
+#. Snap controls
+msgid "Snap"
+msgstr "Magnétisme"
+
+msgid "Snap to grid"
+msgstr "Aimanter à la grille"
+
+msgid "Snap threshold"
+msgstr "Seuil de magnétisme"
+
+msgid "View Controls"
+msgstr "Contrôles d'affichage"
+
+msgid "Zoom Out"
+msgstr "Zoom arrière"
+
+msgid "Fit to Content"
+msgstr "Ajuster au contenu"
+
+msgid "Fit to Viewport"
+msgstr "Ajuster à la vue"
+
+msgid "Fit to Device Working Area"
+msgstr "Ajuster à la zone de travail de la machine"
+
+msgid "Toggle Scrollbars"
+msgstr "Afficher/masquer les barres de défilement"
+
+msgid "Keyboard Shortcuts"
+msgstr "Raccourcis clavier"
+
+msgid "Designer shortcuts"
+msgstr "Raccourcis du concepteur"
+
+msgid "Right click for context menu"
+msgstr "Clic droit pour le menu contextuel"
+
+msgid "Zoom In"
+msgstr "Zoom avant"
+
+msgid "No shapes yet"
+msgstr "Aucune forme pour l'instant"
+
+msgid "Use the toolbox on the left to start drawing."
+msgstr "Utilisez la boîte à outils à gauche pour commencer à dessiner."
+
+msgid "Load Design"
+msgstr "Charger un dessin"
+
+msgid "Import SVG"
+msgstr "Importer un SVG"
+
+msgid "Import DXF"
+msgstr "Importer un DXF"
+
+msgid "Import STL"
+msgstr "Importer un STL"
+
+msgid "Import Image"
+msgstr "Importer une image"
+
+msgid "Constraint"
+msgstr "Contrainte"
+
+msgid "Array"
+msgstr "Réseau"
+
+msgid "Create"
+msgstr "Créer"
+
+msgid "Linear"
+msgstr "Linéaire"
+
+msgid "Grid"
+msgstr "Grille"
+
+msgid "Circular"
+msgstr "Circulaire"
+
+msgid "Count"
+msgstr "Nombre"
+
+msgid "Rows"
+msgstr "Rangées"
+
+msgid "Columns"
+msgstr "Colonnes"
+
+msgid "Spacing X"
+msgstr "Espacement X"
+
+msgid "Spacing Y"
+msgstr "Espacement Y"
+
+msgid "Centre X"
+msgstr "Centre X"
+
+msgid "Centre Y"
+msgstr "Centre Y"
+
+msgid "Angle"
+msgstr "Angle"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Group"
+msgstr "Grouper"
+
+msgid "Ungroup"
+msgstr "Dégrouper"
+
+msgid "Union"
+msgstr "Union"
+
+msgid "Diff"
+msgstr "Différence"
+
+msgid "Inter"
+msgstr "Intersection"
+
+msgid "Mirror on X"
+msgstr "Miroir sur X"
+
+msgid "Mirror on Y"
+msgstr "Miroir sur Y"
+
+msgid "Array..."
+msgstr "Réseau..."
+
+msgid "Align ▸"
+msgstr "Aligner ▸"
+
+msgid "Align Left"
+msgstr "Aligner à gauche"
+
+msgid "Align Right"
+msgstr "Aligner à droite"
+
+msgid "Align Top"
+msgstr "Aligner en haut"
+
+msgid "Align Bottom"
+msgstr "Aligner en bas"
+
+msgid "Align Center X"
+msgstr "Centrer en X"
+
+msgid "Align Center Y"
+msgstr "Centrer en Y"
+
+msgid "Add Text"
+msgstr "Ajouter du texte"
+
+msgid "Add"
+msgstr "Ajouter"
+
+msgid "Text"
+msgstr "Texte"
+
+msgid "Enter text"
+msgstr "Saisir le texte"
+
+msgid "Font:"
+msgstr "Police :"
+
+msgid "Size:"
+msgstr "Taille :"
+
+msgid "Bold"
+msgstr "Gras"
+
+msgid "Italic"
+msgstr "Italique"
+
+msgid "Style:"
+msgstr "Style :"
+
+msgid "Image files"
+msgstr "Fichiers image"
+
+msgid "Importing image..."
+msgstr "Import de l'image..."
+
+msgid "Image imported successfully"
+msgstr "Image importée avec succès"
+
+msgid "Import error"
+msgstr "Erreur d'import"
+
+msgid "Click to position shape"
+msgstr "Cliquez pour placer la forme"
+
+msgid "Objects"
+msgstr "Objets"
+
+msgid "Group (Ctrl+G)"
+msgstr "Grouper (Ctrl+G)"
+
+msgid "Ungroup (Ctrl+Shift+G)"
+msgstr "Dégrouper (Ctrl+Maj+G)"
+
+msgid "Move to start"
+msgstr "Placer au début"
+
+msgid "Move up"
+msgstr "Monter"
+
+msgid "Move down"
+msgstr "Descendre"
+
+msgid "Move to end"
+msgstr "Placer à la fin"
+
+msgid "Rect"
+msgstr "Rect"
+
+msgid "Circ"
+msgstr "Cerc"
+
+msgid "Line"
+msgstr "Ligne"
+
+msgid "Ellip"
+msgstr "Ellip"
+
+msgid "Path"
+msgstr "Chemin"
+
+msgid "Tri"
+msgstr "Tri"
+
+msgid "Poly"
+msgstr "Poly"
+
+msgid "Gear"
+msgstr "Engrenage"
+
+msgid "Spro"
+msgstr "Pignon"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Pocket operation"
+msgstr "Opération de poche"
+
+msgid "Profile operation"
+msgstr "Opération de contournage"
+
+msgid "Click to select the whole group"
+msgstr "Cliquez pour sélectionner tout le groupe"
+
+msgid "It cannot be moved"
+msgstr "Impossible de le déplacer"
+
+msgid ""
+"The move would split a group. The members of a group must remain contiguous."
+msgstr ""
+"Le déplacement diviserait un groupe. Les membres d'un groupe doivent rester "
+"contigus."
+
+msgid "Position"
+msgstr "Position"
+
+msgid "X:"
+msgstr "X :"
+
+msgid "Y:"
+msgstr "Y :"
+
+msgid "(-Z:)"
+msgstr "(-Z :)"
+
+msgid "Size"
+msgstr "Taille"
+
+msgid "Lock Aspect:"
+msgstr "Verrouiller les proportions :"
+
+msgid "Angle:"
+msgstr "Angle :"
+
+msgid "Corner"
+msgstr "Coin"
+
+msgid "Radius:"
+msgstr "Rayon :"
+
+msgid "Slot Mode:"
+msgstr "Mode rainure :"
+
+msgid "Text:"
+msgstr "Texte :"
+
+msgid "Content:"
+msgstr "Contenu :"
+
+msgid "Polygon"
+msgstr "Polygone"
+
+msgid "Sides:"
+msgstr "Côtés :"
+
+msgid "Closed:"
+msgstr "Fermé :"
+
+msgid "Module:"
+msgstr "Module :"
+
+msgid "Teeth:"
+msgstr "Dents :"
+
+msgid "Pressure Angle:"
+msgstr "Angle de pression :"
+
+msgid "Sprocket"
+msgstr "Pignon"
+
+msgid "Pitch:"
+msgstr "Pas :"
+
+msgid "Roller Dia:"
+msgstr "Ø rouleau :"
+
+msgid "Timing Pulley"
+msgstr "Poulie crantée"
+
+msgid "Belt Width:"
+msgstr "Largeur de courroie :"
+
+msgid "Hole Radius:"
+msgstr "Rayon du trou :"
+
+msgid "Geometry Operations"
+msgstr "Opérations géométriques"
+
+msgid "Offset:"
+msgstr "Décalage :"
+
+msgid "Chamfer:"
+msgstr "Chanfrein :"
+
+msgid "CAM Properties"
+msgstr "Propriétés FAO"
+
+#. Operation Type
+msgid "Operation:"
+msgstr "Opération :"
+
+msgid "Profile"
+msgstr "Contour"
+
+msgid "Pocket"
+msgstr "Poche"
+
+msgid "Use global values"
+msgstr "Utiliser les valeurs globales"
+
+#. Step Down
+msgid "Step Down:"
+msgstr "Profondeur de passe :"
+
+#. Step In (for pockets)
+msgid "Step In:"
+msgstr "Pas latéral :"
+
+#. Ramp Angle
+msgid "Ramp Angle:"
+msgstr "Angle de rampe :"
+
+#. Pocket Strategy - Solo para Pocket
+msgid "Strategy:"
+msgstr "Stratégie :"
+
+msgid "Raster"
+msgstr "Balayage"
+
+msgid "Offset"
+msgstr "Décalage"
+
+msgid "Adaptive"
+msgstr "Adaptatif"
+
+#. Raster Fill
+msgid "Raster Fill (%):"
+msgstr "Remplissage par balayage (%) :"
+
+msgid "Laser Engraving"
+msgstr "Gravure laser"
+
+#. Min Power
+msgid "Min Power:"
+msgstr "Puissance min. :"
+
+#. Max Power
+msgid "Max Power:"
+msgstr "Puissance max. :"
+
+#. PPI
+msgid "Resolution:"
+msgstr "Résolution :"
+
+#. Scan Direction
+msgid "Scan:"
+msgstr "Balayage :"
+
+msgid "Horizontal"
+msgstr "Horizontal"
+
+msgid "Vertical"
+msgstr "Vertical"
+
+#. Dithering
+msgid "Dithering:"
+msgstr "Tramage :"
+
+msgid "Threshold"
+msgstr "Seuil"
+
+msgid "Floyd-Ste."
+msgstr "Floyd-Ste."
+
+msgid "Atkinson"
+msgstr "Atkinson"
+
+msgid "Bayer"
+msgstr "Bayer"
+
+#. Halftone_threshold
+msgid "Halftone:"
+msgstr "Demi-teinte :"
+
+msgid "Laser Config (Object)"
+msgstr "Configuration laser (objet)"
+
+#. Feed Rate
+msgid "Feed rate:"
+msgstr "Avance :"
+
+msgid "Global"
+msgstr "Global"
+
+#. Power
+msgid "Power:"
+msgstr "Puissance :"
+
+#. Header (kept for internal state, not shown in UI)
+msgid "Properties"
+msgstr "Propriétés"
+
+#. Empty state message
+msgid "Select a shape to edit its properties"
+msgstr "Sélectionnez une forme pour modifier ses propriétés"
+
+msgid "shapes"
+msgstr "formes"
+
+msgid "Rotation angle (degrees). Applied on Enter or when leaving the field."
+msgstr ""
+"Angle de rotation (degrés). Appliqué avec Entrée ou en quittant le champ."
+
+msgid ""
+"Rotate the selection by this angle (degrees). Applied on Enter or when "
+"leaving the field."
+msgstr ""
+"Faire pivoter la sélection de cet angle (degrés). Appliqué avec Entrée ou en "
+"quittant le champ."
+
+msgid "Rectangle"
+msgstr "Rectangle"
+
+msgid "Circle"
+msgstr "Cercle"
+
+msgid "Ellipse"
+msgstr "Ellipse"
+
+msgid "Polyline"
+msgstr "Polyligne"
+
+msgid "Pan"
+msgstr "Panoramique"
+
+msgid "Triangle"
+msgstr "Triangle"
+
+msgid "Select (S)"
+msgstr "Sélection (S)"
+
+msgid "Rectangle (R)"
+msgstr "Rectangle (R)"
+
+msgid "Circle (C)"
+msgstr "Cercle (C)"
+
+msgid "Line (L)"
+msgstr "Ligne (L)"
+
+msgid "Ellipse (E)"
+msgstr "Ellipse (E)"
+
+msgid "Polyline (P)"
+msgstr "Polyligne (P)"
+
+msgid "Text (T)"
+msgstr "Texte (T)"
+
+msgid "Pan (Space)"
+msgstr "Panoramique (Espace)"
+
+msgid ""
+"Click to add points. Enter finishes an open polyline; double-click or right-"
+"click finishes a closed shape. Esc cancels."
+msgstr ""
+"Cliquez pour ajouter des points. Entrée termine une polyligne ouverte ; un "
+"double-clic ou un clic droit termine une forme fermée. Échap annule."
+
+msgid "Active tool:"
+msgstr "Outil actif :"
+
+#. Fast Shapes Section
+msgid "Fast Shapes"
+msgstr "Formes rapides"
+
+msgid "Shape Gallery…"
+msgstr "Galerie de formes…"
+
+#. ===== ADD SELECTOR LASER/CNC =====
+#. 1. Crear el Frame (contenedor con borde y título)
+msgid "Machine Mode"
+msgstr "Mode machine"
+
+#. 3. Crear los botones (CheckButton)
+msgid "Laser 2D"
+msgstr "Laser 2D"
+
+msgid "CNC 3D"
+msgstr "CNC 3D"
+
+#. Tool Settings popup button
+msgid "Tool Settings…"
+msgstr "Paramètres de l'outil…"
+
+msgid "Stock Width"
+msgstr "Largeur du brut"
+
+msgid "Stock material width"
+msgstr "Largeur du matériau brut"
+
+msgid "Stock Height"
+msgstr "Hauteur du brut"
+
+msgid "Stock material height"
+msgstr "Hauteur du matériau brut"
+
+msgid "Stock Thickness"
+msgstr "Épaisseur du brut"
+
+msgid "Stock material thickness"
+msgstr "Épaisseur du matériau brut"
+
+msgid "Safe Z Height"
+msgstr "Hauteur Z de sécurité"
+
+msgid "Safe height above stock for rapid moves"
+msgstr "Hauteur de sécurité au-dessus du brut pour les déplacements rapides"
+
+msgid "Depth per pass"
+msgstr "Profondeur par passe"
+
+msgid "Step Down"
+msgstr "Profondeur de passe"
+
+msgid "Stock Settings…"
+msgstr "Paramètres du brut…"
+
+msgid "Stock Settings"
+msgstr "Paramètres du brut"
+
+msgid "Stock Parameters"
+msgstr "Paramètres du brut"
+
+#. Botones de G-code y Frame
+msgid "Generate G-Code"
+msgstr "Générer le G-code"
+
+msgid "Frame "
+msgstr "Cadre "
+
+msgid "Generate low-power frame to position material"
+msgstr "Générer un cadre à faible puissance pour positionner le matériau"
+
+msgid "Laser Speed"
+msgstr "Vitesse laser"
+
+msgid "Feed Rate"
+msgstr "Avance"
+
+msgid "Spindle Speed"
+msgstr "Vitesse de broche"
+
+msgid "Passes"
+msgstr "Passes"
+
+msgid "Laser Width"
+msgstr "Largeur du laser"
+
+msgid "Tool Dia"
+msgstr "Ø outil"
+
+msgid "Tool Diameter"
+msgstr "Diamètre de l'outil"
+
+msgid "Continuous Z"
+msgstr "Z continu"
+
+msgid "Keep tool at cutting depth between passes when XY start is unchanged"
+msgstr ""
+"Garder l'outil à la profondeur de coupe entre les passes quand le départ XY "
+"ne change pas"
+
+msgid "Tool Settings"
+msgstr "Paramètres de l'outil"
+
+msgid "Tool Parameters"
+msgstr "Paramètres de l'outil"
+
+msgid "Enter G-code command..."
+msgstr "Saisir une commande G-code..."
+
+#. or document-send-symbolic
+msgid "Send Command"
+msgstr "Envoyer la commande"
+
+#. Device Type Section (at the very top)
+msgid "Device Type"
+msgstr "Type de machine"
+
+msgid "CNC"
+msgstr "CNC"
+
+msgid "Spindle-based machining (laser mode off, $32=0)"
+msgstr "Usinage par broche (mode laser désactivé, $32=0)"
+
+msgid "Laser"
+msgstr "Laser"
+
+msgid "Laser cutter/engraver (laser mode on, $32=1)"
+msgstr "Découpeuse/graveuse laser (mode laser activé, $32=1)"
+
+msgid "Other device type ($32 unchanged)"
+msgstr "Autre type de machine ($32 inchangé)"
+
+msgid "Device"
+msgstr "Machine"
+
+msgid "Refresh device info"
+msgstr "Actualiser les infos de la machine"
+
+msgid "Copy device info"
+msgstr "Copier les infos de la machine"
+
+msgid "No device"
+msgstr "Aucune machine"
+
+msgid "Firmware"
+msgstr "Firmware"
+
+msgid "Version"
+msgstr "Version"
+
+msgid "Capabilities"
+msgstr "Capacités"
+
+msgid "Firmware:"
+msgstr "Firmware :"
+
+msgid "Version:"
+msgstr "Version :"
+
+msgid "Enabled ($22=1)"
+msgstr "Activé ($22=1)"
+
+msgid "Disabled ($22=0)"
+msgstr "Désactivé ($22=0)"
+
+msgid "Unknown (settings not loaded)"
+msgstr "Inconnu (paramètres non chargés)"
+
+msgid "Enabled ($32=1)"
+msgstr "Activé ($32=1)"
+
+msgid "Disabled ($32=0)"
+msgstr "Désactivé ($32=0)"
+
+msgid "Variable Spindle"
+msgstr "Broche à vitesse variable"
+
+msgid "PWM spindle control"
+msgstr "Commande de broche PWM"
+
+msgid "Homing Cycle"
+msgstr "Prise d'origine"
+
+msgid "Laser Mode"
+msgstr "Mode laser"
+
+msgid "cannot change $32:"
+msgstr "impossible de modifier $32 :"
+
+msgid "no connection"
+msgstr "pas de connexion"
+
+msgid "Could not set laser mode:"
+msgstr "Impossible de régler le mode laser :"
+
+msgid "Sent"
+msgstr "Envoyé"
+
+msgid "Search..."
+msgstr "Rechercher..."
+
+msgid "Previous Match"
+msgstr "Occurrence précédente"
+
+msgid "Next Match"
+msgstr "Occurrence suivante"
+
+msgid "Replace with ..."
+msgstr "Remplacer par ..."
+
+msgid "Replace"
+msgstr "Remplacer"
+
+msgid "Replace All"
+msgstr "Tout remplacer"
+
+msgid "Calculating..."
+msgstr "Calcul en cours..."
+
+msgid "0 matches"
+msgstr "0 occurrence"
+
+msgid "Open G-Code File"
+msgstr "Ouvrir un fichier G-code"
+
+msgid "Error Reading File"
+msgstr "Erreur de lecture du fichier"
+
+msgid "Could not open"
+msgstr "Impossible d'ouvrir"
+
+msgid "Error Saving File"
+msgstr "Erreur d'enregistrement du fichier"
+
+msgid "Could not save"
+msgstr "Impossible d'enregistrer"
+
+msgid "Save G-Code File"
+msgstr "Enregistrer le fichier G-code"
+
+msgid "Fast Shape Gallery"
+msgstr "Galerie de formes rapides"
+
+msgid "Click on a shape to quickly insert it with default parameters."
+msgstr ""
+"Cliquez sur une forme pour l'insérer rapidement avec les paramètres par "
+"défaut."
+
+msgid "Spur Gear"
+msgstr "Engrenage droit"
+
+msgid "Standard involute spur gear"
+msgstr "Engrenage droit à développante standard"
+
+msgid "Chain sprocket for #40 chain"
+msgstr "Pignon pour chaîne n° 40"
+
+msgid "XL timing belt pulley"
+msgstr "Poulie crantée XL"
+
+msgid "Slot"
+msgstr "Rainure"
+
+msgid "Rectangular slot/cutout"
+msgstr "Rainure/découpe rectangulaire"
+
+msgid "L-Bracket"
+msgstr "Équerre en L"
+
+msgid "L-shaped bracket with holes"
+msgstr "Équerre en L avec trous"
+
+msgid "U-Bracket"
+msgstr "Équerre en U"
+
+msgid "U-shaped channel bracket"
+msgstr "Équerre en U profilée"
+
+msgid "🏠 Index"
+msgstr "🏠 Index"
+
+msgid "🛠️ Preferences"
+msgstr "🛠️ Préférences"
+
+msgid "✏️ Designer"
+msgstr "✏️ Concepteur"
+
+msgid "👁️ Visualizer"
+msgstr "👁️ Visualiseur"
+
+msgid "⚙️ Machine Control"
+msgstr "⚙️ Contrôle machine"
+
+msgid "      •📝 G-code Editor"
+msgstr "      •📝 Éditeur G-code"
+
+msgid "      •💻 Device console"
+msgstr "      •💻 Console du périphérique"
+
+msgid "🧰 CAM Tools"
+msgstr "🧰 Outils FAO"
+
+msgid "      •📦 Tabbed Box Maker"
+msgstr "      •📦 Générateur de boîtes à encoches"
+
+msgid "      •🧩 Jigsaw Puzzle Generator"
+msgstr "      •🧩 Générateur de puzzles"
+
+msgid "      •🖼️ Laser Image Engraver"
+msgstr "      •🖼️ Gravure laser d'images"
+
+msgid "      •🖩 Speed and Feeds Calculator"
+msgstr "      •🖩 Calculateur de vitesses et d'avances"
+
+msgid "      •🔧 Spoilboard Surfacing"
+msgstr "      •🔧 Surfaçage de la martyre"
+
+msgid "      •📏 Create Spoilboard Grid"
+msgstr "      •📏 Créer une grille sur la martyre"
+
+msgid "      •📠 Gerber To G-code"
+msgstr "      •📠 Gerber vers G-code"
+
+msgid "      •🔧 Dirll Press"
+msgstr "      •🔧 Perceuse à colonne"
+
+msgid "🔌 Device Manager"
+msgstr "🔌 Gestionnaire de périphériques"
+
+msgid "⚙️ Device Config"
+msgstr "⚙️ Config périphérique"
+
+msgid "🔨 CNC Tools"
+msgstr "🔨 Outils CNC"
+
+msgid "📦 Materials"
+msgstr "📦 Matériaux"
+
+msgid "GCodeKit5 Help"
+msgstr "Aide de GCodeKit5"
+
+msgid "Back"
+msgstr "Précédent"
+
+msgid "Forward"
+msgstr "Suivant"
+
+msgid "Help (F1)"
+msgstr "Aide (F1)"
+
+msgid "Host:"
+msgstr "Hôte :"
+
+msgid ""
+"The active device profile connects over the network; change it in the Device "
+"Manager to use a serial port."
+msgstr ""
+"Le profil de machine actif se connecte par le réseau ; modifiez-le dans le "
+"gestionnaire de périphériques pour utiliser un port série."
+
+msgid "Baud:"
+msgstr "Bauds :"
+
+msgid "Port: -"
+msgstr "Port : -"
+
+msgid "Error disconnecting"
+msgstr "Erreur lors de la déconnexion"
+
+msgid "State: Disconnected"
+msgstr "État : déconnecté"
+
+#. Port
+msgid "Disconnected"
+msgstr "Déconnecté"
+
+msgid "Connect to enable controls."
+msgstr "Connectez-vous pour activer les commandes."
+
+#, rust-format
+msgid ""
+"Connection rejected: active machine is configured as {} but the device "
+"responded as {}. Change the active machine in the Device Manager."
+msgstr ""
+"Connexion refusée : la machine active est configurée comme {} mais "
+"l'appareil a répondu comme {}. Changez la machine active dans le "
+"gestionnaire de périphériques."
+
+msgid "Connecting…"
+msgstr "Connexion…"
+
+msgid "State: Connecting…"
+msgstr "État : connexion…"
+
+msgid "Port:"
+msgstr "Port :"
+
+msgid "the connection thread failed"
+msgstr "le thread de connexion a échoué"
+
+msgid "Error connecting"
+msgstr "Erreur de connexion"
+
+msgid "State: Connected"
+msgstr "État : connecté"
+
+msgid "Connected"
+msgstr "Connecté"
+
+msgid "Connected to"
+msgstr "Connecté à"
+
+#, rust-format
+msgid ""
+"→ Protocol: {}\n"
+"  sender: {}"
+msgstr ""
+"→ Protocole : {}\n"
+"  émetteur : {}"
+
+msgid "Connection lost (cable disconnected or firmware reset)."
+msgstr "Connexion perdue (câble débranché ou réinitialisation du firmware)."
+
+msgid "✅ Work completed in:"
+msgstr "✅ Travail terminé en :"
+
+msgid "Streaming Completed."
+msgstr "Transmission terminée."
+
+msgid "Probe contact:"
+msgstr "Contact du palpeur :"
+
+msgid ""
+"Probe failed: no contact within the probe distance. Unlock ($X) to continue; "
+"absolute mode (G90) is restored afterwards."
+msgstr ""
+"Échec du palpage : aucun contact dans la distance de palpage. Déverrouillez "
+"($X) pour continuer ; le mode absolu (G90) est ensuite rétabli."
+
+msgid "Probe failed:"
+msgstr "Échec du palpage :"
+
+msgid "Probe rejected by the controller:"
+msgstr "Palpage refusé par le contrôleur :"
+
+msgid "restore absolute mode after failed probe"
+msgstr "rétablir le mode absolu après un palpage échoué"
+
+msgid "Controller error"
+msgstr "Erreur du contrôleur"
+
+msgid "Jog ignored: a job is running."
+msgstr "Jog ignoré : un travail est en cours."
+
+msgid "Jog ignored: invalid jog feed rate."
+msgstr "Jog ignoré : avance de jog invalide."
+
+msgid "Continuous jog"
+msgstr "Jog continu"
+
+msgid "Continuous jog stopped: the controller rejected a move (travel limit?)"
+msgstr ""
+"Jog continu arrêté : le contrôleur a refusé un mouvement (limite de course ?)"
+
+msgid "Jog cancel (0x85)"
+msgstr "Annuler le jog (0x85)"
+
+msgid "no G-code lines to send"
+msgstr "aucune ligne de G-code à envoyer"
+
+msgid "line too long for the controller buffer:"
+msgstr "ligne trop longue pour le tampon du contrôleur :"
+
+msgid "> Starting job:"
+msgstr "> Démarrage du travail :"
+
+msgid "lines"
+msgstr "lignes"
+
+#. / Stops the job: no further line is sent once this returns.
+#. /
+#. / The worker re-checks the flag while holding the communicator lock, so a caller
+#. / that sends a soft reset after this (under the lock) cannot be followed by a line.
+msgid "Stopping..."
+msgstr "Arrêt en cours..."
+
+msgid "Paused"
+msgstr "En pause"
+
+msgid "Resuming"
+msgstr "Reprise"
+
+msgid "connection lost"
+msgstr "connexion perdue"
+
+msgid "send failed:"
+msgstr "échec de l'envoi :"
+
+msgid "receive failed:"
+msgstr "échec de la réception :"
+
+msgid "controller was reset"
+msgstr "le contrôleur a été réinitialisé"
+
+msgid "Baud: 115200"
+msgstr "Bauds : 115200"
+
+msgid "No ports available"
+msgstr "Aucun port disponible"
+
+msgid "Refresh ports"
+msgstr "Actualiser les ports"
+
+msgid "Connection"
+msgstr "Connexion"
+
+msgid "Feed: -"
+msgstr "Avance : -"
+
+msgid "Spindle: -"
+msgstr "Broche : -"
+
+msgid "Buffer: -"
+msgstr "Tampon : -"
+
+msgid "Home machine ($H)"
+msgstr "Prise d'origine ($H)"
+
+msgid "Unlock"
+msgstr "Déverrouiller"
+
+msgid "Unlock from ALARM ($X)"
+msgstr "Déverrouiller l'ALARME ($X)"
+
+msgid "Machine State"
+msgstr "État de la machine"
+
+msgid "Work Coordinates"
+msgstr "Coordonnées pièce"
+
+#. Create limit labels for all axes
+msgid "Machine Limits:"
+msgstr "Limites de la machine :"
+
+msgid "Machine Limits"
+msgstr "Limites de la machine"
+
+msgid "Send"
+msgstr "Envoyer"
+
+msgid "Send G-code from the editor"
+msgstr "Envoyer le G-code de l'éditeur"
+
+msgid "Stop"
+msgstr "Arrêt"
+
+msgid ""
+"Stop job: feed hold, then reset the controller once stopped (keeps position)"
+msgstr ""
+"Arrêter le travail : suspension d'avance, puis réinitialisation du "
+"contrôleur une fois arrêté (conserve la position)"
+
+msgid "Pause"
+msgstr "Pause"
+
+msgid "Pause streaming (!)"
+msgstr "Mettre la transmission en pause (!)"
+
+msgid "Resume"
+msgstr "Reprendre"
+
+msgid "Resume streaming (~)"
+msgstr "Reprendre la transmission (~)"
+
+msgid "Stop holds the feed, then resets; E‑Stop resets the controller at once."
+msgstr ""
+"Arrêt suspend l'avance puis réinitialise ; l'arrêt d'urgence réinitialise le "
+"contrôleur immédiatement."
+
+msgid "Job Control"
+msgstr "Contrôle du travail"
+
+msgid "Current Feed & Spindle"
+msgstr "Avance et broche actuelles"
+
+msgid "Feed:"
+msgstr "Avance :"
+
+msgid "Decrease feed rate by 10%"
+msgstr "Diminuer l'avance de 10 %"
+
+msgid "Decrease feed rate by 1%"
+msgstr "Diminuer l'avance de 1 %"
+
+msgid "Reset feed rate to 100%"
+msgstr "Rétablir l'avance à 100 %"
+
+msgid "Increase feed rate by 1%"
+msgstr "Augmenter l'avance de 1 %"
+
+msgid "Increase feed rate by 10%"
+msgstr "Augmenter l'avance de 10 %"
+
+msgid "Target feed override (%)"
+msgstr "Correction d'avance cible (%)"
+
+msgid "Set the feed override to exactly the target percentage"
+msgstr "Régler la correction d'avance exactement au pourcentage cible"
+
+msgid "Spindle:"
+msgstr "Broche :"
+
+msgid "Decrease spindle speed by 10%"
+msgstr "Diminuer la vitesse de broche de 10 %"
+
+msgid "Decrease spindle speed by 1%"
+msgstr "Diminuer la vitesse de broche de 1 %"
+
+msgid "Reset spindle speed to 100%"
+msgstr "Rétablir la vitesse de broche à 100 %"
+
+msgid "Stop spindle"
+msgstr "Arrêter la broche"
+
+msgid "Increase spindle speed by 1%"
+msgstr "Augmenter la vitesse de broche de 1 %"
+
+msgid "Increase spindle speed by 10%"
+msgstr "Augmenter la vitesse de broche de 10 %"
+
+msgid "Target spindle override (%)"
+msgstr "Correction de broche cible (%)"
+
+msgid "Set the spindle override to exactly the target percentage"
+msgstr "Régler la correction de broche exactement au pourcentage cible"
+
+msgid "Work Coordinates (WPos)"
+msgstr "Coordonnées pièce (WPos)"
+
+msgid "Jog"
+msgstr "Jog"
+
+msgid "Zero All Axes"
+msgstr "Mettre tous les axes à zéro"
+
+msgid "Set active work position to 0 for X/Y/Z"
+msgstr "Mettre la position pièce active à 0 pour X/Y/Z"
+
+msgid "Go to Work Zero"
+msgstr "Aller au zéro pièce"
+
+msgid "Rapid move to work origin (X/Y, or X/Y/Z if Include Z is checked)"
+msgstr ""
+"Déplacement rapide vers l'origine pièce (X/Y, ou X/Y/Z si « Inclure Z » est "
+"coché)"
+
+#. Checkbox for including Z axis in go to work zero
+msgid "Include Z"
+msgstr "Inclure Z"
+
+msgid "When checked, Go to Work Zero will also move to Z0"
+msgstr "Si coché, « Aller au zéro pièce » se déplace aussi à Z0"
+
+#. Quick Probe Z button (Milestone 6)
+msgid "Probe Z"
+msgstr "Palper Z"
+
+msgid "Quick Z-touch probe at current XY position"
+msgstr "Palpage Z rapide à la position XY actuelle"
+
+msgid "Quick edge find in direction"
+msgstr "Recherche d'arête rapide dans la direction"
+
+msgid "Probe X- edge"
+msgstr "Palper l'arête X-"
+
+msgid "Probe X+ edge"
+msgstr "Palper l'arête X+"
+
+msgid "Probe Y- edge"
+msgstr "Palper l'arête Y-"
+
+msgid "Probe Y+ edge"
+msgstr "Palper l'arête Y+"
+
+msgid "Edge:"
+msgstr "Arête :"
+
+msgid "Machine Coordinates (MPos)"
+msgstr "Coordonnées machine (MPos)"
+
+msgid "Continuous"
+msgstr "Continu"
+
+msgid ""
+"Hold a jog button or numpad key to jog continuously; release to stop. Moves "
+"in short increments, so a soft limit stops the jog safely."
+msgstr ""
+"Maintenez un bouton de jog ou une touche du pavé numérique pour un jog "
+"continu ; relâchez pour arrêter. Le déplacement se fait par petits "
+"incréments, donc une limite logicielle arrête le jog en toute sécurité."
+
+msgid "Jog Feed:"
+msgstr "Avance de jog :"
+
+msgid "Keyboard jog: 8/2/4/6 (XY), 9/3 (Z)"
+msgstr "Jog clavier : 8/2/4/6 (XY), 9/3 (Z)"
+
+msgid "Jog Y+"
+msgstr "Jog Y+"
+
+msgid "Jog X-"
+msgstr "Jog X-"
+
+msgid "Jog X+"
+msgstr "Jog X+"
+
+msgid "Jog Y-"
+msgstr "Jog Y-"
+
+msgid "Jog Z+"
+msgstr "Jog Z+"
+
+msgid "Jog Z-"
+msgstr "Jog Z-"
+
+msgid "Editor not available"
+msgstr "Éditeur non disponible"
+
+msgid "G-Code Editor"
+msgstr "Éditeur G-Code"
+
+msgid "Clear editor"
+msgstr "Vider l'éditeur"
+
+msgid "Save G-code"
+msgstr "Enregistrer le G-code"
+
+msgid "Device Console"
+msgstr "Console du périphérique"
+
+msgid "Clear console"
+msgstr "Vider la console"
+
+msgid "Copy last error"
+msgstr "Copier la dernière erreur"
+
+msgid "Device Console not available"
+msgstr "Console du périphérique non disponible"
+
+msgid "Clear the editor?"
+msgstr "Vider l'éditeur ?"
+
+msgid "All G-code in the editor will be removed."
+msgstr "Tout le G-code de l'éditeur sera supprimé."
+
+msgid "Step"
+msgstr "Pas"
+
+msgid "Invalid jog feed; still using"
+msgstr "Avance de jog invalide ; utilisation conservée de"
+
+msgid "Quick Z-touch probe"
+msgstr "Palpage Z rapide"
+
+msgid "Command ignored: a job is running."
+msgstr "Commande ignorée : un travail est en cours."
+
+msgid "Command ignored: the machine is stopping."
+msgstr "Commande ignorée : la machine est en cours d'arrêt."
+
+msgid "not sent"
+msgstr "non envoyé"
+
+msgid "Error sending"
+msgstr "Erreur d'envoi"
+
+msgid "A job is already running."
+msgstr "Un travail est déjà en cours."
+
+msgid "No G-Code to Send"
+msgstr "Aucun G-code à envoyer"
+
+msgid "Please load or type G-Code into the editor first."
+msgstr "Veuillez d'abord charger ou saisir du G-code dans l'éditeur."
+
+msgid "Cannot Send G-Code"
+msgstr "Impossible d'envoyer le G-code"
+
+msgid "The limit is set in Preferences > File Processing > Max Line Length."
+msgstr ""
+"La limite se règle dans Préférences > Traitement des fichiers > Longueur de "
+"ligne max."
+
+msgid "Work coordinate change ignored: a job is running."
+msgstr "Changement de coordonnées pièce ignoré : un travail est en cours."
+
+msgid "Zero all work axes?"
+msgstr "Mettre tous les axes pièce à zéro ?"
+
+msgid ""
+"This sets the active work coordinate system so the current X/Y/Z becomes 0."
+msgstr ""
+"Cela règle le système de coordonnées pièce actif pour que les X/Y/Z actuels "
+"deviennent 0."
+
+msgid "Command not sent:"
+msgstr "Commande non envoyée :"
+
+msgid "A probe is already in progress."
+msgstr "Un palpage est déjà en cours."
+
+msgid "Job Completed"
+msgstr "Travail terminé"
+
+msgid "Job stopped:"
+msgstr "Travail arrêté :"
+
+msgid "stopped by user"
+msgstr "arrêté par l'utilisateur"
+
+msgid "Restoring absolute mode (G90) before the job (a probe failed)."
+msgstr ""
+"Rétablissement du mode absolu (G90) avant le travail (un palpage a échoué)."
+
+msgid "Job not started:"
+msgstr "Travail non démarré :"
+
+msgid "No valid G-Code lines found."
+msgstr "Aucune ligne de G-code valide trouvée."
+
+msgid "Emergency stop (M112)"
+msgstr "Arrêt d'urgence (M112)"
+
+msgid "Emergency stop (Ctrl-X)"
+msgstr "Arrêt d'urgence (Ctrl-X)"
+
+msgid "Set %"
+msgstr "Régler %"
+
+msgid "Buffer:"
+msgstr "Tampon :"
+
+msgid "State:"
+msgstr "État :"
+
+msgid "ALARM: Unlock required."
+msgstr "ALARME : déverrouillage requis."
+
+msgid "Zero"
+msgstr "Zéro"
+
+msgid "Set work axis to zero"
+msgstr "Mettre l'axe pièce à zéro"
+
+msgid "Zoom"
+msgstr "Zoom"
+
+msgid "Center"
+msgstr "Centre"
+
+msgid "Cursor"
+msgstr "Curseur"
+
+msgid "General"
+msgstr "Général"
+
+msgid "Controller"
+msgstr "Contrôleur"
+
+msgid "User Interface"
+msgstr "Interface utilisateur"
+
+msgid "File Processing"
+msgstr "Traitement des fichiers"
+
+msgid "Shortcuts"
+msgstr "Raccourcis"
+
+msgid "Advanced"
+msgstr "Avancé"
+
+msgid "Select Directory"
+msgstr "Sélectionner un dossier"
+
+#. eStop Button
+msgid "eStop"
+msgstr "Arrêt d'urgence"
+
+msgid "Elapsed:"
+msgstr "Écoulé :"
+
+msgid "Remaining:"
+msgstr "Restant :"
+
+msgid "Hide Sidebar"
+msgstr "Masquer le panneau latéral"
+
+msgid "2D"
+msgstr "2D"
+
+msgid "Top-down 2D view"
+msgstr "Vue de dessus 2D"
+
+msgid "3D"
+msgstr "3D"
+
+msgid "Rotatable 3D view"
+msgstr "Vue 3D orientable"
+
+msgid "Show Rapid Moves"
+msgstr "Afficher les déplacements rapides"
+
+msgid "Show Cutting Moves"
+msgstr "Afficher les mouvements de coupe"
+
+msgid "Show Machine Bounds"
+msgstr "Afficher les limites de la machine"
+
+msgid "Show Laser/Spindle"
+msgstr "Afficher le laser/la broche"
+
+msgid "Show Stock Removal"
+msgstr "Afficher l'enlèvement de matière"
+
+msgid "The simulation has a resolution of "
+msgstr "La simulation a une résolution de "
+
+msgid "mm. Cuts smaller than "
+msgstr "mm. Les coupes inférieures à "
+
+msgid ""
+"mm will not be visually displayed, but the G-code will execute correctly."
+msgstr "mm ne seront pas affichées, mais le G-code s'exécutera correctement."
+
+msgid "Width"
+msgstr "Largeur"
+
+msgid "Height"
+msgstr "Hauteur"
+
+msgid "Thickness"
+msgstr "Épaisseur"
+
+msgid "Top"
+msgstr "Dessus"
+
+msgid "Bottom"
+msgstr "Dessous"
+
+msgid ""
+"Which face of the stock the program's work Z0 is set on. Top: material is "
+"-thickness to 0 (most CAM output). Bottom: material is 0 to thickness "
+"(GCodeKit designer output)."
+msgstr ""
+"Face du brut sur laquelle est défini le Z0 pièce du programme. Dessus : le "
+"matériau va de -épaisseur à 0 (la plupart des sorties FAO). Dessous : le "
+"matériau va de 0 à l'épaisseur (sortie du concepteur GCodeKit)."
+
+msgid "Toolpath"
+msgstr "Parcours d'outil"
+
+msgid "Guides"
+msgstr "Repères"
+
+msgid "Stock"
+msgstr "Brut"
+
+msgid "Stock Z0 at:"
+msgstr "Z0 du brut sur :"
+
+msgid "Simulation"
+msgstr "Simulation"
+
+msgid "N/A"
+msgstr "N/D"
+
+msgid "Bounds"
+msgstr "Limites"
+
+msgid "Min S:"
+msgstr "S min. :"
+
+msgid "Max S:"
+msgstr "S max. :"
+
+msgid "Avg S:"
+msgstr "S moy. :"
+
+msgid "3D View"
+msgstr "Vue 3D"
+
+msgid "No G-code loaded"
+msgstr "Aucun G-code chargé"
+
+msgid "Open a file to preview toolpaths."
+msgstr "Ouvrez un fichier pour prévisualiser les parcours d'outil."
+
+msgid "Top View"
+msgstr "Vue de dessus"
+
+msgid "Mouse Controls"
+msgstr "Commandes de la souris"
+
+msgid "* Use mouse to orbit, pan and zoom *"
+msgstr "* Utilisez la souris pour orbiter, déplacer et zoomer *"
+
+msgid "Shift+Left button+Drag: Pan"
+msgstr "Maj+bouton gauche+glisser : déplacer"
+
+msgid "Mouse wheel: Zoom+/-"
+msgstr "Molette : zoom +/-"
+
+msgid "Left Button+Drag: Orbit"
+msgstr "Bouton gauche+glisser : orbite"
+
+msgid "Speed"
+msgstr "Vitesse"
+
+msgid "Slow"
+msgstr "Lente"
+
+msgid "Normal"
+msgstr "Normale"
+
+msgid "Fast"
+msgstr "Rapide"
+
+msgid "Turbo"
+msgstr "Turbo"
+
+msgid "Preview playback speed"
+msgstr "Vitesse de lecture de l'aperçu"
+
+msgid "Play preview"
+msgstr "Lire l'aperçu"
+
+msgid "Pause preview"
+msgstr "Mettre l'aperçu en pause"
+
+msgid "Stop preview"
+msgstr "Arrêter l'aperçu"
+
+#. Sidebar show panel (floating) — matches Device Console UX
+msgid "Show Sidebar"
+msgstr "Afficher le panneau latéral"
+
+msgid "Simulating stock removal…"
+msgstr "Simulation de l'enlèvement de matière…"
+
+msgid "Copy cursor coordinates"
+msgstr "Copier les coordonnées du curseur"
+
+msgid "Stock Simulation"
+msgstr "Simulation du brut"
+
+msgid "to"
+msgstr "à"

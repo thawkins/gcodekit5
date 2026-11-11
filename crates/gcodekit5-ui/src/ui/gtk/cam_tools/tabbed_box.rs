@@ -1,6 +1,6 @@
 //! Tabbed Box Maker Tool
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
@@ -13,8 +13,8 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use super::CamToolsView;
+use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::tabbed_box::{
@@ -269,7 +269,7 @@ impl TabbedBoxMaker {
         let home_row = ActionRow::builder()
             .title(t!("Home Device Before Start"))
             .subtitle(t!(
-                "Runs $H and clears the G54 X/Y offset (Z offset kept). Travel/retract moves then use machine Z-1 (G53), never above the homed position. Off: uses the work zero you set."
+                "Runs $H, then cuts from the G54 work zero you set. Travel/retract moves then use machine Z-1 (G53), never above the homed position. Off: uses the work zero you set."
             ))
             .build();
         home_row.add_suffix(&home_before);
@@ -611,40 +611,43 @@ impl TabbedBoxMaker {
                         return glib::ControlFlow::Break;
                     }
                     // Check for result
-                    if let Ok(result) = result_rx.try_recv() {
-                        progress_window_clone.close();
+                    match result_rx.try_recv() {
+                        Ok(result) => {
+                            progress_window_clone.close();
 
-                        match result {
-                            Ok(shapes) => {
-                                // Add shapes to designer canvas
-                                for shape in shapes {
-                                    designer_view_clone.add_shape(shape);
-                                }
+                            match result {
+                                Ok(shapes) => {
+                                    // Add shapes to designer canvas
+                                    for shape in shapes {
+                                        designer_view_clone.add_shape(shape);
+                                    }
 
-                                // Switch to designer tab
-                                if let Some(parent) = designer_view_clone.widget.parent() {
-                                    if let Ok(stack) = parent.downcast::<gtk4::Stack>() {
+                                    // Switch to designer tab
+                                    if let Some(parent) = designer_view_clone.widget.parent()
+                                        && let Ok(stack) = parent.downcast::<gtk4::Stack>()
+                                    {
                                         stack.set_visible_child_name("designer");
                                     }
                                 }
+                                Err(e) => {
+                                    CamToolsView::show_error_dialog(
+                                        "Shape Generation Failed",
+                                        &format!("Failed to generate box shapes: {}", e),
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                CamToolsView::show_error_dialog(
-                                    "Shape Generation Failed",
-                                    &format!("Failed to generate box shapes: {}", e),
-                                );
+                            glib::ControlFlow::Break
+                        }
+                        _ => {
+                            // Simulate progress
+                            progress += 0.05;
+                            if progress > 0.95 {
+                                progress = 0.95;
                             }
+                            progress_bar_clone.set_fraction(progress);
+                            progress_bar_clone.set_text(Some(&format!("{:.0}%", progress * 100.0)));
+                            glib::ControlFlow::Continue
                         }
-                        glib::ControlFlow::Break
-                    } else {
-                        // Simulate progress
-                        progress += 0.05;
-                        if progress > 0.95 {
-                            progress = 0.95;
-                        }
-                        progress_bar_clone.set_fraction(progress);
-                        progress_bar_clone.set_text(Some(&format!("{:.0}%", progress * 100.0)));
-                        glib::ControlFlow::Continue
                     }
                 });
             } else {

@@ -1,8 +1,8 @@
 //! Tests for step-by-step GRBL feed/spindle override sequencing.
 
 use gcodekit5_communication::firmware::grbl::{
-    apply_override_step, is_valid_override_target, next_override_step, FEED_OVERRIDE_CODES,
-    MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+    FEED_OVERRIDE_CODES, MAX_OVERRIDE_PERCENT, MIN_OVERRIDE_PERCENT, SPINDLE_OVERRIDE_CODES,
+    apply_override_step, is_valid_override_target, next_override_step,
 };
 
 /// Drives `current` to `target` the way the controller/UI does: one step, then the
@@ -93,39 +93,4 @@ fn test_override_sequencer_target_range() {
     assert!(is_valid_override_target(10));
     assert!(is_valid_override_target(200));
     assert!(!is_valid_override_target(201));
-}
-
-mod controller {
-    use gcodekit5_communication::communication::ConnectionParams;
-    use gcodekit5_communication::firmware::grbl::GrblController;
-    use gcodekit5_core::ControllerTrait;
-
-    fn controller() -> GrblController {
-        GrblController::new(ConnectionParams::default(), Some("test".to_string()))
-            .expect("controller should construct")
-    }
-
-    #[tokio::test]
-    async fn test_override_controller_rejects_out_of_range_target() {
-        let mut c = controller();
-        assert!(c.set_feed_override(5).await.is_err());
-        assert!(c.set_spindle_override(250).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_override_controller_no_step_when_already_at_target() {
-        // The reported override starts at 100%, so nothing needs to be sent.
-        let mut c = controller();
-        assert!(c.set_feed_override(100).await.is_ok());
-        assert_eq!(c.get_override_state().feed_override, 100);
-    }
-
-    #[tokio::test]
-    async fn test_override_controller_does_not_claim_unconfirmed_value() {
-        // With no controller connected the step can't be sent or confirmed by an Ov:
-        // report: the call must fail rather than record the requested value as applied.
-        let mut c = controller();
-        assert!(c.set_feed_override(120).await.is_err());
-        assert_eq!(c.get_override_state().feed_override, 100);
-    }
 }

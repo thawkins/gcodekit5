@@ -14,8 +14,11 @@ feature-depth = 1
 # Permitimos paquetes obsoletos de terceros para saltarnos las 3 versiones de ttf-parser
 unmaintained = "none"
 ignore = [
-    "RUSTSEC-2024-0436",
-    "RUSTSEC-2021-0140",
+    # gettext-rs < 0.8: setlocale/TextDomain::init touch the environment
+    # without synchronisation. The app calls setlocale once, on the main
+    # thread, before any other thread starts (gcodekit5-ui i18n::init). The
+    # fix in 0.8 makes these functions `unsafe`, which needs a sanctioned
+    # unsafe block to adopt.
     "RUSTSEC-2026-0244",
 ]
 
@@ -47,10 +50,12 @@ skip = []
 skip-tree = []
 
 [sources]
-unknown-registry = "allow"
-unknown-git = "allow"
-allow-registry = ["https://github.com"]
-allow-git = []
+# Only crates.io, plus the one git dependency the workspace patches in
+# ([patch.crates-io] core2 in Cargo.toml).
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = ["https://github.com/bbqsrc/core2"]
 
 [sources.allow-org]
 github = []

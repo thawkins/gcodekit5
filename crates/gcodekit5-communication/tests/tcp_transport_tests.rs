@@ -127,8 +127,44 @@ fn test_tcp_transport_idle_receive_returns_quickly() {
 #[test]
 fn test_websocket_connect_is_rejected_clearly() {
     let mut comm = SerialCommunicator::new();
-    assert!(comm
-        .connect(&ConnectionParams::websocket("127.0.0.1", 81))
-        .is_err());
+    assert!(
+        comm.connect(&ConnectionParams::websocket("127.0.0.1", 81))
+            .is_err()
+    );
+    assert!(!comm.is_connected());
+}
+
+/// A port whose cable has been pulled: every read and write fails the way
+/// serialport reports a hang-up.
+struct HungUpPort;
+
+impl gcodekit5_communication::communication::serial::SerialPort for HungUpPort {
+    fn write(&mut self, _data: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::ErrorKind::BrokenPipe.into())
+    }
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::ErrorKind::BrokenPipe.into())
+    }
+    fn name(&self) -> String {
+        "hung-up".to_string()
+    }
+    fn close(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_serial_hangup_on_read_disconnects() {
+    // Audit B-01: BrokenPipe (USB unplug) was read as "no data" forever.
+    let mut comm = SerialCommunicator::with_port(Box::new(HungUpPort));
+    assert!(comm.is_connected());
+    assert!(comm.receive().is_err());
+    assert!(!comm.is_connected());
+}
+
+#[test]
+fn test_serial_hangup_on_write_disconnects() {
+    let mut comm = SerialCommunicator::with_port(Box::new(HungUpPort));
+    assert!(comm.send(b"?").is_err());
     assert!(!comm.is_connected());
 }

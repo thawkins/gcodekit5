@@ -16,10 +16,10 @@
 
 use std::collections::VecDeque;
 
-use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_communication::ConnectionDriver;
+use gcodekit5_communication::firmware::grbl::status_parser::MachinePosition;
 use gcodekit5_core::units::{
-    format_feed_rate, get_unit_label, parse_feed_rate, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, get_unit_label, parse_feed_rate,
 };
 
 /// Usable size of GRBL's serial RX buffer in bytes (the buffer is 128 bytes; one slot is
@@ -232,14 +232,17 @@ pub fn classify_response(line: &str) -> GrblResponseLine {
 ///
 /// # Returns
 /// `Some(true)` for a successful probe, `Some(false)` for a failed one, `None` if the
-/// line is not a probe report.
+/// line is not a probe report or its success flag is not an explicit `0` or `1`.
 pub fn parse_probe_report(line: &str) -> Option<bool> {
+    // The shared parser treats a missing flag as success; a quick probe must
+    // only complete on an explicit `:1`.
     let inner = line.trim().strip_prefix("[PRB:")?.strip_suffix(']')?;
-    match inner.rsplit(':').next()?.trim() {
-        "1" => Some(true),
-        "0" => Some(false),
-        _ => None,
+    let (_, flag) = inner.rsplit_once(':')?;
+    if !matches!(flag.trim(), "0" | "1") {
+        return None;
     }
+    gcodekit5_communication::firmware::grbl::status_parser::parse_probe_report(line)
+        .map(|report| report.success)
 }
 
 /// Returns how many axes a status report's position carries (3 to 6).
@@ -297,6 +300,32 @@ pub fn jog_step_presets(units: MeasurementSystem) -> Vec<JogStepPreset> {
 ///
 /// # Returns
 /// The closest preset's index, or `None` if `presets` is empty.
+/// The jog step choices for `units` with `step_mm` selectable exactly: the
+/// presets, plus a custom entry when `step_mm` is not one of them.
+///
+/// # Returns
+/// The choices and the index of the one equal to `step_mm`.
+pub fn jog_step_choices(units: MeasurementSystem, step_mm: f32) -> (Vec<JogStepPreset>, usize) {
+    let mut presets = jog_step_presets(units);
+    if let Some(i) = presets
+        .iter()
+        .position(|p| (p.mm - step_mm).abs() <= p.mm * 1e-3)
+    {
+        return (presets, i);
+    }
+    let display = match units {
+        MeasurementSystem::Metric => step_mm,
+        MeasurementSystem::Imperial => step_mm / MM_PER_INCH,
+    };
+    let custom = JogStepPreset {
+        mm: step_mm,
+        label: format!("{} {}", display, get_unit_label(units)),
+    };
+    let at = presets.partition_point(|p| p.mm < step_mm);
+    presets.insert(at, custom);
+    (presets, at)
+}
+
 pub fn nearest_jog_step_preset(presets: &[JogStepPreset], step_mm: f32) -> Option<usize> {
     let target = if step_mm.is_finite() && step_mm > 0.0 {
         step_mm.ln()
@@ -383,4 +412,77 @@ pub fn network_driver_for(connection_type: &str) -> Option<ConnectionDriver> {
     } else {
         None
     }
+}
+
+/// Prepares a program for streaming according to Preferences > File
+/// Processing: removes comments (`(...)` and `;...`) unless
+/// `preserve_comments` is set, drops lines left empty, and rejects a line
+/// longer than `max_line_length` characters, which the controller would
+/// refuse (GRBL's line buffer is 80 characters, grblHAL's 256).
+///
+/// # Returns
+/// The program to send, or an error naming the first line that is too long.
+pub fn prepare_program(
+    content: &str,
+    preserve_comments: bool,
+    max_line_length: usize,
+) -> Result<String, String> {
+    let mut out = String::with_capacity(content.len());
+    for (index, raw) in content.lines().enumerate() {
+        let line = if preserve_comments {
+            raw.trim().to_string()
+        } else {
+            strip_gcode_comments(raw)
+        };
+        if line.is_empty() {
+            continue;
+        }
+        let length = line.chars().count();
+        if max_line_length > 0 && length > max_line_length {
+            return Err(format!(
+                "line {} has {length} characters; the maximum is {max_line_length}",
+                index + 1
+            ));
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// Removes `( ... )` and `; ...` comments from one G-code line and trims it.
+fn strip_gcode_comments(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut depth = 0usize;
+    for c in line.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            // A `;` inside parentheses is part of that comment, not the start
+            // of an end-of-line comment.
+            ';' if depth == 0 => break,
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
+/// The `$J=` jog for a rotary axis: `delta` degrees at `feed_mm_per_min`.
+/// `G21` is stated because the feed is stored in mm/min; a program that left
+/// the controller in `G20` would otherwise read it as inches per minute.
+pub fn rotary_jog_command(axis: char, delta: f32, feed_mm_per_min: f32) -> String {
+    format!("$J=G21 G91 {axis}{delta} F{feed_mm_per_min}\n")
+}
+
+/// The steps-per-degree value to send for Preferences text `value`, or
+/// `None` when it is not a finite number. Values below 1 become 1, as saving
+/// Preferences stores them, so the controller and the config agree.
+pub fn steps_per_degree_to_send(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite())
+        .map(|v| v.max(1.0))
 }

@@ -139,7 +139,7 @@ fn test_line_render_and_hit_test_use_endpoints() {
 
 #[test]
 fn test_gcode_no_duplicate_line_numbers_and_g01_after_arc() {
-    let gen = ToolpathToGcode::with_line_numbers(Units::MM, 5.0, true);
+    let generator = ToolpathToGcode::with_line_numbers(Units::MM, 5.0, true);
     let mut tp = Toolpath::new(3.0, -1.0);
     tp.add_segment(ToolpathSegment::new(
         ToolpathSegmentType::RapidMove,
@@ -163,7 +163,7 @@ fn test_gcode_no_duplicate_line_numbers_and_g01_after_arc() {
         500.0,
         1000,
     ));
-    let body = gen.generate_body(&tp, 10);
+    let body = generator.generate_body(&tp, 10);
     for line in body.lines() {
         assert_eq!(
             line.matches('N').count(),
@@ -184,10 +184,11 @@ fn test_gcode_no_duplicate_line_numbers_and_g01_after_arc() {
 }
 
 fn path_contour_has_arc(path: &DesignPath) -> bool {
-    let mut gen = ToolpathGenerator::new();
-    gen.set_feed_rate(100.0);
-    gen.set_cut_depth(1.0);
-    gen.generate_path_contour(path, 1.0)
+    let mut generator = ToolpathGenerator::new();
+    generator.set_feed_rate(100.0);
+    generator.set_cut_depth(1.0);
+    generator
+        .generate_path_contour(path, 1.0)
         .iter()
         .flat_map(|tp| tp.segments.iter())
         .any(|s| {
@@ -384,10 +385,10 @@ fn test_path_pocket_does_not_join_separate_contours() {
     }
     let path = DesignPath::from_lyon_path(&b.build());
 
-    let mut gen = ToolpathGenerator::new();
-    gen.set_feed_rate(100.0);
-    gen.set_cut_depth(1.0);
-    let toolpaths = gen.generate_path_pocket(&path, 1.0, 1.0, 0.0);
+    let mut generator = ToolpathGenerator::new();
+    generator.set_feed_rate(100.0);
+    generator.set_cut_depth(1.0);
+    let toolpaths = generator.generate_path_pocket(&path, 1.0, 1.0, 0.0);
 
     let cuts: Vec<_> = toolpaths
         .iter()
@@ -405,4 +406,241 @@ fn test_path_pocket_does_not_join_separate_contours() {
             s.end
         );
     }
+}
+
+#[test]
+fn test_slice_through_a_vertex_gives_one_segment() {
+    // Audit C-06: a vertex on the plane was found twice and the triangle
+    // was dropped from the slice.
+    use gcodekit5_designer::model3d::Triangle3D;
+    use nalgebra::Point3;
+    let tri = Triangle3D::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(10.0, 0.0, 1.0),
+        Point3::new(0.0, 10.0, -1.0),
+    );
+    assert_eq!(tri.intersect_plane_z(0.0).len(), 2);
+    let flat = Triangle3D::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
+    );
+    assert!(
+        flat.normal.iter().all(|v| v.is_finite()),
+        "{:?}",
+        flat.normal
+    );
+}
+
+/// A flat `n x n` grid of unit squares (two triangles each), facing up.
+fn grid_mesh(n: usize) -> gcodekit5_designer::model3d::Mesh3D {
+    use gcodekit5_designer::model3d::{Mesh3D, Triangle3D};
+    use nalgebra::Point3;
+    let mut tris = Vec::new();
+    for y in 0..n {
+        for x in 0..n {
+            let (x0, y0, x1, y1) = (x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
+            tris.push(Triangle3D::new(
+                Point3::new(x0, y0, 0.0),
+                Point3::new(x1, y0, 0.0),
+                Point3::new(x1, y1, 0.0),
+            ));
+            tris.push(Triangle3D::new(
+                Point3::new(x0, y0, 0.0),
+                Point3::new(x1, y1, 0.0),
+                Point3::new(x0, y1, 0.0),
+            ));
+        }
+    }
+    Mesh3D::new(tris)
+}
+
+#[test]
+fn test_stl_shadow_is_the_outline_and_fast() {
+    // Audit C-05: every triangle edge was chained (2500 shapes for a 50x50
+    // grid) with an O(n^2) scan (26 s for 20 000 triangles).
+    let start = std::time::Instant::now();
+    let shapes = grid_mesh(100).project_shadow_z().expect("shadow");
+    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(shapes.len(), 1, "one outline expected");
+    let (x0, y0, x1, y1) = shapes[0].bounds();
+    assert_eq!((x0, y0, x1, y1), (0.0, 0.0, 100.0, 100.0));
+}
+
+#[test]
+fn test_dxf_malformed_numbers_are_reported() {
+    // Audit C-08: a bad value silently became 0.
+    let dxf = "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n1.0\n20\nabc\n11\n5.0\n21\nNaN\n0\nENDSEC\n0\nEOF\n";
+    let design = DxfImporter::new(1.0, 0.0, 0.0)
+        .import_string(dxf)
+        .expect("import");
+    assert_eq!(design.replaced_numbers, 2);
+    // #90 review: they are not reported as discarded solids.
+    assert!(design.unsupported_entities.is_empty());
+}
+
+#[test]
+fn test_dxf_malformed_bulge_is_reported_and_straight() {
+    // #90 review: bulges bypassed the bad-number counter.
+    for bulge in ["abc", "NaN", "inf"] {
+        let dxf = format!(
+            "0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\n0\n90\n2\n70\n0\n10\n0.0\n20\n0.0\n42\n{bulge}\n10\n10.0\n20\n0.0\n0\nENDSEC\n0\nEOF\n"
+        );
+        let design = DxfImporter::new(1.0, 0.0, 0.0)
+            .import_string(&dxf)
+            .expect("import");
+        assert_eq!(design.replaced_numbers, 1, "{bulge}");
+        for shape in &design.shapes {
+            let (x0, y0, x1, y1) = shape.bounds();
+            assert!([x0, y0, x1, y1].iter().all(|v| v.is_finite()), "{bulge}");
+        }
+    }
+}
+
+/// A closed box from `(x0, y0, z0)` to `(x1, y1, z1)` with outward normals.
+fn box_triangles(
+    (x0, y0, z0): (f32, f32, f32),
+    (x1, y1, z1): (f32, f32, f32),
+) -> Vec<gcodekit5_designer::model3d::Triangle3D> {
+    use gcodekit5_designer::model3d::Triangle3D;
+    use nalgebra::Point3;
+    let p = Point3::new;
+    let quad = |a, b, c, d| [Triangle3D::new(a, b, c), Triangle3D::new(a, c, d)];
+    [
+        quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y1, z1), p(x0, y1, z1)), // top
+        quad(p(x0, y0, z0), p(x0, y1, z0), p(x1, y1, z0), p(x1, y0, z0)), // bottom
+        quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y0, z1), p(x0, y0, z1)), // front
+        quad(p(x1, y1, z0), p(x0, y1, z0), p(x0, y1, z1), p(x1, y1, z1)), // back
+        quad(p(x0, y1, z0), p(x0, y0, z0), p(x0, y0, z1), p(x0, y1, z1)), // left
+        quad(p(x1, y0, z0), p(x1, y1, z0), p(x1, y1, z1), p(x1, y0, z1)), // right
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+#[test]
+fn test_stl_shadow_of_stacked_parts_is_kept() {
+    // #90 review: identical footprints at two heights cancelled each other.
+    use gcodekit5_designer::model3d::Mesh3D;
+    let mut tris = box_triangles((0.0, 0.0, 0.0), (10.0, 10.0, 1.0));
+    tris.extend(box_triangles((0.0, 0.0, 2.0), (10.0, 10.0, 3.0)));
+    let shapes = Mesh3D::new(tris).project_shadow_z().expect("shadow");
+    assert_eq!(shapes.len(), 1);
+    assert_eq!(shapes[0].bounds(), (0.0, 0.0, 10.0, 10.0));
+}
+
+#[test]
+fn test_stl_shadow_of_overlapping_parts_is_their_union() {
+    // #90 review: overlapping projections kept internal contours.
+    use gcodekit5_designer::model::Shape;
+    use gcodekit5_designer::model3d::Mesh3D;
+    let mut tris = box_triangles((0.0, 0.0, 0.0), (10.0, 10.0, 1.0));
+    tris.extend(box_triangles((5.0, 0.0, 2.0), (15.0, 10.0, 3.0)));
+    let shapes = Mesh3D::new(tris).project_shadow_z().expect("shadow");
+    assert_eq!(shapes.len(), 1);
+    let (x0, y0, x1, y1) = shapes[0].bounds();
+    assert!((x0, y0) == (0.0, 0.0) && (x1 - 15.0).abs() < 1e-9 && (y1 - 10.0).abs() < 1e-9);
+    let Shape::Path(path) = &shapes[0] else {
+        panic!("path expected")
+    };
+    let polygons: Vec<_> = path.sketch.to_multipolygon().0;
+    assert_eq!(polygons.len(), 1, "{polygons:?}");
+    assert!(polygons[0].interiors().is_empty(), "internal contour kept");
+}
+
+#[test]
+fn test_mesh_transform_keeps_degenerate_normal_finite() {
+    // #90 review: transform re-normalised a zero normal into NaN.
+    use gcodekit5_designer::model3d::{Mesh3D, Triangle3D};
+    use nalgebra::{Matrix4, Point3, Vector3};
+    let flat = Triangle3D::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
+    );
+    let mut mesh = Mesh3D::new(vec![flat]);
+    mesh.transform(&Matrix4::new_translation(&Vector3::new(1.0, 2.0, 3.0)));
+    mesh.center();
+    assert!(mesh.triangles[0].normal.iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn test_contour_endpoints_rounding_into_neighbour_cells_still_join() {
+    // #90 review: 1.0000004 and 1.0000006 round into different 1e-6 cells.
+    use gcodekit5_designer::model::Point;
+    use gcodekit5_designer::model3d::build_contours_from_segments;
+    let segments = [
+        (Point::new(0.0, 0.0), Point::new(1.0000004, 0.0)),
+        (Point::new(1.0000006, 0.0), Point::new(2.0, 0.0)),
+    ];
+    let contours = build_contours_from_segments(&segments).expect("contours");
+    assert_eq!(contours.len(), 1);
+}
+
+/// Distinct laser power values (`S` words) in a program.
+fn power_levels(gcode: &str) -> std::collections::BTreeSet<u32> {
+    gcode
+        .split_whitespace()
+        .filter_map(|w| w.strip_prefix('S'))
+        .filter_map(|v| v.parse().ok())
+        .collect()
+}
+
+#[test]
+fn test_halftone_makes_an_on_off_engraving() {
+    // Owner decision: wire up dithering/halftone. A grey ramp engraves with
+    // many power levels without halftoning and only full/zero power with it.
+    use gcodekit5_designer::engraving::{EngravingParams, HalftoneMethod, ImageEngraver};
+    let ramp = image::GrayImage::from_fn(64, 8, |x, _| image::Luma([(x * 4) as u8]));
+    let engrave = |halftone| {
+        let params = EngravingParams {
+            width_mm: 16.0,
+            halftone,
+            ..EngravingParams::default()
+        };
+        ImageEngraver::from_image(image::DynamicImage::ImageLuma8(ramp.clone()), params)
+            .expect("engraver")
+            .generate_gcode()
+            .expect("gcode")
+    };
+    assert!(power_levels(&engrave(HalftoneMethod::None)).len() > 4);
+    for method in [
+        HalftoneMethod::Threshold,
+        HalftoneMethod::Bayer4x4,
+        HalftoneMethod::FloydSteinberg,
+        HalftoneMethod::Atkinson,
+    ] {
+        let levels = power_levels(&engrave(method));
+        assert!(levels.len() <= 2, "{method:?}: {levels:?}");
+    }
+    assert_eq!(
+        HalftoneMethod::from_name("floyd"),
+        HalftoneMethod::FloydSteinberg
+    );
+    assert_eq!(HalftoneMethod::from_name("unknown"), HalftoneMethod::None);
+}
+
+#[test]
+fn test_halftone_off_pixels_get_zero_power_with_min_power_set() {
+    // PR #96 review: with Min Power above zero, halftoned off pixels were
+    // still burned at Min Power, so the laser never switched off between dots.
+    use gcodekit5_designer::engraving::{EngravingParams, HalftoneMethod, ImageEngraver};
+    let ramp = image::GrayImage::from_fn(64, 8, |x, _| image::Luma([(x * 4) as u8]));
+    let params = EngravingParams {
+        width_mm: 16.0,
+        min_power: 10.0,
+        max_power: 50.0,
+        halftone: HalftoneMethod::Threshold,
+        ..EngravingParams::default()
+    };
+    let gcode = ImageEngraver::from_image(image::DynamicImage::ImageLuma8(ramp), params)
+        .expect("engraver")
+        .generate_gcode()
+        .expect("gcode");
+    let levels = power_levels(&gcode);
+    assert!(
+        levels.iter().all(|&s| s == 0 || s == 500),
+        "halftoned power must be off or Max Power: {levels:?}"
+    );
 }

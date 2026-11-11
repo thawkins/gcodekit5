@@ -16,8 +16,20 @@ pub struct MaterialsManagerBackend {
 }
 
 impl MaterialsManagerBackend {
+    /// Creates the backend with the standard library plus the custom materials
+    /// saved in the user's configuration directory (`gcodekit5/custom_materials.json`).
     pub fn new() -> Self {
-        let storage_path = Self::get_storage_path();
+        Self::with_storage_path(Self::get_storage_path())
+    }
+
+    /// Creates the backend with custom materials loaded from, and saved to,
+    /// `storage_path` instead of the user's configuration directory.
+    ///
+    /// Tests use this so they never read or overwrite the user's library.
+    ///
+    /// # Arguments
+    /// * `storage_path` - the JSON file holding the custom materials
+    pub fn with_storage_path(storage_path: PathBuf) -> Self {
         let mut library = gcodekit5_core::data::materials::init_standard_library();
 
         // Load custom materials from disk if they exist
@@ -63,14 +75,6 @@ impl MaterialsManagerBackend {
         Ok(())
     }
 
-    pub fn get_library(&self) -> &MaterialLibrary {
-        &self.library
-    }
-
-    pub fn get_library_mut(&mut self) -> &mut MaterialLibrary {
-        &mut self.library
-    }
-
     pub fn add_material(&mut self, material: Material) {
         self.library.add_material(material);
         // Save custom materials to disk
@@ -98,10 +102,6 @@ impl MaterialsManagerBackend {
         } else {
             self.library.search_by_name(query)
         }
-    }
-
-    pub fn filter_by_category(&self, category: MaterialCategory) -> Vec<&Material> {
-        self.library.get_materials_by_category(category)
     }
 
     pub fn get_all_materials(&self) -> Vec<&Material> {
@@ -241,113 +241,5 @@ pub fn string_to_category(s: &str) -> Option<MaterialCategory> {
         "Composite" => Some(MaterialCategory::Composite),
         "Stone and Ceramic" => Some(MaterialCategory::StoneAndCeramic),
         _ => None,
-    }
-}
-
-pub fn string_to_chip_type(s: &str) -> ChipType {
-    match s {
-        "Continuous" => ChipType::Continuous,
-        "Segmented" => ChipType::Segmented,
-        "Granular" => ChipType::Granular,
-        "Small" => ChipType::Small,
-        _ => ChipType::Continuous,
-    }
-}
-
-pub fn string_to_heat_sensitivity(s: &str) -> HeatSensitivity {
-    match s {
-        "Low" => HeatSensitivity::Low,
-        "Moderate" => HeatSensitivity::Moderate,
-        "High" => HeatSensitivity::High,
-        _ => HeatSensitivity::Low,
-    }
-}
-
-pub fn string_to_abrasiveness(s: &str) -> Abrasiveness {
-    match s {
-        "Low" => Abrasiveness::Low,
-        "Moderate" => Abrasiveness::Moderate,
-        "High" => Abrasiveness::High,
-        _ => Abrasiveness::Low,
-    }
-}
-
-pub fn string_to_surface_finish(s: &str) -> SurfaceFinishability {
-    match s {
-        "Excellent" => SurfaceFinishability::Excellent,
-        "Good" => SurfaceFinishability::Good,
-        "Fair" => SurfaceFinishability::Fair,
-        "Rough" => SurfaceFinishability::Rough,
-        _ => SurfaceFinishability::Good,
-    }
-}
-
-pub fn string_to_hazard_level(s: &str) -> HazardLevel {
-    match s {
-        "None" => HazardLevel::None,
-        "Minimal" => HazardLevel::Minimal,
-        "Moderate" => HazardLevel::Moderate,
-        "High" => HazardLevel::High,
-        _ => HazardLevel::None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_backend_creation() {
-        let backend = MaterialsManagerBackend::new();
-        assert!(!backend.get_all_materials().is_empty());
-    }
-
-    #[test]
-    fn test_category_conversion() {
-        assert_eq!(string_to_category("Wood"), Some(MaterialCategory::Wood));
-        assert_eq!(
-            string_to_category("Non-Ferrous Metal"),
-            Some(MaterialCategory::NonFerrousMetal)
-        );
-    }
-
-    #[test]
-    fn test_search_materials() {
-        let backend = MaterialsManagerBackend::new();
-        let results = backend.search_materials("oak");
-        assert!(!results.is_empty());
-    }
-
-    #[test]
-    fn test_persistence() {
-        // Create a test material
-        let test_material = Material::new(
-            MaterialId("test_persist".to_string()),
-            "Test Persist Material".to_string(),
-            MaterialCategory::Wood,
-            "Test".to_string(),
-        );
-
-        // Add and save
-        {
-            let mut backend = MaterialsManagerBackend::new();
-            let mut material = test_material.clone();
-            material.custom = true;
-            backend.add_material(material);
-        }
-
-        // Create new backend and verify material was loaded
-        {
-            let backend = MaterialsManagerBackend::new();
-            let loaded = backend.get_material(&MaterialId("test_persist".to_string()));
-            assert!(loaded.is_some());
-            assert_eq!(loaded.expect("load failed").name, "Test Persist Material");
-        }
-
-        // Cleanup
-        {
-            let mut backend = MaterialsManagerBackend::new();
-            backend.remove_material(&MaterialId("test_persist".to_string()));
-        }
     }
 }

@@ -33,7 +33,13 @@ impl MachineControlView {
             self.apply_machine_state(&state);
         }
 
-        let full_status = StatusParser::parse_full(line);
+        let report_inches = device_status::reports_in_inches();
+        // A WCO cached before $13 was known (or before it changed) is in the
+        // wrong units: drop it and wait for the controller's next WCO.
+        if self.wco_in_inches.replace(report_inches) != report_inches {
+            self.last_wco.set(None);
+        }
+        let full_status = StatusParser::parse_full(line).into_mm(report_inches);
         let units = *self.current_units.lock();
         let unit_label = get_unit_label(units);
 
@@ -247,6 +253,16 @@ impl MachineControlView {
             }
         }
 
+        // A machine that is running again has been resumed, whether by the
+        // Resume button, the controller's cycle-start button or a console `~`.
+        if low.starts_with("run") || low.starts_with("jog") {
+            let mut paused = self.is_paused.lock();
+            if *paused {
+                *paused = false;
+                self.resumed_externally.set(true);
+            }
+        }
+
         // Unlock is only useful in ALARM.
         self.unlock_btn.set_sensitive(is_alarm);
         if is_alarm {
@@ -257,6 +273,8 @@ impl MachineControlView {
         }
 
         self.update_job_controls();
+        // $130-$132 arrive with $$; picks up a change of the limit Preferences too.
+        self.refresh_limit_labels();
     }
 
     /// Shows rotary axes that a status report carries but the panel does not show yet.
@@ -280,6 +298,7 @@ impl MachineControlView {
                 status.state.to_ascii_lowercase().starts_with("hold"),
             )
         };
+        device_status::set_job_active(self.job_active());
         let active = connected && self.job_active();
         let paused = *self.is_paused.lock() || held;
         self.stop_btn.set_sensitive(active);

@@ -7,9 +7,9 @@
 mod grbl_settings;
 mod operations;
 
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
-use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_communication::SerialCommunicator;
+use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
 use gcodekit5_settings::controller::SettingsController;
 use gtk4::prelude::*;
 use gtk4::{
@@ -68,34 +68,38 @@ impl From<&Setting> for ConfigSettingRow {
     }
 }
 
-use crate::t;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::device_console::DeviceConsoleView;
 use crate::ui::gtk::device_info::DeviceInfoView;
 use crate::ui::gtk::help_browser;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, ThreadSafe};
+use crate::{n_, t};
+use gcodekit5_core::{Shared, SharedOption, ThreadSafe, shared, shared_none};
 
 /// Setting categories offered by the category filter (also the filter ids).
-pub(crate) const SETTING_CATEGORIES: &[&str] = &[
-    "All",
-    "System",
-    "Motion",
-    "Steps Per Unit",
-    "Max Rate",
-    "Acceleration",
-    "Max Travel",
-    "Homing",
-    "Spindle",
-    "Network",
-    "Drivers",
-    "Tool",
-    "I/O",
-    "Startup",
-    "Plasma",
-    "Encoder",
-    "Modbus",
-    "RS485",
-    "Other",
+///
+/// Each is marked with `n_!` so it is extracted for translation: the labels
+/// are translated through a variable (`t!(*category)`), which `xgettext`
+/// cannot follow.
+pub const SETTING_CATEGORIES: &[&str] = &[
+    n_!("All"),
+    n_!("System"),
+    n_!("Motion"),
+    n_!("Steps Per Unit"),
+    n_!("Max Rate"),
+    n_!("Acceleration"),
+    n_!("Max Travel"),
+    n_!("Homing"),
+    n_!("Spindle"),
+    n_!("Network"),
+    n_!("Drivers"),
+    n_!("Tool"),
+    n_!("I/O"),
+    n_!("Startup"),
+    n_!("Plasma"),
+    n_!("Encoder"),
+    n_!("Modbus"),
+    n_!("RS485"),
+    n_!("Other"),
 ];
 
 pub struct ConfigSettingsView {
@@ -178,6 +182,9 @@ impl ConfigSettingsView {
         let restore_btn = Button::with_label(&t!("Restore"));
         restore_btn.set_tooltip_text(Some(&t!("Restore Settings to Device")));
         restore_btn.set_sensitive(false);
+        // Not shown: restoring needs each `$n=v` paced by the controller's `ok`,
+        // which this page cannot see. (It used to claim a restore it never did.)
+        restore_btn.set_visible(false);
         toolbar.append(&restore_btn);
 
         let spacer = Box::new(Orientation::Horizontal, 0);
@@ -349,11 +356,6 @@ impl ConfigSettingsView {
             view_clone.load_from_file();
         });
 
-        let view_clone = view.clone();
-        restore_btn.connect_clicked(move |_| {
-            view_clone.restore_to_device();
-        });
-
         // Connect ListBox row-activated signal to handle editing
         let view_clone = view.clone();
         settings_list.connect_row_activated(move |_listbox, row| {
@@ -391,19 +393,19 @@ impl ConfigSettingsView {
                     })
                     .collect();
 
-                if let Some(setting) = filtered_settings.get(index as usize) {
-                    if !setting.read_only {
-                        let view_for_refresh = view_clone.clone();
-                        Self::show_edit_dialog(
-                            &view_clone.container,
-                            setting,
-                            view_clone.communicator.clone(),
-                            view_clone.settings_manager.clone(),
-                            move || {
-                                view_for_refresh.refresh_display();
-                            },
-                        );
-                    }
+                if let Some(setting) = filtered_settings.get(index as usize)
+                    && !setting.read_only
+                {
+                    let view_for_refresh = view_clone.clone();
+                    Self::show_edit_dialog(
+                        &view_clone.container,
+                        setting,
+                        view_clone.communicator.clone(),
+                        view_clone.settings_manager.clone(),
+                        move || {
+                            view_for_refresh.refresh_display();
+                        },
+                    );
                 }
             }
         });

@@ -1,5 +1,6 @@
 [package]
 name = "gcodekit5-visualizer"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,18 +11,13 @@ description = "G-code visualization and parsing for GCodeKit4"
 
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
-gcodekit5-designer = { path = "../gcodekit5-designer" }
 regex = "1.10"
 thiserror = "2.0.17"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
-anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.6", features = ["v4", "serde"] }
 glam = "0.29"
-bytemuck = "1.14"
-lyon = "1.0"
 
 [dev-dependencies]
 gcodekit5-camtools = { path = "../gcodekit5-camtools" }
@@ -32,3 +28,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [[bench]]
 name = "pipeline_bench"
 harness = false
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

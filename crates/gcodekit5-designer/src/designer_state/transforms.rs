@@ -1,6 +1,7 @@
 //! Transform operations (move, resize, align, mirror, snap) for designer state.
 
 use super::DesignerState;
+use crate::canvas::DrawingObject;
 use crate::commands::*;
 use crate::model::DesignerShape;
 use crate::{Point, Shape};
@@ -98,154 +99,64 @@ impl DesignerState {
         self.push_command(cmd);
     }
 
-    /// Align selected shapes by their left edges.
-    pub fn align_selected_horizontal_left(&mut self) {
-        let deltas = self
-            .canvas
-            .calculate_alignment_deltas(crate::canvas::Alignment::Left);
+    /// Moves each selected shape by the delta that aligns it, as one undo step.
+    fn align_selected(&mut self, alignment: crate::canvas::Alignment, name: &str) {
+        let deltas = self.canvas.calculate_alignment_deltas(alignment);
         if deltas.is_empty() {
             return;
         }
 
-        let mut commands = Vec::new();
-        for (id, dx, dy) in deltas {
-            commands.push(DesignerCommand::MoveShapes(MoveShapes {
-                ids: vec![id],
-                dx,
-                dy,
-            }));
-        }
+        let commands = deltas
+            .into_iter()
+            .map(|(id, dx, dy)| {
+                DesignerCommand::MoveShapes(MoveShapes {
+                    ids: vec![id],
+                    dx,
+                    dy,
+                })
+            })
+            .collect();
 
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+        self.push_command(DesignerCommand::CompositeCommand(CompositeCommand {
             commands,
-            name: "Align Left".to_string(),
-        });
-        self.push_command(cmd);
+            name: name.to_string(),
+        }));
+    }
+
+    /// Align selected shapes by their left edges.
+    pub fn align_selected_horizontal_left(&mut self) {
+        self.align_selected(crate::canvas::Alignment::Left, "Align Left");
     }
 
     /// Align selected shapes by their horizontal centers.
     pub fn align_selected_horizontal_center(&mut self) {
-        let deltas = self
-            .canvas
-            .calculate_alignment_deltas(crate::canvas::Alignment::CenterHorizontal);
-        if deltas.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for (id, dx, dy) in deltas {
-            commands.push(DesignerCommand::MoveShapes(MoveShapes {
-                ids: vec![id],
-                dx,
-                dy,
-            }));
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Align Horizontal Center".to_string(),
-        });
-        self.push_command(cmd);
+        self.align_selected(
+            crate::canvas::Alignment::CenterHorizontal,
+            "Align Horizontal Center",
+        );
     }
 
     /// Align selected shapes by their right edges.
     pub fn align_selected_horizontal_right(&mut self) {
-        let deltas = self
-            .canvas
-            .calculate_alignment_deltas(crate::canvas::Alignment::Right);
-        if deltas.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for (id, dx, dy) in deltas {
-            commands.push(DesignerCommand::MoveShapes(MoveShapes {
-                ids: vec![id],
-                dx,
-                dy,
-            }));
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Align Right".to_string(),
-        });
-        self.push_command(cmd);
+        self.align_selected(crate::canvas::Alignment::Right, "Align Right");
     }
 
     /// Align selected shapes by their top edges.
     pub fn align_selected_vertical_top(&mut self) {
-        let deltas = self
-            .canvas
-            .calculate_alignment_deltas(crate::canvas::Alignment::Top);
-        if deltas.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for (id, dx, dy) in deltas {
-            commands.push(DesignerCommand::MoveShapes(MoveShapes {
-                ids: vec![id],
-                dx,
-                dy,
-            }));
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Align Top".to_string(),
-        });
-        self.push_command(cmd);
+        self.align_selected(crate::canvas::Alignment::Top, "Align Top");
     }
 
     /// Align selected shapes by their vertical centers.
     pub fn align_selected_vertical_center(&mut self) {
-        let deltas = self
-            .canvas
-            .calculate_alignment_deltas(crate::canvas::Alignment::CenterVertical);
-        if deltas.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for (id, dx, dy) in deltas {
-            commands.push(DesignerCommand::MoveShapes(MoveShapes {
-                ids: vec![id],
-                dx,
-                dy,
-            }));
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Align Vertical Center".to_string(),
-        });
-        self.push_command(cmd);
+        self.align_selected(
+            crate::canvas::Alignment::CenterVertical,
+            "Align Vertical Center",
+        );
     }
 
     /// Align selected shapes by their bottom edges.
     pub fn align_selected_vertical_bottom(&mut self) {
-        let deltas = self
-            .canvas
-            .calculate_alignment_deltas(crate::canvas::Alignment::Bottom);
-        if deltas.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for (id, dx, dy) in deltas {
-            commands.push(DesignerCommand::MoveShapes(MoveShapes {
-                ids: vec![id],
-                dx,
-                dy,
-            }));
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Align Bottom".to_string(),
-        });
-        self.push_command(cmd);
+        self.align_selected(crate::canvas::Alignment::Bottom, "Align Bottom");
     }
 
     /// Mirrors selected shapes across the global X axis (horizontal flip).
@@ -377,75 +288,101 @@ impl DesignerState {
 
     /// Sets the fillet for the selected shapes.
     pub fn set_fillet_selected(&mut self, radius: f64) {
-        let selected_ids: Vec<u64> = self
-            .canvas
-            .shapes()
-            .filter(|s| s.selected)
-            .map(|s| s.id)
-            .collect();
-
-        if selected_ids.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for id in selected_ids {
-            if let Some(obj) = self.canvas.get_shape(id) {
-                let mut new_obj = obj.clone();
-                new_obj.fillet = radius;
-                if matches!(new_obj.shape, crate::model::Shape::Path(_)) {
-                    new_obj.chamfer = 0.0;
-                }
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id,
-                    old_state: obj.clone(),
-                    new_state: new_obj,
-                }));
-            }
-        }
-
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-            commands,
-            name: "Set Fillet".to_string(),
-        });
-        self.push_command(cmd);
+        self.set_corner_selected("Set Fillet", |o| o.fillet = radius, |o| o.chamfer = 0.0);
     }
 
     /// Sets the chamfer for the selected shapes.
     pub fn set_chamfer_selected(&mut self, distance: f64) {
-        let selected_ids: Vec<u64> = self
+        self.set_corner_selected("Set Chamfer", |o| o.chamfer = distance, |o| o.fillet = 0.0);
+    }
+
+    /// Applies a corner treatment (`apply`) to every selected shape as one
+    /// undo step. A path takes only one treatment, so `clear_other` removes
+    /// the other one from paths.
+    fn set_corner_selected(
+        &mut self,
+        name: &str,
+        apply: impl Fn(&mut DrawingObject),
+        clear_other: impl Fn(&mut DrawingObject),
+    ) {
+        let commands: Vec<DesignerCommand> = self
             .canvas
             .shapes()
             .filter(|s| s.selected)
-            .map(|s| s.id)
-            .collect();
-
-        if selected_ids.is_empty() {
-            return;
-        }
-
-        let mut commands = Vec::new();
-        for id in selected_ids {
-            if let Some(obj) = self.canvas.get_shape(id) {
+            .map(|obj| {
                 let mut new_obj = obj.clone();
-                new_obj.chamfer = distance;
+                apply(&mut new_obj);
                 if matches!(new_obj.shape, crate::model::Shape::Path(_)) {
-                    new_obj.fillet = 0.0;
+                    clear_other(&mut new_obj);
                 }
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id,
+                DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
                     old_state: obj.clone(),
                     new_state: new_obj,
-                }));
-            }
-        }
+                })
+            })
+            .collect();
 
-        let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+        if commands.is_empty() {
+            return;
+        }
+        self.push_command(DesignerCommand::CompositeCommand(CompositeCommand {
             commands,
-            name: "Set Chamfer".to_string(),
-        });
-        self.push_command(cmd);
+            name: name.to_string(),
+        }));
+    }
+
+    /// Mueve los shapes seleccionados al principio del orden de mecanizado.
+    /// Devuelve `true` si se aplicó, `false` si se rechazó porque partiría un grupo.
+    pub fn move_selected_to_top(&mut self) -> bool {
+        let Some(after) = self.canvas.move_selected_to_top() else {
+            return false;
+        };
+        let before = self.canvas.shape_store.draw_order().clone();
+        self.push_command(DesignerCommand::Reorder(Reorder {
+            before,
+            after,
+            name: "Move to Top".to_string(),
+        }));
+        true
+    }
+
+    pub fn move_selected_to_bottom(&mut self) -> bool {
+        let Some(after) = self.canvas.move_selected_to_bottom() else {
+            return false;
+        };
+        let before = self.canvas.shape_store.draw_order().clone();
+        self.push_command(DesignerCommand::Reorder(Reorder {
+            before,
+            after,
+            name: "Move to Bottom".to_string(),
+        }));
+        true
+    }
+
+    pub fn move_selected_up(&mut self) -> bool {
+        let Some(after) = self.canvas.move_selected_up() else {
+            return false;
+        };
+        let before = self.canvas.shape_store.draw_order().clone();
+        self.push_command(DesignerCommand::Reorder(Reorder {
+            before,
+            after,
+            name: "Move Up".to_string(),
+        }));
+        true
+    }
+
+    pub fn move_selected_down(&mut self) -> bool {
+        let Some(after) = self.canvas.move_selected_down() else {
+            return false;
+        };
+        let before = self.canvas.shape_store.draw_order().clone();
+        self.push_command(DesignerCommand::Reorder(Reorder {
+            before,
+            after,
+            name: "Move Down".to_string(),
+        }));
+        true
     }
 }

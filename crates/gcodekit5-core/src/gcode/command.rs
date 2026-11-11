@@ -1,8 +1,8 @@
 //! G-Code command types and lifecycle management
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use uuid::Uuid;
 
 /// Unique identifier for a G-Code command

@@ -174,18 +174,18 @@ impl DocumentHandles {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Open Design File"));
 
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -274,22 +274,16 @@ impl DocumentHandles {
                         *current_file.borrow_mut() = Some(path.clone());
 
                         // --- SAVE PATH ---
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
-                                settings_ref_mut
-                                    .config_mut()
-                                    .file_processing
-                                    .output_directory = path.clone();
+                        if let Some(ref settings) = settings_persistence_clone
+                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+                        {
+                            settings_ref_mut
+                                .config_mut()
+                                .file_processing
+                                .output_directory = path.clone();
 
-                                // (Windows/Linux/macOS)
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-
-                                let _ = settings_ref_mut.save_to_file(&config_path);
-                            }
+                            // (Windows/Linux/macOS)
+                            settings_ref_mut.persist_or_log();
                         } // ---------------------------
 
                         drop(state);
@@ -303,7 +297,13 @@ impl DocumentHandles {
                         status_label.set_text(&format!("{} {}", t!("Loaded:"), path.display()));
                     }
                     Err(e) => {
-                        status_label.set_text(&format!("Error: {}", e));
+                        // The designer's status label is not shown: report it.
+                        error!("Error opening design {}: {}", path.display(), e);
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Open Failed"),
+                            &format!("{}\n\n{}", path.display(), e),
+                            None,
+                        );
                     }
                 }
             }
@@ -325,27 +325,26 @@ impl DesignerView {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
 
         // Set initial directory from settings
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
         // Check STL import setting for STL support
         let enable_stl_import = if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                settings_ref.config().ui.enable_stl_import
-            } else {
-                false
+            match settings.try_borrow() {
+                Ok(settings_ref) => settings_ref.config().ui.enable_stl_import,
+                _ => false,
             }
         } else {
             false
@@ -422,25 +421,21 @@ impl DesignerView {
 
 
                         // --- SAVE THE PATH ON IMPORT ---
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
+                        if let Some(ref settings) = settings_persistence_clone
+                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
 
                                 settings_ref_mut.config_mut().file_processing.output_directory = path.clone();
 
-                                let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                                .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
-                        }
 
                         // --- CHECK STL IMPORT ---
                         let enable_stl_import = if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(settings_ref) = settings.try_borrow() {
+                            match settings.try_borrow() { Ok(settings_ref) => {
                                 settings_ref.config().ui.enable_stl_import
-                            } else {
+                            } _ => {
                                 false
-                            }
+                            }}
                         } else {
                             false
                         };
@@ -496,6 +491,7 @@ impl DesignerView {
                             Ok(mut design) => {
                                 let unsupported_entities =
                                     std::mem::take(&mut design.unsupported_entities);
+                                let replaced_numbers = design.replaced_numbers;
                                 let mut z_metadata = std::mem::take(&mut design.z_metadata);
                                 if z_metadata.len() != design.shapes.len() {
                                     z_metadata = vec![(0.0, 0.0); design.shapes.len()];
@@ -575,6 +571,20 @@ impl DesignerView {
                                         parent.as_ref(),
                                     );
                                 }
+
+                                if replaced_numbers > 0 {
+                                    let parent =
+                                        crate::ui::gtk::file_dialog::parent_window(&canvas.widget);
+                                    crate::ui::gtk::common::dialog::show_warning(
+                                        &t!("Invalid numbers replaced"),
+                                        &format!(
+                                            "{} {}",
+                                            replaced_numbers,
+                                            t!("values in this DXF file were not numbers and were replaced by defaults, so some geometry may be wrong.")
+                                        ),
+                                        parent.as_ref(),
+                                    );
+                                }
                             }
                             Err(e) => {
                                 error!("Error importing file: {}", e);
@@ -621,18 +631,18 @@ impl DesignerView {
         dialog.set_initial_name(Some("design.gckd"));
 
         // Set initial directory from settings
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -664,17 +674,15 @@ impl DesignerView {
                     path.set_extension("gckd");
                 }
 
-                if let Some(ref settings) = settings_persistence_clone {
-                    if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
-                        settings_ref_mut
-                            .config_mut()
-                            .file_processing
-                            .output_directory = path.clone();
+                if let Some(ref settings) = settings_persistence_clone
+                    && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+                {
+                    settings_ref_mut
+                        .config_mut()
+                        .file_processing
+                        .output_directory = path.clone();
 
-                        let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-                            .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-                        let _ = settings_ref_mut.save_to_file(&config_path);
-                    }
+                    settings_ref_mut.persist_or_log();
                 }
 
                 match save_design(&canvas.state, &path) {
@@ -684,7 +692,11 @@ impl DesignerView {
                     }
                     Err(e) => {
                         error!("Error saving file: {}", e);
-                        status_label.set_text(&format!("{} {}", t!("Error saving file:"), e));
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Save Failed"),
+                            &format!("{}\n\n{}", path.display(), e),
+                            None,
+                        );
                     }
                 }
             }
@@ -699,7 +711,12 @@ impl DesignerView {
             }
             Err(e) => {
                 error!("Error saving file: {}", e);
-                self.set_status(&format!("{} {}", t!("Error saving file:"), e));
+                let parent = crate::ui::gtk::file_dialog::parent_window(&self.canvas.widget);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Save Failed"),
+                    &format!("{}\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
             }
         }
     }
@@ -708,18 +725,18 @@ impl DesignerView {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
         let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Export G-Code"));
 
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -732,6 +749,7 @@ impl DesignerView {
         dialog.add_filter(&filter);
 
         let settings_persistence_clone = self.settings_persistence.clone();
+        let settings_persistence_for_limits = self.settings_persistence.clone();
 
         let canvas = self.canvas.clone();
         let status_label = self.status_label.clone();
@@ -759,21 +777,15 @@ impl DesignerView {
                             path.clone()
                         };
 
-                        if let Some(ref settings) = settings_persistence_clone {
-                            if let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
+                        if let Some(ref settings) = settings_persistence_clone
+                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut() {
                                 settings_ref_mut
                                     .config_mut()
                                     .file_processing
                                     .output_directory = folder_to_save;
 
-                                let config_path =
-                                    gcodekit5_settings::SettingsManager::config_file_path()
-                                        .unwrap_or_else(|_| {
-                                            std::path::PathBuf::from("config.json")
-                                        });
-                                let _ = settings_ref_mut.save_to_file(&config_path);
+                                settings_ref_mut.persist_or_log();
                             }
-                        }
 
                         if path.extension().is_none() {
                             path.set_extension("nc");
@@ -822,7 +834,16 @@ impl DesignerView {
                         state.toolpath_generator.set_start_depth(start_depth);
                         state.toolpath_generator.set_step_in(tool_diameter * 0.4); // Default stepover
 
-                        let (gcode, has_out_of_limits_warning) = state.generate_gcode_with_warning_info(None);
+                        // The same working area Generate checks: the active
+                        // device profile, else the Preferences limits.
+                        let limits = settings_persistence_for_limits.as_ref().and_then(|p| {
+                            super::designer_machine_limits(
+                                canvas.device_manager.as_ref(),
+                                &p.borrow(),
+                            )
+                        });
+                        let (gcode, has_out_of_limits_warning) =
+                            state.generate_gcode_with_warning_info(limits);
 
                         if has_out_of_limits_warning {
                             let parent = crate::ui::gtk::file_dialog::parent_window(&canvas.widget);
@@ -843,11 +864,11 @@ impl DesignerView {
                             }
                             Err(e) => {
                                 error!("Error exporting G-Code: {}", e);
-                                status_label.set_text(&format!(
-                                    "{} {}",
-                                    t!("Error exporting G-Code:"),
-                                    e
-                                ));
+                                crate::ui::gtk::common::dialog::show_warning(
+                                    &t!("Export Failed"),
+                                    &format!("{}\n\n{}", path.display(), e),
+                                    None,
+                                );
                             }
                         }
                     }
@@ -863,18 +884,18 @@ impl DesignerView {
         filter.add_pattern("*.svg");
         dialog.add_filter(&filter);
 
-        if let Some(ref settings) = self.settings_persistence {
-            if let Ok(settings_ref) = settings.try_borrow() {
-                let last_path = &settings_ref.config().file_processing.output_directory;
-                if last_path.exists() {
-                    let folder_path = if last_path.is_file() {
-                        last_path.parent().unwrap_or(last_path).to_path_buf()
-                    } else {
-                        last_path.clone()
-                    };
-                    let file = gtk4::gio::File::for_path(folder_path);
-                    dialog.set_initial_folder(Some(&file));
-                }
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
             }
         }
 
@@ -1073,7 +1094,11 @@ impl DesignerView {
                         }
                         Err(e) => {
                             error!("Error exporting SVG: {}", e);
-                            status_label.set_text(&format!("{} {}", t!("Error exporting SVG:"), e));
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Export Failed"),
+                                &format!("{}\n\n{}", path.display(), e),
+                                None,
+                            );
                         }
                     }
                 }

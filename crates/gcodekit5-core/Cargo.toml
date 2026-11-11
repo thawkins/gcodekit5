@@ -1,5 +1,6 @@
 [package]
 name = "gcodekit5-core"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,13 +10,9 @@ repository.workspace = true
 description = "Core types, traits, and utilities for GCodeKit4"
 
 [dependencies]
-tokio = { version = "1.35", features = ["full"] }
-async-trait = "0.1"
-anyhow = "1.0"
 thiserror = "2.0.17"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tracing = "0.1"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
@@ -27,3 +24,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [[bench]]
 name = "core_bench"
 harness = false
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

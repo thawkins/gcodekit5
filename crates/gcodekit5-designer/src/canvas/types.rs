@@ -80,9 +80,6 @@ pub struct DrawingObject {
     pub lock_aspect_ratio: bool,
     pub use_global_laser: bool,
     pub laser_params: LaserParams,
-    //    pub laser_feed_rate: f64,
-    //    pub laser_power: f64,
-    //    pub laser_passes: i32,
 }
 
 impl DrawingObject {

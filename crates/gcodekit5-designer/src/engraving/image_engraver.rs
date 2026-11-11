@@ -20,14 +20,35 @@ pub enum ScanDirection {
     Vertical,
 }
 
-/// Halftoning method
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Halftoning method: how grey levels become on/off laser dots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HalftoneMethod {
+    /// Grey levels are engraved as laser power (no halftoning).
+    #[default]
     None,
+    /// Pixels at or above the threshold are white, the rest black.
     Threshold,
+    /// Ordered dithering with a 4x4 Bayer matrix.
     Bayer4x4,
+    /// Floyd-Steinberg error diffusion.
     FloydSteinberg,
+    /// Atkinson error diffusion.
     Atkinson,
+}
+
+impl HalftoneMethod {
+    /// The method for a raster image's `dithering` name (`"none"`,
+    /// `"threshold"`, `"floyd"`, `"atkinson"`, `"bayer"`); unknown names are
+    /// treated as `None`.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "threshold" => Self::Threshold,
+            "bayer" => Self::Bayer4x4,
+            "floyd" => Self::FloydSteinberg,
+            "atkinson" => Self::Atkinson,
+            _ => Self::None,
+        }
+    }
 }
 
 /// Structure containing the engraving parameters
@@ -46,7 +67,9 @@ pub struct EngravingParams {
     pub mirror_x: bool,
     pub mirror_y: bool,
     pub rotation: RotationAngle,
+    /// Halftoning applied after scaling (and inversion).
     pub halftone: HalftoneMethod,
+    /// Cut-off for [`HalftoneMethod::Threshold`] (0-255).
     pub halftone_threshold: u8,
     pub offset_x: f32,
     pub offset_y: f32,
@@ -102,12 +125,11 @@ pub struct ImageEngraver {
 impl ImageEngraver {
     /// Check if a horizontal line (row) has any pixel that will produce laser power
     fn is_row_empty(&self, y: u32) -> bool {
-        let result = (0..self.image.width()).all(|x| {
+        (0..self.image.width()).all(|x| {
             let intensity = self.image.get_pixel(x, y).0[0];
             let power = self.intensity_to_power(intensity);
             power == 0
-        });
-        result
+        })
     }
 
     /// Get only rows that have content to engrave (actual laser power > 0)
@@ -216,11 +238,7 @@ impl ImageEngraver {
         if params.invert {
             image::imageops::invert(&mut gray);
         }
-
-        if params.halftone != HalftoneMethod::None {
-            Self::apply_halftoning(&mut gray, &params)?;
-        }
-
+        Self::apply_halftoning(&mut gray, &params);
         Ok(Self {
             image: gray,
             params,
@@ -236,21 +254,15 @@ impl ImageEngraver {
             self.output_height as f32 / self.params.pixels_per_mm(),
         )
     }
-
-    fn apply_halftoning(image: &mut GrayImage, params: &EngravingParams) -> Result<()> {
-        let dot_size = 1;
-
-        if dot_size > 1 {
-        } else {
-            match params.halftone {
-                HalftoneMethod::Threshold => Self::threshold(image, params.halftone_threshold),
-                HalftoneMethod::Bayer4x4 => Self::bayer_dither(image),
-                HalftoneMethod::FloydSteinberg => Self::floyd_steinberg(image),
-                HalftoneMethod::Atkinson => Self::atkinson(image),
-                HalftoneMethod::None => {}
-            }
+    /// Turns the grey image into on/off dots with `params.halftone`.
+    fn apply_halftoning(image: &mut GrayImage, params: &EngravingParams) {
+        match params.halftone {
+            HalftoneMethod::Threshold => Self::threshold(image, params.halftone_threshold),
+            HalftoneMethod::Bayer4x4 => Self::bayer_dither(image),
+            HalftoneMethod::FloydSteinberg => Self::floyd_steinberg(image),
+            HalftoneMethod::Atkinson => Self::atkinson(image),
+            HalftoneMethod::None => {}
         }
-        Ok(())
     }
 
     fn threshold(image: &mut GrayImage, threshold: u8) {
@@ -337,6 +349,10 @@ impl ImageEngraver {
     }
 
     fn intensity_to_power(&self, intensity: u8) -> u32 {
+        // A halftoned off dot is laser off, not Min Power.
+        if intensity == 0 && self.params.halftone != HalftoneMethod::None {
+            return 0;
+        }
         let normalized = intensity as f32 / 255.0;
         let gamma = 0.7;
         let corrected = normalized.powf(gamma);
@@ -347,10 +363,10 @@ impl ImageEngraver {
     }
 
     fn quantize_power(&self, power: u32) -> u32 {
+        // Halftoned images are already on/off: keep full and zero power.
         if self.params.halftone != HalftoneMethod::None {
             return power;
         }
-
         // Reduce command churn by quantizing grayscale power levels.
         // This keeps tonal shading while avoiding one-pixel power changes.
         const LEVELS: u32 = 64;

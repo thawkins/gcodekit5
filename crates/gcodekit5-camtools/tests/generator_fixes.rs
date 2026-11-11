@@ -2,10 +2,9 @@
 //! panel labels, Gerber aperture/rubout/drill fixes, the comment-aware G-code utilities and
 //! unit-aware CAM presets.
 
-use gcodekit5_camtools::cam_presets::{BitmapEngravingPreset, ProbePreset, PRESET_FORMAT_VERSION};
-use gcodekit5_camtools::comment_processor::{strip_comments, words, CommentMode, CommentProcessor};
+use gcodekit5_camtools::cam_presets::{BitmapEngravingPreset, PRESET_FORMAT_VERSION, ProbePreset};
+use gcodekit5_camtools::comment_processor::{CommentMode, CommentProcessor, strip_comments, words};
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
-use gcodekit5_camtools::jigsaw_puzzle::{JigsawPuzzleMaker, PuzzleParameters};
 use gcodekit5_camtools::laser_engraver::{
     BitmapImageEngraver, EngravingParameters, ImageTransformations,
 };
@@ -128,17 +127,15 @@ fn test_laser_no_homing_or_z_moves_by_default_and_offsets_applied() {
 }
 
 #[test]
-fn test_laser_homing_preamble_keeps_z_offset() {
+fn test_laser_homing_preamble_keeps_work_offsets() {
     let params = EngravingParameters {
         home_before_job: true,
         ..small_engraver_params()
     };
     let gcode = engrave(GrayImage::from_pixel(4, 4, Luma([0])), params);
     assert!(gcode.contains("$H"));
-    assert!(gcode.contains("G10 L2 P1 X0 Y0 "));
-    assert!(!gcode
-        .lines()
-        .any(|l| l.starts_with("G10") && l.contains('Z')));
+    // Homing keeps the user's G54 offsets: X/Y are not reset to the homing switches.
+    assert!(!gcode.lines().any(|l| l.starts_with("G10")), "{gcode}");
     assert!(z_moves(&gcode).is_empty());
 }
 
@@ -158,56 +155,14 @@ fn test_tabbed_box_homing_optional_and_never_above_z0() {
         ..Default::default()
     });
     assert!(homed.contains("$H"));
-    assert!(!homed
-        .lines()
-        .any(|l| l.starts_with("G10") && l.contains('Z')));
+    assert!(
+        !homed
+            .lines()
+            .any(|l| l.starts_with("G10") && l.contains('Z'))
+    );
     for z in z_moves(&homed) {
         assert!(z <= 0.0, "Z{z} above work zero after homing");
     }
-}
-
-#[test]
-fn test_jigsaw_homing_optional_and_never_above_z0() {
-    let make = |home: bool| {
-        let mut maker = JigsawPuzzleMaker::new(PuzzleParameters {
-            home_before_job: home,
-            ..Default::default()
-        })
-        .expect("jigsaw setup");
-        maker.generate().expect("jigsaw generate");
-        maker.to_gcode(500.0, 1.0)
-    };
-    let default = make(false);
-    assert!(!default.contains("$H"));
-    // Without homing the user has set the work zero, so a positive travel height is allowed.
-    assert!(z_moves(&default).iter().any(|&z| z > 0.0));
-
-    let homed = make(true);
-    assert!(homed.contains("$H"));
-    assert!(!homed
-        .lines()
-        .any(|l| l.starts_with("G10") && l.contains('Z')));
-    for z in z_moves(&homed) {
-        assert!(z <= 0.0, "Z{z} above work zero after homing");
-    }
-}
-
-#[test]
-fn test_jigsaw_offsets_applied_to_coordinates() {
-    let mut maker = JigsawPuzzleMaker::new(PuzzleParameters {
-        offset_x: 25.0,
-        offset_y: 35.0,
-        ..Default::default()
-    })
-    .expect("jigsaw setup");
-    maker.generate().expect("jigsaw generate");
-    let gcode = maker.to_gcode(500.0, 1.0);
-    let moves: Vec<(f32, f32)> = xy_moves(&gcode)
-        .into_iter()
-        .filter(|&(x, y)| x != 0.0 || y != 0.0)
-        .collect();
-    assert!(!moves.is_empty());
-    assert!(moves.iter().all(|&(x, y)| x >= 24.0 && y >= 34.0));
 }
 
 #[test]
@@ -223,24 +178,20 @@ fn test_spoilboard_grid_does_not_change_machine_settings() {
     })
     .generate()
     .expect("grid");
-    assert!(!gcode
-        .lines()
-        .any(|l| l.trim_start().starts_with('$') && l.contains('=')));
+    assert!(
+        !gcode
+            .lines()
+            .any(|l| l.trim_start().starts_with('$') && l.contains('='))
+    );
 }
 
 // ---- Item 6: M4 for laser cutting ----
 
 #[test]
-fn test_tabbed_box_and_jigsaw_use_dynamic_laser_power() {
+fn test_tabbed_box_uses_dynamic_laser_power() {
     let boxed = box_gcode(BoxParameters::default());
     assert!(boxed.lines().any(|l| l.starts_with("M4 ")));
     assert!(!boxed.lines().any(|l| l.starts_with("M3")));
-
-    let mut maker = JigsawPuzzleMaker::new(PuzzleParameters::default()).expect("jigsaw setup");
-    maker.generate().expect("jigsaw generate");
-    let jig = maker.to_gcode(500.0, 1.0);
-    assert!(jig.lines().any(|l| l.starts_with("M4 ")));
-    assert!(!jig.lines().any(|l| l.starts_with("M3")));
 }
 
 // ---- Item 9: tabbed box panel labels ----
@@ -456,6 +407,27 @@ fn test_optimizer_m5_matches_whole_word_only() {
     );
 }
 
+#[test]
+fn test_optimizer_keeps_block_delete_lines_and_the_unconditional_ones_after_them() {
+    let to_lines = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+
+    // `/M5` may be skipped, so the unconditional M5 after it must stay.
+    assert_eq!(
+        GCodeOptimizer::remove_redundant_m5(&to_lines(&["/M5", "M5"])),
+        vec!["/M5", "M5"]
+    );
+    // `/T1` may be skipped, so the plain T1 before M6 must stay.
+    assert_eq!(
+        GCodeOptimizer::remove_redundant_tools(&to_lines(&["/T1", "T1", "M6"])),
+        vec!["/T1", "T1", "M6"]
+    );
+    // A tool selected before an optional block is unknown after it.
+    assert_eq!(
+        GCodeOptimizer::remove_redundant_tools(&to_lines(&["T1", "/T2", "T1"])),
+        vec!["T1", "/T2", "T1"]
+    );
+}
+
 // ---- Item 10: unit-aware presets ----
 
 #[test]
@@ -500,11 +472,13 @@ fn test_bitmap_preset_legacy_text_and_polarity_converted() {
 #[test]
 fn test_presets_report_invalid_files() {
     assert!(BitmapEngravingPreset::from_json("not json", MeasurementSystem::Metric).is_err());
-    assert!(BitmapEngravingPreset::from_json(
-        r#"{"format_version":2,"units":"in"}"#,
-        MeasurementSystem::Metric
-    )
-    .is_err());
+    assert!(
+        BitmapEngravingPreset::from_json(
+            r#"{"format_version":2,"units":"in"}"#,
+            MeasurementSystem::Metric
+        )
+        .is_err()
+    );
     assert!(ProbePreset::from_json(r#"{"format_version":2,"safe_height":"x"}"#).is_err());
     assert!(ProbePreset::from_json(r#"{"format_version":99}"#).is_err());
 }
@@ -525,4 +499,17 @@ fn test_probe_preset_round_trip_and_legacy() {
     assert_eq!(loaded.preset.routine.as_deref(), Some("bore_center"));
     assert_eq!(loaded.preset.safe_height, 7.5);
     assert_eq!(loaded.warnings.len(), 1);
+}
+
+#[test]
+fn test_gerber_zero_length_single_quadrant_draw_paints_the_aperture() {
+    // #90 review: a zero-length G74 arc was skipped, deleting a pad.
+    let gerber = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\nG74*\nG03*\n\
+                  X10000000Y10000000D02*\nX10000000Y10000000I0J0D01*\nM02*\n";
+    let gcode = GerberConverter::generate(&copper_params(), gerber).expect("gerber");
+    let near_pad = xy_moves(&gcode)
+        .into_iter()
+        .filter(|&(x, y)| (x - 10.0).hypot(y - 10.0) < 1.0)
+        .count();
+    assert!(near_pad > 0, "no isolation around the pad:\n{gcode}");
 }

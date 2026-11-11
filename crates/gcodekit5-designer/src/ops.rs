@@ -19,12 +19,13 @@ pub enum BooleanOp {
 
 pub fn clean_polyline(mut pline: Polyline) -> Polyline {
     pline.remove_repeat_pos(1e-5);
-    if pline.is_closed() && pline.vertex_count() > 1 {
-        if let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1)) {
-            if (first.x - last.x).abs() < 1e-5 && (first.y - last.y).abs() < 1e-5 {
-                pline.remove(pline.vertex_count() - 1);
-            }
-        }
+    if pline.is_closed()
+        && pline.vertex_count() > 1
+        && let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1))
+        && (first.x - last.x).abs() < 1e-5
+        && (first.y - last.y).abs() < 1e-5
+    {
+        pline.remove(pline.vertex_count() - 1);
     }
     pline
 }
@@ -616,6 +617,11 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
     let mut result_sketch = csgrs::sketch::Sketch::new();
 
     for poly in mp.0 {
+        // Each polygon is offset on its own (outline minus its own holes) and
+        // then added, so cutting one polygon's holes cannot remove another
+        // polygon, such as an island inside the hole.
+        let mut poly_sketch = csgrs::sketch::Sketch::new();
+
         // --- CONTORNO EXTERIOR (Perfil del piñón / Triángulo) ---
         let mut ext_pline = Polyline::new();
         for coord in poly.exterior().0.iter() {
@@ -633,7 +639,7 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
             // Muestreamos con una tolerancia estricta de 0.01mm para máxima fidelidad en el piñón
             let pts = interpolate_polyline_arcs(&offset, 0.01);
             if pts.len() >= 3 {
-                result_sketch = result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
+                poly_sketch = poly_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
             }
         }
 
@@ -646,19 +652,25 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
             int_pline.set_is_closed(true);
             let int_pline = clean_polyline(int_pline);
 
+            // Holes wind the other way round, so the same outward offset of
+            // the shape is the opposite offset of the hole ring.
             let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                int_pline.parallel_offset(distance)
+                int_pline.parallel_offset(-distance)
             }))
             .unwrap_or_default();
 
+            // A hole's offset is cut out of the shape, as in `perform_chamfer`;
+            // a union would fill the hole in.
             for offset in offsets {
                 let pts = interpolate_polyline_arcs(&offset, 0.01);
                 if pts.len() >= 3 {
-                    result_sketch =
-                        result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
+                    poly_sketch =
+                        poly_sketch.difference(&csgrs::sketch::Sketch::polygon(&pts, None));
                 }
             }
         }
+
+        result_sketch = result_sketch.union(&poly_sketch);
     }
 
     let mut result_path = DesignPath::from_csg(result_sketch);
@@ -666,99 +678,6 @@ pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
     Shape::Path(result_path)
 }
 // ---
-
-/*
-pub fn perform_offset(shape: &Shape, distance: f64) -> Shape {
-    // For DesignPath, we need to apply rotation to the sketch before offsetting
-    let (sketch, rotation) = if let Some(path) = shape.as_any().downcast_ref::<DesignPath>() {
-        // If the path has rotation, apply it to the sketch first
-        if path.rotation.abs() > 1e-6 {
-            use nalgebra::{Matrix4, Vector3};
-
-            // Calculate center of rotation
-            let bb = csgrs::traits::CSG::bounding_box(&path.sketch);
-            let center_x = (bb.mins.x + bb.maxs.x) / 2.0;
-            let center_y = (bb.mins.y + bb.maxs.y) / 2.0;
-
-            // Create rotation matrix around center (rotation is in degrees)
-            let angle_rad = path.rotation.to_radians();
-            let cos_a = angle_rad.cos();
-            let sin_a = angle_rad.sin();
-
-            // Translate to origin, rotate, translate back
-            let to_origin = Matrix4::new_translation(&Vector3::new(-center_x, -center_y, 0.0));
-            let rotation_mat = Matrix4::new(
-                cos_a, -sin_a, 0.0, 0.0, sin_a, cos_a, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-                1.0,
-            );
-            let from_origin = Matrix4::new_translation(&Vector3::new(center_x, center_y, 0.0));
-            let transform = from_origin * rotation_mat * to_origin;
-
-            // Apply rotation to sketch and set rotation to 0 (rotation is now baked into geometry)
-            (path.sketch.transform(&transform), 0.0)
-        } else {
-            (path.sketch.clone(), 0.0)
-        }
-    } else {
-        (shape.as_csg(), 0.0)
-    };
-
-    let mp = sketch.to_multipolygon();
-
-    let mut result_sketch = csgrs::sketch::Sketch::new();
-
-    for poly in mp.0 {
-        // Convert exterior to Polyline
-        let mut ext_pline = Polyline::new();
-        for coord in poly.exterior().0.iter() {
-            ext_pline.add_vertex(PlineVertex::new(coord.x, coord.y, 0.0));
-        }
-        ext_pline.set_is_closed(true);
-        let ext_pline = clean_polyline(ext_pline);
-
-        // Offset
-        let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            ext_pline.parallel_offset(distance)
-        }))
-        .unwrap_or_default();
-
-        for offset in offsets {
-            let pts: Vec<[f64; 2]> = offset.vertex_data.iter().map(|v| [v.x, v.y]).collect();
-            if pts.len() >= 3 {
-                result_sketch = result_sketch.union(&csgrs::sketch::Sketch::polygon(&pts, None));
-            }
-        }
-
-        // Handle interiors (holes)
-        for interior in poly.interiors() {
-            let mut int_pline = Polyline::new();
-            for coord in interior.0.iter() {
-                int_pline.add_vertex(PlineVertex::new(coord.x, coord.y, 0.0));
-            }
-            int_pline.set_is_closed(true);
-            let int_pline = clean_polyline(int_pline);
-
-            // Offset holes
-            let offsets = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                int_pline.parallel_offset(distance)
-            }))
-            .unwrap_or_default();
-
-            for offset in offsets {
-                let pts: Vec<[f64; 2]> = offset.vertex_data.iter().map(|v| [v.x, v.y]).collect();
-                if pts.len() >= 3 {
-                    result_sketch =
-                        result_sketch.difference(&csgrs::sketch::Sketch::polygon(&pts, None));
-                }
-            }
-        }
-    }
-
-    let mut result_path = DesignPath::from_csg(result_sketch);
-    result_path.rotation = rotation;
-    Shape::Path(result_path)
-}
-*/
 
 pub fn perform_fillet(shape: &Shape, radius: f64) -> Shape {
     if let Shape::Path(path) = shape {

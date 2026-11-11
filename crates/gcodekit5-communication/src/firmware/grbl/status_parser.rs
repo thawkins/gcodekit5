@@ -7,6 +7,18 @@
 use gcodekit5_core::CNCPoint;
 use serde::{Deserialize, Serialize};
 
+/// Parses a comma-separated list of 3 to 6 axis values.
+///
+/// Returns `None` if any value is malformed: skipping a bad token would move
+/// the following values onto the wrong axes (Z shown as Y).
+fn parse_axis_values(text: &str) -> Option<Vec<f64>> {
+    let coords = text
+        .split(',')
+        .map(|s| s.trim().parse::<f64>().ok())
+        .collect::<Option<Vec<f64>>>()?;
+    (3..=6).contains(&coords.len()).then_some(coords)
+}
+
 /// Parsed machine position components
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MachinePosition {
@@ -27,14 +39,7 @@ pub struct MachinePosition {
 impl MachinePosition {
     /// Parse machine position from string
     pub fn parse(pos_str: &str) -> Option<Self> {
-        let coords: Vec<f64> = pos_str
-            .split(',')
-            .filter_map(|s| s.trim().parse::<f64>().ok())
-            .collect();
-
-        if coords.is_empty() || coords.len() < 3 {
-            return None;
-        }
+        let coords = parse_axis_values(pos_str)?;
 
         Some(Self {
             x: coords[0],
@@ -67,14 +72,7 @@ pub struct WorkPosition {
 impl WorkPosition {
     /// Parse work position from string
     pub fn parse(pos_str: &str) -> Option<Self> {
-        let coords: Vec<f64> = pos_str
-            .split(',')
-            .filter_map(|s| s.trim().parse::<f64>().ok())
-            .collect();
-
-        if coords.is_empty() || coords.len() < 3 {
-            return None;
-        }
+        let coords = parse_axis_values(pos_str)?;
 
         Some(Self {
             x: coords[0],
@@ -107,14 +105,7 @@ pub struct WorkCoordinateOffset {
 impl WorkCoordinateOffset {
     /// Parse work coordinate offset from string
     pub fn parse(offset_str: &str) -> Option<Self> {
-        let coords: Vec<f64> = offset_str
-            .split(',')
-            .filter_map(|s| s.trim().parse::<f64>().ok())
-            .collect();
-
-        if coords.is_empty() || coords.len() < 3 {
-            return None;
-        }
+        let coords = parse_axis_values(offset_str)?;
 
         Some(Self {
             x: coords[0],
@@ -294,10 +285,10 @@ impl StatusParser {
         // If not found, try extracting from FS: field (format: "FS:feed,spindle")
         if let Some(fs_str) = Self::extract_field(status_line, "FS:") {
             let parts: Vec<&str> = fs_str.split(',').collect();
-            if parts.len() >= 2 {
-                if let Some(spindle_str) = parts.get(1) {
-                    return spindle_str.trim().parse::<u32>().ok();
-                }
+            if parts.len() >= 2
+                && let Some(spindle_str) = parts.get(1)
+            {
+                return spindle_str.trim().parse::<u32>().ok();
             }
         }
 
@@ -393,16 +384,16 @@ impl StatusParser {
         };
 
         // Derive missing coordinate space when possible.
-        if full.wpos.is_none() {
-            if let (Some(mpos), Some(wco)) = (full.mpos, full.wco) {
-                full.wpos = Some(Self::wpos_from_mpos_wco(mpos, wco));
-            }
+        if full.wpos.is_none()
+            && let (Some(mpos), Some(wco)) = (full.mpos, full.wco)
+        {
+            full.wpos = Some(Self::wpos_from_mpos_wco(mpos, wco));
         }
 
-        if full.mpos.is_none() {
-            if let (Some(wpos), Some(wco)) = (full.wpos, full.wco) {
-                full.mpos = Some(Self::mpos_from_wpos_wco(wpos, wco));
-            }
+        if full.mpos.is_none()
+            && let (Some(wpos), Some(wco)) = (full.wpos, full.wco)
+        {
+            full.mpos = Some(Self::mpos_from_wpos_wco(wpos, wco));
         }
 
         full
@@ -430,4 +421,88 @@ pub struct FullStatus {
     pub spindle_speed: Option<u32>,
     /// Probe pin state (`Pn:P` indicates probe is triggered)
     pub probe_pin: Option<bool>,
+}
+
+/// Millimetres per inch, for converting `$13=1` (inch) reports.
+const MM_PER_INCH: f64 = 25.4;
+
+impl FullStatus {
+    /// Converts a report sent in inches (`$13=1`) to millimetres, the unit
+    /// the application works in. Reports already in mm are returned as is.
+    ///
+    /// # Arguments
+    /// * `report_inches` - Whether the controller's `$13` is 1.
+    pub fn into_mm(mut self, report_inches: bool) -> Self {
+        if !report_inches {
+            return self;
+        }
+        let scale = |v: f64| v * MM_PER_INCH;
+        let scale_opt = |v: Option<f64>| v.map(scale);
+        if let Some(p) = self.mpos.as_mut() {
+            (p.x, p.y, p.z) = (scale(p.x), scale(p.y), scale(p.z));
+        }
+        if let Some(p) = self.wpos.as_mut() {
+            (p.x, p.y, p.z) = (scale(p.x), scale(p.y), scale(p.z));
+        }
+        if let Some(p) = self.wco.as_mut() {
+            (p.x, p.y, p.z) = (scale(p.x), scale(p.y), scale(p.z));
+        }
+        self.feed_rate = scale_opt(self.feed_rate);
+        self
+    }
+}
+
+/// Parse a GRBL probe report `[PRB:x,y,z(,a...):flag]`.
+///
+/// The position is in machine coordinates, in the controller's report units
+/// (mm unless `$13=1`). A missing flag is treated as success.
+///
+/// # Arguments
+/// * `line` - One trimmed line received from the controller.
+///
+/// # Returns
+/// The probe result, or `None` if the line is not a well-formed probe report.
+pub fn parse_probe_report(line: &str) -> Option<gcodekit5_core::ProbeResult> {
+    parse_probe_report_in(line, false)
+}
+
+/// Parses a GRBL probe report like [`parse_probe_report`], converting the
+/// position to millimetres when the controller reports in inches (`$13=1`).
+///
+/// # Arguments
+/// * `line` - One trimmed line received from the controller.
+/// * `report_inches` - Whether the controller's `$13` is 1.
+pub fn parse_probe_report_in(
+    line: &str,
+    report_inches: bool,
+) -> Option<gcodekit5_core::ProbeResult> {
+    let scale = if report_inches {
+        MM_PER_INCH as f32
+    } else {
+        1.0
+    };
+    let inner = line.trim().strip_prefix("[PRB:")?.strip_suffix(']')?;
+    let mut parts = inner.splitn(2, ':');
+    let coords: Vec<f32> = parts
+        .next()?
+        .split(',')
+        .map(|v| v.trim().parse::<f32>())
+        .collect::<Result<_, _>>()
+        .ok()?;
+    if coords.len() < 3 {
+        return None;
+    }
+    let success = match parts.next().map(str::trim) {
+        None | Some("") => true,
+        Some(flag) => flag.parse::<u8>().ok()? != 0,
+    };
+    let mut position =
+        gcodekit5_core::Position::new(coords[0] * scale, coords[1] * scale, coords[2] * scale);
+    // A rotary axis reports degrees, not a length.
+    position.a = coords.get(3).copied();
+    Some(gcodekit5_core::ProbeResult::new(
+        position,
+        success,
+        gcodekit5_core::Units::MM,
+    ))
 }

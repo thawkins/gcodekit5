@@ -4,7 +4,7 @@
 //! and roller diameter. Generates accurate tooth profiles following
 //! standard sprocket geometry.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 

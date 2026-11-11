@@ -24,6 +24,9 @@ macro_rules! t {
 #[derive(Debug, Clone)]
 pub struct SettingsPersistence {
     config: Config,
+    /// The config file on disk could not be loaded: copy it aside before the
+    /// first save replaces it.
+    backup_before_save: bool,
 }
 
 impl SettingsPersistence {
@@ -31,13 +34,87 @@ impl SettingsPersistence {
     pub fn new() -> Self {
         Self {
             config: Config::default(),
+            backup_before_save: false,
         }
     }
 
     /// Load settings from file
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let config = Config::load_from_file(path)?;
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            backup_before_save: false,
+        })
+    }
+
+    /// Loads the settings at `path`, or the defaults when there is no file.
+    ///
+    /// When the file exists but cannot be loaded, the defaults are used and
+    /// the file is copied aside (`<name>.bak-<seconds>`) before the first
+    /// save, so the user's settings are never overwritten unseen.
+    ///
+    /// # Returns
+    /// The settings, and the load error when the file could not be read.
+    pub fn load_or_default(path: &Path) -> (Self, Option<String>) {
+        if !path.exists() {
+            return (Self::new(), None);
+        }
+        match Self::load_from_file(path) {
+            Ok(persistence) => (persistence, None),
+            Err(e) => {
+                let mut persistence = Self::new();
+                persistence.backup_before_save = true;
+                (persistence, Some(e.to_string()))
+            }
+        }
+    }
+
+    /// Saves the settings to the standard config file
+    /// ([`crate::SettingsManager::config_file_path`]), creating its directory
+    /// and first backing up a file that failed to load.
+    ///
+    /// # Errors
+    /// Returns an error if the backup or the write fails; nothing is
+    /// overwritten when the backup fails.
+    pub fn persist(&mut self) -> Result<()> {
+        let path = crate::SettingsManager::config_file_path()?;
+        crate::SettingsManager::ensure_config_dir()?;
+        self.persist_to(&path)
+    }
+
+    /// [`Self::persist`] to an explicit file instead of the standard one.
+    ///
+    /// # Errors
+    /// Returns an error if the backup or the write fails.
+    pub fn persist_to(&mut self, path: &Path) -> Result<()> {
+        if self.backup_before_save && path.exists() {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_default();
+            let mut name = path.file_name().unwrap_or_default().to_os_string();
+            name.push(format!(".bak-{stamp}"));
+            let backup = path.with_file_name(name);
+            std::fs::copy(path, &backup).map_err(|e| {
+                gcodekit5_core::Error::other(format!(
+                    "Failed to back up {} to {}: {e}",
+                    path.display(),
+                    backup.display()
+                ))
+            })?;
+            tracing::warn!(backup = %backup.display(), "Backed up unreadable settings file");
+        }
+        self.backup_before_save = false;
+        self.save_to_file(path)
+    }
+
+    /// [`Self::persist`], logging a failure instead of returning it. For
+    /// background saves (remembered folders, panel sizes) with no one to
+    /// report to.
+    pub fn persist_or_log(&mut self) {
+        if let Err(e) = self.persist() {
+            tracing::warn!(error = %e, "Failed to save settings");
+        }
     }
 
     /// Save settings to file
@@ -279,17 +356,6 @@ impl SettingsPersistence {
             .with_category(SettingsCategory::UserInterface),
         );
 
-        // Show Toolbar
-        dialog.add_setting(
-            Setting::new(
-                "show_toolbar",
-                "Show Toolbar",
-                SettingValue::Boolean(ui.panel_visibility.get("toolbar").copied().unwrap_or(true)),
-            )
-            .with_description("Show the main toolbar")
-            .with_category(SettingsCategory::UserInterface),
-        );
-
         // Show Status Bar
         dialog.add_setting(
             Setting::new(
@@ -303,17 +369,6 @@ impl SettingsPersistence {
                 ),
             )
             .with_description("Show the status bar at the bottom")
-            .with_category(SettingsCategory::UserInterface),
-        );
-
-        // Show Menu Shortcuts
-        dialog.add_setting(
-            Setting::new(
-                "show_menu_shortcuts",
-                "Show Menu Shortcuts",
-                SettingValue::Boolean(ui.show_menu_shortcuts),
-            )
-            .with_description("Display keyboard shortcuts in menu items")
             .with_category(SettingsCategory::UserInterface),
         );
 
@@ -685,9 +740,12 @@ impl SettingsPersistence {
             };
         }
 
+        // Only a folder the user changed in the dialog is applied: the dialog
+        // still holds the folder from when it was filled, and file dialogs
+        // update the remembered folder since then.
         if let Some(setting) = dialog.get_setting("default_directory") {
             let path_str = setting.value.as_str();
-            if !path_str.is_empty() {
+            if !path_str.is_empty() && path_str != setting.default.as_str() {
                 self.config.file_processing.output_directory = std::path::PathBuf::from(path_str);
             }
         }
@@ -736,58 +794,43 @@ impl SettingsPersistence {
             };
         }
 
-        if let Some(setting) = dialog.get_setting("window_width") {
-            if let Ok(width) = setting.value.as_str().parse::<u32>() {
-                self.config.ui.window_width = width;
-            }
+        if let Some(setting) = dialog.get_setting("window_width")
+            && let Ok(width) = setting.value.as_str().parse::<u32>()
+        {
+            self.config.ui.window_width = width;
         }
 
-        if let Some(setting) = dialog.get_setting("window_height") {
-            if let Ok(height) = setting.value.as_str().parse::<u32>() {
-                self.config.ui.window_height = height;
-            }
+        if let Some(setting) = dialog.get_setting("window_height")
+            && let Ok(height) = setting.value.as_str().parse::<u32>()
+        {
+            self.config.ui.window_height = height;
         }
 
-        if let Some(setting) = dialog.get_setting("show_toolbar") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .ui
-                    .panel_visibility
-                    .insert("toolbar".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("show_status_bar")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .ui
+                .panel_visibility
+                .insert("status_bar".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("show_status_bar") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .ui
-                    .panel_visibility
-                    .insert("status_bar".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("show_about_on_startup")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config.ui.show_about_on_startup = value;
         }
 
-        if let Some(setting) = dialog.get_setting("show_menu_shortcuts") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config.ui.show_menu_shortcuts = value;
-            }
+        if let Some(setting) = dialog.get_setting("grid_major_line_width")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.ui.grid_major_line_width = value.clamp(0.5, 10.0);
         }
 
-        if let Some(setting) = dialog.get_setting("show_about_on_startup") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config.ui.show_about_on_startup = value;
-            }
-        }
-
-        if let Some(setting) = dialog.get_setting("grid_major_line_width") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.ui.grid_major_line_width = value.clamp(0.5, 10.0);
-            }
-        }
-
-        if let Some(setting) = dialog.get_setting("grid_minor_line_width") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.ui.grid_minor_line_width = value.clamp(0.5, 10.0);
-            }
+        if let Some(setting) = dialog.get_setting("grid_minor_line_width")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.ui.grid_minor_line_width = value.clamp(0.5, 10.0);
         }
 
         Ok(())
@@ -795,22 +838,22 @@ impl SettingsPersistence {
 
     /// Update file processing settings in config from dialog
     fn update_file_processing_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
-        if let Some(setting) = dialog.get_setting("preserve_comments") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config.file_processing.preserve_comments = value;
-            }
+        if let Some(setting) = dialog.get_setting("preserve_comments")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config.file_processing.preserve_comments = value;
         }
 
-        if let Some(setting) = dialog.get_setting("arc_segment_length") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.file_processing.arc_segment_length = value;
-            }
+        if let Some(setting) = dialog.get_setting("arc_segment_length")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.file_processing.arc_segment_length = value;
         }
 
-        if let Some(setting) = dialog.get_setting("max_line_length") {
-            if let Ok(value) = setting.value.as_str().parse::<u32>() {
-                self.config.file_processing.max_line_length = value;
-            }
+        if let Some(setting) = dialog.get_setting("max_line_length")
+            && let Ok(value) = setting.value.as_str().parse::<u32>()
+        {
+            self.config.file_processing.max_line_length = value;
         }
 
         Ok(())
@@ -818,16 +861,16 @@ impl SettingsPersistence {
 
     /// Update advanced settings in config from dialog
     fn update_advanced_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
-        if let Some(setting) = dialog.get_setting("enable_stock_removal_3d") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config.ui.enable_stock_removal_3d = value;
-            }
+        if let Some(setting) = dialog.get_setting("enable_stock_removal_3d")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config.ui.enable_stock_removal_3d = value;
         }
 
-        if let Some(setting) = dialog.get_setting("enable_stl_import") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config.ui.enable_stl_import = value;
-            }
+        if let Some(setting) = dialog.get_setting("enable_stl_import")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config.ui.enable_stl_import = value;
         }
 
         Ok(())
@@ -836,171 +879,171 @@ impl SettingsPersistence {
     /// Update machine settings in config from dialog
     fn update_machine_settings(&mut self, dialog: &SettingsDialog) -> Result<()> {
         // Jog settings
-        if let Some(setting) = dialog.get_setting("jog_increment_linear") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.jog_increment = value.max(0.001);
-            }
+        if let Some(setting) = dialog.get_setting("jog_increment_linear")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.jog_increment = value.max(0.001);
         }
 
-        if let Some(setting) = dialog.get_setting("jog_increment_rotary") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.jog_increment_rotary = value.max(0.001);
-            }
+        if let Some(setting) = dialog.get_setting("jog_increment_rotary")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.jog_increment_rotary = value.max(0.001);
         }
 
-        if let Some(setting) = dialog.get_setting("jog_feed_rate") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.jog_feed_rate = value.max(1.0);
-            }
+        if let Some(setting) = dialog.get_setting("jog_feed_rate")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.jog_feed_rate = value.max(1.0);
         }
 
         // Axis limits
-        if let Some(setting) = dialog.get_setting("x_limit") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.x_limit = value.max(1.0);
-            }
+        if let Some(setting) = dialog.get_setting("x_limit")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.x_limit = value.max(1.0);
         }
 
-        if let Some(setting) = dialog.get_setting("y_limit") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.y_limit = value.max(1.0);
-            }
+        if let Some(setting) = dialog.get_setting("y_limit")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.y_limit = value.max(1.0);
         }
 
-        if let Some(setting) = dialog.get_setting("z_limit") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.z_limit = value.max(1.0);
-            }
+        if let Some(setting) = dialog.get_setting("z_limit")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.z_limit = value.max(1.0);
         }
 
         // Rotary axis limits
-        if let Some(setting) = dialog.get_setting("a_limit") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.a_limit = value.max(0.0);
-            }
+        if let Some(setting) = dialog.get_setting("a_limit")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.a_limit = value.max(0.0);
         }
 
-        if let Some(setting) = dialog.get_setting("b_limit") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.b_limit = value.max(0.0);
-            }
+        if let Some(setting) = dialog.get_setting("b_limit")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.b_limit = value.max(0.0);
         }
 
-        if let Some(setting) = dialog.get_setting("c_limit") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config.machine.c_limit = value.max(0.0);
-            }
+        if let Some(setting) = dialog.get_setting("c_limit")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config.machine.c_limit = value.max(0.0);
         }
 
         // Steps per degree
-        if let Some(setting) = dialog.get_setting("steps_per_degree_a") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config
-                    .machine
-                    .steps_per_degree
-                    .insert("A".to_string(), value.max(1.0));
-            }
+        if let Some(setting) = dialog.get_setting("steps_per_degree_a")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config
+                .machine
+                .steps_per_degree
+                .insert("A".to_string(), value.max(1.0));
         }
 
-        if let Some(setting) = dialog.get_setting("steps_per_degree_b") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config
-                    .machine
-                    .steps_per_degree
-                    .insert("B".to_string(), value.max(1.0));
-            }
+        if let Some(setting) = dialog.get_setting("steps_per_degree_b")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config
+                .machine
+                .steps_per_degree
+                .insert("B".to_string(), value.max(1.0));
         }
 
-        if let Some(setting) = dialog.get_setting("steps_per_degree_c") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config
-                    .machine
-                    .steps_per_degree
-                    .insert("C".to_string(), value.max(1.0));
-            }
+        if let Some(setting) = dialog.get_setting("steps_per_degree_c")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config
+                .machine
+                .steps_per_degree
+                .insert("C".to_string(), value.max(1.0));
         }
 
         // Axis direction inversion
-        if let Some(setting) = dialog.get_setting("invert_x") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .machine
-                    .axis_direction_invert
-                    .insert("X".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("invert_x")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .machine
+                .axis_direction_invert
+                .insert("X".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("invert_y") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .machine
-                    .axis_direction_invert
-                    .insert("Y".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("invert_y")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .machine
+                .axis_direction_invert
+                .insert("Y".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("invert_z") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .machine
-                    .axis_direction_invert
-                    .insert("Z".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("invert_z")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .machine
+                .axis_direction_invert
+                .insert("Z".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("invert_a") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .machine
-                    .axis_direction_invert
-                    .insert("A".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("invert_a")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .machine
+                .axis_direction_invert
+                .insert("A".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("invert_b") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .machine
-                    .axis_direction_invert
-                    .insert("B".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("invert_b")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .machine
+                .axis_direction_invert
+                .insert("B".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("invert_c") {
-            if let Ok(value) = setting.value.as_str().parse::<bool>() {
-                self.config
-                    .machine
-                    .axis_direction_invert
-                    .insert("C".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("invert_c")
+            && let Ok(value) = setting.value.as_str().parse::<bool>()
+        {
+            self.config
+                .machine
+                .axis_direction_invert
+                .insert("C".to_string(), value);
         }
 
         // Rotary calibration offsets
-        if let Some(setting) = dialog.get_setting("calibration_a") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config
-                    .machine
-                    .rotary_calibration
-                    .insert("A".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("calibration_a")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config
+                .machine
+                .rotary_calibration
+                .insert("A".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("calibration_b") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config
-                    .machine
-                    .rotary_calibration
-                    .insert("B".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("calibration_b")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config
+                .machine
+                .rotary_calibration
+                .insert("B".to_string(), value);
         }
 
-        if let Some(setting) = dialog.get_setting("calibration_c") {
-            if let Ok(value) = setting.value.as_str().parse::<f64>() {
-                self.config
-                    .machine
-                    .rotary_calibration
-                    .insert("C".to_string(), value);
-            }
+        if let Some(setting) = dialog.get_setting("calibration_c")
+            && let Ok(value) = setting.value.as_str().parse::<f64>()
+        {
+            self.config
+                .machine
+                .rotary_calibration
+                .insert("C".to_string(), value);
         }
 
         Ok(())

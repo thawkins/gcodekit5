@@ -22,11 +22,11 @@ use std::f64::consts::PI;
 use std::panic;
 
 use cavalier_contours::polyline::{
-    seg_arc_radius_and_center, PlineSourceMut, PlineVertex, Polyline,
+    PlineSourceMut, PlineVertex, Polyline, seg_arc_radius_and_center,
 };
 use cavalier_contours::shape_algorithms::{Shape, ShapeOffsetOptions};
 
-use super::{add_center_cleanup, polygon_centroid, PocketGenerator, PocketStrategy};
+use super::{PocketGenerator, PocketStrategy, add_center_cleanup, polygon_centroid};
 use crate::model::Point;
 use crate::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
 
@@ -299,7 +299,7 @@ impl SpanIndex {
         let live_lines = live_per_line
             .iter()
             .enumerate()
-            .filter(|(_, &n)| n > 0)
+            .filter(|&(_, &n)| n > 0)
             .map(|(li, _)| li)
             .collect();
         let remaining = live_per_line.iter().sum();

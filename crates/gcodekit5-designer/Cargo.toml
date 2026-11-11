@@ -1,5 +1,6 @@
 [package]
 name = "gcodekit5-designer"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -22,13 +23,13 @@ lyon = { version = "1.0", features = ["serialization"] }
 rusttype = "0.9.3"
 fontdb = "0.16"
 cavalier_contours = "0.7.0"
-tiny-skia = "0.11.4"
 csgrs = { version = "0.20.1", features = ["svg-io", "stl-io"] }
 stl_io = "0.11"
 nalgebra = "0.33.3"
 smallvec = { version = "1.13", features = ["const_generics"] }
 
 [dev-dependencies]
+csgrs = "0.20.1"
 tempfile = "3.10"
 proptest = "1.4"
 criterion = { version = "0.8", features = ["html_reports"] }
@@ -36,3 +37,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [[bench]]
 name = "toolpath_bench"
 harness = false
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

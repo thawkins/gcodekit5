@@ -32,8 +32,8 @@ impl ConfigSettingsView {
         }
     }
 
-    pub(crate) fn grbl_settings_definitions(
-    ) -> Vec<(u16, &'static str, &'static str, bool, &'static str)> {
+    pub(crate) fn grbl_settings_definitions()
+    -> Vec<(u16, &'static str, &'static str, bool, &'static str)> {
         vec![
             // Standard GRBL Settings (0-132)
             (

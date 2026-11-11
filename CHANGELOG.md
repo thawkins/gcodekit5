@@ -1,3 +1,265 @@
+## [Unreleased] - 2026-11-11 (visualiser 2D/3D toggle, quiet start-up, review fixes)
+
+### Added
+- **2D/3D view toggle** (#97): a 2D/3D switch at the top of the visualiser sidebar. 2D locks the camera to the top view, left-drag pans and the nav cube is hidden; 3D restores the isometric view with free orbit
+
+### Fixed
+- **Locale warning at start-up**: choosing a UI language set `LANG` to a locale that does not exist (e.g. `en.UTF-8`), so GTK warned "Locale not supported by C library" and fell back to "C". Only `LANGUAGE` is set now; `LANG` keeps the system locale
+- **Quiet start-up** (#97): two unsupported CSS declarations removed; Speeds & Feeds diagnostics and "Loaded settings" go to the log instead of the console
+- **Sidebar Fit button** (#97): fits the toolpath like the nav cube's Fit, keeping the current view (2D stays top-down)
+- **Halftone with minimum power** (#96): off pixels get zero power instead of the minimum power
+- **Array dialog** (#96): arrays over 10,000 objects are refused with a message instead of being built
+- **Rotary jog** (#96): jog commands state `G21`, so the feed is always mm/min; Steps per Degree is sent only when it is a finite number (at least 1, as Preferences saves it)
+- **Machine limits** (#96): Export uses the active device's limits, and saving Preferences refreshes the machine panel's limit labels
+
+### Changed
+- `assets/logs/` is ignored by git
+
+## [Unreleased] - 2026-11-10 (Designer G-code correctness)
+
+### Fixed
+- **Spindle start** (#75, C-01): Designer CNC programs now start the spindle with `M3 S<rpm>` after the header and stop it with `M5` after the final Z raise; the cutter no longer plunges with the spindle stopped
+- **Arc precision** (C-02): coordinates are written with 3 decimals and arc `I`/`J` are taken from the rounded start point, so GRBL no longer rejects small rotated arcs with error:33
+- **Ramp entry on dense paths** (C-03): when the ramp lap cap is reached, the remaining depth is cut in flat laps one step-down apart instead of one full-depth plunge
+- **Offset keeps holes** (C-04): offsetting a shape with holes (gears, boolean results) moves the holes with the outline instead of filling them in
+- **Header depth** (C-07): the header prints `; Final Z` (deepest cut) instead of a "Cut depth" that was the first pass Z
+## [Unreleased] - 2026-11-10 (serial disconnect and status parsing)
+
+### Fixed
+- **USB unplug detected** (#73, B-01): a serial hang-up (`BrokenPipe`) on read or write now drops the port and reports "Connection lost", instead of being read as "no data" forever
+- **grblHAL and FluidNC** (B-10): profiles and banners for these controllers map to the GRBL protocol, so they get `$I`/`$$` on connect and protocol mismatch checks work
+- **Corrupt status reports** (B-11): a malformed axis value rejects the whole position instead of shifting the following values onto the wrong axes
+- **Inch reports** (B-22): with `$13=1`, status positions, work offsets, feed and probe results are converted from inches to mm
+
+### Removed
+- `TcpCommunicator` (B-16): unused; TCP connections go through `SerialCommunicator`
+## [Unreleased] - 2026-11-10 (Repetier protocol fixes)
+
+### Fixed
+- **Repetier translation** (#72): only an exact `M4` becomes `M3` (`M400`, `M42` pass through); `G28 Z0` keeps its axis words and `G28.1` is unchanged; `G10 L20 P1 X0.5 Y20` becomes `G92 X0.5 Y20` with all axes and values; jogs keep their axes and feed and restore `G90` (and `G21` after an inch jog); user line numbers (`N10 G1 X5`) are replaced instead of dropping the line; parameter-only lines (`F`, `S`, `E`) are sent; untranslatable lines are reported as skipped
+- **Repetier streaming**: replies split across reads are reassembled before parsing, so acks and `Resend:` requests are no longer missed; resend requests rewind to the matching job line; stale acks are cleared when a job starts; a lost connection stops the job with an error; the sender thread exits when the sender is dropped
+- **Repetier pen mode is now a per-machine option** (B-21): `M3`/`M4`/`M5` are rewritten as pen-down/up Z moves only when "Pen Mode" is ticked on the device profile's Capabilities tab (new `pen_mode` profile field, off by default). Before, every Repetier job was rewritten, which dropped `S` words and broke spindle machines
+- **Repetier status**: the synthesized status reports Run/Idle from flow control and a position tracked from sent moves and `X:/Y:/Z:` reports instead of a fixed 0,0,0
+
+### Changed
+- `gcodekit5-communication` tests build as one `tests/all.rs` binary (`autotests = false`); 21 Repetier regression tests added
+## [Unreleased] - 2026-11-10 (machine-control busy guard and Stop)
+
+### Changed
+- **Stop keeps the position** (#74, E2-10): Stop sends feed hold (`!`), waits until the controller reports the hold complete (up to 10 s), then soft-resets. Before, the immediate reset raised "reset while in motion" and the machine had to be rehomed. E-Stop still resets at once
+
+### Fixed
+- **Console during a job** (E2-01): console lines other than `!`, `~` and `?` are refused while a job streams; before, their `ok`/`error` corrupted the job's accounting or stopped it
+- **Device Config during a job** (E2-02): Retrieve (`$$`) and setting edits (`$n=v`) are refused while a job streams or the machine is not Idle/Alarm; an edit updates the page only after the controller was sent the value, and a failure is shown
+- **Pause state** (E2-03): resuming from the controller's cycle-start button or a console `~` re-enables Pause
+- **Device manager** (E2-11): delete and set-active failures are shown, and the panel's axis count changes only when set-active succeeds
+## [Unreleased] - 2026-11-10 (settings integrity and Preferences wiring)
+
+### Fixed
+- **Settings never lost** (#76, A-01/E2-04): a config.json that fails to load is no longer overwritten unseen. The defaults are used, a warning is shown, and the file is copied to `config.json.bak-<seconds>` before the first save. Saves are atomic (temp file + rename)
+- **One config directory** (A-03): config.json uses the platform config directory (`$XDG_CONFIG_HOME` on Linux), like the device, tool and material files; no save falls back to the current directory
+- **`RUST_LOG` works** (A-04): it now sets the log level; INFO is the default only when it is unset
+- **Remembered folder kept** (E2-05): saving Preferences no longer restores the folder from when the dialog was filled
+- **Save errors logged** (E2-15): all background settings saves go through one helper that logs failures
+
+### Changed
+- **Preferences that now take effect** (A-02): Machine > Jog Step and Jog Feed Rate set the panel's starting jog step and feed (the feed was fixed at 2000 mm/min); Machine > Invert X/Y/Z/A/B/C reverse that axis's jog direction; window width/height set the start size and are saved on close; Show Status Bar hides the status bar; File Processing > Preserve Comments (off by default) removes comments from jobs before streaming; Max Line Length (default 256) refuses a job with a longer line
+## [Unreleased] - 2026-11-10 (visualizer and stock simulation)
+
+### Fixed
+- **Stock simulation hang** (#77, D-01): a cut left of or below the stock origin, or a zero-size stock, no longer makes the simulation loop forever
+- **Stock simulation memory** (E1-06): the unused second voxel grid is gone, and a stock too large to simulate (over 1 GB of voxels, e.g. a full 1220 x 2440 mm sheet) is refused with a message instead of aborting the app
+- **Probe moves** (D-02): G38.2-G38.5 moves are drawn as travel and never simulated as cuts
+- **3D view scrollbar** (E1-01): the vertical scrollbar uses one sign convention, so loading a file no longer jumps the view to mirrored Y
+- **Copy cursor coordinates** (E1-03): copies the right-clicked point instead of 0,0
+- **Context menu leak** (E1-02): the 2D view's right-click menu is released when it closes
+## [Unreleased] - 2026-11-10 (CAM input validation and imports)
+
+### Fixed
+- **Drill press** (#78, D-05): rejects safe Z at or below the top, bottom above top, non-numbers, non-positive diameters/rates and a negative or absurdly small peck, instead of emitting `G1 ZNaN` or rapids through the stock
+- **Tabbed box** (D-06): rejects 0 laser passes (no cuts), negative step-down and non-number dimensions
+- **Gerber single-quadrant arcs** (D-04): `G74` arcs pick their centre from the unsigned I/J (sweep of 90 degrees or less), and a zero-length `G74` arc is no longer a full ring
+- **DXF numbers** (C-08): values that are not numbers (or are NaN/infinite) are reported as an import warning instead of silently becoming 0
+- **STL shadow import** (C-05): the shadow is the mesh's outline (boundary edges of the up-facing triangles), built in linear time; a 20 000-triangle model took about 26 s and produced thousands of wireframe shapes
+- **STL slicing** (C-06): slicing exactly through a vertex keeps the triangle, and degenerate triangles get a zero normal instead of NaN
+
+### Changed
+- The empty always-passing hatch test was removed and the Gerber rubout test moved to `tests/` (D-03)
+## [Unreleased] - 2026-11-10 (UI leaks and silent failures)
+
+### Fixed
+- **Tool Settings dialog** (#79, E1-04): built once and shown again, instead of leaking a hidden window and its callbacks on every open
+- **Rounded settings written back** (E1-05): refreshing the tool/stock settings no longer stores the 3-decimal display value (1000 mm/min became 999.998 in inches)
+- **Designer errors shown** (E1-07): failures to open, save or export a design, or to load/engrave an image, show a dialog; they went to a label that is never displayed
+- **Status bar notices** (E2-09): a notice's 4 s clear timer no longer clears a newer notice early
+- **Speeds & Feeds device** (E2-07): uses the application's device database, so a change of active machine or spindle is seen at once
+- **CAM presets** (E2-08): drill press and spoilboard grid/surfacing presets report save and load errors, and refuse to save a field that is not a valid number instead of saving a default
+
+### Removed
+- The Device Config "Restore" button (E2-06): it reported restoring settings but did nothing
+## [Unreleased] - 2026-11-10 (leftovers: Preferences, features, shared G-code code)
+
+### Added
+- **Designer Array dialog**: right-click > Array... copies the selection as a linear, grid or circular array
+- **Rotary jog buttons**: A/B/C -/+ buttons in each rotary DRO row jog by Preferences > Machine > Rotary Jog Step
+
+### Changed
+- **Preferences that now take effect**: X/Y limits are the Designer's working area when no device profile is active; X/Y/Z/A/B/C limits fill the machine panel's Machine Limits (from `$130`-`$132` once read); Steps per Degree A/B/C is sent to the controller (`$103`-`$105`) when changed while idle; Rotary Calibration A/B/C is the work position set when zeroing that axis; Arc Segment Length sets how finely the 3D view draws arcs
+- **Dithering/halftone** for engraved images is back (Threshold, Bayer, Floyd-Steinberg, Atkinson) in the image properties
+- **One G-code tokenizer and one arc rule** (in `gcodekit5-core`) are shared by the visualizer, the CAM tools and the stock simulator; a coincident arc start/end is a full circle everywhere
+- Long functions split: the properties panel refresh and the application start-up
+- Inline unit tests moved to each crate's `tests/`
+
+### Removed
+- The unused `gcodekit5-gcodeeditor` crate
+- Preferences > Show Toolbar and Show Menu Shortcuts (no toolbar exists; GTK always shows menu shortcuts)
+
+## [Unreleased] - 2026-11-10 (structural changes)
+
+### Removed
+- **Unused async controller layer** (#83, owner decision): the TinyG, g2core, Smoothieware, FluidNC and grblHAL controllers, the event bus, message/event dispatchers, controller traits, the G-code validator, the buffered communicator and the connection watcher, with tokio and async-trait (about 8,500 lines)
+- **Other code only its own tests used**: the visualizer `utils` module (file I/O, export, backup, phase 6/7 helpers), unused error modules, settings presets, and the UI's duplicate editor engine (about 7,600 lines). Tests that covered only deleted code were removed and are listed in the commit messages
+
+### Changed
+- **Edition 2024** for every crate
+- **`#![deny(unsafe_code)]`** at every crate root; the UI's OpenGL, GObject-data, Win32 and environment calls carry scoped allows with SAFETY comments
+- **One test binary per crate** (`tests/all.rs`)
+
+## [Unreleased] - 2026-11-10 (duplication and decomposition)
+
+### Changed
+- **Less duplicated code** (#82): the six designer align commands, the step-down/step-in/ramp-angle setters, fillet/chamfer, and the offset/chamfer property handlers each share one implementation; pt/mm conversion, probe-report parsing and the CAM error dialog are defined once
+- **Shorter functions** (#82): the designer's G-code generation (~640 lines) is split into set-up, toolpath and output phases; the machine panel's constructor (~2,100 lines) moves its handler wiring into four named phases
+- Comments and debug logs: emoji removed, Spanish log messages translated, crate docs say GCodeKit5; the Speeds & Feeds calculate handler is formatted again
+
+## [Unreleased] - 2026-11-10 (dead code removal)
+
+### Removed
+- **Unused code with no callers** (#81), about 9,300 lines:
+  - Designer: 17 modules no feature reached (adaptive, drilling patterns, multipass, parametric, templates, toolpath simulation, V-carve, history, renderers, slice/shadow toolpaths, editor/visualizer "integration", G-code converter, helpers) and the orphan `src/mod.rs`
+  - CAM tools: `advanced_features`, `advanced_features_panel`, `core_infrastructure`
+  - Settings/device database: the `SettingsManager` instance API and firmware preset tables, `FirmwareSettings`, the device-profile templates and `DeviceProfileProvider`
+  - Root crate: the re-export facade, `platform.rs`, `app/`, `GcodeSendState`, `BUILD_DATE` and its build script
+  - UI: 59 functions with no callers, `stock_texture.rs`, the unused parts of `common/rendering.rs`, and commented-out code
+- Kept for wiring up: run-preview pause/resume, the designer array functions and the halftone/dithering code
+## [Unreleased] - 2026-11-10 (release packaging and dependency diet)
+
+### Fixed
+- **Release binary name** (#80, A-05): the binary is `gcodekit5` again (a `[[bin]]` target), which the release workflow, Windows installer, flatpak and desktop file expect; it had become `gcodekit5-design`
+- **Package icons** (A-05): deb/rpm/flatpak/AppImage/macOS use `assets/pictures/com.github.thawkins.gcodekit5.png` (the paths used `assets/Pictures` and files that did not exist); deb/rpm install the existing desktop file
+- **Project URLs** (A-05): the repository and About dialog link to github.com/thawkins/gcodekit5
+- `cargo build -p gcodekit5-settings` works on its own (gettext uses the system library there too)
+
+### Changed
+- **Dependencies** (A-07/A-09): removed unused `dxf` (camtools), `uuid`/`bytemuck`/`lyon` (visualizer), `uuid`/`chrono` (ui runtime), `gtk4`/`gettext-rs`/`serde` (root), and the visualizer's dependency on the designer (it fed an unused toolpath channel); `async-executor` and `serialport` updated off yanked versions
+- **Build** (A-08): the UI's GResources are compiled once
+- **CI** (A-13): new jobs run clippy with warnings as errors and the tests with cargo-nextest (`.config/nextest.toml`, 150 s per-test limit); `deny.toml` only allows crates.io and the patched `core2` git source, and stale advisory ignores were removed
+## [Unreleased] - 2026-11-10 (dead code removal)
+
+### Removed
+- **Unused code with no callers** (#81), about 9,300 lines:
+  - Designer: 17 modules no feature reached (adaptive, drilling patterns, multipass, parametric, templates, toolpath simulation, V-carve, history, renderers, slice/shadow toolpaths, editor/visualizer "integration", G-code converter, helpers) and the orphan `src/mod.rs`
+  - CAM tools: `advanced_features`, `advanced_features_panel`, `core_infrastructure`
+  - Settings/device database: the `SettingsManager` instance API and firmware preset tables, `FirmwareSettings`, the device-profile templates and `DeviceProfileProvider`
+  - Root crate: the re-export facade, `platform.rs`, `app/`, `GcodeSendState`, `BUILD_DATE` and its build script
+  - UI: 59 functions with no callers, `stock_texture.rs`, the unused parts of `common/rendering.rs`, and commented-out code
+- Kept for wiring up: run-preview pause/resume, the designer array functions and the halftone/dithering code
+## [Unreleased] - 2026-11-10 (UI leaks and silent failures)
+
+### Fixed
+- **Tool Settings dialog** (#79, E1-04): built once and shown again, instead of leaking a hidden window and its callbacks on every open
+- **Rounded settings written back** (E1-05): refreshing the tool/stock settings no longer stores the 3-decimal display value (1000 mm/min became 999.998 in inches)
+- **Designer errors shown** (E1-07): failures to open, save or export a design, or to load/engrave an image, show a dialog; they went to a label that is never displayed
+- **Status bar notices** (E2-09): a notice's 4 s clear timer no longer clears a newer notice early
+- **Speeds & Feeds device** (E2-07): uses the application's device database, so a change of active machine or spindle is seen at once
+- **CAM presets** (E2-08): drill press and spoilboard grid/surfacing presets report save and load errors, and refuse to save a field that is not a valid number instead of saving a default
+
+### Removed
+- The Device Config "Restore" button (E2-06): it reported restoring settings but did nothing
+## [Unreleased] - 2026-11-10 (CAM input validation and imports)
+
+### Fixed
+- **Drill press** (#78, D-05): rejects safe Z at or below the top, bottom above top, non-numbers, non-positive diameters/rates and a negative or absurdly small peck, instead of emitting `G1 ZNaN` or rapids through the stock
+- **Tabbed box** (D-06): rejects 0 laser passes (no cuts), negative step-down and non-number dimensions
+- **Gerber single-quadrant arcs** (D-04): `G74` arcs pick their centre from the unsigned I/J (sweep of 90 degrees or less), and a zero-length `G74` arc is no longer a full ring
+- **DXF numbers** (C-08): values that are not numbers (or are NaN/infinite) are reported as an import warning instead of silently becoming 0
+- **STL shadow import** (C-05): the shadow is the mesh's outline (boundary edges of the up-facing triangles), built in linear time; a 20 000-triangle model took about 26 s and produced thousands of wireframe shapes
+- **STL slicing** (C-06): slicing exactly through a vertex keeps the triangle, and degenerate triangles get a zero normal instead of NaN
+
+### Changed
+- The empty always-passing hatch test was removed and the Gerber rubout test moved to `tests/` (D-03)
+## [Unreleased] - 2026-11-10 (visualizer and stock simulation)
+
+### Fixed
+- **Stock simulation hang** (#77, D-01): a cut left of or below the stock origin, or a zero-size stock, no longer makes the simulation loop forever
+- **Stock simulation memory** (E1-06): the unused second voxel grid is gone, and a stock too large to simulate (over 1 GB of voxels, e.g. a full 1220 x 2440 mm sheet) is refused with a message instead of aborting the app
+- **Probe moves** (D-02): G38.2-G38.5 moves are drawn as travel and never simulated as cuts
+- **3D view scrollbar** (E1-01): the vertical scrollbar uses one sign convention, so loading a file no longer jumps the view to mirrored Y
+- **Copy cursor coordinates** (E1-03): copies the right-clicked point instead of 0,0
+- **Context menu leak** (E1-02): the 2D view's right-click menu is released when it closes
+## [Unreleased] - 2026-11-10 (settings integrity and Preferences wiring)
+
+### Fixed
+- **Settings never lost** (#76, A-01/E2-04): a config.json that fails to load is no longer overwritten unseen. The defaults are used, a warning is shown, and the file is copied to `config.json.bak-<seconds>` before the first save. Saves are atomic (temp file + rename)
+- **One config directory** (A-03): config.json uses the platform config directory (`$XDG_CONFIG_HOME` on Linux), like the device, tool and material files; no save falls back to the current directory
+- **`RUST_LOG` works** (A-04): it now sets the log level; INFO is the default only when it is unset
+- **Remembered folder kept** (E2-05): saving Preferences no longer restores the folder from when the dialog was filled
+- **Save errors logged** (E2-15): all background settings saves go through one helper that logs failures
+
+### Changed
+- **Preferences that now take effect** (A-02): Machine > Jog Step and Jog Feed Rate set the panel's starting jog step and feed (the feed was fixed at 2000 mm/min); Machine > Invert X/Y/Z/A/B/C reverse that axis's jog direction; window width/height set the start size and are saved on close; Show Status Bar hides the status bar; File Processing > Preserve Comments (off by default) removes comments from jobs before streaming; Max Line Length (default 256) refuses a job with a longer line
+## [Unreleased] - 2026-11-10 (machine-control busy guard and Stop)
+
+### Changed
+- **Stop keeps the position** (#74, E2-10): Stop sends feed hold (`!`), waits until the controller reports the hold complete (up to 10 s), then soft-resets. Before, the immediate reset raised "reset while in motion" and the machine had to be rehomed. E-Stop still resets at once
+
+### Fixed
+- **Console during a job** (E2-01): console lines other than `!`, `~` and `?` are refused while a job streams; before, their `ok`/`error` corrupted the job's accounting or stopped it
+- **Device Config during a job** (E2-02): Retrieve (`$$`) and setting edits (`$n=v`) are refused while a job streams or the machine is not Idle/Alarm; an edit updates the page only after the controller was sent the value, and a failure is shown
+- **Pause state** (E2-03): resuming from the controller's cycle-start button or a console `~` re-enables Pause
+- **Device manager** (E2-11): delete and set-active failures are shown, and the panel's axis count changes only when set-active succeeds
+## [Unreleased] - 2026-11-10 (serial disconnect and status parsing)
+
+### Fixed
+- **USB unplug detected** (#73, B-01): a serial hang-up (`BrokenPipe`) on read or write now drops the port and reports "Connection lost", instead of being read as "no data" forever
+- **grblHAL and FluidNC** (B-10): profiles and banners for these controllers map to the GRBL protocol, so they get `$I`/`$$` on connect and protocol mismatch checks work
+- **Corrupt status reports** (B-11): a malformed axis value rejects the whole position instead of shifting the following values onto the wrong axes
+- **Inch reports** (B-22): with `$13=1`, status positions, work offsets, feed and probe results are converted from inches to mm
+
+### Removed
+- `TcpCommunicator` (B-16): unused; TCP connections go through `SerialCommunicator`
+## [Unreleased] - 2026-11-10 (Designer G-code correctness)
+
+### Fixed
+- **Spindle start** (#75, C-01): Designer CNC programs now start the spindle with `M3 S<rpm>` after the header and stop it with `M5` after the final Z raise; the cutter no longer plunges with the spindle stopped
+- **Arc precision** (C-02): coordinates are written with 3 decimals and arc `I`/`J` are taken from the rounded start point, so GRBL no longer rejects small rotated arcs with error:33
+- **Ramp entry on dense paths** (C-03): when the ramp lap cap is reached, the remaining depth is cut in flat laps one step-down apart instead of one full-depth plunge
+- **Offset keeps holes** (C-04): offsetting a shape with holes (gears, boolean results) moves the holes with the outline instead of filling them in
+- **Header depth** (C-07): the header prints `; Final Z` (deepest cut) instead of a "Cut depth" that was the first pass Z
+## [Unreleased] - 2026-11-10 (Repetier protocol fixes)
+
+### Fixed
+- **Repetier translation** (#72): only an exact `M4` becomes `M3` (`M400`, `M42` pass through); `G28 Z0` keeps its axis words and `G28.1` is unchanged; `G10 L20 P1 X0.5 Y20` becomes `G92 X0.5 Y20` with all axes and values; jogs keep their axes and feed and restore `G90` (and `G21` after an inch jog); user line numbers (`N10 G1 X5`) are replaced instead of dropping the line; parameter-only lines (`F`, `S`, `E`) are sent; untranslatable lines are reported as skipped
+- **Repetier streaming**: replies split across reads are reassembled before parsing, so acks and `Resend:` requests are no longer missed; resend requests rewind to the matching job line; stale acks are cleared when a job starts; a lost connection stops the job with an error; the sender thread exits when the sender is dropped
+- **Repetier pen mode is now a per-machine option** (B-21): `M3`/`M4`/`M5` are rewritten as pen-down/up Z moves only when "Pen Mode" is ticked on the device profile's Capabilities tab (new `pen_mode` profile field, off by default). Before, every Repetier job was rewritten, which dropped `S` words and broke spindle machines
+- **Repetier status**: the synthesized status reports Run/Idle from flow control and a position tracked from sent moves and `X:/Y:/Z:` reports instead of a fixed 0,0,0
+
+### Changed
+- `gcodekit5-communication` tests build as one `tests/all.rs` binary (`autotests = false`); 21 Repetier regression tests added
+
+## [Unreleased] - 2026-11-10 (homing keeps the work zero)
+
+### Fixed
+- **Homed CAM jobs stayed outside the machine travel** (#70): with "Home before job" on, the tabbed box, bitmap engraver, spoilboard surfacing/grid and drill press emitted `G10 L2 P1 X0 Y0` after `$H`, putting work X/Y zero at the homing switches. With GRBL's default homing the travel is in negative machine coordinates, so the job's positive X/Y moves hit the soft limits (or the switches). Homed jobs now keep the G54 work offsets the user set; Z travel still uses machine-coordinate `G53` moves
+
+## [Unreleased] - 2026-11-10 (merge master into devel)
+
+### Changed
+- **Machine control on devel's protocol registry**: the panel keeps the running job as `Rc<dyn Sender>`. GRBL jobs use master's character-counting `DirectSender` (now a `Sender` implementation); Repetier jobs use `RepetierSender`. Pause, resume, stop and unlock go through the trait, and GRBL-only realtime bytes (`!`, `~`, `0x18`, `?`, spindle-stop `0x9E`) are not sent to flow-control protocols
+- **Connecting**: the active machine's protocol is applied to the communicator and logged; the protocol profile's init commands replace the fixed `$I` / `$$` / `$10=47` sequence; a device that identifies as a different protocol is rejected; a lost connection is reported and the panel resets
+- Devel's removed GRBL modules (`controller`, `command_creator`, `communicator`, `constants`, `override_manager`, `response_parser`, `utils`) stay removed. Devel's `GrblSender` is removed (GRBL streaming is `DirectSender`). Master's `override_sequencer` is kept, and `parse_probe_report` moved to `grbl::status_parser`. Tests for the removed modules and for jigsaw G-code output (jigsaw now feeds the Designer) were dropped
+- Dead-key support on Wayland now sets GTK's `gtk-im-module` setting to `simple` instead of setting `GTK_IM_MODULE` with `unsafe`
+
 ## [Unreleased] - 2026-11-10 (Vulkan log noise)
 
 ### Fixed
@@ -56,6 +318,43 @@
 - **Probe offsets**: suggested `G92` now makes the probed point the work zero
 - **Visualizer**: editing no longer re-parses on every keystroke or resets the camera; status timer paused while hidden; preview and live tool markers separated; bounds show units; machine defaults to G0; shared arc maths in the 3D renderer; stock simulation removes material with a top-at-Z0 or bottom-zero stock; laser-off moves drawn as travel
 - **Editor**: Replace All uses the search options; batch undo is atomic; text inserted at the cursor is undoable; non-UTF-8 files load
+### Recent Updates (1.2.0-beta.2a) Fixed an issue with moving multiple objects using grips and Fix Dead Keys on Wayland (2026-10-25)
+  - When modifying the grips of a set of objects, they would lose their position. This issue has been fixed.
+### Fixed
+- **Accents and dead keys on Wayland (GTK 4.20+)**: The application now sets `GTK_IM_MODULE=simple` at startup if the user has not configured a different input method, restoring the ability to compose accented characters (`á`, `é`, `ñ`, `ü`, etc.) without requiring the installation of IBus or Fcitx5. This change has no effect on X11 or Windows, and it respects the user's existing configuration.
+
+### Recent Updates (1.2.0-beta.2) - refactor: consolidate Sender trait, enforce protocol consistency, and dead code cleanup (2026-10-20)
+- This update consolidates communication architecture, enforces strict protocol validation, and removes obsolete code. All changes have been verified in real-world environments
+
+ ***Key Changes***
+
+ - **Repetier Compatibility:**
+	- Transparent Translation: The processor automatically converts G10 L20 (Zero All) to G92.
+	- Pen Plotter Mode: Maps laser commands (M3/M4 → G0 Z0, M5 → G0 Z5) and discards redundant trailing M5 commands.
+- **Non-functional protocols are indicated as (not supported)** and cannot be selected. The code for            these protocols has been left in the firmware for future implementations.
+- **Logging & Telemetry:**
+	- Centralized command logging directly within the Sender implementations, eliminating duplicate or inaccurate logs in the UI.
+- **Communication Abstraction:**
+	- Introduced a unified Sender trait (gcodekit5-communication/src/firmware/sender.rs) with flow control methods (send_gcode, pause, resume, stop, unlock, is_streaming).
+	- Implemented by GrblSender and RepetierSender (formerly DirectSender, moved to core).
+	- The UI (MachineControlView) now manages the active sender agnostically via Rc<RefCell<Option<Rc<dyn Sender>>>>.
+- **Protocol Management & Consistency:**
+	- Added init_commands to ProtocolProfile (removing hardcoded $10=47 and the redundant identity_query).
+	- Enforced strict validation: Case-insensitive detection of expanded signatures (GRBL) and automatic connection rejection on protocol mismatch.
+	- Injects 0x18 on connection to force the firmware boot banner.
+	
+- **Dead Code Cleanup:**
+	- Various files and functions
+ 
+**Verification Tests (Real Hardware)**
+
+- Ray5 (GRBL): Full streaming, pause/resume, and recovery cycle (E-Stop → Unlock → Resume work without resetting).
+- ANET A8 (Repetier): Connection, streaming flow control with resends, and functional pen plotter mode using a marker.
+
+**Designer:**
+
+  - In the Designer, the selection of objects and groups within the object list has been improved.
+  - The ability to delete objects and groups from the object list using the "Delete" key has been added.
 
 ## [Unreleased] - 2026-09-03
 

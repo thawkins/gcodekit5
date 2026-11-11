@@ -1,3 +1,4 @@
+//! gcodekit5-devicedb/src/model.rs
 //! # Device Data Model
 //!
 //! Defines the data structures for CNC device profiles, including
@@ -38,19 +39,42 @@ pub enum ControllerType {
     Smoothieware,
     FluidNC,
     Marlin,
+    Repetier,
+}
+
+impl ControllerType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Grbl => "GRBL",
+            Self::GrblHal => "grblHAL",
+            Self::TinyG => "TinyG",
+            Self::G2Core => "g2core",
+            Self::Smoothieware => "Smoothieware",
+            Self::FluidNC => "FluidNC",
+            Self::Marlin => "Marlin",
+            Self::Repetier => "Repetier",
+        }
+    }
+
+    /// Parses `ControllerType`
+    pub fn from_name(s: &str) -> Option<Self> {
+        match s {
+            "GRBL" | "Grbl" => Some(Self::Grbl),
+            "grblHAL" | "GrblHal" => Some(Self::GrblHal),
+            "TinyG" => Some(Self::TinyG),
+            "g2core" | "G2Core" => Some(Self::G2Core),
+            "Smoothieware" => Some(Self::Smoothieware),
+            "FluidNC" => Some(Self::FluidNC),
+            "Marlin" => Some(Self::Marlin),
+            "Repetier" => Some(Self::Repetier),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for ControllerType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Grbl => write!(f, "GRBL"),
-            Self::GrblHal => write!(f, "grblHAL"),
-            Self::TinyG => write!(f, "TinyG"),
-            Self::G2Core => write!(f, "g2core"),
-            Self::Smoothieware => write!(f, "Smoothieware"),
-            Self::FluidNC => write!(f, "FluidNC"),
-            Self::Marlin => write!(f, "Marlin"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -109,6 +133,10 @@ pub struct DeviceProfile {
     pub tcp_port: u16,
     pub timeout_ms: u64,
     pub auto_reconnect: bool,
+
+    /// Pen-plotter mode for Repetier machines: laser on/off (`M3`/`M4`/`M5`)
+    /// is sent as a pen-down/pen-up Z move instead of a spindle command.
+    pub pen_mode: bool,
 
     /// Last known GRBL settings (from `$$`) for this profile (u16 to support grblHAL extended settings up to $680).
     #[serde(default)]
@@ -192,6 +220,7 @@ impl Default for DeviceProfile {
             tcp_host: "192.168.1.100".to_string(),
             tcp_port: 23,
             timeout_ms: 5000,
+            pen_mode: false,
             auto_reconnect: false,
             grbl_settings: std::collections::HashMap::new(),
         }

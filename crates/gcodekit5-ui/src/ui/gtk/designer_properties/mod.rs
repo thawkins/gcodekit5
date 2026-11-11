@@ -12,7 +12,7 @@ mod update;
 use crate::t;
 use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gcodekit5_core::units;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption, SharedVec};
+use gcodekit5_core::{Shared, SharedOption, SharedVec, shared, shared_none};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::font_manager;
 use gcodekit5_designer::model::{DesignerShape, Shape};
@@ -33,11 +33,7 @@ use std::rc::Rc;
 /// them back, so the two can never disagree.
 pub(crate) type SharedMeasurementSystem = Rc<Cell<units::MeasurementSystem>>;
 
-const MM_PER_PT: f64 = 25.4 / 72.0;
-
-fn mm_to_pt(mm: f64) -> f64 {
-    mm / MM_PER_PT
-}
+use crate::ui::gtk::designer_canvas::mm_to_pt;
 
 fn format_font_points(mm: f64) -> String {
     format!("{:.2}", mm_to_pt(mm))
@@ -397,7 +393,6 @@ impl PropertiesPanel {
             image_invert_check,
             image_dithering_combo,
             image_halftone_threshold_entry,
-
             laser_override_frame,
             laser_use_global_check,
             laser_feed_rate_entry,
@@ -763,14 +758,12 @@ impl PropertiesPanel {
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
-
         handlers::image::setup_dithering_handler(
             &self.image_dithering_combo,
             self.state.clone(),
             self.redraw_callback.clone(),
             self.updating.clone(),
         );
-
         handlers::image::setup_halftone_threshold_handler(
             &self.image_halftone_threshold_entry,
             self.state.clone(),
@@ -778,7 +771,6 @@ impl PropertiesPanel {
             self.updating.clone(),
             self.has_focus.clone(),
         );
-
         // Laser override handlers
         handlers::laser_override::setup_laser_override_handlers(self);
     }

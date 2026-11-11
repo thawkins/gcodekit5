@@ -320,6 +320,8 @@ pub struct DxfFile {
     pub layers: HashMap<String, Vec<DxfEntity>>,
     /// Unsupported entity types encountered (e.g. ACIS solids), mapped to occurrence count
     pub unsupported_entities: HashMap<String, usize>,
+    /// Values that were not numbers and were replaced by a default
+    pub replaced_numbers: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -352,6 +354,7 @@ impl DxfFile {
             entities: Vec::new(),
             layers: HashMap::new(),
             unsupported_entities: HashMap::new(),
+            replaced_numbers: 0,
         }
     }
 
@@ -489,12 +492,56 @@ impl Default for DxfFile {
     }
 }
 
+thread_local! {
+    /// Values in the file being parsed that were not valid numbers.
+    static BAD_NUMBERS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// A number type read from a DXF group value.
+trait DxfNumber: std::str::FromStr {
+    /// Whether a parsed value is usable (floats must be finite).
+    fn is_usable(&self) -> bool {
+        true
+    }
+}
+impl DxfNumber for f64 {
+    fn is_usable(&self) -> bool {
+        self.is_finite()
+    }
+}
+impl DxfNumber for i16 {}
+impl DxfNumber for i32 {}
+impl DxfNumber for i64 {}
+impl DxfNumber for u8 {}
+impl DxfNumber for u16 {}
+impl DxfNumber for u32 {}
+impl DxfNumber for usize {}
+
+/// Parses a DXF number, counting a malformed or non-finite value (which is
+/// replaced by `default`) so the import can warn about it instead of
+/// silently moving a vertex to 0.
+fn parse_or<T: DxfNumber>(value: &str, default: T) -> T {
+    parse_opt(value).unwrap_or(default)
+}
+
+/// Parses a DXF number, counting a malformed or non-finite value as `None`.
+fn parse_opt<T: DxfNumber>(value: &str) -> Option<T> {
+    match value.trim().parse::<T>() {
+        Ok(v) if v.is_usable() => Some(v),
+        _ => {
+            BAD_NUMBERS.with(|n| n.set(n.get() + 1));
+            None
+        }
+    }
+}
+
 /// DXF parser for parsing DXF file contents
 pub struct DxfParser;
 
 impl DxfParser {
     /// Parse DXF content from a string
     pub fn parse(content: &str) -> Result<DxfFile> {
+        BAD_NUMBERS.with(|n| n.set(0));
         let mut file = DxfFile::new();
         let lines: Vec<&str> = content.lines().collect();
 
@@ -588,10 +635,10 @@ impl DxfParser {
                         }
                         "SPLINE" => {
                             i += 1;
-                            if let Ok(spline_entity) = Self::parse_spline(&lines, &mut i) {
-                                if !spline_entity.vertices.is_empty() {
-                                    file.add_entity(DxfEntity::Polyline(spline_entity));
-                                }
+                            if let Ok(spline_entity) = Self::parse_spline(&lines, &mut i)
+                                && !spline_entity.vertices.is_empty()
+                            {
+                                file.add_entity(DxfEntity::Polyline(spline_entity));
                             }
                         }
                         // ACIS-based solids (3DSOLID/BODY/REGION) are not parseable without a CAD kernel; track and discard.
@@ -611,6 +658,13 @@ impl DxfParser {
             i += 1;
         }
 
+        // Values that were not numbers were replaced by defaults; count them
+        // so the import can warn that the geometry was changed.
+        let bad = BAD_NUMBERS.with(std::cell::Cell::get);
+        if bad > 0 {
+            tracing::warn!(count = bad, "DXF values that are not numbers were replaced");
+        }
+        file.replaced_numbers = bad;
         Ok(file)
     }
 
@@ -640,13 +694,13 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
-                "10" => start.x = value.parse().unwrap_or(0.0),
-                "20" => start.y = value.parse().unwrap_or(0.0),
-                "11" => end.x = value.parse().unwrap_or(0.0),
-                "21" => end.y = value.parse().unwrap_or(0.0),
-                "30" => elevation = value.parse().unwrap_or(0.0),
-                "39" => thickness = value.parse().unwrap_or(0.0),
+                "62" => color = parse_or(value, 256),
+                "10" => start.x = parse_or(value, 0.0),
+                "20" => start.y = parse_or(value, 0.0),
+                "11" => end.x = parse_or(value, 0.0),
+                "21" => end.y = parse_or(value, 0.0),
+                "30" => elevation = parse_or(value, 0.0),
+                "39" => thickness = parse_or(value, 0.0),
                 _ => {}
             }
 
@@ -690,13 +744,13 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
-                "10" => center.x = value.parse().unwrap_or(0.0),
-                "20" => center.y = value.parse().unwrap_or(0.0),
-                "40" => radius = value.parse().unwrap_or(0.0),
-                "30" => elevation = value.parse().unwrap_or(0.0),
-                "39" => thickness = value.parse().unwrap_or(0.0),
-                "230" => extrusion_z = value.parse().unwrap_or(1.0),
+                "62" => color = parse_or(value, 256),
+                "10" => center.x = parse_or(value, 0.0),
+                "20" => center.y = parse_or(value, 0.0),
+                "40" => radius = parse_or(value, 0.0),
+                "30" => elevation = parse_or(value, 0.0),
+                "39" => thickness = parse_or(value, 0.0),
+                "230" => extrusion_z = parse_or(value, 1.0),
                 _ => {}
             }
 
@@ -747,15 +801,15 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
-                "10" => center.x = value.parse().unwrap_or(0.0),
-                "20" => center.y = value.parse().unwrap_or(0.0),
-                "40" => radius = value.parse().unwrap_or(0.0),
-                "50" => start_angle = value.parse().unwrap_or(0.0),
-                "51" => end_angle = value.parse().unwrap_or(0.0),
-                "30" => elevation = value.parse().unwrap_or(0.0),
-                "39" => thickness = value.parse().unwrap_or(0.0),
-                "230" => extrusion_z = value.parse().unwrap_or(1.0),
+                "62" => color = parse_or(value, 256),
+                "10" => center.x = parse_or(value, 0.0),
+                "20" => center.y = parse_or(value, 0.0),
+                "40" => radius = parse_or(value, 0.0),
+                "50" => start_angle = parse_or(value, 0.0),
+                "51" => end_angle = parse_or(value, 0.0),
+                "30" => elevation = parse_or(value, 0.0),
+                "39" => thickness = parse_or(value, 0.0),
+                "230" => extrusion_z = parse_or(value, 1.0),
                 _ => {}
             }
 
@@ -801,15 +855,15 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
+                "62" => color = parse_or(value, 256),
                 "70" => {
-                    let flags = value.parse::<i32>().unwrap_or(0);
+                    let flags = parse_or::<i32>(value, 0);
                     closed = (flags & 1) != 0;
                 }
-                "10" => current_x = value.parse().ok(),
+                "10" => current_x = parse_opt(value),
                 "20" => {
                     if let Some(x) = current_x {
-                        let y = value.parse().unwrap_or(0.0);
+                        let y = parse_or(value, 0.0);
                         vertices.push(Point::new(x, y));
 
                         bulges.push(0.0);
@@ -817,15 +871,15 @@ impl DxfParser {
                     }
                 }
                 "42" => {
-                    if let Ok(bulge_val) = value.parse::<f64>() {
-                        if let Some(last_bulge) = bulges.last_mut() {
-                            *last_bulge = bulge_val;
-                        }
+                    if let Some(bulge_val) = parse_opt::<f64>(value)
+                        && let Some(last_bulge) = bulges.last_mut()
+                    {
+                        *last_bulge = bulge_val;
                     }
                 }
-                "38" => elevation = value.parse().unwrap_or(0.0),
-                "39" => thickness = value.parse().unwrap_or(0.0),
-                "230" => extrusion_z = value.parse().unwrap_or(1.0),
+                "38" => elevation = parse_or(value, 0.0),
+                "39" => thickness = parse_or(value, 0.0),
+                "230" => extrusion_z = parse_or(value, 1.0),
                 "90" => { /* Optional: You could use it to do Vec::with_capacity(n) */ }
                 _ => {}
             }
@@ -883,13 +937,13 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
+                "62" => color = parse_or(value, 256),
                 "70" => {
-                    header_flags = value.parse().unwrap_or(0);
+                    header_flags = parse_or(value, 0);
                     closed = (header_flags & 1) != 0;
                 }
-                "39" => thickness = value.parse().unwrap_or(0.0),
-                "230" => extrusion_z = value.parse().unwrap_or(1.0),
+                "39" => thickness = parse_or(value, 0.0),
+                "230" => extrusion_z = parse_or(value, 1.0),
                 // Ignore 10, 20, 30 in POLYLINE header
                 _ => {}
             }
@@ -943,16 +997,16 @@ impl DxfParser {
                     *index += 1;
 
                     match v_code {
-                        "10" => vx = v_value.parse().ok(),
-                        "20" => vy = v_value.parse().ok(),
+                        "10" => vx = parse_opt(v_value),
+                        "20" => vy = parse_opt(v_value),
                         // The plane elevation is taken from the first vertex's Z; true
                         // per-vertex 3D polylines are not yet supported (see 3DFACE/MESH).
                         "30" => {
                             if elevation.is_none() {
-                                elevation = v_value.parse().ok();
+                                elevation = parse_opt(v_value);
                             }
                         }
-                        "70" => vertex_flags = v_value.parse().unwrap_or(0),
+                        "70" => vertex_flags = parse_or(v_value, 0),
                         _ => {}
                     }
                 }
@@ -1040,12 +1094,12 @@ impl DxfParser {
             match code {
                 "1" => content = value.to_string(),
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
-                "10" => position.x = value.parse().unwrap_or(0.0),
-                "20" => position.y = value.parse().unwrap_or(0.0),
-                "40" => height = value.parse().unwrap_or(2.5),
-                "50" => rotation = value.parse().unwrap_or(0.0),
-                "230" => extrusion_z = value.parse().unwrap_or(1.0),
+                "62" => color = parse_or(value, 256),
+                "10" => position.x = parse_or(value, 0.0),
+                "20" => position.y = parse_or(value, 0.0),
+                "40" => height = parse_or(value, 2.5),
+                "50" => rotation = parse_or(value, 0.0),
+                "230" => extrusion_z = parse_or(value, 1.0),
                 _ => {}
             }
 
@@ -1095,17 +1149,17 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
-                "10" => center.x = value.parse().unwrap_or(0.0),
-                "20" => center.y = value.parse().unwrap_or(0.0),
-                "11" => major_axis.x = value.parse().unwrap_or(0.0),
-                "21" => major_axis.y = value.parse().unwrap_or(0.0),
-                "40" => ratio = value.parse().unwrap_or(0.0),
-                "41" => start_angle = value.parse().unwrap_or(0.0),
-                "42" => end_angle = value.parse().unwrap_or(2.0 * std::f64::consts::PI),
-                "30" => elevation = value.parse().unwrap_or(0.0),
-                "39" => thickness = value.parse().unwrap_or(0.0),
-                "230" => extrusion_z = value.parse().unwrap_or(1.0),
+                "62" => color = parse_or(value, 256),
+                "10" => center.x = parse_or(value, 0.0),
+                "20" => center.y = parse_or(value, 0.0),
+                "11" => major_axis.x = parse_or(value, 0.0),
+                "21" => major_axis.y = parse_or(value, 0.0),
+                "40" => ratio = parse_or(value, 0.0),
+                "41" => start_angle = parse_or(value, 0.0),
+                "42" => end_angle = parse_or(value, 2.0 * std::f64::consts::PI),
+                "30" => elevation = parse_or(value, 0.0),
+                "39" => thickness = parse_or(value, 0.0),
+                "230" => extrusion_z = parse_or(value, 1.0),
                 _ => {}
             }
 
@@ -1167,21 +1221,21 @@ impl DxfParser {
 
             match code {
                 "8" => layer = value.to_string(),
-                "62" => color = value.parse().unwrap_or(256),
-                "70" => flags = value.parse().unwrap_or(0),
-                "71" => degree = value.parse::<i64>().unwrap_or(3).max(1) as usize,
-                "40" => knots.push(value.parse().unwrap_or(0.0)),
-                "41" => weights.push(value.parse().unwrap_or(1.0)),
-                "10" => pending_ctrl_x = value.parse().ok(),
+                "62" => color = parse_or(value, 256),
+                "70" => flags = parse_or(value, 0),
+                "71" => degree = parse_or::<i64>(value, 3).max(1) as usize,
+                "40" => knots.push(parse_or(value, 0.0)),
+                "41" => weights.push(parse_or(value, 1.0)),
+                "10" => pending_ctrl_x = parse_opt(value),
                 "20" => {
                     if let Some(x) = pending_ctrl_x.take() {
-                        control_points.push(Point::new(x, value.parse().unwrap_or(0.0)));
+                        control_points.push(Point::new(x, parse_or(value, 0.0)));
                     }
                 }
-                "11" => pending_fit_x = value.parse().ok(),
+                "11" => pending_fit_x = parse_opt(value),
                 "21" => {
                     if let Some(x) = pending_fit_x.take() {
-                        fit_points.push(Point::new(x, value.parse().unwrap_or(0.0)));
+                        fit_points.push(Point::new(x, parse_or(value, 0.0)));
                     }
                 }
                 _ => {}

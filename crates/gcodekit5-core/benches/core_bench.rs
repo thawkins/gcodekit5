@@ -1,7 +1,7 @@
 //! Performance benchmarks for core types: command creation, position operations,
 //! state transitions, and unit conversions.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use gcodekit5_core::data::{CNCPoint, Units};
 use gcodekit5_core::gcode::{CommandNumberGenerator, GcodeCommand};
 use gcodekit5_core::{PartialPosition, Position};
@@ -68,11 +68,11 @@ fn bench_command_lifecycle(c: &mut Criterion) {
 }
 
 fn bench_command_number_generator(c: &mut Criterion) {
-    let gen = CommandNumberGenerator::new();
+    let generator = CommandNumberGenerator::new();
     c.bench_function("command_number_next_1000", |b| {
         b.iter(|| {
             for _ in 0..1000 {
-                black_box(gen.next());
+                black_box(generator.next());
             }
         });
     });

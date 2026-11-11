@@ -4,14 +4,16 @@
 //! machine status, current position, and progress information.
 
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
 };
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::t;
-use gcodekit5_core::{shared_none, SharedOption};
-use gtk4::pango::EllipsizeMode;
+use gcodekit5_core::{SharedOption, shared_none};
+use gtk4::pango::EllipsizeMode; // Importación de tu macro de traducción
 
 #[derive(Clone)]
 // Complex type due to GTK widget and machine state fields.
@@ -34,6 +36,10 @@ pub struct StatusBar {
     cancel_btn: Button,
     cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>>,
     pub device_info_label: Label,
+    pub alert_label: Label, // <-- NUEVA: Para los avisos de la derecha
+    /// Timer that clears `alert_label`; replaced by each new notice so an
+    /// older notice's timer cannot clear a newer one.
+    alert_timer: Rc<Cell<Option<glib::SourceId>>>,
 }
 
 impl Default for StatusBar {
@@ -126,6 +132,11 @@ impl StatusBar {
         right_box.set_halign(Align::End);
         right_box.set_valign(Align::Center);
 
+        // Alert / Notification Label (Nueva etiqueta dedicada a avisos)
+        let alert_label = Label::new(None);
+        alert_label.add_css_class("status-alert-text"); // Puedes darle estilo en el CSS
+        right_box.append(&alert_label);
+
         // Elapsed
         let elapsed_label = Label::new(None);
         elapsed_label.add_css_class("status-text");
@@ -148,10 +159,9 @@ impl StatusBar {
         device_info_label.add_css_class("dim-label");
         device_info_label.set_halign(Align::Start);
         device_info_label.set_ellipsize(EllipsizeMode::End);
-        left_box.append(&device_info_label); // Add active machine name to status bar
+        left_box.append(&device_info_label);
 
         // Cancel (for long-running, cancellable UI tasks)
-        // GTK callback closure type inherently complex.
         #[allow(clippy::type_complexity)]
         let cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>> = shared_none();
 
@@ -199,6 +209,8 @@ impl StatusBar {
             cancel_btn,
             cancel_action,
             device_info_label,
+            alert_label,
+            alert_timer: Rc::new(Cell::new(None)),
         }
     }
 
@@ -232,32 +244,52 @@ impl StatusBar {
         }
     }
 
-    /// Shows the firmware version.
-    pub fn set_version(&self, version: &str) {
-        self.version_label
-            .set_text(&format!("{} {}", t!("Version:"), version));
-    }
-
-    /// Shows the machine state, coloured by state class.
+    /// Shows the machine state, coloured by state class, on the left.
+    ///
+    /// Any other text (e.g. "Importing image...") is shown on the right as a
+    /// notice and cleared after 4 seconds.
     pub fn set_state(&self, state: &str) {
-        self.state_label.set_text(state);
-
-        // Update color based on state
-        self.state_label.remove_css_class("state-alarm");
-        self.state_label.remove_css_class("state-run");
-        self.state_label.remove_css_class("state-hold");
-        self.state_label.remove_css_class("state-idle");
-
         // GRBL reports e.g. "Alarm", "Hold:0", "Run", "Idle" (case varies by firmware).
         let low = state.to_ascii_lowercase();
-        if low.starts_with("alarm") {
-            self.state_label.add_css_class("state-alarm");
-        } else if low.starts_with("run") {
-            self.state_label.add_css_class("state-run");
-        } else if low.starts_with("hold") {
-            self.state_label.add_css_class("state-hold");
-        } else if low.starts_with("idle") {
-            self.state_label.add_css_class("state-idle");
+        let is_machine_state = [
+            "alarm", "run", "hold", "idle", "jog", "home", "door", "check", "sleep",
+        ]
+        .iter()
+        .any(|prefix| low.starts_with(prefix));
+
+        if is_machine_state {
+            self.state_label.set_text(state);
+
+            self.state_label.remove_css_class("state-alarm");
+            self.state_label.remove_css_class("state-run");
+            self.state_label.remove_css_class("state-hold");
+            self.state_label.remove_css_class("state-idle");
+
+            if low.starts_with("alarm") {
+                self.state_label.add_css_class("state-alarm");
+            } else if low.starts_with("run") {
+                self.state_label.add_css_class("state-run");
+            } else if low.starts_with("hold") {
+                self.state_label.add_css_class("state-hold");
+            } else if low.starts_with("idle") {
+                self.state_label.add_css_class("state-idle");
+            }
+        } else {
+            // Es un aviso personalizado de la interfaz (Ej: "Importing image...")
+            // En la etiqueta de alertas a la derecha
+            self.alert_label.set_text(state);
+            // Temporizador: Limpia automáticamente el aviso de la derecha tras 4 segundos (4000ms)
+            let alert_label_clone = self.alert_label.clone();
+            let timer = self.alert_timer.clone();
+            if let Some(previous) = self.alert_timer.take() {
+                previous.remove();
+            }
+            let id = glib::timeout_add_local(std::time::Duration::from_millis(4000), move || {
+                alert_label_clone.set_text("");
+                timer.set(None);
+                glib::ControlFlow::Break
+            });
+            self.alert_timer.set(Some(id));
         }
     }
 
@@ -304,7 +336,6 @@ impl StatusBar {
                 .set_fraction((progress / 100.0).clamp(0.0, 1.0));
             self.progress_bar
                 .set_text(Some(&format!("{:.1}%", progress)));
-
             if elapsed.is_empty() {
                 self.elapsed_label.set_text("");
             } else {

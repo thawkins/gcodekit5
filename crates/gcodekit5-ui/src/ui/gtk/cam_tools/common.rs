@@ -3,8 +3,8 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Entry, Label, Orientation, Paned};
-use libadwaita::prelude::*;
 use libadwaita::ActionRow;
+use libadwaita::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -71,6 +71,48 @@ pub fn write_preset_file(path: &std::path::Path, contents: &str) {
             &crate::t!("Save Error"),
             &format!("{}: {}", path.display(), e),
         );
+    }
+}
+
+/// Parses a length entry for a preset file.
+///
+/// # Errors
+/// A message naming the field when the text is not a length, so a preset is
+/// never saved with a silently substituted default.
+pub fn preset_length(
+    name: &str,
+    entry: &Entry,
+    system: units::MeasurementSystem,
+) -> Result<f32, String> {
+    units::parse_length(&entry.text(), system)
+        .map_err(|_| format!("{name}: \"{}\" is not a valid length", entry.text()))
+}
+
+/// Serialises `value` and writes it to `path`, showing an error dialog on
+/// failure.
+pub fn save_preset_json<T: serde::Serialize>(path: &std::path::Path, value: &T) {
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => write_preset_file(path, &json),
+        Err(e) => super::CamToolsView::show_error_dialog(&crate::t!("Save Error"), &e.to_string()),
+    }
+}
+
+/// Reads a preset JSON file, showing an error dialog when it cannot be read
+/// or parsed.
+pub fn load_preset_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+    let loaded = std::fs::read_to_string(path)
+        .map_err(|e| e.to_string())
+        .and_then(|content| serde_json::from_str::<T>(&content).map_err(|e| e.to_string()));
+    match loaded {
+        Ok(value) => Some(value),
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "Failed to load CAM preset");
+            super::CamToolsView::show_error_dialog(
+                &crate::t!("Load Error"),
+                &format!("{}: {}", path.display(), e),
+            );
+            None
+        }
     }
 }
 

@@ -402,7 +402,7 @@ impl SpeedsFeedsCalculator {
     }
 
     /// Calculate RPM from surface speed
-    fn rpm_from_surface_speed(surface_speed_m_min: f32, diameter_mm: f32) -> f32 {
+    pub fn rpm_from_surface_speed(surface_speed_m_min: f32, diameter_mm: f32) -> f32 {
         (surface_speed_m_min * 1000.0) / (PI * diameter_mm)
     }
 
@@ -639,17 +639,17 @@ impl SpeedsFeedsCalculator {
         }
 
         // Tool RPM limit
-        if let Some(tool_max_rpm) = input.tool.limits.max_rpm_rating {
-            if final_rpm > tool_max_rpm {
-                warnings.push(format!(
-                    "RPM {} exceeds tool rating {}, clamped",
-                    final_rpm, tool_max_rpm
-                ));
-                if unclamped_rpm.is_none() {
-                    unclamped_rpm = Some(final_rpm);
-                }
-                final_rpm = tool_max_rpm;
+        if let Some(tool_max_rpm) = input.tool.limits.max_rpm_rating
+            && final_rpm > tool_max_rpm
+        {
+            warnings.push(format!(
+                "RPM {} exceeds tool rating {}, clamped",
+                final_rpm, tool_max_rpm
+            ));
+            if unclamped_rpm.is_none() {
+                unclamped_rpm = Some(final_rpm);
             }
+            final_rpm = tool_max_rpm;
         }
 
         // Keep the chip load constant when the spindle speed was changed by a limit:
@@ -699,40 +699,4 @@ pub fn calculate_speeds_feeds(
         conservative: false,
     };
     SpeedsFeedsCalculator::calculate(&input)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_operation_type_multipliers() {
-        assert!(
-            OperationType::Adaptive.feed_rate_multiplier()
-                > OperationType::Slotting.feed_rate_multiplier()
-        );
-        assert_eq!(OperationType::Slotting.radial_engagement_percent(), 100.0);
-        assert_eq!(OperationType::Profiling.radial_engagement_percent(), 30.0);
-    }
-
-    #[test]
-    fn test_geometry_adjustments() {
-        let high_helix = ToolGeometry {
-            helix_angle: Some(50.0),
-            ..Default::default()
-        };
-        assert!(GeometryAdjustments::helix_factor(&high_helix) > 1.0);
-
-        let low_engagement = GeometryAdjustments::radial_engagement_factor(20.0);
-        let high_engagement = GeometryAdjustments::radial_engagement_factor(100.0);
-        assert!(low_engagement > high_engagement);
-    }
-
-    #[test]
-    fn test_rpm_calculation() {
-        let rpm = SpeedsFeedsCalculator::rpm_from_surface_speed(200.0, 6.0);
-        // RPM = (200 * 1000) / (π * 6) ≈ 10,610
-        assert!(rpm > 10000.0);
-        assert!(rpm < 11000.0);
-    }
 }

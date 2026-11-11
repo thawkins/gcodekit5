@@ -7,16 +7,19 @@
 //! line-by-line job queue, tracks quick probes and requests status reports.
 
 use super::grbl_stream::{
-    classify_response, network_driver_for, parse_probe_report, GrblResponseLine,
-    ResponseLineSplitter,
+    GrblResponseLine, ResponseLineSplitter, classify_response, network_driver_for,
+    parse_probe_report,
 };
 use super::status_report::QuickProbeState;
 use super::*;
+use gcodekit5_communication::firmware::ControllerProtocol;
 
 /// Interval of the idle status poller.
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 /// The poller requests a status report every this many ticks (250 ms).
 const POLL_STATUS_EVERY: u32 = 5;
+/// Polls after connecting (~2 s) before an unidentified device is checked once.
+const IDENTITY_CHECK_POLLS: u32 = 40;
 /// Baud rate used when the active profile does not name one.
 const DEFAULT_BAUD_RATE: u32 = 115200;
 
@@ -69,25 +72,25 @@ impl MachineControlView {
             .as_ref()
             .and_then(|dm| dm.get_active_profile());
 
-        if let Some(profile) = profile.as_ref() {
-            if let Some(driver) = network_driver_for(&profile.connection_type) {
-                let host = profile.tcp_host.trim().to_string();
-                let label = format!("{host}:{}", profile.tcp_port);
-                let mut params = ConnectionParams {
-                    driver,
-                    port: host,
-                    network_port: profile.tcp_port,
-                    ..Default::default()
-                };
-                if profile.timeout_ms > 0 {
-                    params.timeout_ms = profile.timeout_ms;
-                }
-                return Some(ConnectionTarget {
-                    params,
-                    label,
-                    network: true,
-                });
+        if let Some(profile) = profile.as_ref()
+            && let Some(driver) = network_driver_for(&profile.connection_type)
+        {
+            let host = profile.tcp_host.trim().to_string();
+            let label = format!("{host}:{}", profile.tcp_port);
+            let mut params = ConnectionParams {
+                driver,
+                port: host,
+                network_port: profile.tcp_port,
+                ..Default::default()
+            };
+            if profile.timeout_ms > 0 {
+                params.timeout_ms = profile.timeout_ms;
             }
+            return Some(ConnectionTarget {
+                params,
+                label,
+                network: true,
+            });
         }
 
         if self.port_combo.active_id().as_deref() == Some("none") {
@@ -218,16 +221,30 @@ impl MachineControlView {
     /// Closes the port and resets the panel to the disconnected state.
     fn disconnect(&self) {
         // A running job would otherwise keep writing to a port that is going away.
-        if let Some(sender) = self.direct_sender.lock().as_ref() {
-            if sender.is_running() {
-                sender.stop();
-            }
+        let sender = self.active_sender.borrow().clone();
+        if let Some(sender) = sender.as_ref()
+            && sender.is_streaming()
+        {
+            sender.stop();
         }
         self.stop_continuous_jog();
 
         let result = self.communicator.lock().disconnect();
         match result {
-            Ok(()) => {
+            Ok(()) => self.apply_disconnected_state(),
+            Err(e) => {
+                self.log(&format!("{}: {}", t!("Error disconnecting"), e));
+            }
+        }
+    }
+
+    /// Resets the panel to the disconnected state (the port is already closed).
+    fn apply_disconnected_state(&self) {
+        // Stop the status poller of this connection.
+        self.poll_generation
+            .set(self.poll_generation.get().wrapping_add(1));
+        {
+            {
                 set_button_icon_label(&self.connect_btn, "network-wired-symbolic", &t!("Connect"));
                 self.connect_btn.remove_css_class("destructive-action");
                 self.connect_btn.add_css_class("suggested-action");
@@ -246,6 +263,7 @@ impl MachineControlView {
                 *self.job_start_time.lock() = None;
                 self.quick_probe.set(QuickProbeState::Idle);
                 self.last_wco.set(None);
+                device_status::cancel_stop();
 
                 self.set_connection_controls(false);
                 self.update_axis_visibility(device_status::get_active_num_axes());
@@ -257,10 +275,51 @@ impl MachineControlView {
                 self.log(&t!("Disconnected"));
                 self.refresh_connection_target();
             }
-            Err(e) => {
-                self.log(&format!("{}: {}", t!("Error disconnecting"), e));
-            }
         }
+    }
+
+    /// Closes the port (if still open), shows `reason` and resets the panel.
+    ///
+    /// # Arguments
+    /// * `reason` - Why the connection ended, shown in the console and the panel.
+    pub(crate) fn report_connection_error(&self, reason: &str) {
+        tracing::warn!("Connection error: {}", reason);
+        let sender = self.active_sender.borrow().clone();
+        if let Some(sender) = sender.as_ref() {
+            sender.stop();
+        }
+        if let Some(mut comm) = self.communicator.try_lock()
+            && comm.is_connected()
+        {
+            let _ = comm.disconnect();
+        }
+        self.log(reason);
+        self.apply_disconnected_state();
+        self.disabled_reason_label.set_text(reason);
+    }
+
+    /// Checks the configured protocol against the one the device identified as.
+    ///
+    /// # Returns
+    /// `true` if they disagree (the caller must drop the connection), `false` if they
+    /// match, the device has not identified yet, or the protocol does not announce itself.
+    fn protocol_mismatch(
+        &self,
+        configured: ControllerProtocol,
+        detected: ControllerProtocol,
+    ) -> bool {
+        let profile = gcodekit5_communication::firmware::protocol_profile(configured.as_str());
+        if !profile.announces_identity
+            || detected == ControllerProtocol::Unknown
+            || configured == detected
+        {
+            return false;
+        }
+        let reason = t!("Connection rejected: active machine is configured as {} but the device responded as {}. Change the active machine in the Device Manager.")
+            .replacen("{}", &configured.to_string(), 1)
+            .replacen("{}", &detected.to_string(), 1);
+        self.report_connection_error(&reason);
+        true
     }
 
     /// Starts opening the connection target on a worker thread.
@@ -348,6 +407,7 @@ impl MachineControlView {
         self.disabled_reason_label.set_text("");
 
         device_status::update_connection_status(true, Some(port_name.to_string()));
+        device_status::cancel_stop();
         if let Some(sb) = self.status_bar.as_ref() {
             sb.set_connected(true, port_name);
         }
@@ -358,35 +418,36 @@ impl MachineControlView {
         // Unlock is only enabled once an ALARM state is reported.
         self.unlock_btn.set_sensitive(false);
 
-        // Trigger the startup banner (some firmwares only emit it after reset), then query
-        // firmware and settings. Some controllers ignore commands sent right after Ctrl-X.
+        // The active machine's protocol is the source of truth; what the device reports
+        // is only checked against it (see `protocol_mismatch`).
+        let active_ct = device_status::get_active_controller_type();
+        let configured = ControllerProtocol::from_name(active_ct.as_deref().unwrap_or(""));
+        let profile = gcodekit5_communication::firmware::protocol_profile(configured.as_str());
+        self.communicator.lock().set_configured_protocol(configured);
+        self.log(
+            &t!("→ Protocol: {}\n  sender: {}")
+                .replacen("{}", profile.display_name, 1)
+                .replacen("{}", &format!("{:?}", profile.sender), 1),
+        );
+
+        // Reset to make the firmware print its boot banner, which protocol detection
+        // needs. Then send the protocol's init commands (identity query first), spaced so
+        // the firmware can process each; some controllers ignore commands sent right after
+        // Ctrl-X. No firmware settings are changed here.
         {
             let mut comm = self.communicator.lock();
             self.log("> 0x18 (Reset)");
             let _ = comm.send(&[0x18]);
         }
-        {
+        for (i, cmd) in profile.init_commands.iter().enumerate() {
             let view = self.clone();
-            glib::timeout_add_local_once(std::time::Duration::from_millis(250), move || {
-                if let Some(mut comm) = view.communicator.try_lock() {
-                    if comm.is_connected() {
-                        view.log("> $I");
-                        let _ = comm.send_command("$I");
-                    }
-                }
-            });
-        }
-        {
-            let view = self.clone();
-            glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
-                if let Some(mut comm) = view.communicator.try_lock() {
-                    if comm.is_connected() {
-                        view.log("> $$");
-                        let _ = comm.send_command("$$");
-                        // Status report mask: WPos | Buf | Ln | FS | Ov  ($10=47).
-                        view.log("> $10=47");
-                        let _ = comm.send_command("$10=47");
-                    }
+            let delay = std::time::Duration::from_millis(250 + i as u64 * 300);
+            glib::timeout_add_local_once(delay, move || {
+                if let Some(mut comm) = view.communicator.try_lock()
+                    && comm.is_connected()
+                {
+                    view.log(&format!("> {}", cmd));
+                    let _ = comm.send_command(cmd);
                 }
             });
         }
@@ -403,6 +464,8 @@ impl MachineControlView {
         let mut query_counter = 0u32;
         let mut splitter = ResponseLineSplitter::new();
         let mut firmware_detected = false;
+        let mut last_checked_detected = ControllerProtocol::Unknown;
+        let mut identity_timeout_checked = false;
 
         glib::timeout_add_local(POLL_INTERVAL, move || {
             if view.poll_generation.get() != generation {
@@ -410,14 +473,35 @@ impl MachineControlView {
             }
             query_counter = query_counter.wrapping_add(1);
 
+            // Reject the connection if the device identifies as a different protocol than
+            // the active machine is configured for. Checked whenever the detection changes
+            // and once after ~2 s.
+            if let Some((configured, detected)) = view
+                .communicator
+                .try_lock()
+                .map(|c| (c.configured_protocol(), c.detected_protocol()))
+            {
+                let timeout_reached = query_counter >= IDENTITY_CHECK_POLLS;
+                let should_check = (detected != ControllerProtocol::Unknown
+                    && detected != last_checked_detected)
+                    || (timeout_reached && !identity_timeout_checked);
+                if should_check {
+                    if view.protocol_mismatch(configured, detected) {
+                        return glib::ControlFlow::Break;
+                    }
+                    last_checked_detected = detected;
+                    identity_timeout_checked |= timeout_reached;
+                }
+            }
+
             // Yield the port completely while DirectSender streams: it reads the replies
             // itself (its byte count needs every `ok`) and forwards status reports. The
             // legacy queue streamer (`start_job`) relies on this loop, so it keeps running.
             let direct_sender_running = view
-                .direct_sender
-                .lock()
+                .active_sender
+                .borrow()
                 .as_ref()
-                .is_some_and(|s| s.is_running());
+                .is_some_and(|s| s.is_streaming());
             if direct_sender_running {
                 return glib::ControlFlow::Continue;
             }
@@ -426,18 +510,25 @@ impl MachineControlView {
                 return glib::ControlFlow::Continue;
             };
             if !comm.is_connected() {
+                drop(comm);
+                view.report_connection_error(&t!(
+                    "Connection lost (cable disconnected or firmware reset)."
+                ));
                 return glib::ControlFlow::Break;
             }
 
-            if let Ok(bytes) = comm.receive() {
-                if !bytes.is_empty() {
-                    for line in splitter.push(&bytes) {
-                        view.handle_poll_line(&line, &mut comm, &mut firmware_detected);
-                    }
+            if let Ok(bytes) = comm.receive()
+                && !bytes.is_empty()
+            {
+                for line in splitter.push(&bytes) {
+                    view.handle_poll_line(&line, &mut comm, &mut firmware_detected);
                 }
             }
 
-            if query_counter.is_multiple_of(POLL_STATUS_EVERY) {
+            // `?` is a GRBL realtime status query; Repetier has no equivalent.
+            if query_counter.is_multiple_of(POLL_STATUS_EVERY)
+                && comm.configured_protocol() != ControllerProtocol::Repetier
+            {
                 let _ = comm.send(b"?");
             }
             glib::ControlFlow::Continue
@@ -475,23 +566,36 @@ impl MachineControlView {
             }
         }
 
-        if !*firmware_detected && (line.starts_with("[VER:") || line.contains("Grbl")) {
-            use gcodekit5_communication::firmware::firmware_detector::FirmwareDetector;
-            if let Ok(detection) = FirmwareDetector::parse_response(line) {
-                let fw_type = format!("{:?}", detection.firmware_type);
-                device_status::update_firmware_info(fw_type, detection.version_string, None);
+        // The communicator detects the protocol from the banner; record it with the
+        // version from `[VER:x]` or a "Grbl x" banner for Device Config.
+        if !*firmware_detected {
+            let version = line
+                .strip_prefix("[VER:")
+                .and_then(|v| v.split([':', ']']).next())
+                .or_else(|| {
+                    line.split_once("Grbl ")
+                        .and_then(|(_, v)| v.split_whitespace().next())
+                });
+            let detected = comm.detected_protocol();
+            if let Some(version) = version
+                && detected != ControllerProtocol::Unknown
+            {
+                device_status::update_firmware_info(
+                    detected.to_string(),
+                    version.to_string(),
+                    None,
+                );
                 *firmware_detected = true;
             }
         }
 
         // Capture `$$` settings lines for Device Config / CAM.
-        if line.starts_with('$') && line.contains('=') {
-            if let Some((n, v)) =
+        if line.starts_with('$') && line.contains('=')
+            && let Some((n, v)) =
                 gcodekit5_communication::firmware::grbl::settings::SettingsManager::parse_setting_line(line)
             {
                 device_status::update_grbl_setting(n, v);
             }
-        }
 
         let kind = classify_response(line);
         let is_ack = kind == GrblResponseLine::Ok;
@@ -520,6 +624,14 @@ impl MachineControlView {
         if let GrblResponseLine::Status(status) = &kind {
             self.apply_status_report(status);
             self.restore_absolute_mode_after_probe(comm);
+            // An `ok` that arrived while paused left the drill/probe queue
+            // waiting for a send that never came: send it now.
+            if self.resumed_externally.take()
+                && !*self.waiting_for_ack.lock()
+                && !self.send_queue.lock().is_empty()
+            {
+                self.advance_legacy_queue(comm);
+            }
         }
     }
 

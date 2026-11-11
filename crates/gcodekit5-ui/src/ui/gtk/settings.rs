@@ -7,8 +7,8 @@ use crate::ui::gtk::common::dialog_window::DialogWindow;
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Align, Box as GtkBox, Button, Entry, Label, Notebook, Orientation, PolicyType,
-    PositionType, ResponseType, ScrolledWindow, StringList, Switch,
+    Align, Box as GtkBox, Button, Entry, Label, Notebook, Orientation, PolicyType, PositionType,
+    ResponseType, ScrolledWindow, StringList, Switch, glib,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow};
@@ -16,7 +16,7 @@ use std::rc::Rc;
 use tracing::error;
 
 use crate::t;
-use gcodekit5_core::{shared, SharedOption};
+use gcodekit5_core::{SharedOption, shared};
 use gcodekit5_settings::controller::{SettingUiModel, SettingsController};
 use gcodekit5_settings::view_model::SettingsCategory;
 

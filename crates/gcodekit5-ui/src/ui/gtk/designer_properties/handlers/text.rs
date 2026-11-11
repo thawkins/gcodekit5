@@ -8,11 +8,7 @@ use gtk4::prelude::*;
 use gtk4::{CheckButton, DropDown, Entry};
 use std::rc::Rc;
 
-const MM_PER_PT: f64 = 25.4 / 72.0;
-
-fn pt_to_mm(pt: f64) -> f64 {
-    pt * MM_PER_PT
-}
+use crate::ui::gtk::designer_canvas::pt_to_mm;
 
 fn parse_font_points_mm(s: &str) -> Option<f64> {
     let s = s.trim().trim_end_matches("pt").trim().replace(',', ".");
@@ -76,20 +72,23 @@ pub fn setup_font_size_handler(
 ) {
     let apply_state = state.clone();
     connect_entry_commit(font_size_entry, state, updating, has_focus, move |entry| {
-        if let Some(size_mm) = parse_font_points_mm(&entry.text()) {
-            entry.remove_css_class("entry-invalid");
-            modify_selected_text_with_undo(
-                &mut apply_state.borrow_mut(),
-                "Change Font Size",
-                |t| {
-                    let changed = (t.font_size - size_mm).abs() > f64::EPSILON;
-                    t.font_size = size_mm;
-                    changed
-                },
-            );
-            redraw(&redraw_callback);
-        } else {
-            entry.add_css_class("entry-invalid");
+        match parse_font_points_mm(&entry.text()) {
+            Some(size_mm) => {
+                entry.remove_css_class("entry-invalid");
+                modify_selected_text_with_undo(
+                    &mut apply_state.borrow_mut(),
+                    "Change Font Size",
+                    |t| {
+                        let changed = (t.font_size - size_mm).abs() > f64::EPSILON;
+                        t.font_size = size_mm;
+                        changed
+                    },
+                );
+                redraw(&redraw_callback);
+            }
+            _ => {
+                entry.add_css_class("entry-invalid");
+            }
         }
     });
 }

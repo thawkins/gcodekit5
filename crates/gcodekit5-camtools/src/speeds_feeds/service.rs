@@ -81,15 +81,15 @@ impl SpeedsFeedsToolService {
             .into_iter()
             .filter(|tool| {
                 // Filter by diameter
-                if let Some(min) = self.min_diameter {
-                    if tool.diameter < min {
-                        return false;
-                    }
+                if let Some(min) = self.min_diameter
+                    && tool.diameter < min
+                {
+                    return false;
                 }
-                if let Some(max) = self.max_diameter {
-                    if tool.diameter > max {
-                        return false;
-                    }
+                if let Some(max) = self.max_diameter
+                    && tool.diameter > max
+                {
+                    return false;
                 }
 
                 // Filter by tool type
@@ -98,10 +98,10 @@ impl SpeedsFeedsToolService {
                 }
 
                 // Filter by material compatibility (if specified)
-                if let Some(ref material) = self.compatible_material {
-                    if !self.is_compatible(tool, material) {
-                        return false;
-                    }
+                if let Some(ref material) = self.compatible_material
+                    && !self.is_compatible(tool, material)
+                {
+                    return false;
                 }
 
                 true
@@ -308,22 +308,22 @@ impl SpeedsFeedsMaterialService {
                 }
 
                 // Filter by machinability
-                if let Some(min) = self.min_machinability {
-                    if material.machinability_rating < min {
-                        return false;
-                    }
+                if let Some(min) = self.min_machinability
+                    && material.machinability_rating < min
+                {
+                    return false;
                 }
-                if let Some(max) = self.max_machinability {
-                    if material.machinability_rating > max {
-                        return false;
-                    }
+                if let Some(max) = self.max_machinability
+                    && material.machinability_rating > max
+                {
+                    return false;
                 }
 
                 // Filter by cutting params availability
-                if let Some(ref tool_type) = self.has_cutting_params {
-                    if material.get_cutting_params(tool_type).is_none() {
-                        return false;
-                    }
+                if let Some(ref tool_type) = self.has_cutting_params
+                    && material.get_cutting_params(tool_type).is_none()
+                {
+                    return false;
                 }
 
                 true
@@ -659,54 +659,5 @@ impl FeedsSpeedsLookupTable {
 impl Default for FeedsSpeedsLookupTable {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tool_service_filters() {
-        let service = SpeedsFeedsToolService::new()
-            .with_diameter_range(3.0, 12.0)
-            .with_tool_types(vec![ToolType::EndMillFlat, ToolType::EndMillBall]);
-
-        assert_eq!(service.min_diameter, Some(3.0));
-        assert_eq!(service.max_diameter, Some(12.0));
-        assert_eq!(service.tool_types.len(), 2);
-    }
-
-    #[test]
-    fn test_material_service_filters() {
-        let service = SpeedsFeedsMaterialService::new()
-            .with_machinability_range(5, 8)
-            .with_cutting_params_for("endmill_flat");
-
-        assert_eq!(service.min_machinability, Some(5));
-        assert_eq!(service.max_machinability, Some(8));
-        assert_eq!(service.has_cutting_params, Some("endmill_flat".to_string()));
-    }
-
-    #[test]
-    fn test_device_service_limits() {
-        let device = DeviceProfile::default();
-        let service = SpeedsFeedsDeviceService::new(device);
-        let limits = service.get_limits();
-
-        assert!(limits.max_rpm > 0);
-        assert!(limits.max_feed_rate > 0.0);
-    }
-
-    #[test]
-    fn test_lookup_table() {
-        let mut table = FeedsSpeedsLookupTable::new();
-        assert!(table.is_empty());
-
-        // Create a dummy result - need to create minimal CalculationResult
-        // We can't easily create one here without importing, so just test the basic operations
-        assert_eq!(table.len(), 0);
-        table.clear();
-        assert!(table.is_empty());
     }
 }

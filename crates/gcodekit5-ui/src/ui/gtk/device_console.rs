@@ -6,8 +6,8 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    gdk, Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow,
-    TextView, WrapMode,
+    Box, Button, Entry, EventControllerKey, Label, Orientation, Paned, ScrolledWindow, TextView,
+    WrapMode, gdk,
 };
 use std::cell::Cell;
 use std::{borrow::Cow, rc::Rc};
@@ -15,7 +15,7 @@ use std::{borrow::Cow, rc::Rc};
 use crate::t;
 use crate::ui::gtk::command_history::CommandHistory;
 use crate::ui::gtk::common::spacing;
-use gcodekit5_core::{shared, Shared};
+use gcodekit5_core::{Shared, shared};
 
 /// Maximum number of lines kept in the console log; older lines are discarded.
 pub const MAX_CONSOLE_LINES: i32 = 5000;

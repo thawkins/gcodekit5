@@ -1,4 +1,4 @@
-//! Configuration and settings management for GCodeKit4
+//! Configuration and settings management for GCodeKit5
 //!
 //! Provides configuration file handling, settings management, and validation.
 //! Supports JSON and TOML file formats stored in platform-specific directories.
@@ -151,8 +151,6 @@ pub struct UiSettings {
     pub font_size: u8,
     /// UI language code (e.g., "en", "es", "fr")
     pub language: String,
-    /// Show keyboard shortcuts in menus
-    pub show_menu_shortcuts: bool,
     /// Measurement system (Metric or Imperial)
     #[serde(default)]
     pub measurement_system: MeasurementSystem,
@@ -236,7 +234,6 @@ impl Default for UiSettings {
             theme: Theme::default(),
             font_size: 12,
             language: "en".to_string(),
-            show_menu_shortcuts: true,
             measurement_system: MeasurementSystem::default(),
             feed_rate_units: FeedRateUnits::default(),
             startup_tab: StartupTab::default(),
@@ -455,23 +452,6 @@ impl Default for ProbeSettings {
     }
 }
 
-/// Firmware-specific settings trait
-///
-/// Allows firmware implementations to define their own settings structure.
-pub trait FirmwareSettings: Serialize {
-    /// Get the firmware name
-    fn firmware_name(&self) -> &str;
-
-    /// Validate the settings
-    fn validate(&self) -> Result<()>;
-
-    /// Get setting by key
-    fn get_setting(&self, key: &str) -> Option<String>;
-
-    /// Set setting by key
-    fn set_setting(&mut self, key: &str, value: String) -> Result<()>;
-}
-
 /// Complete application configuration
 ///
 /// Aggregates all settings sections and provides file I/O operations.
@@ -540,8 +520,15 @@ impl Config {
             ));
         };
 
-        std::fs::write(path, content)
+        // Write a sibling temp file and rename it over the config, so a crash
+        // mid-write cannot leave a truncated file that then fails to load.
+        let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
+        tmp_name.push(".tmp");
+        let tmp = path.with_file_name(tmp_name);
+        std::fs::write(&tmp, content)
             .map_err(|e| Error::other(format!("Failed to write config file: {}", e)))?;
+        std::fs::rename(&tmp, path)
+            .map_err(|e| Error::other(format!("Failed to replace config file: {}", e)))?;
 
         Ok(())
     }
@@ -613,19 +600,6 @@ impl Config {
         }
 
         Ok(())
-    }
-
-    /// Add file to recent files list
-    pub fn add_recent_file(&mut self, path: PathBuf) {
-        // Remove if already in list
-        self.recent_files.retain(|f| f != &path);
-
-        // Add to front
-        self.recent_files.insert(0, path);
-
-        // Trim to max size
-        self.recent_files
-            .truncate(self.file_processing.recent_files_count);
     }
 
     /// Merge another config into this one.

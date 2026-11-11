@@ -2,9 +2,9 @@ name: MSRV Check
 
 on:
   push:
-    branches: [master, develop]
+    branches: [master, develop, devel]
   pull_request:
-    branches: [master, develop]
+    branches: [master, develop, devel]
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-26.04]
     
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +59,7 @@ jobs:
 
   msrv-verify:
     name: Verify MSRV in Cargo.toml
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 

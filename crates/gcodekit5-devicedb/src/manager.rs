@@ -1,3 +1,4 @@
+//! gcodekit5-devicedb/src/manager.rs
 //! # Device Manager
 //!
 //! Handles loading, saving, and managing CNC device profiles.
@@ -5,9 +6,8 @@
 //! for device CRUD operations.
 
 use crate::model::DeviceProfile;
-use crate::traits::DeviceProfileProvider;
 use anyhow::{Context, Result};
-use gcodekit5_core::{thread_safe, thread_safe_rw, ThreadSafe, ThreadSafeRw, ThreadSafeRwMap};
+use gcodekit5_core::{ThreadSafe, ThreadSafeRw, ThreadSafeRwMap, thread_safe, thread_safe_rw};
 use std::fs;
 use std::path::PathBuf;
 
@@ -255,10 +255,10 @@ impl DeviceManager {
         // If active profile was deleted, clear active selection
         {
             let mut active_lock = self.active_profile_id.write();
-            if let Some(active) = &*active_lock {
-                if active == id {
-                    *active_lock = None;
-                }
+            if let Some(active) = &*active_lock
+                && active == id
+            {
+                *active_lock = None;
             }
         }
 
@@ -272,11 +272,13 @@ impl DeviceManager {
     pub fn set_active_profile(&self, id: &str) -> Result<()> {
         let exists = self.profiles.read().contains_key(id);
         if exists {
-            {
-                let mut lock = self.active_profile_id.write();
-                *lock = Some(id.to_string());
+            let previous = self.active_profile_id.write().replace(id.to_string());
+            // Keep memory and disk in step: if the new choice cannot be saved,
+            // the previous active profile stays active.
+            if let Err(e) = self.save() {
+                *self.active_profile_id.write() = previous;
+                return Err(e);
             }
-            self.save()?;
             Ok(())
         } else {
             Err(anyhow::anyhow!("Profile not found"))
@@ -287,15 +289,5 @@ impl DeviceManager {
     pub fn get_active_profile(&self) -> Option<DeviceProfile> {
         let active_id = self.active_profile_id.read().clone()?;
         self.get_profile(&active_id)
-    }
-}
-
-impl DeviceProfileProvider for DeviceManager {
-    fn get_active_profile(&self) -> Option<DeviceProfile> {
-        self.get_active_profile()
-    }
-
-    fn get_profile(&self, id: &str) -> Option<DeviceProfile> {
-        self.get_profile(id)
     }
 }

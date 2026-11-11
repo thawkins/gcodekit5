@@ -4,14 +4,14 @@
 //! generation. Uses the font manager for font loading and supports
 //! bold, italic, font size, and letter spacing.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
 use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
-use rusttype::{point as rt_point, Scale};
+use rusttype::{Scale, point as rt_point};
 
 use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
 use crate::font_manager;
@@ -44,18 +44,16 @@ impl DesignText {
         }
     }
 
-    /// Calcula el bounding box del texto asumiendo que (x, y) es el CENTRO
+    /// Calcula el bounding box del texto asumiendo que (x, y) es el CENTRO.
     fn calculate_bounds(&self) -> (f64, f64, f64, f64) {
         let font = font_manager::get_font_for(&self.font_family, self.bold, self.italic);
         let scale = Scale::uniform(self.font_size as f32);
         let v_metrics = font.v_metrics(scale);
 
-        // Calcular bounding box relativo al origen (0,0) como esquina inferior izquierda
         let start = rt_point(0.0, v_metrics.ascent);
         let glyphs: Vec<_> = font.layout(&self.text, scale, start).collect();
 
         if glyphs.is_empty() {
-            // Estimación si no hay glifos
             let approx_width = self.text.len() as f64 * self.font_size * 0.6;
             let height = self.font_size;
             return (
@@ -81,18 +79,32 @@ impl DesignText {
             }
         }
 
+        if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite() {
+            let approx_width = self.text.len() as f64 * self.font_size * 0.6;
+            let height = self.font_size;
+            return (
+                self.x - approx_width / 2.0,
+                self.y - height / 2.0,
+                self.x + approx_width / 2.0,
+                self.y + height / 2.0,
+            );
+        }
+
+        // Ancho y alto reales del bloque de glifos (rusttype, Y-down).
         let rel_width = (max_x - min_x) as f64;
         let rel_height = (max_y - min_y) as f64;
 
-        // Calcular esquina inferior izquierda absoluta desde el centro
-        let bottom_left_x = self.x - rel_width / 2.0;
-        let bottom_left_y = self.y - rel_height / 2.0;
+        // Centrar el AABB real en (self.x, self.y) en coords canvas (Y-up).
+        // No importa dónde esté la baseline: el bloque de glifos (su AABB)
+        // queda centrado en el punto que el usuario controla.
+        let canvas_x_left = self.x - rel_width / 2.0;
+        let canvas_y_bottom = self.y - rel_height / 2.0;
 
         (
-            bottom_left_x,
-            bottom_left_y,
-            bottom_left_x + rel_width,
-            bottom_left_y + rel_height,
+            canvas_x_left,
+            canvas_y_bottom,
+            canvas_x_left + rel_width,
+            canvas_y_bottom + rel_height,
         )
     }
 }

@@ -1,8 +1,15 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 1.1.0-beta.1
-**Last Updated**: 2026-11-09
+**Version**: 1.2.0-beta.2
+**Last Updated**: 2026-11-11
 **Status**: Beta Release
+
+### Unreleased (2026-11-11) - Visualiser 2D/3D Toggle
+- ✅ **Visualizer**
+  - 2D/3D toggle in the sidebar: 2D is the locked orthographic top view with left-drag pan and no nav cube; 3D is the isometric view with free orbit.
+  - The sidebar Fit button fits the toolpath without changing the view orientation.
+- ✅ **Internationalization**
+  - The UI language sets `LANGUAGE` only; `LANG` keeps the system locale.
 
 ### Latest Release (v0.55.0-alpha.1) - 6-Axis Support, Touch Probe, Feeds & Speeds
 - ✅ **6-Axis Support** (per 6AXISPLAN.md)
@@ -2093,6 +2100,7 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - **Streaming**: GRBL character-counting flow control (bytes in flight ≤ 127). The job sender polls status (`?`, 200 ms) itself so the DRO, alarm state and overrides stay live; an `ALARM:`/`error:` reply stops the job with the reason.
 - **Connections**: device profiles carry a TCP host and port; connecting with a TCP profile opens a TCP stream through the same communicator as serial. WebSocket is not supported yet.
 - **Machine Control**: rotary A/B/C axes shown from the profile/status; Pause/Resume/Stop only during a job; inch jog presets (0.0001–1 in); probe failures restore G90 once idle.
+- **Stop and busy guard**: Stop sends feed hold (`!`), waits for `Hold:0` (up to 10 s), then soft-resets (0x18), so the position is kept; E-Stop still resets at once. While a job streams, console lines (except `!`, `~`, `?`) and `$$`/`$n=v` are refused with a message; `$` commands also need Idle or Alarm. Pause state clears when the machine reports Run/Jog
 - **Designer**: property fields commit on Enter/focus-out (one undo step per edit); every property edit is undoable; unsaved-changes prompt on New/Open/window close; SVG transforms and viewBox units; DXF `$INSUNITS`.
 - **CAM probe tool**: routines use relative (G91) moves from the current position with probe depth, tip-radius and plate-thickness compensation; "Probe" runs the routine and reports the result; "Apply to WCS" sends `G10 L2` (or `G43.1` for tool length).
 - **Bitmap engraving**: dark pixels receive more power by default; the Invert option engraves light areas.

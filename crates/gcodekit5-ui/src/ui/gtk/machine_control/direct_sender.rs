@@ -5,13 +5,14 @@
 //! the job runs and reports progress, status and the outcome to the UI over a channel.
 
 use super::grbl_stream::{
-    classify_response, CharCountWindow, GrblResponseLine, ResponseLineSplitter,
+    CharCountWindow, GrblResponseLine, ResponseLineSplitter, classify_response,
 };
 use crate::t;
+use gcodekit5_communication::firmware::Sender;
 use gcodekit5_communication::{Communicator, SerialCommunicator};
 use gcodekit5_core::ThreadSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -191,90 +192,40 @@ impl DirectSender {
         }
         self.send_event(SenderEvent::Log(t!("Resuming").to_string()));
     }
+}
 
-    /// Calcula el tiempo estimado de ejecución en segundos analizando el G-code
-    pub fn estimate_execution_time(gcode: &str) -> f64 {
-        let mut total_time = 0.0;
-        let mut current_feed = 0.0;
-        let mut last_x = 0.0;
-        let mut last_y = 0.0;
-        let mut last_z = 0.0;
-        let mut is_absolute = true;
+/// The GRBL implementation of the protocol-agnostic [`Sender`] trait.
+///
+/// The panel keeps the running job as `Rc<dyn Sender>` so pause, resume, stop and unlock
+/// work the same for every protocol. Progress, status and the job outcome still arrive
+/// as [`SenderEvent`]s on the receiver returned by [`DirectSender::new`].
+impl Sender for DirectSender {
+    fn send_gcode(&self, content: &str) {
+        DirectSender::send_gcode(self, content);
+    }
 
-        for line in gcode.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with(';') {
-                continue;
-            }
+    fn pause(&self) {
+        DirectSender::pause(self);
+    }
 
-            if line.contains("G90") {
-                is_absolute = true;
-            } else if line.contains("G91") {
-                is_absolute = false;
-            }
+    fn resume(&self) {
+        DirectSender::resume(self);
+    }
 
-            if let Some(f_pos) = line.find('F') {
-                let f_end = line[f_pos + 1..]
-                    .find(|c: char| !c.is_ascii_digit() && c != '.')
-                    .map_or(line.len(), |idx| f_pos + 1 + idx);
-                if let Ok(feed) = line[f_pos + 1..f_end].parse::<f64>() {
-                    current_feed = feed;
-                }
-            }
+    /// Stops streaming. The caller sends the soft reset (`0x18`) afterwards.
+    fn stop(&self) {
+        DirectSender::stop(self);
+    }
 
-            let is_move = line.contains("G0")
-                || line.contains("G1")
-                || line.contains("G00")
-                || line.contains("G01");
-
-            if is_move {
-                let mut x = last_x;
-                let mut y = last_y;
-                let mut z = last_z;
-
-                if let Some(x_pos) = line.find('X') {
-                    let x_end = line[x_pos + 1..]
-                        .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-                        .map_or(line.len(), |idx| x_pos + 1 + idx);
-                    if let Ok(val) = line[x_pos + 1..x_end].parse::<f64>() {
-                        x = if is_absolute { val } else { last_x + val };
-                    }
-                }
-
-                if let Some(y_pos) = line.find('Y') {
-                    let y_end = line[y_pos + 1..]
-                        .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-                        .map_or(line.len(), |idx| y_pos + 1 + idx);
-                    if let Ok(val) = line[y_pos + 1..y_end].parse::<f64>() {
-                        y = if is_absolute { val } else { last_y + val };
-                    }
-                }
-
-                if let Some(z_pos) = line.find('Z') {
-                    let z_end = line[z_pos + 1..]
-                        .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-                        .map_or(line.len(), |idx| z_pos + 1 + idx);
-                    if let Ok(val) = line[z_pos + 1..z_end].parse::<f64>() {
-                        z = if is_absolute { val } else { last_z + val };
-                    }
-                }
-
-                let dx = x - last_x;
-                let dy = y - last_y;
-                let dz = z - last_z;
-                let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-
-                if distance > 0.0 && current_feed > 0.0 {
-                    total_time += distance / (current_feed / 60.0);
-                }
-
-                last_x = x;
-                last_y = y;
-                last_z = z;
-            }
+    fn unlock(&self) {
+        if let Err(e) = self.communicator.lock().send_command("$X") {
+            tracing::error!("Failed to send unlock to GRBL: {}", e);
         }
+        self.send_event(SenderEvent::Log("> $X".to_string()));
+    }
 
-        total_time
+    fn is_streaming(&self) -> bool {
+        self.is_running()
     }
 }
 

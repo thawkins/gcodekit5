@@ -62,12 +62,13 @@ impl std::fmt::Display for GerberLayerType {
 
 pub fn clean_polyline(mut pline: Polyline<f64>) -> Polyline<f64> {
     pline.remove_repeat_pos(1e-5);
-    if pline.is_closed() && pline.vertex_count() > 1 {
-        if let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1)) {
-            if (first.x - last.x).abs() < 1e-5 && (first.y - last.y).abs() < 1e-5 {
-                pline.remove(pline.vertex_count() - 1);
-            }
-        }
+    if pline.is_closed()
+        && pline.vertex_count() > 1
+        && let (Some(first), Some(last)) = (pline.get(0), pline.get(pline.vertex_count() - 1))
+        && (first.x - last.x).abs() < 1e-5
+        && (first.y - last.y).abs() < 1e-5
+    {
+        pline.remove(pline.vertex_count() - 1);
     }
     pline
 }
@@ -208,11 +209,7 @@ impl GerberConverter {
     /// The signed offset to pass to `parallel_offset`.
     fn outward_offset(poly: &Polyline<f64>, is_hole: bool, distance: f64) -> f64 {
         let ccw = poly.area() > 0.0;
-        if is_hole == ccw {
-            distance
-        } else {
-            -distance
-        }
+        if is_hole == ccw { distance } else { -distance }
     }
 
     /// Axis-aligned rectangle covering `sketch`'s bounds grown by `margin` on every side.
@@ -368,17 +365,12 @@ impl GerberConverter {
     ) -> Sketch<()> {
         let radius = ((p1.0 - center.0).powi(2) + (p1.1 - center.1).powi(2)).sqrt();
         let start_angle = (p1.1 - center.1).atan2(p1.0 - center.0);
-        let mut end_angle = (p2.1 - center.1).atan2(p2.0 - center.0);
-
-        if clockwise {
-            if end_angle >= start_angle {
-                end_angle -= 2.0 * std::f64::consts::PI;
-            }
-        } else if end_angle <= start_angle {
-            end_angle += 2.0 * std::f64::consts::PI;
-        }
-
-        let diff = end_angle - start_angle;
+        // Shared G-code arc rule: coincident ends are a full circle.
+        let diff = gcodekit5_core::gcode::arc::angular_travel(
+            (p1.0 - center.0, p1.1 - center.1),
+            (p2.0 - center.0, p2.1 - center.1),
+            clockwise,
+        );
         let segments = (diff.abs() / (5.0f64.to_radians())).ceil() as usize; // 5 degree steps
         let segments = segments.max(2);
 
@@ -463,7 +455,7 @@ impl GerberConverter {
         let mut current_y = 0.0;
         let mut current_aperture_code = 0;
         let mut interpolation = InterpolationMode::Linear;
-        let mut _quadrant_mode = QuadrantMode::Single;
+        let mut quadrant_mode = QuadrantMode::Single;
 
         if let Some(fmt) = &doc.format_specification {
             debug!(
@@ -573,13 +565,35 @@ impl GerberConverter {
                                                 .map(|v| convert_coord(v, false))
                                                 .unwrap_or(0.0);
 
-                                            let cx = current_x + i_val;
-                                            let cy = current_y + j_val;
-
                                             let clockwise = matches!(
                                                 interpolation,
                                                 InterpolationMode::ClockwiseCircular
                                             );
+                                            let (cx, cy) =
+                                                if matches!(quadrant_mode, QuadrantMode::Single) {
+                                                    // G74: I/J are unsigned and the arc spans
+                                                    // at most 90 degrees; a zero-length arc
+                                                    // is a point, not a full circle.
+                                                    // It still paints the aperture there.
+                                                    if (x - current_x).hypot(y - current_y) < 1e-9 {
+                                                        sketches.push(Self::create_thick_segment(
+                                                            (current_x, current_y),
+                                                            (x, y),
+                                                            width,
+                                                        ));
+                                                        current_x = x;
+                                                        current_y = y;
+                                                        continue;
+                                                    }
+                                                    single_quadrant_center(
+                                                        (current_x, current_y),
+                                                        (x, y),
+                                                        (i_val, j_val),
+                                                        clockwise,
+                                                    )
+                                                } else {
+                                                    (current_x + i_val, current_y + j_val)
+                                                };
                                             if convex_outline.is_some() {
                                                 warn!(
                                                     aperture = current_aperture_code,
@@ -654,7 +668,7 @@ impl GerberConverter {
                             interpolation = *mode;
                         }
                         GGCode::QuadrantMode(mode) => {
-                            _quadrant_mode = *mode;
+                            quadrant_mode = *mode;
                         }
                         _ => {}
                     }
@@ -893,44 +907,41 @@ impl GerberConverter {
         // the origin could miss the copper entirely).
         let mut board: Option<Sketch<()>> = None;
 
-        if params.use_board_outline {
-            if let Some(dir) = &params.directory {
-                let path = PathBuf::from(dir);
-                if let Ok(entries) = fs::read_dir(path) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if !path.is_file() {
-                            continue;
-                        }
-                        let name = path
-                            .file_name()
-                            .map(|n| n.to_string_lossy())
-                            .unwrap_or_default()
-                            .to_lowercase();
-                        let ext = path
-                            .extension()
-                            .map(|e| e.to_string_lossy().to_lowercase())
-                            .unwrap_or_default();
+        if params.use_board_outline
+            && let Some(dir) = &params.directory
+        {
+            let path = PathBuf::from(dir);
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_file() {
+                        continue;
+                    }
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default()
+                        .to_lowercase();
+                    let ext = path
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
 
-                        if ext == "gko"
-                            || ext == "gm1"
-                            || name.contains("edge.cuts")
-                            || name.contains("outline")
-                        {
-                            if let Ok(content) = fs::read_to_string(&path) {
-                                if let Ok(sketches) = Self::parse_gerber_to_sketches(&content) {
-                                    if !sketches.is_empty() {
-                                        let mut merged_outline = sketches[0].clone();
-                                        for s in sketches.iter().skip(1) {
-                                            merged_outline = merged_outline.union(s);
-                                        }
-                                        board = Some(merged_outline);
-                                        debug!("Using board outline from file: {:?}", path);
-                                        break;
-                                    }
-                                }
-                            }
+                    if (ext == "gko"
+                        || ext == "gm1"
+                        || name.contains("edge.cuts")
+                        || name.contains("outline"))
+                        && let Ok(content) = fs::read_to_string(&path)
+                        && let Ok(sketches) = Self::parse_gerber_to_sketches(&content)
+                        && !sketches.is_empty()
+                    {
+                        let mut merged_outline = sketches[0].clone();
+                        for s in sketches.iter().skip(1) {
+                            merged_outline = merged_outline.union(s);
                         }
+                        board = Some(merged_outline);
+                        debug!("Using board outline from file: {:?}", path);
+                        break;
                     }
                 }
             }
@@ -1199,4 +1210,56 @@ impl GerberConverter {
         }
         Ok(())
     }
+}
+
+/// The centre of a single-quadrant (G74) arc.
+///
+/// In G74 mode `I`/`J` are unsigned distances and the arc spans at most 90
+/// degrees, so of the four sign combinations the centre is the one that is
+/// equidistant from both endpoints (within coordinate rounding) with the
+/// shortest sweep in the arc's direction.
+///
+/// # Arguments
+/// * `start` / `end` - Arc endpoints.
+/// * `offset` - The `I`, `J` values (their signs are ignored).
+/// * `clockwise` - Arc direction.
+pub fn single_quadrant_center(
+    start: (f64, f64),
+    end: (f64, f64),
+    offset: (f64, f64),
+    clockwise: bool,
+) -> (f64, f64) {
+    let (i, j) = (offset.0.abs(), offset.1.abs());
+    let sweep = |c: (f64, f64)| {
+        let a0 = (start.1 - c.1).atan2(start.0 - c.0);
+        let a1 = (end.1 - c.1).atan2(end.0 - c.0);
+        let ccw = (a1 - a0).rem_euclid(std::f64::consts::TAU);
+        if clockwise {
+            (std::f64::consts::TAU - ccw) % std::f64::consts::TAU
+        } else {
+            ccw
+        }
+    };
+    let mismatch = |c: (f64, f64)| {
+        ((start.0 - c.0).hypot(start.1 - c.1) - (end.0 - c.0).hypot(end.1 - c.1)).abs()
+    };
+    let candidates =
+        [(i, j), (-i, j), (i, -j), (-i, -j)].map(|(di, dj)| (start.0 + di, start.1 + dj));
+    // A centre is consistent when both endpoints are on its circle, within
+    // what rounded file coordinates allow. Of those, the arc takes the
+    // shortest sweep (at most 90 degrees in a valid file); a rounded endpoint
+    // can push that a little past 90, so the sweep is not a hard limit.
+    let tolerance = |c: (f64, f64)| (1e-3 * (start.0 - c.0).hypot(start.1 - c.1)).max(1e-3);
+    candidates
+        .iter()
+        .copied()
+        .filter(|c| mismatch(*c) <= tolerance(*c))
+        .min_by(|a, b| sweep(*a).total_cmp(&sweep(*b)))
+        .or_else(|| {
+            candidates
+                .iter()
+                .copied()
+                .min_by(|a, b| mismatch(*a).total_cmp(&mismatch(*b)))
+        })
+        .unwrap_or((start.0 + i, start.1 + j))
 }

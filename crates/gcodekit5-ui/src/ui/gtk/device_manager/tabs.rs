@@ -1,7 +1,8 @@
+//! gcodekit5-ui/src/ui/gtk/device_manager/tabs.rs
 //! Tab creation methods for the device manager window.
 
 use super::*;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 
 impl DeviceManagerWindow {
     pub(crate) fn create_general_tab() -> (ScrolledWindow, Entry, Entry, DropDown, DropDown) {
@@ -55,11 +56,14 @@ impl DeviceManagerWindow {
         ctrl_label.set_halign(Align::Start);
         let edit_controller_type = new_text_dropdown();
         edit_controller_type.append(Some("GRBL"), "GRBL");
-        edit_controller_type.append(Some("TinyG"), "TinyG");
-        edit_controller_type.append(Some("g2core"), "g2core");
-        edit_controller_type.append(Some("Smoothieware"), "Smoothieware");
-        edit_controller_type.append(Some("FluidNC"), "FluidNC");
-        edit_controller_type.append(Some("Marlin"), "Marlin");
+        edit_controller_type.append(Some("Repetier"), "Repetier");
+        edit_controller_type.append(Some("FluidNC"), "FluidNC (supported via GRBL)");
+        edit_controller_type.append(Some("grblHAL"), "grblHAL (supported via GRBL)");
+        edit_controller_type.append(Some("TinyG"), "TinyG (not supported)");
+        edit_controller_type.append(Some("g2core"), "g2core (not supported)");
+        edit_controller_type.append(Some("Smoothieware"), "Smoothieware (not supported)");
+        edit_controller_type.append(Some("Marlin"), "Marlin (not supported)");
+
         edit_controller_type.set_active_id(Some("GRBL"));
         grid.attach(&ctrl_label, 0, row, 1, 1);
         grid.attach(&edit_controller_type, 1, row, 1, 1);
@@ -337,6 +341,7 @@ impl DeviceManagerWindow {
         CheckButton,
         CheckButton,
         CheckButton,
+        CheckButton,
         Entry,
         Entry,
         Label,
@@ -458,12 +463,18 @@ impl DeviceManagerWindow {
         let edit_has_coolant = CheckButton::with_label("Has Coolant");
         vbox.append(&edit_has_coolant);
 
+        // Pen mode (Repetier only)
+        let edit_pen_mode =
+            CheckButton::with_label("Pen Mode (Repetier: M3/M5 become pen down/up Z moves)");
+        vbox.append(&edit_pen_mode);
+
         scroll.set_child(Some(&vbox));
         (
             scroll,
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
+            edit_pen_mode,
             edit_num_axes,
             edit_max_feed_rate,
             edit_max_feed_rate_unit,

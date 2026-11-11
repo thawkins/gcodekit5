@@ -5,7 +5,7 @@
 //! Lines are tokenized with [`crate::comment_processor::words`], so comments are ignored and
 //! `M5` never matches `M50` (or `M5` inside a comment).
 
-use crate::comment_processor::{system_command, words, Word};
+use crate::comment_processor::{Word, system_command, words};
 
 /// The value if the line's code consists of exactly one word `letter` with an integral value.
 fn single_word(line_words: &[Word], letter: char) -> Option<i64> {
@@ -38,6 +38,13 @@ impl GCodeOptimizer {
         for line in lines {
             // A GRBL `$` command (`$H`, `$X`, `$J=...`) is kept and ends a run of `M5` lines.
             if system_command(line).is_some() {
+                result.push(line.clone());
+                last_was_m5 = false;
+                continue;
+            }
+            // An optional (block-delete) line may be skipped by the controller, so it can
+            // never stand in for the unconditional stop that follows it.
+            if is_block_delete(line) {
                 result.push(line.clone());
                 last_was_m5 = false;
                 continue;
@@ -80,6 +87,13 @@ impl GCodeOptimizer {
                 result.push(line.clone());
                 continue;
             }
+            // An optional (block-delete) line may be skipped, so after it the selected tool
+            // is unknown.
+            if is_block_delete(line) {
+                result.push(line.clone());
+                last_tool = None;
+                continue;
+            }
             if let Some(tool) = single_word(&words(line), 'T') {
                 if last_tool != Some(tool) {
                     result.push(line.clone());
@@ -106,4 +120,9 @@ impl GCodeOptimizer {
         optimized = Self::remove_redundant_tools(&optimized);
         optimized
     }
+}
+
+/// Whether `line` is an optional block (starts with the block-delete character `/`).
+fn is_block_delete(line: &str) -> bool {
+    line.trim_start().starts_with('/')
 }

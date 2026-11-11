@@ -1,7 +1,7 @@
 //! UI section builder methods for the properties panel.
 
 use super::*;
-use crate::ui::gtk::common::text_dropdown::{new_text_dropdown, TextDropDownExt};
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
@@ -20,8 +20,8 @@ impl PropertiesPanel {
         frame
     }
 
-    pub(crate) fn build_position_section(
-    ) -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
+    pub(crate) fn build_position_section()
+    -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -612,7 +612,7 @@ impl PropertiesPanel {
         CheckButton, // bidirectional
         CheckButton, // invert
         DropDown,    // dithering
-        Entry,       // halftone_threshold
+        Entry,       // halftone threshold
     ) {
         let frame = Self::create_section(&t!("Laser Engraving"));
         let grid = gtk4::Grid::builder()
@@ -677,7 +677,6 @@ impl PropertiesPanel {
         bidir_label.set_halign(gtk4::Align::Start);
         let bidir_check = CheckButton::new();
         bidir_check.set_active(RasterImage::default().bidirectional);
-
         // Dithering
         let dither_label = Label::new(Some(&t!("Dithering:")));
         dither_label.set_halign(gtk4::Align::Start);
@@ -688,7 +687,6 @@ impl PropertiesPanel {
         dither_combo.append(Some("atkinson"), &t!("Atkinson"));
         dither_combo.append(Some("bayer"), &t!("Bayer"));
         dither_combo.set_active_id(Some(&RasterImage::default().dithering));
-
         // Invert
         let invert_label = Label::new(Some(&t!("Invert:")));
         invert_label.set_halign(gtk4::Align::Start);
@@ -737,6 +735,7 @@ impl PropertiesPanel {
         grid.attach(&dither_label, 0, 8, 1, 1);
         grid.attach(&dither_combo, 1, 8, 1, 1);
 
+        // The threshold is used by the Threshold dithering method.
         grid.attach(&halftone_label, 0, 9, 1, 1);
         grid.attach(&halftone_entry, 1, 9, 1, 1);
         grid.attach(&halftone_range, 2, 9, 1, 1);
