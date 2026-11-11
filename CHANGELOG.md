@@ -9,6 +9,11 @@
 - **Rapids through the stock** now remove material, so a crash rapid shows as a gouge instead of looking safe
 - **Validation**: the simulator refuses a zero, negative or non-finite stock size or tool diameter instead of allocating or cutting nothing silently
 - **GL state**: drawing the stock restores the blend state the later passes expect
+- **Opening retract**: rapids are not simulated until every axis has moved once, so the opening `G0 Z10` of a bottom-zeroed program no longer cuts a false hole at XY0 (the parser's start position is only assumed)
+- **Mesh memory**: the surface mesh is capped at 128 MiB; a finely varying 3D surface on large stock is meshed from a block-averaged copy instead of exhausting memory
+- **Cancel while meshing**: cancelling stops the worker during meshing too, so repeated toggles do not pile up work
+- **Reference changes**: changing "Stock Z0 at" or "Stock XY0 at" while the simulation is shown re-runs it with the new setting
+- **UI thread**: the height map is allocated on the worker thread; the UI only validates the settings
 
 ### Changed
 - **Height map instead of voxels**: a flat end mill only lowers columns, so the simulator stores one height per XY cell. Memory falls by the stock depth in cells (about 53x at default settings), and full sheets (e.g. 1220 x 2440 mm at 0.19 mm) can now be simulated

@@ -2,7 +2,9 @@
 //! exact depths, stock size, XY origin, rapids, progress/cancel and the
 //! surface mesh (watertight, merged, correctly wound).
 
-use gcodekit5_visualizer::visualizer::{StockXyReference, StockZeroReference};
+use gcodekit5_visualizer::visualizer::{
+    MAX_MESH_FLOATS, StockXyReference, StockZeroReference, generate_surface_mesh_within,
+};
 use gcodekit5_visualizer::{
     StockSimulator3D, ToolpathSegment, ToolpathSegmentType, Visualizer, toolpath_from_commands,
 };
@@ -239,10 +241,13 @@ fn test_stock_removal_arc_cuts_along_the_arc() {
 #[test]
 fn test_toolpath_from_commands_keeps_motion_and_drops_dwells() {
     let mut vis = Visualizer::new();
-    vis.parse_gcode("G0 X0 Y0 Z5\nG1 Z-1 F100\nG4 P1\nG2 X10 Y0 I5 J0\n");
+    vis.parse_gcode("G0 Z10\nG0 X5 Y5\nG0 Z1\nG1 Z-1 F100\nG4 P1\nG2 X15 Y5 I5 J0\n");
     let segments = toolpath_from_commands(vis.commands());
+    // The two rapids out of the parser's assumed start are dropped (see
+    // test_stock_removal_opening_retract_does_not_cut); the rest is kept.
     assert!(segments.len() >= 3, "{segments:?}");
     assert_eq!(segments[0].segment_type, ToolpathSegmentType::RapidMove);
+    assert_eq!(segments[0].start, (5.0, 5.0, 10.0));
     assert_eq!(segments[1].segment_type, ToolpathSegmentType::LinearMove);
     assert!(
         segments[2..]
@@ -251,7 +256,74 @@ fn test_toolpath_from_commands_keeps_motion_and_drops_dwells() {
     );
     // The arc pieces join up and end at the programmed end point.
     let end = segments.last().expect("arc").end;
-    assert!((end.0 - 10.0).abs() < 1e-3 && end.1.abs() < 1e-3, "{end:?}");
+    assert!(
+        (end.0 - 15.0).abs() < 1e-3 && (end.1 - 5.0).abs() < 1e-3,
+        "{end:?}"
+    );
+}
+
+#[test]
+fn test_stock_removal_opening_retract_does_not_cut() {
+    // PR #100 review: the parser starts at an assumed (0, 0, 0), so the
+    // opening `G0 Z10` of a bottom-zeroed program used to cut a hole at XY0.
+    let mut vis = Visualizer::new();
+    vis.parse_gcode("G0 Z10\nG0 X5 Y5\nG0 Z12\n");
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 10.0, 0.5, 1.0)
+        .expect("valid stock")
+        .with_stock_zero_reference(StockZeroReference::Bottom);
+    sim.simulate_toolpath(&toolpath_from_commands(vis.commands()));
+    assert!(sim.height_map().heights().iter().all(|&h| h == 10.0));
+}
+
+#[test]
+fn test_stock_removal_known_rapid_still_cuts() {
+    // Once the position is known, a rapid through the stock still cuts.
+    let mut vis = Visualizer::new();
+    vis.parse_gcode("G0 X2 Y5 Z5\nG0 X3\nG0 Z-1\nG0 X8\n");
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0).expect("valid stock");
+    sim.simulate_toolpath(&toolpath_from_commands(vis.commands()));
+    assert_eq!(sim.height_map().height_at(10, 10), Some(4.0));
+}
+
+/// A stock with a ramp cut, so nearly every cell has its own height and
+/// little can be merged.
+fn ramped_stock() -> StockSimulator3D {
+    let mut sim = StockSimulator3D::new(20.0, 10.0, 5.0, 0.5, 6.0).expect("valid stock");
+    sim.simulate_toolpath(&[linear((0.0, 5.0, -0.5), (20.0, 5.0, -4.5))]);
+    sim
+}
+
+#[test]
+fn test_stock_removal_mesh_respects_float_budget() {
+    // PR #100 review: an unmergeable surface on large stock made the mesh
+    // unbounded. Over budget, it is built from a block-averaged copy.
+    let sim = ramped_stock();
+    let map = sim.height_map();
+    let full = generate_surface_mesh_within(map, MAX_MESH_FLOATS, &|| false).expect("mesh");
+    let budget = full.len() / 4;
+    let coarse = generate_surface_mesh_within(map, budget, &|| false).expect("coarse mesh");
+    assert!(
+        !coarse.is_empty() && coarse.len() <= budget,
+        "{} > {budget}",
+        coarse.len()
+    );
+    // 40 x 20 cells divide evenly into blocks, so averaging keeps the volume.
+    let expected = mesh_volume(&full);
+    assert!((mesh_volume(&coarse) - expected).abs() < 1e-2 * expected);
+}
+
+#[test]
+fn test_stock_removal_mesh_stops_when_cancelled() {
+    let sim = ramped_stock();
+    assert!(generate_surface_mesh_within(sim.height_map(), MAX_MESH_FLOATS, &|| true).is_none());
+    assert!(sim.get_mesh_cancellable(&|| true).is_none());
+}
+
+#[test]
+fn test_stock_removal_validate_matches_new() {
+    assert!(StockSimulator3D::validate(10.0, 10.0, 5.0, 0.5, 1.0).is_ok());
+    assert!(StockSimulator3D::validate(10.0, 10.0, 5.0, 0.5, 0.0).is_err());
+    assert!(StockSimulator3D::validate(0.0, 10.0, 5.0, 0.5, 1.0).is_err());
 }
 
 #[test]

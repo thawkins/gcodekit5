@@ -60,46 +60,68 @@ pub struct ToolpathSegment {
 /// Dwells do not move the tool and are dropped. Arcs outside the XY plane are
 /// already tessellated into straight moves by the parser.
 ///
+/// The parser starts from an assumed `(0, 0, 0)`, so the real start position
+/// is unknown. Rapids are therefore dropped until every axis has moved at
+/// least once; otherwise the opening `G0 Z10` of a bottom-zeroed program would
+/// cut a false hole at XY0. Later rapids are kept and cut where they pass
+/// through the stock. Feed moves are always kept.
+///
 /// # Arguments
 /// * `commands` - Commands produced by [`super::Visualizer`].
 ///
 /// # Returns
-/// One [`ToolpathSegment`] per move or arc, in program order.
+/// The simulator segments, in program order.
 pub fn toolpath_from_commands(commands: &[GCodeCommand]) -> Vec<ToolpathSegment> {
-    commands
-        .iter()
-        .filter_map(|cmd| match cmd {
+    let mut known = [false; 3];
+    let mut segments = Vec::with_capacity(commands.len());
+    for cmd in commands {
+        let (from, to, segment_type, center) = match cmd {
             GCodeCommand::Move {
                 from, to, rapid, ..
-            } => Some(ToolpathSegment {
-                segment_type: if *rapid {
+            } => {
+                let kind = if *rapid {
                     ToolpathSegmentType::RapidMove
                 } else {
                     ToolpathSegmentType::LinearMove
-                },
-                start: (from.x, from.y, from.z),
-                end: (to.x, to.y, to.z),
-                center: None,
-            }),
+                };
+                (from, to, kind, None)
+            }
             GCodeCommand::Arc {
                 from,
                 to,
                 center,
                 clockwise,
                 ..
-            } => Some(ToolpathSegment {
-                segment_type: if *clockwise {
+            } => {
+                let kind = if *clockwise {
                     ToolpathSegmentType::ArcCW
                 } else {
                     ToolpathSegmentType::ArcCCW
-                },
-                start: (from.x, from.y, from.z),
-                end: (to.x, to.y, to.z),
-                center: Some((center.x, center.y)),
-            }),
-            GCodeCommand::Dwell { .. } => None,
-        })
-        .collect()
+                };
+                (from, to, kind, Some((center.x, center.y)))
+            }
+            GCodeCommand::Dwell { .. } => continue,
+        };
+        let start_known = known.iter().all(|&k| k);
+        for (axis, (a, b)) in known
+            .iter_mut()
+            .zip([(from.x, to.x), (from.y, to.y), (from.z, to.z)])
+        {
+            if a != b {
+                *axis = true;
+            }
+        }
+        if segment_type == ToolpathSegmentType::RapidMove && !start_known {
+            continue;
+        }
+        segments.push(ToolpathSegment {
+            segment_type,
+            start: (from.x, from.y, from.z),
+            end: (to.x, to.y, to.z),
+            center,
+        });
+    }
+    segments
 }
 
 /// Largest number of XY cells the simulation allocates (4 bytes each):
@@ -274,6 +296,37 @@ impl HeightMap {
         }
     }
 
+    /// Copy with each `factor x factor` block of cells averaged into one cell,
+    /// for meshing maps too detailed to mesh at full resolution.
+    fn coarsened(&self, factor: usize) -> Self {
+        let cols = self.cols.div_ceil(factor);
+        let rows = self.rows.div_ceil(factor);
+        let mut heights = Vec::with_capacity(cols * rows);
+        for row in 0..rows {
+            let (r0, r1) = (row * factor, ((row + 1) * factor).min(self.rows));
+            for col in 0..cols {
+                let (c0, c1) = (col * factor, ((col + 1) * factor).min(self.cols));
+                let sum: f32 = (r0..r1)
+                    .map(|r| {
+                        self.heights[r * self.cols + c0..r * self.cols + c1]
+                            .iter()
+                            .sum::<f32>()
+                    })
+                    .sum();
+                heights.push(sum / ((r1 - r0) * (c1 - c0)) as f32);
+            }
+        }
+        Self {
+            cols,
+            rows,
+            resolution: self.resolution * factor as f32,
+            size_x: self.size_x,
+            size_y: self.size_y,
+            thickness: self.thickness,
+            heights,
+        }
+    }
+
     /// Height with cut-through cells snapped to zero; `0.0` outside the map.
     fn solid_height(&self, col: isize, row: isize) -> f32 {
         if col < 0 || row < 0 {
@@ -292,32 +345,78 @@ const STOCK_COLOR: [f32; 4] = [0.44, 0.50, 0.56, 1.0];
 /// Floats per mesh vertex: position (3), normal (3), colour (4).
 pub const MESH_FLOATS_PER_VERTEX: usize = 10;
 
-/// Append a quad as two triangles. `corners` must be counter-clockwise when
-/// seen from the side `normal` points to.
-fn push_quad(vertices: &mut Vec<f32>, corners: [Vec3; 4], normal: Vec3) {
-    for index in [0, 1, 2, 0, 2, 3] {
-        let v = corners[index];
-        vertices.extend_from_slice(&[v.x, v.y, v.z, normal.x, normal.y, normal.z]);
-        vertices.extend_from_slice(&STOCK_COLOR);
+/// Largest mesh built, in floats (128 MiB). A map whose mesh would be larger
+/// (a finely varying 3D surface on large stock) is meshed from a coarser,
+/// block-averaged copy instead; the simulation itself keeps full resolution.
+pub const MAX_MESH_FLOATS: usize = 32 << 20;
+
+/// Why a mesh build stopped early.
+enum MeshAbort {
+    /// The mesh would exceed its float budget.
+    OverBudget,
+    /// The caller asked to stop.
+    Cancelled,
+}
+
+/// Collects mesh vertices up to a float budget.
+struct MeshBuilder<'a> {
+    vertices: Vec<f32>,
+    max_floats: usize,
+    cancel: &'a dyn Fn() -> bool,
+}
+
+impl MeshBuilder<'_> {
+    /// Append a quad as two triangles. `corners` must be counter-clockwise
+    /// when seen from the side `normal` points to.
+    fn push_quad(&mut self, corners: [Vec3; 4], normal: Vec3) -> Result<(), MeshAbort> {
+        if self.vertices.len() + 6 * MESH_FLOATS_PER_VERTEX > self.max_floats {
+            return Err(MeshAbort::OverBudget);
+        }
+        for index in [0, 1, 2, 0, 2, 3] {
+            let v = corners[index];
+            self.vertices
+                .extend_from_slice(&[v.x, v.y, v.z, normal.x, normal.y, normal.z]);
+            self.vertices.extend_from_slice(&STOCK_COLOR);
+        }
+        Ok(())
+    }
+
+    /// Fails with [`MeshAbort::Cancelled`] once the caller asks to stop.
+    fn check_cancel(&self) -> Result<(), MeshAbort> {
+        if (self.cancel)() {
+            Err(MeshAbort::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Most quads that still fit in the budget.
+    fn quads_left(&self) -> usize {
+        (self.max_floats.saturating_sub(self.vertices.len())) / (6 * MESH_FLOATS_PER_VERTEX)
     }
 }
+
+/// A merged rectangle of cells: `(col0, row0, col1, row1, key)` with
+/// exclusive upper bounds.
+type CellRect<K> = (usize, usize, usize, usize, K);
 
 /// Merge the cells of a `cols x rows` grid into rectangles of equal key.
 ///
 /// Greedy meshing: from each unvisited cell with a key, grow a run along X,
 /// then grow it along Y while the whole run matches. Cells whose key is
-/// `None` are skipped.
-///
-/// # Returns
-/// `(col0, row0, col1, row1, key)` with exclusive upper bounds.
+/// `None` are skipped. Stops with [`MeshAbort::OverBudget`] past `max_rects`
+/// rectangles, and checks `builder` for cancellation once per row.
 fn greedy_rects<K: PartialEq + Copy>(
     cols: usize,
     rows: usize,
+    max_rects: usize,
+    builder: &MeshBuilder<'_>,
     key: impl Fn(usize, usize) -> Option<K>,
-) -> Vec<(usize, usize, usize, usize, K)> {
+) -> Result<Vec<CellRect<K>>, MeshAbort> {
     let mut visited = vec![false; cols * rows];
     let mut rects = Vec::new();
     for row in 0..rows {
+        builder.check_cancel()?;
         for col in 0..cols {
             if visited[row * cols + col] {
                 continue;
@@ -325,6 +424,9 @@ fn greedy_rects<K: PartialEq + Copy>(
             let Some(k) = key(col, row) else {
                 continue;
             };
+            if rects.len() >= max_rects {
+                return Err(MeshAbort::OverBudget);
+            }
             let matches = |c: usize, r: usize| !visited[r * cols + c] && key(c, r) == Some(k);
             let mut col1 = col + 1;
             while col1 < cols && matches(col1, row) {
@@ -340,30 +442,24 @@ fn greedy_rects<K: PartialEq + Copy>(
             rects.push((col, row, col1, row1, k));
         }
     }
-    rects
+    Ok(rects)
 }
 
-/// Surface mesh of the remaining stock in stock-local coordinates.
-///
-/// Flat regions are merged into large quads (see [`greedy_rects`]), and walls
-/// are emitted only where neighbouring columns differ in height, merged along
-/// their length. Layout: [`MESH_FLOATS_PER_VERTEX`] floats per vertex, three
-/// vertices per triangle, counter-clockwise front faces.
-pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
-    let mut vertices = Vec::new();
+/// Build the mesh of `map` at its own resolution, within `builder`'s budget.
+fn build_mesh(map: &HeightMap, builder: &mut MeshBuilder<'_>) -> Result<(), MeshAbort> {
     let (cols, rows) = (map.cols, map.rows);
     let ex = |c: usize| map.edge(c, map.size_x);
     let ey = |r: usize| map.edge(r, map.size_y);
     let solid = |c: usize, r: usize| map.solid_height(c as isize, r as isize);
 
     // Top faces, merged by equal height.
-    for (c0, r0, c1, r1, h) in greedy_rects(cols, rows, |c, r| {
+    let tops = greedy_rects(cols, rows, builder.quads_left(), builder, |c, r| {
         let h = solid(c, r);
         (h > 0.0).then_some(h)
-    }) {
+    })?;
+    for (c0, r0, c1, r1, h) in tops {
         let (x0, x1, y0, y1) = (ex(c0), ex(c1), ey(r0), ey(r1));
-        push_quad(
-            &mut vertices,
+        builder.push_quad(
             [
                 Vec3::new(x0, y0, h),
                 Vec3::new(x1, y0, h),
@@ -371,14 +467,16 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
                 Vec3::new(x0, y1, h),
             ],
             Vec3::Z,
-        );
+        )?;
     }
 
     // Bottom faces under every column that still has material.
-    for (c0, r0, c1, r1, ()) in greedy_rects(cols, rows, |c, r| (solid(c, r) > 0.0).then_some(())) {
+    let bottoms = greedy_rects(cols, rows, builder.quads_left(), builder, |c, r| {
+        (solid(c, r) > 0.0).then_some(())
+    })?;
+    for (c0, r0, c1, r1, ()) in bottoms {
         let (x0, x1, y0, y1) = (ex(c0), ex(c1), ey(r0), ey(r1));
-        push_quad(
-            &mut vertices,
+        builder.push_quad(
             [
                 Vec3::new(x1, y0, 0.0),
                 Vec3::new(x0, y0, 0.0),
@@ -386,20 +484,23 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
                 Vec3::new(x1, y1, 0.0),
             ],
             Vec3::NEG_Z,
-        );
+        )?;
     }
 
-    // Walls facing X: boundary `b` lies between columns b-1 and b.
+    // Walls facing X: boundary `b` lies between columns b-1 and b. The quad
+    // corners are the same either way; only the normal (and so the side that
+    // is front-facing) depends on which column is taller.
     for b in 0..=cols {
+        builder.check_cancel()?;
         let x = ex(b);
+        let pair = |r: usize| {
+            (
+                map.solid_height(b as isize - 1, r as isize),
+                map.solid_height(b as isize, r as isize),
+            )
+        };
         let mut row = 0;
         while row < rows {
-            let pair = |r: usize| {
-                (
-                    map.solid_height(b as isize - 1, r as isize),
-                    map.solid_height(b as isize, r as isize),
-                )
-            };
             let (left, right) = pair(row);
             let mut end = row + 1;
             while end < rows && pair(end) == (left, right) {
@@ -407,8 +508,7 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
             }
             if left != right {
                 let (y0, y1) = (ey(row), ey(end));
-                push_quad(
-                    &mut vertices,
+                builder.push_quad(
                     [
                         Vec3::new(x, y0, left),
                         Vec3::new(x, y0, right),
@@ -416,7 +516,7 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
                         Vec3::new(x, y1, left),
                     ],
                     if left > right { Vec3::X } else { Vec3::NEG_X },
-                );
+                )?;
             }
             row = end;
         }
@@ -424,15 +524,16 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
 
     // Walls facing Y: boundary `b` lies between rows b-1 and b.
     for b in 0..=rows {
+        builder.check_cancel()?;
         let y = ey(b);
+        let pair = |c: usize| {
+            (
+                map.solid_height(c as isize, b as isize - 1),
+                map.solid_height(c as isize, b as isize),
+            )
+        };
         let mut col = 0;
         while col < cols {
-            let pair = |c: usize| {
-                (
-                    map.solid_height(c as isize, b as isize - 1),
-                    map.solid_height(c as isize, b as isize),
-                )
-            };
             let (below, above) = pair(col);
             let mut end = col + 1;
             while end < cols && pair(end) == (below, above) {
@@ -440,8 +541,7 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
             }
             if below != above {
                 let (x0, x1) = (ex(col), ex(end));
-                push_quad(
-                    &mut vertices,
+                builder.push_quad(
                     [
                         Vec3::new(x0, y, below),
                         Vec3::new(x1, y, below),
@@ -449,12 +549,69 @@ pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
                         Vec3::new(x0, y, above),
                     ],
                     if below > above { Vec3::Y } else { Vec3::NEG_Y },
-                );
+                )?;
             }
             col = end;
         }
     }
-    vertices
+    Ok(())
+}
+
+/// Surface mesh of the remaining stock in stock-local coordinates.
+///
+/// Flat regions are merged into large quads (see [`greedy_rects`]), and walls
+/// are emitted only where neighbouring columns differ in height, merged along
+/// their length. Layout: [`MESH_FLOATS_PER_VERTEX`] floats per vertex, three
+/// vertices per triangle, counter-clockwise front faces. A mesh that would
+/// exceed [`MAX_MESH_FLOATS`] is built from a coarser copy of the map.
+pub fn generate_surface_mesh(map: &HeightMap) -> Vec<f32> {
+    generate_surface_mesh_within(map, MAX_MESH_FLOATS, &|| false).unwrap_or_default()
+}
+
+/// [`generate_surface_mesh`] with an explicit float budget and cancellation.
+///
+/// The map is meshed at full resolution if the mesh fits in `max_floats`;
+/// otherwise it is averaged over 2x2, 4x4, ... cell blocks until it fits.
+///
+/// # Arguments
+/// * `map` - Height map to mesh.
+/// * `max_floats` - Largest mesh to build, in floats.
+/// * `cancel` - Polled during meshing; return `true` to stop.
+///
+/// # Returns
+/// The mesh, or `None` when cancelled (or when even a single-cell map does
+/// not fit in `max_floats`).
+pub fn generate_surface_mesh_within(
+    map: &HeightMap,
+    max_floats: usize,
+    cancel: &dyn Fn() -> bool,
+) -> Option<Vec<f32>> {
+    let mut factor = 1;
+    loop {
+        let coarse;
+        let current = if factor == 1 {
+            map
+        } else {
+            coarse = map.coarsened(factor);
+            &coarse
+        };
+        let mut builder = MeshBuilder {
+            vertices: Vec::new(),
+            max_floats,
+            cancel,
+        };
+        match build_mesh(current, &mut builder) {
+            Ok(()) => return Some(builder.vertices),
+            Err(MeshAbort::Cancelled) => return None,
+            Err(MeshAbort::OverBudget) => {
+                if current.cols <= 1 && current.rows <= 1 {
+                    return None;
+                }
+                factor *= 2;
+                tracing::debug!(factor, "Stock mesh over budget; meshing a coarser map");
+            }
+        }
+    }
 }
 
 /// Which face of the stock block the program's work Z0 is set on.
@@ -753,18 +910,35 @@ impl StockSimulator3D {
         resolution: f32,
         tool_radius: f32,
     ) -> Result<Self, String> {
-        if !tool_radius.is_finite() || tool_radius <= 0.0 {
-            return Err(format!(
-                "Tool diameter must be a positive number (got {})",
-                tool_radius * 2.0
-            ));
-        }
+        Self::validate(width, height, thickness, resolution, tool_radius)?;
         Ok(Self {
             map: HeightMap::new(width, height, thickness, resolution)?,
             tool_radius,
             stock_top_z: 0.0,
             origin_xy: (0.0, 0.0),
         })
+    }
+
+    /// Check the arguments of [`StockSimulator3D::new`] without allocating,
+    /// so a UI can reject bad input before handing the (possibly large)
+    /// allocation to a worker thread.
+    ///
+    /// # Errors
+    /// The message [`StockSimulator3D::new`] would return.
+    pub fn validate(
+        width: f32,
+        height: f32,
+        thickness: f32,
+        resolution: f32,
+        tool_radius: f32,
+    ) -> Result<(), String> {
+        if !tool_radius.is_finite() || tool_radius <= 0.0 {
+            return Err(format!(
+                "Tool diameter must be a positive number (got {})",
+                tool_radius * 2.0
+            ));
+        }
+        HeightMap::check_dimensions(width, height, thickness, resolution)
     }
 
     /// Set the work Z (mm) of the top face of the stock (default 0).
@@ -915,7 +1089,16 @@ impl StockSimulator3D {
     /// floats per vertex), translated so the stock lower-left corner is at
     /// `stock_origin_xy` and its top at `stock_top_z`.
     pub fn get_mesh(&self) -> Vec<f32> {
-        let mut mesh = generate_surface_mesh(&self.map);
+        self.get_mesh_cancellable(&|| false).unwrap_or_default()
+    }
+
+    /// [`StockSimulator3D::get_mesh`] that stops early when `cancel` returns
+    /// `true`.
+    ///
+    /// # Returns
+    /// The mesh, or `None` when cancelled.
+    pub fn get_mesh_cancellable(&self, cancel: &dyn Fn() -> bool) -> Option<Vec<f32>> {
+        let mut mesh = generate_surface_mesh_within(&self.map, MAX_MESH_FLOATS, cancel)?;
         let offset = Vec3::new(
             self.origin_xy.0,
             self.origin_xy.1,
@@ -928,6 +1111,6 @@ impl StockSimulator3D {
                 vertex[2] += offset.z;
             }
         }
-        mesh
+        Some(mesh)
     }
 }

@@ -46,22 +46,52 @@ enum StockSimMessage {
     Progress(u8),
     /// Finished: the remaining stock's surface mesh in work coordinates.
     Done(Vec<f32>),
+    /// The simulator could not be created.
+    Failed(String),
+}
+
+/// Stock and tool settings for one stock removal run, captured on the UI
+/// thread and validated there with [`StockSimulator3D::validate`].
+struct StockSimSetup {
+    width: f32,
+    height: f32,
+    thickness: f32,
+    tool_radius: f32,
+    zero: StockZeroReference,
+    xy: StockXyReference,
 }
 
 /// Run a stock removal simulation and build its mesh. Runs on a worker
-/// thread so neither the cutting nor the meshing blocks the UI.
+/// thread so neither the height map allocation, the cutting nor the meshing
+/// blocks the UI.
 ///
 /// # Arguments
-/// * `simulator` - Configured simulator for the stock.
+/// * `setup` - Stock and tool settings for the run.
 /// * `toolpath` - Program toolpath in work coordinates.
 /// * `cancel` - Set by the UI to stop the run; no result is sent then.
 /// * `tx` - Channel to the UI poller.
 fn run_stock_simulation(
-    mut simulator: StockSimulator3D,
+    setup: &StockSimSetup,
     toolpath: &[ToolpathSegment],
     cancel: &std::sync::atomic::AtomicBool,
     tx: &std::sync::mpsc::Sender<StockSimMessage>,
 ) {
+    let mut simulator = match StockSimulator3D::new(
+        setup.width,
+        setup.height,
+        setup.thickness,
+        STOCK_REMOVAL_RESOLUTION,
+        setup.tool_radius,
+    ) {
+        Ok(simulator) => simulator
+            .with_stock_zero_reference(setup.zero)
+            .with_stock_xy_reference(setup.xy),
+        Err(reason) => {
+            let _ = tx.send(StockSimMessage::Failed(reason));
+            return;
+        }
+    };
+    let cancelled = || cancel.load(std::sync::atomic::Ordering::SeqCst);
     let mut last_pct = u8::MAX;
     let completed = simulator.simulate_toolpath_with_progress(toolpath, |fraction| {
         let pct = (fraction * 100.0).round().clamp(0.0, 100.0) as u8;
@@ -69,10 +99,20 @@ fn run_stock_simulation(
             last_pct = pct;
             let _ = tx.send(StockSimMessage::Progress(pct));
         }
-        !cancel.load(std::sync::atomic::Ordering::SeqCst)
+        !cancelled()
     });
-    if completed {
-        let _ = tx.send(StockSimMessage::Done(simulator.get_mesh()));
+    if completed && let Some(mesh) = simulator.get_mesh_cancellable(&cancelled) {
+        let _ = tx.send(StockSimMessage::Done(mesh));
+    }
+}
+
+/// Re-run a shown stock removal simulation after a setting it depends on
+/// changed: unchecking cancels the current run and drops its result, and
+/// checking again starts a run with the new setting.
+fn restart_stock_simulation(show_stock_removal: &CheckButton) {
+    if show_stock_removal.is_active() {
+        show_stock_removal.set_active(false);
+        show_stock_removal.set_active(true);
     }
 }
 
@@ -701,6 +741,7 @@ impl GcodeVisualizer {
             let stock_zero_reference = stock_zero_reference.clone();
             let user_choice = stock_zero_user_choice.clone();
             let programmatic = stock_zero_programmatic.clone();
+            let show_stock = show_stock_removal.clone();
             stock_zero_dropdown.connect_selected_notify(move |dropdown| {
                 let reference = StockZeroReference::from_index(dropdown.selected());
                 *stock_zero_reference.borrow_mut() = reference;
@@ -708,6 +749,7 @@ impl GcodeVisualizer {
                     *user_choice.borrow_mut() = reference;
                 }
                 tracing::debug!(?reference, "Stock Z0 reference changed");
+                restart_stock_simulation(&show_stock);
             });
         }
 
@@ -724,9 +766,11 @@ impl GcodeVisualizer {
                  or the centre of the stock."
             )));
             let stock_xy_reference = stock_xy_reference.clone();
+            let show_stock = show_stock_removal.clone();
             dropdown.connect_selected_notify(move |dropdown| {
                 *stock_xy_reference.borrow_mut() =
                     StockXyReference::from_index(dropdown.selected());
+                restart_stock_simulation(&show_stock);
             });
             dropdown
         };
@@ -2256,27 +2300,31 @@ impl GcodeVisualizer {
                 return;
             };
             // `new` validates the stock size and tool diameter.
-            let simulator = match StockSimulator3D::new(
-                stock.width,
-                stock.height,
-                stock.thickness,
-                STOCK_REMOVAL_RESOLUTION,
-                *tool_diameter_stock.borrow() / 2.0,
-            ) {
-                Ok(simulator) => simulator
-                    .with_stock_zero_reference(*stock_zero_reference_stock.borrow())
-                    .with_stock_xy_reference(*stock_xy_reference_stock.borrow()),
-                Err(reason) => {
-                    tracing::warn!("Stock simulation not started: {reason}");
-                    checkbox.set_active(false);
-                    crate::ui::gtk::common::dialog::show_warning(
-                        &t!("Stock Simulation"),
-                        &reason,
-                        None,
-                    );
-                    return;
-                }
+            let setup = StockSimSetup {
+                width: stock.width,
+                height: stock.height,
+                thickness: stock.thickness,
+                tool_radius: *tool_diameter_stock.borrow() / 2.0,
+                zero: *stock_zero_reference_stock.borrow(),
+                xy: *stock_xy_reference_stock.borrow(),
             };
+            // Validate here without allocating; the worker builds the map.
+            if let Err(reason) = StockSimulator3D::validate(
+                setup.width,
+                setup.height,
+                setup.thickness,
+                STOCK_REMOVAL_RESOLUTION,
+                setup.tool_radius,
+            ) {
+                tracing::warn!("Stock simulation not started: {reason}");
+                checkbox.set_active(false);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Stock Simulation"),
+                    &reason,
+                    None,
+                );
+                return;
+            }
             let toolpath = toolpath_from_commands(visualizer_stock.borrow().commands());
 
             // Each run gets its own cancel token, so a stale run or poller can
@@ -2296,7 +2344,7 @@ impl GcodeVisualizer {
             let (tx, rx) = std::sync::mpsc::channel();
             let worker_token = token.clone();
             std::thread::spawn(move || {
-                run_stock_simulation(simulator, &toolpath, &worker_token, &tx);
+                run_stock_simulation(&setup, &toolpath, &worker_token, &tx);
             });
 
             let started_at = std::time::Instant::now();
@@ -2332,6 +2380,16 @@ impl GcodeVisualizer {
                             *sim_run.borrow_mut() = None;
                             finish_stock_simulation_ui(&panel, &label, sb.as_ref());
                             gl.queue_render();
+                            return glib::ControlFlow::Break;
+                        }
+                        Ok(StockSimMessage::Failed(reason)) => {
+                            tracing::warn!("Stock simulation failed: {reason}");
+                            checkbox.set_active(false);
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Stock Simulation"),
+                                &reason,
+                                None,
+                            );
                             return glib::ControlFlow::Break;
                         }
                         Err(std::sync::mpsc::TryRecvError::Empty) => {
