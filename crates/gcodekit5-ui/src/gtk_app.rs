@@ -55,6 +55,79 @@ pub fn main() {
     app.connect_activate(on_activate);
 
     app.run();
+
+    // A language change asked for a restart. The application is dropped first
+    // so its D-Bus name is released and the new instance does not hand its
+    // activation back to this one.
+    drop(app);
+    if i18n::restart_requested() {
+        relaunch();
+    }
+}
+
+/// Starts a new instance of the application in place of this one.
+fn relaunch() {
+    let mut command = match i18n::restart_command() {
+        Ok(command) => command,
+        Err(e) => {
+            tracing::error!(error = %e, "Cannot find the executable to restart");
+            return;
+        }
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // `exec` only returns when it failed to replace the process.
+        let e = command.exec();
+        tracing::error!(error = %e, "Restart failed");
+    }
+    #[cfg(not(unix))]
+    if let Err(e) = command.spawn() {
+        tracing::error!(error = %e, "Restart failed");
+    }
+}
+
+/// Offers to restart so a newly saved UI language takes effect.
+///
+/// Labels are translated when the window is built, so the language can only
+/// change by relaunching. A running or stopping job is never interrupted: the
+/// new language then applies at the next start. Unsaved design changes go
+/// through the usual discard confirmation first.
+fn prompt_language_restart(
+    window: &ApplicationWindow,
+    designer: &Rc<DesignerView>,
+    is_streaming: &gcodekit5_core::ThreadSafe<bool>,
+) {
+    let parent: &gtk4::Window = window.upcast_ref();
+    if *is_streaming.lock() || device_status::stop_pending() {
+        crate::ui::gtk::common::dialog::show_info(
+            &t!("Language saved"),
+            &t!("A job is running. The new language will be used the next time GCodeKit5 starts."),
+            Some(parent),
+        );
+        return;
+    }
+    let window = window.clone();
+    let designer = designer.clone();
+    crate::ui::gtk::common::dialog::show_confirmation(
+        &t!("Restart to change language?"),
+        &t!(
+            "GCodeKit5 must restart to use the new language. The machine connection will be closed. Restart now?"
+        ),
+        Some(parent),
+        move |confirmed| {
+            if !confirmed {
+                return;
+            }
+            let window_for_restart = window.clone();
+            designer.confirm_discard_changes(move || {
+                i18n::request_restart();
+                // `destroy` skips the close-request prompt (already answered)
+                // and its handler quits the application.
+                window_for_restart.destroy();
+            });
+        },
+    );
 }
 
 /// Application start-up: language, LibAdwaita, input method, resources and CSS.
@@ -575,10 +648,15 @@ fn on_activate(app: &Application) {
     let visualizer_settings = visualizer.clone();
     let designer_settings = designer.clone();
     let machine_control_settings = machine_control.clone();
+    let window_settings = window.clone();
+    let persistence_settings = settings_persistence.clone();
     settings_action.connect_activate(move |_, _| {
         let visualizer_redraw = visualizer_settings.clone();
         let designer_redraw = designer_settings.clone();
         let machine_control_limits = machine_control_settings.clone();
+        let language_window = window_settings.clone();
+        let language_designer = designer_settings.clone();
+        let language_persistence = persistence_settings.clone();
         let on_save = Box::new(move || {
             // Queue redraws for visualizer and designer when settings are saved
             visualizer_redraw.queue_draw();
@@ -586,6 +664,14 @@ fn on_activate(app: &Application) {
             // The Machine Limits labels otherwise refresh only on status
             // reports, so a limit saved while disconnected would not show.
             machine_control_limits.refresh_limit_labels();
+            let saved_language = language_persistence.borrow().config().ui.language.clone();
+            if i18n::language_change_pending(&saved_language) {
+                prompt_language_restart(
+                    &language_window,
+                    &language_designer,
+                    &machine_control_limits.is_streaming,
+                );
+            }
         });
         let win =
             SettingsWindow::new_with_callback(settings_controller_clone.clone(), Some(on_save));

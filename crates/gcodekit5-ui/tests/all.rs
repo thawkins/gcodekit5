@@ -29,6 +29,8 @@ mod test_device_console_manager;
 mod test_dialog_window;
 #[path = "test_glib_log_filter.rs"]
 mod test_glib_log_filter;
+#[path = "test_i18n_language_restart.rs"]
+mod test_i18n_language_restart;
 #[path = "test_i18n_locale_env.rs"]
 mod test_i18n_locale_env;
 #[path = "test_job_preferences.rs"]

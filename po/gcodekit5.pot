@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: GCodeKit5 1.2.0-beta.2\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 07:01+0700\n"
+"POT-Creation-Date: 2026-11-11 07:12+0700\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -78,6 +78,22 @@ msgid "Keep G-code comments during file processing"
 msgstr ""
 
 msgid "the machine must be idle"
+msgstr ""
+
+msgid "Language saved"
+msgstr ""
+
+msgid ""
+"A job is running. The new language will be used the next time GCodeKit5 "
+"starts."
+msgstr ""
+
+msgid "Restart to change language?"
+msgstr ""
+
+msgid ""
+"GCodeKit5 must restart to use the new language. The machine connection will "
+"be closed. Restart now?"
 msgstr ""
 
 msgid "GCodeKit5"
