@@ -39,7 +39,9 @@ fn mesh_volume(mesh: &[f32]) -> f32 {
         .map(|v| glam::Vec3::new(v[0], v[1], v[2]))
         .collect();
     vertices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| t[0].dot(t[1].cross(t[2])) / 6.0)
         .sum()
 }
