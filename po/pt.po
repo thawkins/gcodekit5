@@ -1171,9 +1171,11 @@ msgstr "Falha na importação:"
 msgid "Unsaved changes"
 msgstr "Alterações não guardadas"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr ""
-"O desenho atual tem alterações não guardadas. Descartá-las e continuar?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr "O desenho atual tem alterações não guardadas. Guardá-las antes de continuar?"
+
+msgid "Discard"
+msgstr "Descartar"
 
 msgid "New 2D design created"
 msgstr "Novo desenho 2D criado"

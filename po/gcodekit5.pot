@@ -1140,7 +1140,10 @@ msgstr ""
 msgid "Unsaved changes"
 msgstr ""
 
-msgid "The current design has unsaved changes. Discard them and continue?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr ""
+
+msgid "Discard"
 msgstr ""
 
 msgid "New 2D design created"

@@ -1170,9 +1170,11 @@ msgstr "Import fehlgeschlagen:"
 msgid "Unsaved changes"
 msgstr "Ungespeicherte Änderungen"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr ""
-"Das aktuelle Design hat ungespeicherte Änderungen. Verwerfen und fortfahren?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr "Das aktuelle Design hat ungespeicherte Änderungen. Vor dem Fortfahren speichern?"
+
+msgid "Discard"
+msgstr "Verwerfen"
 
 msgid "New 2D design created"
 msgstr "Neues 2D-Design erstellt"

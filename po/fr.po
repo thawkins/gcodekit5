@@ -1179,10 +1179,11 @@ msgstr "Échec de l'import :"
 msgid "Unsaved changes"
 msgstr "Modifications non enregistrées"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr ""
-"Le dessin actuel contient des modifications non enregistrées. Les abandonner "
-"et continuer ?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr "Le dessin actuel contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
+
+msgid "Discard"
+msgstr "Abandonner"
 
 msgid "New 2D design created"
 msgstr "Nouveau dessin 2D créé"
