@@ -4,6 +4,8 @@
 - **G-code editor unsaved changes**: the editor now tracks hand edits. Quitting, the language-change restart, New and Open ask "Save / Discard / Cancel" when the editor has unsaved hand edits (after the design's own prompt). G-code put in the editor by the Designer or CAM tools does not count as unsaved, as it can be generated again
 
 ### Fixed
+- **Tools Manager save errors**: a tool that cannot be written to `custom_tools.json` is no longer reported as saved; the error shows in the form, the edit stays unsaved and the library is rolled back
+- **Tools Manager prompt loop**: blocking a tool switch while creating a new tool leaves the list unselected instead of re-selecting the previous tool, which prompted again
 - **GTK tests under `cargo test`**: the UI test binary initialises GTK once per process through a shared `gtk_available` helper, and only the owning thread runs GTK cases; repeated `gtk4::init()` calls from several tests crashed the process (SIGSEGV) in the MSRV job
 
 ### Changed

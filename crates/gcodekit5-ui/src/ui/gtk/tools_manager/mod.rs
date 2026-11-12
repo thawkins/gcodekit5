@@ -1032,16 +1032,16 @@ impl ToolsManagerView {
             }
         }
 
-        let mut backend = self.backend.borrow_mut();
-
-        if *self.is_creating.borrow() {
-            backend.add_tool(tool.clone());
-        } else {
-            backend.remove_tool(&tool.id);
-            backend.add_tool(tool.clone());
+        // A tool that could not be written is not saved: keep the form as it
+        // is (still unsaved) and show why.
+        let saved = self.backend.borrow_mut().save_tool(tool.clone());
+        if let Err(e) = saved {
+            tracing::warn!("Failed to save tool: {e}");
+            self.error_label
+                .set_text(&format!("{} {e}", t!("Could not save the tool:")));
+            self.error_label.set_visible(true);
+            return false;
         }
-
-        drop(backend);
 
         *self.last_selected_tool_id.borrow_mut() = Some(tool.id.0.clone());
         self.persist_ui_state();

@@ -1176,6 +1176,9 @@ msgstr "Das aktuelle Design hat ungespeicherte Änderungen. Vor dem Fortfahren s
 msgid "The tool has unsaved changes. Save them before continuing?"
 msgstr "Das Werkzeug hat ungespeicherte Änderungen. Vor dem Fortfahren speichern?"
 
+msgid "Could not save the tool:"
+msgstr "Das Werkzeug konnte nicht gespeichert werden:"
+
 msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
 msgstr "Der G-Code im Editor hat ungespeicherte Änderungen. Vor dem Fortfahren speichern?"
 

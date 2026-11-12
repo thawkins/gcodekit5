@@ -1179,6 +1179,9 @@ msgstr "Il progetto corrente ha modifiche non salvate. Salvarle prima di continu
 msgid "The tool has unsaved changes. Save them before continuing?"
 msgstr "L'utensile ha modifiche non salvate. Salvarle prima di continuare?"
 
+msgid "Could not save the tool:"
+msgstr "Impossibile salvare l'utensile:"
+
 msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
 msgstr "Il G-code nell'editor ha modifiche non salvate. Salvarle prima di continuare?"
 

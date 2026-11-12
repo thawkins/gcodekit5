@@ -164,6 +164,26 @@ impl ToolsManagerBackend {
         }
     }
 
+    /// Adds `tool`, replacing any tool with the same id, and writes the custom
+    /// tools file.
+    ///
+    /// # Errors
+    /// The write error message. The library is then restored to its previous
+    /// state, so memory never holds an edit that is not on disk.
+    pub fn save_tool(&mut self, tool: Tool) -> Result<(), String> {
+        let previous = self.library.remove_tool(&tool.id);
+        let id = tool.id.clone();
+        self.library.add_tool(tool);
+        if let Err(e) = self.save_to_file() {
+            self.library.remove_tool(&id);
+            if let Some(previous) = previous {
+                self.library.add_tool(previous);
+            }
+            return Err(e.to_string());
+        }
+        Ok(())
+    }
+
     pub fn remove_tool(&mut self, id: &ToolId) -> Option<Tool> {
         let result = self.library.remove_tool(id);
         // Save custom tools to disk

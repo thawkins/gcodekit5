@@ -1146,6 +1146,9 @@ msgstr ""
 msgid "The tool has unsaved changes. Save them before continuing?"
 msgstr ""
 
+msgid "Could not save the tool:"
+msgstr ""
+
 msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
 msgstr ""
 
