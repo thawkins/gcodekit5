@@ -1,7 +1,7 @@
 //! Tests for the G-code editor's unsaved-changes tracking: only hand edits
 //! count; opening, generating (`set_text`) and clearing do not.
 //!
-//! These need a display. Without one (`gtk4::init()` fails) the test returns early.
+//! These need a display and GTK to themselves; see `crate::gtk_available`.
 //! GTK must be driven from one thread, so every case runs inside a single test.
 
 use std::cell::Cell;
@@ -12,8 +12,7 @@ use gtk4::prelude::*;
 
 #[test]
 fn test_gcode_editor_unsaved_tracks_hand_edits_only() {
-    if gtk4::init().is_err() {
-        eprintln!("skipping test_gcode_editor_unsaved_tracks_hand_edits_only: no display");
+    if !crate::gtk_available("test_gcode_editor_unsaved_tracks_hand_edits_only") {
         return;
     }
     let editor = GcodeEditor::new(None, None);

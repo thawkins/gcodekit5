@@ -4,8 +4,8 @@
 //! by an older notice's timer, Speeds & Feeds follows the live device
 //! database before and after Reset, and the shared CAM preset helpers.
 //!
-//! The GTK cases need a display. Without one (`gtk4::init()` fails) they
-//! return early. GTK must be driven from one thread, so they run in one test.
+//! The GTK cases need a display and GTK to themselves (see
+//! `crate::gtk_available`); they run in one test, as GTK is single-threaded.
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -54,8 +54,7 @@ fn run_until(deadline: Instant) {
 
 #[test]
 fn test_ui_leak_fixes_with_gtk() {
-    if gtk4::init().is_err() {
-        eprintln!("skipping test_ui_leak_fixes_with_gtk: no display available");
+    if !crate::gtk_available("test_ui_leak_fixes_with_gtk") {
         return;
     }
 

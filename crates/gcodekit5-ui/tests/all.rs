@@ -17,6 +17,37 @@ pub fn global_env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// Initialises GTK for a test and reports whether this test may use it.
+///
+/// GTK may be initialised only once per process, and only from the thread
+/// that then uses it; a second `gtk4::init()` call (even a failing one) can
+/// crash the process. Under `cargo test` every test is a thread of one
+/// process, so the first GTK test to get here owns GTK and the others skip;
+/// under `cargo nextest` every test is its own process, so all of them run.
+/// Without a display initialisation fails once and every GTK test skips.
+///
+/// # Arguments
+/// * `test` - Test name for the skip message.
+///
+/// # Returns
+/// `true` when the calling test may drive GTK.
+pub fn gtk_available(test: &str) -> bool {
+    static OWNER: std::sync::OnceLock<Option<std::thread::ThreadId>> = std::sync::OnceLock::new();
+    let owner = *OWNER.get_or_init(|| gtk4::init().is_ok().then(|| std::thread::current().id()));
+    let available = owner == Some(std::thread::current().id());
+    if !available {
+        eprintln!(
+            "skipping {test}: {}",
+            if owner.is_some() {
+                "GTK is owned by another test thread"
+            } else {
+                "no display available"
+            }
+        );
+    }
+    available
+}
+
 #[path = "machine_control_streaming.rs"]
 mod machine_control_streaming;
 #[path = "test_array_dialog.rs"]

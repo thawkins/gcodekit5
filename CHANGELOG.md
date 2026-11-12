@@ -3,6 +3,9 @@
 ### Added
 - **G-code editor unsaved changes**: the editor now tracks hand edits. Quitting, the language-change restart, New and Open ask "Save / Discard / Cancel" when the editor has unsaved hand edits (after the design's own prompt). G-code put in the editor by the Designer or CAM tools does not count as unsaved, as it can be generated again
 
+### Fixed
+- **GTK tests under `cargo test`**: the UI test binary initialises GTK once per process through a shared `gtk_available` helper, and only the owning thread runs GTK cases; repeated `gtk4::init()` calls from several tests crashed the process (SIGSEGV) in the MSRV job
+
 ### Changed
 - **Tools Manager prompt**: creating a new tool, cancelling an edit or switching tools with unsaved changes now asks "Save / Discard / Cancel" instead of "Discard?" Yes/No; Save goes ahead only if the tool saved (a validation error stays in the form)
 
