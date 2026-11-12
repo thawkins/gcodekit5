@@ -1,3 +1,11 @@
+## [Unreleased] - 2026-11-12 (unsaved-changes prompts for the editor and Tools Manager)
+
+### Added
+- **G-code editor unsaved changes**: the editor now tracks hand edits. Quitting, the language-change restart, New and Open ask "Save / Discard / Cancel" when the editor has unsaved hand edits (after the design's own prompt). G-code put in the editor by the Designer or CAM tools does not count as unsaved, as it can be generated again
+
+### Changed
+- **Tools Manager prompt**: creating a new tool, cancelling an edit or switching tools with unsaved changes now asks "Save / Discard / Cancel" instead of "Discard?" Yes/No; Save goes ahead only if the tool saved (a validation error stays in the form)
+
 ## [Unreleased] - 2026-11-12 (Save / Discard / Cancel prompt)
 
 ### Changed

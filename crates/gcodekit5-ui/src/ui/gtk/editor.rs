@@ -4,6 +4,7 @@
 //! line numbers, and integration with the editor backend bridge.
 
 use crate::t;
+use crate::ui::gtk::common::dialog::UnsavedChangesChoice;
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use crate::ui::gtk::status_bar::StatusBar;
 use gcodekit5_core::{SharedOption, shared_none};
@@ -19,6 +20,190 @@ use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 use tracing::error;
+
+/// G-code file extensions offered by the open and save dialogs.
+const GCODE_PATTERNS: [&str; 4] = ["*.gcode", "*.nc", "*.gc", "*.tap"];
+
+/// Clonable handles to the parts of a [`GcodeEditor`] that file operations
+/// need, so they can run from dialog callbacks.
+#[derive(Clone)]
+struct EditorFile {
+    widget: Overlay,
+    buffer: Buffer,
+    current_file: SharedOption<PathBuf>,
+    settings_controller: Option<Rc<SettingsController>>,
+}
+
+impl EditorFile {
+    /// Parent window for dialogs.
+    fn parent(&self) -> Option<gtk4::Window> {
+        super::file_dialog::parent_window(&self.widget)
+    }
+
+    /// The whole buffer text.
+    fn text(&self) -> String {
+        let start = self.buffer.start_iter();
+        let end = self.buffer.end_iter();
+        self.buffer.text(&start, &end, true).to_string()
+    }
+
+    /// Writes the buffer to `path` and makes it the current file.
+    ///
+    /// # Returns
+    /// `true` when the file was written; on failure an error is shown and
+    /// `false` returned.
+    fn write_to(&self, path: &std::path::Path) -> bool {
+        match fs::write(path, self.text()) {
+            Ok(()) => {
+                *self.current_file.borrow_mut() = Some(path.to_path_buf());
+                self.buffer.set_modified(false);
+                true
+            }
+            Err(e) => {
+                error!("Error saving file {}: {}", path.display(), e);
+                super::file_dialog::show_error_dialog(
+                    &t!("Error Saving File"),
+                    &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
+                    self.parent().as_ref(),
+                );
+                false
+            }
+        }
+    }
+
+    /// Saves to the current file, or asks for one when there is none, then
+    /// runs `on_saved` if the save succeeded.
+    fn save_then(&self, on_saved: impl FnOnce() + 'static) {
+        let current_path = self.current_file.borrow().clone();
+        match current_path {
+            Some(path) => {
+                if self.write_to(&path) {
+                    on_saved();
+                }
+            }
+            None => self.save_as_then(on_saved),
+        }
+    }
+
+    /// Asks for a file name, saves there, then runs `on_saved` if the save
+    /// succeeded. Cancelling the file dialog runs nothing.
+    fn save_as_then(&self, on_saved: impl FnOnce() + 'static) {
+        let dialog = crate::ui::gtk::file_dialog::save_dialog(&t!("Save G-Code File"));
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
+
+        let filter = gtk4::FileFilter::new();
+        filter.set_name(Some("G-Code Files"));
+        for pattern in GCODE_PATTERNS {
+            filter.add_pattern(pattern);
+        }
+        dialog.add_filter(&filter);
+
+        let handles = self.clone();
+        dialog.pick_save(self.parent().as_ref(), move |file| {
+            let Some(mut path) = file.path() else {
+                return;
+            };
+            // Ensure extension
+            if path.extension().is_none() {
+                path.set_extension("gcode");
+            }
+            if handles.write_to(&path) {
+                on_saved();
+            }
+        });
+    }
+
+    /// Shows the open dialog and loads the chosen file.
+    fn show_open_dialog(&self) {
+        let parent = self.parent();
+        let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Open G-Code File"));
+
+        let filter = gtk4::FileFilter::new();
+        filter.set_name(Some("G-Code Files"));
+        for pattern in GCODE_PATTERNS {
+            filter.add_pattern(pattern);
+        }
+        dialog.add_filter(&filter);
+
+        let all_filter = gtk4::FileFilter::new();
+        all_filter.set_name(Some("All Files"));
+        all_filter.add_pattern("*");
+        dialog.add_filter(&all_filter);
+
+        // Use saved last working directory if available
+        super::file_dialog::set_last_working_directory(
+            &dialog,
+            self.settings_controller.as_deref(),
+        );
+
+        let handles = self.clone();
+        dialog.pick_open(parent.as_ref(), move |file| {
+            let Some(path) = file.path() else {
+                return;
+            };
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    handles.buffer.set_text(&content);
+                    handles.buffer.set_modified(false);
+                    *handles.current_file.borrow_mut() = Some(path.clone());
+                    // Move cursor to start
+                    let start_iter = handles.buffer.start_iter();
+                    handles.buffer.place_cursor(&start_iter);
+                    // Save last-used directory to settings so other dialogs default to it
+                    if let Some(controller) = handles.settings_controller.as_ref()
+                        && let Ok(mut persistence) = controller.persistence.try_borrow_mut()
+                    {
+                        persistence.config_mut().file_processing.output_directory = path.clone();
+                        persistence.persist_or_log();
+                    }
+                }
+                Err(e) => {
+                    error!("Error reading file {}: {}", path.display(), e);
+                    super::file_dialog::show_error_dialog(
+                        &t!("Error Reading File"),
+                        &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
+                        handles.parent().as_ref(),
+                    );
+                }
+            }
+        });
+    }
+
+    /// Empties the editor and forgets the current file.
+    fn clear(&self) {
+        self.buffer.set_text("");
+        self.buffer.set_modified(false);
+        *self.current_file.borrow_mut() = None;
+    }
+
+    /// Runs `proceed` right away when the editor has no unsaved hand edits;
+    /// otherwise asks whether to save them first.
+    ///
+    /// * Save: saves (asking for a file name if there is none) and runs
+    ///   `proceed` only once the save succeeded.
+    /// * Discard: runs `proceed` without saving.
+    /// * Cancel (or closing the prompt): does nothing.
+    fn confirm_unsaved_changes(&self, proceed: impl FnOnce() + 'static) {
+        if !self.buffer.is_modified() {
+            proceed();
+            return;
+        }
+        let handles = self.clone();
+        crate::ui::gtk::common::dialog::show_unsaved_changes(
+            &t!("Unsaved changes"),
+            &t!("The G-code in the editor has unsaved changes. Save them before continuing?"),
+            self.parent().as_ref(),
+            move |choice| match choice {
+                UnsavedChangesChoice::Save => handles.save_then(proceed),
+                UnsavedChangesChoice::Discard => proceed(),
+                UnsavedChangesChoice::Cancel => {}
+            },
+        );
+    }
+}
 
 pub struct GcodeEditor {
     pub widget: Overlay,
@@ -531,10 +716,12 @@ impl GcodeEditor {
     ///
     /// The content no longer corresponds to the previously opened file, so the file
     /// association is dropped: otherwise "Save" would silently overwrite that file with
-    /// unrelated generated G-code.
+    /// unrelated generated G-code. Generated G-code can be generated again, so it does
+    /// not count as unsaved work: only later hand edits do.
     pub fn set_text(&self, text: &str) {
         *self.current_file.borrow_mut() = None;
         self.buffer.set_text(text);
+        self.buffer.set_modified(false);
         // Move cursor to start (line 1, column 1)
         let mut start_iter = self.buffer.start_iter();
         self.buffer.place_cursor(&start_iter);
@@ -584,144 +771,54 @@ impl GcodeEditor {
         self.buffer.paste_clipboard(&clipboard, None, true);
     }
 
-    pub fn new_file(&self) {
-        self.set_text("");
-        *self.current_file.borrow_mut() = None;
-    }
-
-    pub fn open_file(&self) {
-        let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = crate::ui::gtk::file_dialog::open_dialog(&t!("Open G-Code File"));
-        super::file_dialog::set_last_working_directory(
-            &dialog,
-            self.settings_controller.as_deref(),
-        );
-
-        let filter = gtk4::FileFilter::new();
-        filter.set_name(Some("G-Code Files"));
-        filter.add_pattern("*.gcode");
-        filter.add_pattern("*.nc");
-        filter.add_pattern("*.gc");
-        filter.add_pattern("*.tap");
-        dialog.add_filter(&filter);
-
-        let all_filter = gtk4::FileFilter::new();
-        all_filter.set_name(Some("All Files"));
-        all_filter.add_pattern("*");
-        dialog.add_filter(&all_filter);
-
-        // Use saved last working directory if available
-        super::file_dialog::set_last_working_directory(
-            &dialog,
-            self.settings_controller.as_deref(),
-        );
-
-        let buffer = self.buffer.clone();
-        let current_file = self.current_file.clone();
-        let settings_controller = self.settings_controller.clone();
-
-        let err_parent = parent.clone();
-        dialog.pick_open(parent.as_ref(), move |file| {
-            if let Some(path) = file.path() {
-                match fs::read_to_string(&path) {
-                    Ok(content) => {
-                        buffer.set_text(&content);
-                        *current_file.borrow_mut() = Some(path.clone());
-                        // Move cursor to start
-                        let start_iter = buffer.start_iter();
-                        buffer.place_cursor(&start_iter);
-                        // Save last-used directory to settings so other dialogs default to it
-                        if let Some(controller) = settings_controller.as_ref()
-                            && let Ok(mut persistence) = controller.persistence.try_borrow_mut()
-                        {
-                            persistence.config_mut().file_processing.output_directory =
-                                path.clone();
-                            persistence.persist_or_log();
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error reading file {}: {}", path.display(), e);
-                        let parent = err_parent.clone();
-                        super::file_dialog::show_error_dialog(
-                            &t!("Error Reading File"),
-                            &format!("{} '{}'.\n\n{}", t!("Could not open"), path.display(), e),
-                            parent.as_ref(),
-                        );
-                    }
-                }
-            }
-        });
-    }
-
-    pub fn save_file(&self) {
-        let current_path = self.current_file.borrow().clone();
-
-        if let Some(path) = current_path {
-            let start = self.buffer.start_iter();
-            let end = self.buffer.end_iter();
-            let content = self.buffer.text(&start, &end, true);
-
-            if let Err(e) = fs::write(&path, content.as_str()) {
-                error!("Error saving file {}: {}", path.display(), e);
-                let parent = super::file_dialog::parent_window(&self.widget);
-                super::file_dialog::show_error_dialog(
-                    &t!("Error Saving File"),
-                    &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
-                    parent.as_ref(),
-                );
-            }
-        } else {
-            self.save_as_file();
+    /// Clonable handles for file operations run from dialog callbacks.
+    fn file_handles(&self) -> EditorFile {
+        EditorFile {
+            widget: self.widget.clone(),
+            buffer: self.buffer.clone(),
+            current_file: self.current_file.clone(),
+            settings_controller: self.settings_controller.clone(),
         }
     }
 
+    /// Returns `true` when the editor text was edited by hand since it was
+    /// last opened, saved, generated or cleared.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.buffer.is_modified()
+    }
+
+    /// Runs `proceed` right away when there are no unsaved hand edits;
+    /// otherwise asks whether to save them. Save runs `proceed` after a
+    /// successful save, Discard runs it without saving, and Cancel runs nothing.
+    ///
+    /// # Arguments
+    /// * `proceed` - action to perform once the editor text is saved or discarded
+    pub fn confirm_unsaved_changes(&self, proceed: impl FnOnce() + 'static) {
+        self.file_handles().confirm_unsaved_changes(proceed);
+    }
+
+    /// Empties the editor, asking first if there are unsaved hand edits.
+    pub fn new_file(&self) {
+        let handles = self.file_handles();
+        let h = handles.clone();
+        handles.confirm_unsaved_changes(move || h.clear());
+    }
+
+    /// Opens a G-code file, asking first if there are unsaved hand edits.
+    pub fn open_file(&self) {
+        let handles = self.file_handles();
+        let h = handles.clone();
+        handles.confirm_unsaved_changes(move || h.show_open_dialog());
+    }
+
+    /// Saves to the current file, or asks for one when there is none.
+    pub fn save_file(&self) {
+        self.file_handles().save_then(|| {});
+    }
+
+    /// Asks for a file name and saves the editor text there.
     pub fn save_as_file(&self) {
-        let parent = super::file_dialog::parent_window(&self.widget);
-        let dialog = crate::ui::gtk::file_dialog::save_dialog(&t!("Save G-Code File"));
-        super::file_dialog::set_last_working_directory(
-            &dialog,
-            self.settings_controller.as_deref(),
-        );
-
-        let filter = gtk4::FileFilter::new();
-        filter.set_name(Some("G-Code Files"));
-        filter.add_pattern("*.gcode");
-        filter.add_pattern("*.nc");
-        filter.add_pattern("*.gc");
-        filter.add_pattern("*.tap");
-        dialog.add_filter(&filter);
-
-        let buffer = self.buffer.clone();
-        let current_file = self.current_file.clone();
-
-        let err_parent = parent.clone();
-        dialog.pick_save(parent.as_ref(), move |file| {
-            if let Some(mut path) = file.path() {
-                // Ensure extension
-                if path.extension().is_none() {
-                    path.set_extension("gcode");
-                }
-
-                let start = buffer.start_iter();
-                let end = buffer.end_iter();
-                let content = buffer.text(&start, &end, true);
-
-                match fs::write(&path, content.as_str()) {
-                    Ok(_) => {
-                        *current_file.borrow_mut() = Some(path);
-                    }
-                    Err(e) => {
-                        error!("Error saving file {}: {}", path.display(), e);
-                        let parent = err_parent.clone();
-                        super::file_dialog::show_error_dialog(
-                            &t!("Error Saving File"),
-                            &format!("{} '{}'.\n\n{}", t!("Could not save"), path.display(), e),
-                            parent.as_ref(),
-                        );
-                    }
-                }
-            }
-        });
+        self.file_handles().save_as_then(|| {});
     }
 
     // Método público para actualizar el tema

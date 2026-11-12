@@ -207,12 +207,19 @@ impl ToolsManagerView {
                     if let Some(window) = window_opt {
                         let view2 = view.clone();
                         let list = list.clone();
-                        crate::ui::gtk::common::dialog::show_question(
-                            "Discard changes?",
-                            "You have unsaved changes. Discard them and switch tools?",
+                        crate::ui::gtk::common::dialog::show_unsaved_changes(
+                            &t!("Unsaved changes"),
+                            &t!("The tool has unsaved changes. Save them before continuing?"),
                             Some(&window),
-                            move |resp| {
-                                if resp == gtk4::ResponseType::Yes {
+                            move |choice| {
+                                // Save switches only if the save succeeded;
+                                // Discard switches without saving.
+                                let switch = match choice {
+                                    UnsavedChangesChoice::Save => view2.save_tool(),
+                                    UnsavedChangesChoice::Discard => true,
+                                    UnsavedChangesChoice::Cancel => false,
+                                };
+                                if switch {
                                     view2.load_tool_for_edit(&tool_id);
                                     view2.persist_ui_state();
                                 } else if let Some(prev_id) = prev.as_deref() {

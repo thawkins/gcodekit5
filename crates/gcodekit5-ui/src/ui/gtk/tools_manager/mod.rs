@@ -18,6 +18,8 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::t;
+use crate::ui::gtk::common::dialog::UnsavedChangesChoice;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::help_browser;
 use crate::ui::gtk::platform;
@@ -946,19 +948,30 @@ impl ToolsManagerView {
         !Self::tool_contents_equal(&orig, &current)
     }
 
-    fn show_discard_dialog<F: Fn() + 'static>(&self, on_yes: F) {
+    /// Asks whether to save the edited tool before `proceed` replaces the form.
+    ///
+    /// * Save: saves the tool and runs `proceed` only if the save succeeded
+    ///   (a validation error stays on screen otherwise).
+    /// * Discard: runs `proceed` without saving.
+    /// * Cancel (or closing the prompt): does nothing.
+    fn show_discard_dialog(&self, proceed: impl FnOnce() + 'static) {
         let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() else {
             return;
         };
 
-        crate::ui::gtk::common::dialog::show_question(
-            "Discard changes?",
-            "You have unsaved changes. Discard them?",
+        let view = self.clone();
+        crate::ui::gtk::common::dialog::show_unsaved_changes(
+            &t!("Unsaved changes"),
+            &t!("The tool has unsaved changes. Save them before continuing?"),
             Some(&window),
-            move |resp| {
-                if resp == gtk4::ResponseType::Yes {
-                    on_yes();
+            move |choice| match choice {
+                UnsavedChangesChoice::Save => {
+                    if view.save_tool() {
+                        proceed();
+                    }
                 }
+                UnsavedChangesChoice::Discard => proceed(),
+                UnsavedChangesChoice::Cancel => {}
             },
         );
     }
@@ -991,7 +1004,11 @@ impl ToolsManagerView {
         self.cancel_edit();
     }
 
-    fn save_tool(&self) {
+    /// Saves the tool in the form, showing any validation error in the form.
+    ///
+    /// # Returns
+    /// `true` when the tool was saved.
+    pub(crate) fn save_tool(&self) -> bool {
         self.error_label.set_visible(false);
         self.error_label.set_text("");
 
@@ -1000,7 +1017,7 @@ impl ToolsManagerView {
             Err(e) => {
                 self.error_label.set_text(&e);
                 self.error_label.set_visible(true);
-                return;
+                return false;
             }
         };
 
@@ -1011,7 +1028,7 @@ impl ToolsManagerView {
                 self.error_label
                     .set_text("Tool ID already exists. Please choose a unique ID.");
                 self.error_label.set_visible(true);
-                return;
+                return false;
             }
         }
 
@@ -1032,6 +1049,7 @@ impl ToolsManagerView {
         self.load_tools();
         self.load_tool_for_edit(&tool.id.0);
         self.update_save_state();
+        true
     }
 
     fn delete_tool(&self) {

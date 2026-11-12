@@ -1143,6 +1143,12 @@ msgstr ""
 msgid "The current design has unsaved changes. Save them before continuing?"
 msgstr ""
 
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr ""
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr ""
+
 msgid "Discard"
 msgstr ""
 

@@ -2,7 +2,7 @@
 Last Updated: 2026-11-12 (1.2.0-beta.2)
 
 Current snapshot (`git ls-files '*.rs' | xargs cat | wc -l` at devel, 2026-11-12):
-301 Rust files, 114,677 lines; 431 tests (`cargo nextest run --workspace`).
+302 Rust files, 114,860 lines; 432 tests (`cargo nextest run --workspace`).
 
 The table below is the earlier 0.55.0-alpha.1 snapshot (2026-05-16).
 

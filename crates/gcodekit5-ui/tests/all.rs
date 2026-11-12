@@ -27,6 +27,8 @@ mod test_command_history;
 mod test_device_console_manager;
 #[path = "test_dialog_window.rs"]
 mod test_dialog_window;
+#[path = "test_gcode_editor_unsaved.rs"]
+mod test_gcode_editor_unsaved;
 #[path = "test_glib_log_filter.rs"]
 mod test_glib_log_filter;
 #[path = "test_i18n_language_restart.rs"]
