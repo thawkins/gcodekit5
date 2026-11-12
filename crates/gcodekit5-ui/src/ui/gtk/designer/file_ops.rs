@@ -1,6 +1,7 @@
 //! File operations for DesignerView
 
 use super::*;
+use crate::ui::gtk::common::dialog::UnsavedChangesChoice;
 use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gcodekit5_designer::designer_state::MachineMode;
 use gcodekit5_designer::serialization::DesignMode;
@@ -86,25 +87,135 @@ impl DocumentHandles {
         self.status_label.set_text(status);
     }
 
-    /// Runs `proceed` right away when the design has no unsaved changes; otherwise
-    /// asks the user to confirm discarding them first.
-    fn confirm_discard_changes(&self, proceed: impl FnOnce() + 'static) {
+    /// Runs `proceed` right away when the design has no unsaved changes;
+    /// otherwise asks whether to save them first.
+    ///
+    /// * Save: saves (asking for a file name if the design has none) and runs
+    ///   `proceed` only once the save succeeded.
+    /// * Discard: runs `proceed` without saving.
+    /// * Cancel (or closing the prompt): does nothing.
+    fn confirm_unsaved_changes(&self, proceed: impl FnOnce() + 'static) {
         let modified = self.canvas.state.borrow().is_modified;
         if !modified {
             proceed();
             return;
         }
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        crate::ui::gtk::common::dialog::show_confirmation(
+        let handles = self.clone();
+        crate::ui::gtk::common::dialog::show_unsaved_changes(
             &t!("Unsaved changes"),
-            &t!("The current design has unsaved changes. Discard them and continue?"),
+            &t!("The current design has unsaved changes. Save them before continuing?"),
             parent.as_ref(),
-            move |confirmed| {
-                if confirmed {
-                    proceed();
-                }
+            move |choice| match choice {
+                UnsavedChangesChoice::Save => handles.save_then(proceed),
+                UnsavedChangesChoice::Discard => proceed(),
+                UnsavedChangesChoice::Cancel => {}
             },
         );
+    }
+
+    /// Writes the design to `path`, making it the current file.
+    ///
+    /// # Returns
+    /// `true` when the file was written; on failure a warning is shown and
+    /// `false` returned.
+    fn write_design(&self, path: &std::path::Path) -> bool {
+        match save_design(&self.canvas.state, path) {
+            Ok(()) => {
+                *self.current_file.borrow_mut() = Some(path.to_path_buf());
+                self.status_label
+                    .set_text(&format!("{} {}", t!("Saved:"), path.display()));
+                true
+            }
+            Err(e) => {
+                error!("Error saving file: {}", e);
+                let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Save Failed"),
+                    &format!("{}\n\n{}", path.display(), e),
+                    parent.as_ref(),
+                );
+                false
+            }
+        }
+    }
+
+    /// Saves to the current file, or asks for one when the design has none,
+    /// then runs `on_saved` if the save succeeded.
+    fn save_then(&self, on_saved: impl FnOnce() + 'static) {
+        let current_path = self.current_file.borrow().clone();
+        match current_path {
+            Some(path) => {
+                if self.write_design(&path) {
+                    on_saved();
+                }
+            }
+            None => self.save_as_then(on_saved),
+        }
+    }
+
+    /// Asks for a file name, saves the design there, then runs `on_saved` if
+    /// the save succeeded. Cancelling the file dialog runs nothing.
+    fn save_as_then(&self, on_saved: impl FnOnce() + 'static) {
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Save Design File"));
+
+        // Set initial directory from settings
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+        {
+            let last_path = &settings_ref.config().file_processing.output_directory;
+            if last_path.exists() {
+                let folder_path = if last_path.is_file() {
+                    last_path.parent().unwrap_or(last_path).to_path_buf()
+                } else {
+                    last_path.clone()
+                };
+                let file = gtk4::gio::File::for_path(folder_path);
+                dialog.set_initial_folder(Some(&file));
+            }
+        }
+
+        let filter = gtk4::FileFilter::new();
+        filter.set_name(Some(&t!("GCodeKit Design Files")));
+        filter.add_pattern("*.gckd");
+        dialog.add_filter(&filter);
+
+        // Suggest a file name based on the current design.
+        let default_name = match self.current_file.borrow().as_ref() {
+            Some(path) => path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| format!("{}.gckd", s))
+                .unwrap_or_else(|| "design.gckd".to_string()),
+            None => "untitled_design.gckd".to_string(),
+        };
+        dialog.set_initial_name(Some(&default_name));
+
+        let handles = self.clone();
+        dialog.pick_save(parent.as_ref(), move |file| {
+            let Some(mut path) = file.path() else {
+                return;
+            };
+            if path.extension().is_none() {
+                path.set_extension("gckd");
+            }
+
+            if let Some(ref settings) = handles.settings_persistence
+                && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+            {
+                settings_ref_mut
+                    .config_mut()
+                    .file_processing
+                    .output_directory = path.clone();
+
+                settings_ref_mut.persist_or_log();
+            }
+
+            if handles.write_design(&path) {
+                on_saved();
+            }
+        });
     }
 }
 
@@ -123,18 +234,19 @@ impl DesignerView {
     /// Returns `true` when the design has changes that have not been saved.
     ///
     /// The application window's close handler should call this (or
-    /// [`DesignerView::confirm_discard_changes`]) before quitting.
+    /// [`DesignerView::confirm_unsaved_changes`]) before quitting.
     pub fn has_unsaved_changes(&self) -> bool {
         self.canvas.state.borrow().is_modified
     }
 
-    /// Runs `proceed` right away when there are no unsaved changes; otherwise asks the
-    /// user to confirm discarding them and runs `proceed` only if they agree.
+    /// Runs `proceed` right away when there are no unsaved changes; otherwise asks
+    /// whether to save them. Save runs `proceed` after a successful save, Discard
+    /// runs it without saving, and Cancel runs nothing.
     ///
     /// # Arguments
-    /// * `proceed` - action to perform once it is safe to discard the current design
-    pub fn confirm_discard_changes(&self, proceed: impl FnOnce() + 'static) {
-        self.document_handles().confirm_discard_changes(proceed);
+    /// * `proceed` - action to perform once the current design is saved or discarded
+    pub fn confirm_unsaved_changes(&self, proceed: impl FnOnce() + 'static) {
+        self.document_handles().confirm_unsaved_changes(proceed);
     }
 
     /// Starts a new (2D) design, asking first if there are unsaved changes.
@@ -146,7 +258,7 @@ impl DesignerView {
     pub fn new_file_2d(&self) {
         let handles = self.document_handles();
         let h = handles.clone();
-        handles.confirm_discard_changes(move || {
+        handles.confirm_unsaved_changes(move || {
             h.reset_document(MachineMode::Laser2D, &t!("New 2D design created"));
         });
     }
@@ -155,7 +267,7 @@ impl DesignerView {
     pub fn new_file_3d(&self) {
         let handles = self.document_handles();
         let h = handles.clone();
-        handles.confirm_discard_changes(move || {
+        handles.confirm_unsaved_changes(move || {
             h.reset_document(MachineMode::Cnc3D, &t!("New 3D design created"));
         });
     }
@@ -164,7 +276,7 @@ impl DesignerView {
     pub fn open_file(&self) {
         let handles = self.document_handles();
         let h = handles.clone();
-        handles.confirm_discard_changes(move || h.show_open_dialog());
+        handles.confirm_unsaved_changes(move || h.show_open_dialog());
     }
 }
 
@@ -615,110 +727,14 @@ impl DesignerView {
         self.import_file_internal(Some("stl"));
     }
 
+    /// Saves the design to its current file, or asks for one when it has none.
     pub fn save_file(&self) {
-        let current_path = self.current_file.borrow().clone();
-
-        if let Some(path) = current_path {
-            self.save_to_path(path);
-        } else {
-            self.save_as_file();
-        }
+        self.document_handles().save_then(|| {});
     }
 
+    /// Asks for a file name and saves the design there.
     pub fn save_as_file(&self) {
-        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Save Design File"));
-        dialog.set_initial_name(Some("design.gckd"));
-
-        // Set initial directory from settings
-        if let Some(ref settings) = self.settings_persistence
-            && let Ok(settings_ref) = settings.try_borrow()
-        {
-            let last_path = &settings_ref.config().file_processing.output_directory;
-            if last_path.exists() {
-                let folder_path = if last_path.is_file() {
-                    last_path.parent().unwrap_or(last_path).to_path_buf()
-                } else {
-                    last_path.clone()
-                };
-                let file = gtk4::gio::File::for_path(folder_path);
-                dialog.set_initial_folder(Some(&file));
-            }
-        }
-
-        let filter = gtk4::FileFilter::new();
-        filter.set_name(Some(&t!("GCodeKit Design Files")));
-        filter.add_pattern("*.gckd");
-        dialog.add_filter(&filter);
-
-        let canvas = self.canvas.clone();
-        let current_file = self.current_file.clone();
-        let status_label = self.status_label.clone();
-        let settings_persistence_clone = self.settings_persistence.clone();
-        // --- SUGGEST FILE NAME BASED ON CURRENT DESIGN ---
-        let current_file_borrow = self.current_file.borrow();
-        let default_name = if let Some(path) = current_file_borrow.as_ref() {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| format!("{}.gckd", s))
-                .unwrap_or_else(|| "design.gckd".to_string())
-        } else {
-            "untitled_design.gckd".to_string()
-        };
-        dialog.set_initial_name(Some(&default_name));
-        // ------------------------------------------------------------
-
-        dialog.pick_save(parent.as_ref(), move |file| {
-            if let Some(mut path) = file.path() {
-                if path.extension().is_none() {
-                    path.set_extension("gckd");
-                }
-
-                if let Some(ref settings) = settings_persistence_clone
-                    && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
-                {
-                    settings_ref_mut
-                        .config_mut()
-                        .file_processing
-                        .output_directory = path.clone();
-
-                    settings_ref_mut.persist_or_log();
-                }
-
-                match save_design(&canvas.state, &path) {
-                    Ok(()) => {
-                        *current_file.borrow_mut() = Some(path.clone());
-                        status_label.set_text(&format!("{} {}", t!("Saved:"), path.display()));
-                    }
-                    Err(e) => {
-                        error!("Error saving file: {}", e);
-                        crate::ui::gtk::common::dialog::show_warning(
-                            &t!("Save Failed"),
-                            &format!("{}\n\n{}", path.display(), e),
-                            None,
-                        );
-                    }
-                }
-            }
-        });
-    }
-
-    /// Saves the design to `path` and clears the modified flag on success.
-    pub(crate) fn save_to_path(&self, path: PathBuf) {
-        match save_design(&self.canvas.state, &path) {
-            Ok(()) => {
-                self.set_status(&format!("{} {}", t!("Saved:"), path.display()));
-            }
-            Err(e) => {
-                error!("Error saving file: {}", e);
-                let parent = crate::ui::gtk::file_dialog::parent_window(&self.canvas.widget);
-                crate::ui::gtk::common::dialog::show_warning(
-                    &t!("Save Failed"),
-                    &format!("{}\n\n{}", path.display(), e),
-                    parent.as_ref(),
-                );
-            }
-        }
+        self.document_handles().save_as_then(|| {});
     }
 
     pub fn export_gcode(&self) {

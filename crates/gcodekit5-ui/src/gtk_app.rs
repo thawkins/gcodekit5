@@ -92,7 +92,7 @@ fn relaunch() {
 /// Labels are translated when the window is built, so the language can only
 /// change by relaunching. A running or stopping job is never interrupted: the
 /// new language then applies at the next start. Unsaved design changes go
-/// through the usual discard confirmation first.
+/// through the usual Save / Discard / Cancel prompt first.
 fn prompt_language_restart(
     window: &ApplicationWindow,
     designer: &Rc<DesignerView>,
@@ -120,7 +120,7 @@ fn prompt_language_restart(
                 return;
             }
             let window_for_restart = window.clone();
-            designer.confirm_discard_changes(move || {
+            designer.confirm_unsaved_changes(move || {
                 i18n::request_restart();
                 // `destroy` skips the close-request prompt (already answered)
                 // and its handler quits the application.
@@ -1243,7 +1243,7 @@ fn on_activate(app: &Application) {
             }
             let win = win.clone();
             // `destroy` does not emit close-request again, so this cannot loop.
-            designer_close.confirm_discard_changes(move || win.destroy());
+            designer_close.confirm_unsaved_changes(move || win.destroy());
             glib::Propagation::Stop
         });
 

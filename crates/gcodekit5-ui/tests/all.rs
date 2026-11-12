@@ -47,3 +47,5 @@ mod test_tools_manager_backend;
 mod test_translation_catalogs;
 #[path = "test_ui_leaks.rs"]
 mod test_ui_leaks;
+#[path = "test_unsaved_changes_choice.rs"]
+mod test_unsaved_changes_choice;

@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-12 (Save / Discard / Cancel prompt)
+
+### Changed
+- **Unsaved design prompt**: quitting, New, Open and the language-change restart now ask "Save / Discard / Cancel" instead of only offering to discard. Save writes the design (asking for a file name if it has none) and then carries on only if the save worked; Discard carries on without saving; Cancel (or Escape) keeps the design open
+
 ## [Unreleased] - 2026-11-11 (3D stock removal simulation rework)
 
 ### Fixed
