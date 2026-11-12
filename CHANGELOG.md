@@ -5,6 +5,7 @@
 
 ### Fixed
 - **Tools Manager save errors**: a tool that cannot be written to `custom_tools.json` is no longer reported as saved; the error shows in the form, the edit stays unsaved and the library is rolled back
+- **Tools Manager delete errors**: deleting a tool that cannot be removed from `custom_tools.json` now shows an error and keeps the tool, instead of dropping it from the list until the next restart
 - **Tools Manager prompt loop**: blocking a tool switch while creating a new tool leaves the list unselected instead of re-selecting the previous tool, which prompted again
 - **GTK tests under `cargo test`**: the UI test binary initialises GTK once per process through a shared `gtk_available` helper, and only the owning thread runs GTK cases; repeated `gtk4::init()` calls from several tests crashed the process (SIGSEGV) in the MSRV job
 

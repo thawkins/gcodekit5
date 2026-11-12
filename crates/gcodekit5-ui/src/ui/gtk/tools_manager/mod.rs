@@ -1068,13 +1068,25 @@ impl ToolsManagerView {
                     ),
                     Some(&window),
                     move |response| {
-                        if response == gtk4::ResponseType::Yes {
-                            let mut backend_mut = backend.borrow_mut();
-                            backend_mut.remove_tool(&tool_id);
-                            drop(backend_mut);
-
-                            view.load_tools();
-                            view.cancel_edit();
+                        if response != gtk4::ResponseType::Yes {
+                            return;
+                        }
+                        let removed = backend.borrow_mut().remove_tool(&tool_id);
+                        match removed {
+                            Ok(_) => {
+                                view.load_tools();
+                                view.cancel_edit();
+                            }
+                            // The tool was not deleted on disk, so keep it and
+                            // its form, and say why.
+                            Err(e) => {
+                                tracing::warn!("Failed to delete tool: {e}");
+                                crate::ui::gtk::common::dialog::show_error(
+                                    &t!("Delete Failed"),
+                                    &format!("{} {e}", t!("Could not delete the tool:")),
+                                    view.widget.root().and_downcast::<gtk4::Window>().as_ref(),
+                                );
+                            }
                         }
                     },
                 );
