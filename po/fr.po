@@ -1182,6 +1182,21 @@ msgstr "Modifications non enregistrées"
 msgid "The current design has unsaved changes. Save them before continuing?"
 msgstr "Le dessin actuel contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
 
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr "L'outil contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
+
+msgid "Could not save the tool:"
+msgstr "Impossible d'enregistrer l'outil :"
+
+msgid "Delete Failed"
+msgstr "Échec de la suppression"
+
+msgid "Could not delete the tool:"
+msgstr "Impossible de supprimer l'outil :"
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr "Le G-code de l'éditeur contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
+
 msgid "Discard"
 msgstr "Abandonner"
 

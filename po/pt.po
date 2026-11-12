@@ -1174,6 +1174,21 @@ msgstr "Alterações não guardadas"
 msgid "The current design has unsaved changes. Save them before continuing?"
 msgstr "O desenho atual tem alterações não guardadas. Guardá-las antes de continuar?"
 
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr "A ferramenta tem alterações não guardadas. Guardá-las antes de continuar?"
+
+msgid "Could not save the tool:"
+msgstr "Não foi possível guardar a ferramenta:"
+
+msgid "Delete Failed"
+msgstr "Falha ao eliminar"
+
+msgid "Could not delete the tool:"
+msgstr "Não foi possível eliminar a ferramenta:"
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr "O G-code no editor tem alterações não guardadas. Guardá-las antes de continuar?"
+
 msgid "Discard"
 msgstr "Descartar"
 

@@ -3,7 +3,7 @@
 //! handler must not report a second response, hidden dialogs must survive the
 //! title-bar close, and a destroyed dialog must release its handlers.
 //!
-//! These need a display. Without one (`gtk4::init()` fails) the test returns early.
+//! These need a display and GTK to themselves; see `crate::gtk_available`.
 //! GTK must be driven from one thread, so every case runs inside a single test.
 
 use std::cell::RefCell;
@@ -21,8 +21,7 @@ fn drain_main_loop() {
 
 #[test]
 fn test_dialog_window_lifecycle() {
-    if gtk4::init().is_err() {
-        eprintln!("skipping test_dialog_window_lifecycle: no display available");
+    if !crate::gtk_available("test_dialog_window_lifecycle") {
         return;
     }
 

@@ -1143,6 +1143,21 @@ msgstr ""
 msgid "The current design has unsaved changes. Save them before continuing?"
 msgstr ""
 
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr ""
+
+msgid "Could not save the tool:"
+msgstr ""
+
+msgid "Delete Failed"
+msgstr ""
+
+msgid "Could not delete the tool:"
+msgstr ""
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr ""
+
 msgid "Discard"
 msgstr ""
 

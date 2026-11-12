@@ -1,3 +1,17 @@
+## [Unreleased] - 2026-11-12 (unsaved-changes prompts for the editor and Tools Manager)
+
+### Added
+- **G-code editor unsaved changes**: the editor now tracks hand edits. Quitting, the language-change restart, New and Open ask "Save / Discard / Cancel" when the editor has unsaved hand edits (after the design's own prompt). G-code put in the editor by the Designer or CAM tools does not count as unsaved, as it can be generated again
+
+### Fixed
+- **Tools Manager save errors**: a tool that cannot be written to `custom_tools.json` is no longer reported as saved; the error shows in the form, the edit stays unsaved and the library is rolled back
+- **Tools Manager delete errors**: deleting a tool that cannot be removed from `custom_tools.json` now shows an error and keeps the tool, instead of dropping it from the list until the next restart
+- **Tools Manager prompt loop**: blocking a tool switch while creating a new tool leaves the list unselected instead of re-selecting the previous tool, which prompted again
+- **GTK tests under `cargo test`**: the UI test binary initialises GTK once per process through a shared `gtk_available` helper, and only the owning thread runs GTK cases; repeated `gtk4::init()` calls from several tests crashed the process (SIGSEGV) in the MSRV job
+
+### Changed
+- **Tools Manager prompt**: creating a new tool, cancelling an edit or switching tools with unsaved changes now asks "Save / Discard / Cancel" instead of "Discard?" Yes/No; Save goes ahead only if the tool saved (a validation error stays in the form)
+
 ## [Unreleased] - 2026-11-12 (Save / Discard / Cancel prompt)
 
 ### Changed

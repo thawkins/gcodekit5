@@ -91,11 +91,12 @@ fn relaunch() {
 ///
 /// Labels are translated when the window is built, so the language can only
 /// change by relaunching. A running or stopping job is never interrupted: the
-/// new language then applies at the next start. Unsaved design changes go
-/// through the usual Save / Discard / Cancel prompt first.
+/// new language then applies at the next start. Unsaved design and editor
+/// changes go through the usual Save / Discard / Cancel prompts first.
 fn prompt_language_restart(
     window: &ApplicationWindow,
     designer: &Rc<DesignerView>,
+    editor: &Rc<GcodeEditor>,
     is_streaming: &gcodekit5_core::ThreadSafe<bool>,
 ) {
     let parent: &gtk4::Window = window.upcast_ref();
@@ -109,6 +110,7 @@ fn prompt_language_restart(
     }
     let window = window.clone();
     let designer = designer.clone();
+    let editor = editor.clone();
     crate::ui::gtk::common::dialog::show_confirmation(
         &t!("Restart to change language?"),
         &t!(
@@ -120,11 +122,14 @@ fn prompt_language_restart(
                 return;
             }
             let window_for_restart = window.clone();
+            let editor = editor.clone();
             designer.confirm_unsaved_changes(move || {
-                i18n::request_restart();
-                // `destroy` skips the close-request prompt (already answered)
-                // and its handler quits the application.
-                window_for_restart.destroy();
+                editor.confirm_unsaved_changes(move || {
+                    i18n::request_restart();
+                    // `destroy` skips the close-request prompt (already answered)
+                    // and its handler quits the application.
+                    window_for_restart.destroy();
+                });
             });
         },
     );
@@ -647,6 +652,7 @@ fn on_activate(app: &Application) {
     let settings_controller_clone = settings_controller.clone();
     let visualizer_settings = visualizer.clone();
     let designer_settings = designer.clone();
+    let editor_settings = editor.clone();
     let machine_control_settings = machine_control.clone();
     let window_settings = window.clone();
     let persistence_settings = settings_persistence.clone();
@@ -656,6 +662,7 @@ fn on_activate(app: &Application) {
         let machine_control_limits = machine_control_settings.clone();
         let language_window = window_settings.clone();
         let language_designer = designer_settings.clone();
+        let language_editor = editor_settings.clone();
         let language_persistence = persistence_settings.clone();
         let on_save = Box::new(move || {
             // Queue redraws for visualizer and designer when settings are saved
@@ -669,6 +676,7 @@ fn on_activate(app: &Application) {
                 prompt_language_restart(
                     &language_window,
                     &language_designer,
+                    &language_editor,
                     &machine_control_limits.is_streaming,
                 );
             }
@@ -1234,16 +1242,21 @@ fn on_activate(app: &Application) {
         });
     }
 
-    // Ask before closing the window while the design has unsaved changes.
+    // Ask before closing the window while the design or the G-code editor
+    // has unsaved changes: the design first, then the editor.
     {
         let designer_close = designer.clone();
+        let editor_close = editor.clone();
         window.connect_close_request(move |win| {
-            if !designer_close.has_unsaved_changes() {
+            if !designer_close.has_unsaved_changes() && !editor_close.has_unsaved_changes() {
                 return glib::Propagation::Proceed;
             }
             let win = win.clone();
+            let editor = editor_close.clone();
             // `destroy` does not emit close-request again, so this cannot loop.
-            designer_close.confirm_unsaved_changes(move || win.destroy());
+            designer_close.confirm_unsaved_changes(move || {
+                editor.confirm_unsaved_changes(move || win.destroy());
+            });
             glib::Propagation::Stop
         });
 
