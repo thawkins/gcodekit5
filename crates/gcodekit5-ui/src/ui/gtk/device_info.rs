@@ -383,6 +383,18 @@ impl DeviceInfoView {
         *self.on_setting_changed.borrow_mut() = Some(std::boxed::Box::new(callback));
     }
 
+    pub fn get_device_name(&self) -> String {
+        self.device_name_label.text().to_string()
+    }
+
+    pub fn get_firmware(&self) -> String {
+        self.firmware_label.text().to_string()
+    }
+
+    pub fn get_version(&self) -> String {
+        self.version_label.text().to_string()
+    }
+
     /// Called when device type radio button changes
     fn on_device_type_changed(&self, device_type: &str) {
         if !*self.connected.borrow() {

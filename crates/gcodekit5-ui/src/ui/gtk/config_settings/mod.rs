@@ -5,6 +5,7 @@
 //! sub-modules for different setting categories.
 
 mod grbl_settings;
+mod repetier_settings;
 mod operations;
 
 use gcodekit5_communication::firmware::grbl::settings::{Setting, SettingsManager};
@@ -53,6 +54,7 @@ impl From<&Setting> for ConfigSettingRow {
             600..=603 => "Encoder",
             650..=651 => "Modbus",
             680 => "RS485",
+            1000..=1999 => "Repetier EEPROM",
             _ => "Other",
         };
 
