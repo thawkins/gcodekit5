@@ -6,19 +6,34 @@
 use gtk4::gdk::ModifierType;
 use gtk4::prelude::*;
 use gtk4::{Box, Button, DrawingArea, Entry, Image, Label, ListBox, Orientation, ScrolledWindow};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::t;
 use gcodekit5_core::Shared;
+use gcodekit5_designer::commands::{DesignerCommand, Reorder};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::shapes::OperationType;
-use gcodekit5_designer::commands::{DesignerCommand, Reorder};
+
+/// Callback invoked when the panel changed the selection or the model.
+type ChangeCallback = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+
+/// Invokes the change callback (if set) without holding its borrow during the call.
+fn notify(callback: &ChangeCallback) {
+    let cb = callback.borrow().clone();
+    if let Some(cb) = cb {
+        cb();
+    }
+}
 
 pub struct LayersPanel {
     pub widget: Box,
     list_box: ListBox,
     canvas: DrawingArea,
+    /// Notified after the user changes the selection or the shapes from this panel,
+    /// so other views (e.g. the properties panel) can refresh without polling.
+    on_change: ChangeCallback,
+    // Z-order control buttons for sensitivity updates
     bring_front_btn: Button,
     bring_forward_btn: Button,
     send_backward_btn: Button,
@@ -38,36 +53,18 @@ impl LayersPanel {
         out
     }
 
-    pub fn select_row_at_index(&self, index: usize) {
-        let rows = Self::list_box_rows(&self.list_box);
-        if let Some(row) = rows.get(index) {
-            self.list_box.select_row(Some(row));
-            row.grab_focus();
-        }
-    }
-
-    pub fn sync_selection(list_box: &ListBox, state: &Shared<DesignerState>) {
-        let state_borrow = state.borrow();
-
-        // 1. We clear the current selection from the list
-        list_box.unselect_all();
-        let rows = Self::list_box_rows(list_box);
-
-        // 2. We iterate through the state objects to see which ones are selected
-        for (idx, shape_obj) in state_borrow.canvas.shape_store.iter().enumerate() {
-            if shape_obj.selected {
-                if let Some(row) = rows.get(idx) {
-                    // 3. We correct the GTK type error with Some::<&ListBoxRow>(row)
-                    list_box.select_row(Some(row));
-
-                    // 4. Auto-scroll: we put the focus so that the list moves to the object
-                    row.grab_focus();
-                }
-            }
-        }
+    /// Sets the callback run after the user changes the selection or the shapes from
+    /// this panel (row clicks, grouping, z-order, renaming).
+    ///
+    /// The callback must not call [`LayersPanel::refresh`]: it runs from inside the
+    /// list's selection handler.
+    pub fn set_on_change<F: Fn() + 'static>(&self, callback: F) {
+        *self.on_change.borrow_mut() = Some(Rc::new(callback));
     }
 
     pub fn new(state: Shared<DesignerState>, canvas: DrawingArea) -> Self {
+        let on_change: ChangeCallback = Rc::new(RefCell::new(None));
+
         // Main container
         let widget = Box::new(Orientation::Vertical, 6);
         widget.set_margin_start(6);
@@ -93,17 +90,17 @@ impl LayersPanel {
 
         // Group button
         let group_btn = Button::builder()
-        .label(t!("Group"))
-        .icon_name("object-group-symbolic")
-        .build();
+            .label(t!("Group"))
+            .icon_name("object-group-symbolic")
+            .build();
         group_btn.set_tooltip_text(Some(&t!("Group (Ctrl+G)")));
         header.append(&group_btn);
 
         // Ungroup button
         let ungroup_btn = Button::builder()
-        .label(t!("Ungroup"))
-        .icon_name("object-ungroup-symbolic")
-        .build();
+            .label(t!("Ungroup"))
+            .icon_name("object-ungroup-symbolic")
+            .build();
         ungroup_btn.set_tooltip_text(Some(&t!("Ungroup (Ctrl+Shift+G)")));
         header.append(&ungroup_btn);
 
@@ -125,32 +122,14 @@ impl LayersPanel {
         let state_to_sync = state.clone();
 
         let canvas_clone = canvas.clone();
-        let state_clone = state.clone();
 
-        click_on_canvas.connect_released(move |gesture, _n_press, x, y| {
-            let mods = gesture.current_event_state();
-            let ctrl = mods.contains(ModifierType::CONTROL_MASK);
-            let shift = mods.contains(ModifierType::SHIFT_MASK);
-            let multi = ctrl || shift;
-
-            let state_borrow = state_clone.borrow();
-            let world_point = state_borrow.canvas.pixel_to_world(x, y);
-            let zoom = state_borrow.canvas.zoom();
-            let tolerance = 15.0 / zoom;
-            drop(state_borrow);
-
-            // Select on canvas
-            let mut state_mut = state_clone.borrow_mut();
-            state_mut
-            .canvas
-            .select_at(&world_point, tolerance, multi, false);
-
-            drop(state_mut);
-
-            // Update ONLY the list, not canvas
+        // Selection on the canvas is owned by the canvas' own input handlers (which
+        // respect the active tool, Ctrl-toggle and resize handles). Performing a second
+        // `select_at` here re-selected shapes after a Ctrl-click deselect and changed the
+        // selection while drawing tools were active, without updating the properties
+        // panel. Only mirror the resulting selection into the list.
+        click_on_canvas.connect_released(move |_gesture, _n_press, _x, _y| {
             Self::refresh_list_box(&list_box_to_sync, &state_to_sync, &canvas_clone);
-
-            // Force canvas redraw to show selection
             canvas_clone.queue_draw();
         });
 
@@ -173,8 +152,8 @@ impl LayersPanel {
 
                     if shift {
                         let anchor = selection_anchor
-                        .get()
-                        .or_else(|| list_box_click.selected_rows().first().map(|r| r.index()));
+                            .get()
+                            .or_else(|| list_box_click.selected_rows().first().map(|r| r.index()));
                         if let Some(anchor_idx) = anchor {
                             let target_idx = row.index();
                             let (min_i, max_i) = if anchor_idx <= target_idx {
@@ -219,7 +198,7 @@ impl LayersPanel {
         // Z-order controls
         let z_order_box = Box::new(Orientation::Horizontal, 6);
 
-//        let bring_front_btn = Button::from_icon_name("go-top-symbolic");
+        //        let bring_front_btn = Button::from_icon_name("go-top-symbolic");
 
         let bring_front_btn = Button::new();
         let img = gtk4::Image::from_resource("/com/gcodekit5/icons/move_to_top.svg");
@@ -227,8 +206,7 @@ impl LayersPanel {
         bring_front_btn.set_child(Some(&img));
 
         bring_front_btn.set_tooltip_text(Some(&t!("Move to start")));
-        bring_front_btn
-        .update_property(&[gtk4::accessible::Property::Label(&t!("Move to start"))]);
+        bring_front_btn.update_property(&[gtk4::accessible::Property::Label(&t!("Move to start"))]);
         bring_front_btn.set_sensitive(false);
         z_order_box.append(&bring_front_btn);
 
@@ -240,12 +218,11 @@ impl LayersPanel {
 
         let send_backward_btn = Button::from_icon_name("go-down-symbolic");
         send_backward_btn.set_tooltip_text(Some(&t!("Move down")));
-        send_backward_btn
-        .update_property(&[gtk4::accessible::Property::Label(&t!("Move down"))]);
+        send_backward_btn.update_property(&[gtk4::accessible::Property::Label(&t!("Move down"))]);
         send_backward_btn.set_sensitive(false);
         z_order_box.append(&send_backward_btn);
 
-//        let send_back_btn = Button::from_icon_name("go-bottom-symbolic");
+        //        let send_back_btn = Button::from_icon_name("go-bottom-symbolic");
         let send_back_btn = Button::new();
         let img = gtk4::Image::from_resource("/com/gcodekit5/icons/move_to_bottom.svg");
         img.set_pixel_size(24);
@@ -263,10 +240,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             group_btn.connect_clicked(move |_| {
                 Self::group_selected_shapes(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone, &canvas_refresh);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -275,10 +254,12 @@ impl LayersPanel {
             let state_clone = state.clone();
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
+            let on_change_btn = on_change.clone();
             ungroup_btn.connect_clicked(move |_| {
                 Self::ungroup_selected_shapes(&state_clone);
                 Self::refresh_list_box(&list_box_refresh, &state_clone, &canvas_refresh);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -288,6 +269,7 @@ impl LayersPanel {
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
             let parent_for_click = parent_window.clone();
+            let on_change_btn = on_change.clone();
             bring_front_btn.connect_clicked(move |_| {
                 let applied = state_clone.borrow_mut().move_selected_to_top();
                 if !applied {
@@ -296,6 +278,7 @@ impl LayersPanel {
                 }
                 Self::refresh_list_box(&list_box_refresh, &state_clone, &canvas_refresh);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -305,6 +288,7 @@ impl LayersPanel {
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
             let parent_for_click = parent_window.clone();
+            let on_change_btn = on_change.clone();
             bring_forward_btn.connect_clicked(move |_| {
                 let applied = state_clone.borrow_mut().move_selected_up();
                 if !applied {
@@ -313,6 +297,7 @@ impl LayersPanel {
                 }
                 Self::refresh_list_box(&list_box_refresh, &state_clone, &canvas_refresh);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -322,6 +307,7 @@ impl LayersPanel {
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
             let parent_for_click = parent_window.clone();
+            let on_change_btn = on_change.clone();
             send_backward_btn.connect_clicked(move |_| {
                 let applied = state_clone.borrow_mut().move_selected_down();
                 if !applied {
@@ -330,6 +316,7 @@ impl LayersPanel {
                 }
                 Self::refresh_list_box(&list_box_refresh, &state_clone, &canvas_refresh);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -339,6 +326,7 @@ impl LayersPanel {
             let list_box_refresh = list_box.clone();
             let canvas_refresh = canvas.clone();
             let parent_for_click = parent_window.clone();
+            let on_change_btn = on_change.clone();
             send_back_btn.connect_clicked(move |_| {
                 let applied = state_clone.borrow_mut().move_selected_to_bottom();
                 if !applied {
@@ -347,6 +335,7 @@ impl LayersPanel {
                 }
                 Self::refresh_list_box(&list_box_refresh, &state_clone, &canvas_refresh);
                 canvas_refresh.queue_draw();
+                notify(&on_change_btn);
             });
         }
 
@@ -363,11 +352,11 @@ impl LayersPanel {
                         // Borrar los objetos seleccionados
                         let mut state_mut = state_clone.borrow_mut();
                         let selected_ids: Vec<u64> = state_mut
-                        .canvas
-                        .shapes()
-                        .filter(|s| s.selected)
-                        .map(|s| s.id)
-                        .collect();
+                            .canvas
+                            .shapes()
+                            .filter(|s| s.selected)
+                            .map(|s| s.id)
+                            .collect();
                         if selected_ids.is_empty() {
                             return gtk4::glib::Propagation::Proceed;
                         }
@@ -380,11 +369,7 @@ impl LayersPanel {
                         drop(state_mut);
 
                         // Refrescar lista y canvas
-                        Self::refresh_list_box(
-                            &list_box_clone,
-                            &state_clone,
-                            &canvas_clone,
-                        );
+                        Self::refresh_list_box(&list_box_clone, &state_clone, &canvas_clone);
                         canvas_clone.queue_draw();
 
                         gtk4::glib::Propagation::Stop
@@ -404,15 +389,15 @@ impl LayersPanel {
             let bring_forward_btn_clone = bring_forward_btn.clone();
             let send_backward_btn_clone = send_backward_btn.clone();
             let send_back_btn_clone = send_back_btn.clone();
-
+            let on_change_sel = on_change.clone();
             list_box.connect_selected_rows_changed(move |list| {
                 let rows = list.selected_rows();
                 let mut state_mut = state_clone.borrow_mut();
                 let canvas = &mut state_mut.canvas;
 
                 canvas
-                .selection_manager
-                .deselect_all(&mut canvas.shape_store);
+                    .selection_manager
+                    .deselect_all(&mut canvas.shape_store);
 
                 let mut first: Option<u64> = None;
                 for row in &rows {
@@ -456,6 +441,7 @@ impl LayersPanel {
 
                 drop(state_mut);
                 canvas_refresh.queue_draw();
+                notify(&on_change_sel);
             });
         }
 
@@ -463,6 +449,7 @@ impl LayersPanel {
             widget,
             list_box,
             canvas,
+            on_change,
             bring_front_btn,
             bring_forward_btn,
             send_backward_btn,
@@ -508,12 +495,12 @@ impl LayersPanel {
         let selected_ids: Vec<u64> = {
             let state_ref = state.borrow();
             state_ref
-            .canvas
-            .shape_store
-            .iter()
-            .filter(|obj| obj.selected)
-            .map(|obj| obj.id)
-            .collect()
+                .canvas
+                .shape_store
+                .iter()
+                .filter(|obj| obj.selected)
+                .map(|obj| obj.id)
+                .collect()
         };
 
         // 2. Obtain shapes with their current position (index in draw_order)
@@ -526,36 +513,36 @@ impl LayersPanel {
             }
 
             state_ref
-            .canvas
-            .shape_store
-            .iter()
-            .map(|shape_obj| {
-                let shape_type = match &shape_obj.shape {
-                    gcodekit5_designer::model::Shape::Rectangle(_) => t!("Rect"),
-                 gcodekit5_designer::model::Shape::Circle(_) => t!("Circ"),
-                 gcodekit5_designer::model::Shape::Line(_) => t!("Line"),
-                 gcodekit5_designer::model::Shape::Ellipse(_) => t!("Ellip"),
-                 gcodekit5_designer::model::Shape::Path(_) => t!("Path"),
-                 gcodekit5_designer::model::Shape::Text(_) => t!("Text"),
-                 gcodekit5_designer::model::Shape::Triangle(_) => t!("Tri"),
-                 gcodekit5_designer::model::Shape::Polygon(_) => t!("Poly"),
-                 gcodekit5_designer::model::Shape::Gear(_) => t!("Gear"),
-                 gcodekit5_designer::model::Shape::Sprocket(_) => t!("Spro"),
-                 gcodekit5_designer::model::Shape::RasterImage(_) => t!("Image"),
-                };
+                .canvas
+                .shape_store
+                .iter()
+                .map(|shape_obj| {
+                    let shape_type = match &shape_obj.shape {
+                        gcodekit5_designer::model::Shape::Rectangle(_) => t!("Rect"),
+                        gcodekit5_designer::model::Shape::Circle(_) => t!("Circ"),
+                        gcodekit5_designer::model::Shape::Line(_) => t!("Line"),
+                        gcodekit5_designer::model::Shape::Ellipse(_) => t!("Ellip"),
+                        gcodekit5_designer::model::Shape::Path(_) => t!("Path"),
+                        gcodekit5_designer::model::Shape::Text(_) => t!("Text"),
+                        gcodekit5_designer::model::Shape::Triangle(_) => t!("Tri"),
+                        gcodekit5_designer::model::Shape::Polygon(_) => t!("Poly"),
+                        gcodekit5_designer::model::Shape::Gear(_) => t!("Gear"),
+                        gcodekit5_designer::model::Shape::Sprocket(_) => t!("Spro"),
+                        gcodekit5_designer::model::Shape::RasterImage(_) => t!("Image"),
+                    };
 
-                let position = positions.get(&shape_obj.id).copied().unwrap_or(0);
+                    let position = positions.get(&shape_obj.id).copied().unwrap_or(0);
 
-                (
-                    position,
-                 shape_obj.id,
-                 shape_obj.name.clone(),
-                 shape_obj.group_id,
-                 shape_type,
-                 shape_obj.operation_type,
-                )
-            })
-            .collect()
+                    (
+                        position,
+                        shape_obj.id,
+                        shape_obj.name.clone(),
+                        shape_obj.group_id,
+                        shape_type,
+                        shape_obj.operation_type,
+                    )
+                })
+                .collect()
         };
 
         let mut shapes = shapes_with_position;
@@ -608,61 +595,73 @@ impl LayersPanel {
                     if new_position >= 1 && new_position <= total_objects {
                         let target_idx = new_position - 1;
                         let current_pos = state_mut
-                        .canvas
-                        .shape_store
-                        .draw_order()
-                        .iter()
-                        .position(|&id| id == shape_id_for_move);
+                            .canvas
+                            .shape_store
+                            .draw_order()
+                            .iter()
+                            .position(|&id| id == shape_id_for_move);
 
-                        if let Some(current_idx) = current_pos {
-                            if current_idx != target_idx {
-                                if state_mut
-                                    .canvas
-                                    .shape_store
-                                    .would_split_group(shape_id_for_move, target_idx)
-                                    {
-                                        // Rechazar: restaurar el valor original
-                                        let original = (current_idx + 1).to_string();
-                                        entry.set_text(&original);
-                                        drop(state_mut);
+                        if let Some(current_idx) = current_pos
+                            && current_idx != target_idx
+                        {
+                            if state_mut
+                                .canvas
+                                .shape_store
+                                .would_split_group(shape_id_for_move, target_idx)
+                            {
+                                // Rechazar: restaurar el valor original
+                                let original = (current_idx + 1).to_string();
+                                entry.set_text(&original);
+                                drop(state_mut);
 
-                                        // Resolver el parent aquí, en el momento del click
-                                        let parent = list_box_clone
-                                        .root()
-                                        .and_then(|r| r.downcast::<gtk4::Window>().ok());
-                                        show_cannot_reorder_dialog(parent.as_ref());
-                                        return;
-                                    }
-
-                                    // Hacer:
-                                    let before = state_mut.canvas.shape_store.draw_order().clone();
-                                    state_mut
-                                    .canvas
-                                    .shape_store
-                                    .move_to_position(shape_id_for_move, target_idx);
-                                    let after = state_mut.canvas.shape_store.draw_order().clone();
-                                    // Deshacer para que el comando lo aplique
-                                    state_mut.canvas.shape_store.apply_order(before.clone());
-                                    state_mut.push_command(DesignerCommand::Reorder(Reorder {
-                                        before,
-                                        after,
-                                        name: "Reorder".to_string(),
-                                    }));
-
-
-                                    state_mut.is_modified = true;
-                                    state_mut.gcode_generated = false;
-                                    drop(state_mut);
-                                    Self::refresh_list_box(
-                                        &list_box_clone,
-                                        &state_for_refresh,
-                                        &canvas_for_refresh,
-                                    );
+                                // Resolver el parent aquí, en el momento del click
+                                let parent = list_box_clone
+                                    .root()
+                                    .and_then(|r| r.downcast::<gtk4::Window>().ok());
+                                show_cannot_reorder_dialog(parent.as_ref());
+                                return;
                             }
+
+                            // Hacer:
+                            let before = state_mut.canvas.shape_store.draw_order().clone();
+                            state_mut
+                                .canvas
+                                .shape_store
+                                .move_to_position(shape_id_for_move, target_idx);
+                            let after = state_mut.canvas.shape_store.draw_order().clone();
+                            // Deshacer para que el comando lo aplique
+                            state_mut.canvas.shape_store.apply_order(before.clone());
+                            state_mut.push_command(DesignerCommand::Reorder(Reorder {
+                                before,
+                                after,
+                                name: "Reorder".to_string(),
+                            }));
+
+                            state_mut.is_modified = true;
+                            state_mut.gcode_generated = false;
+                            drop(state_mut);
+                            Self::refresh_list_box(
+                                &list_box_clone,
+                                &state_for_refresh,
+                                &canvas_for_refresh,
+                            );
                         }
                     } else {
                         // Número fuera de rango: restaurar
                         let current_pos = state_mut
+                            .canvas
+                            .shape_store
+                            .draw_order()
+                            .iter()
+                            .position(|&id| id == shape_id_for_move)
+                            .map(|p| (p + 1).to_string())
+                            .unwrap_or_else(|| "?".to_string());
+                        entry.set_text(&current_pos);
+                    }
+                } else {
+                    // No es un número: restaurar
+                    let state_borrow = state_clone.borrow();
+                    let current_pos = state_borrow
                         .canvas
                         .shape_store
                         .draw_order()
@@ -670,19 +669,6 @@ impl LayersPanel {
                         .position(|&id| id == shape_id_for_move)
                         .map(|p| (p + 1).to_string())
                         .unwrap_or_else(|| "?".to_string());
-                        entry.set_text(&current_pos);
-                    }
-                } else {
-                    // No es un número: restaurar
-                    let state_borrow = state_clone.borrow();
-                    let current_pos = state_borrow
-                    .canvas
-                    .shape_store
-                    .draw_order()
-                    .iter()
-                    .position(|&id| id == shape_id_for_move)
-                    .map(|p| (p + 1).to_string())
-                    .unwrap_or_else(|| "?".to_string());
                     entry.set_text(&current_pos);
                 }
             });
@@ -717,8 +703,15 @@ impl LayersPanel {
             name_entry.connect_changed(move |entry| {
                 let text = entry.text();
                 let mut state_mut = state_clone.borrow_mut();
-                if let Some(obj) = state_mut.canvas.get_shape_mut(shape_id) {
-                    obj.name = text.to_string();
+                let renamed = match state_mut.canvas.get_shape_mut(shape_id) {
+                    Some(obj) if obj.name != text.as_str() => {
+                        obj.name = text.to_string();
+                        true
+                    }
+                    _ => false,
+                };
+                if renamed {
+                    state_mut.is_modified = true;
                 }
             });
 
@@ -764,8 +757,8 @@ impl LayersPanel {
 
                         if !additive {
                             canvas
-                            .selection_manager
-                            .deselect_all(&mut canvas.shape_store);
+                                .selection_manager
+                                .deselect_all(&mut canvas.shape_store);
                         }
 
                         let mut first_of_group: Option<u64> = None;
@@ -823,17 +816,12 @@ impl LayersPanel {
 /// porque partiría un grupo.
 fn show_cannot_reorder_dialog(parent: Option<&gtk4::Window>) {
     let dialog = gtk4::AlertDialog::builder()
-    .modal(true)
-    .message(t!("It cannot be moved"))
-    .detail(t!(
-        "The move would split a group. The members of a group must remain contiguous."
-    ))
-    .build();
+        .modal(true)
+        .message(t!("It cannot be moved"))
+        .detail(t!(
+            "The move would split a group. The members of a group must remain contiguous."
+        ))
+        .build();
 
-    dialog.choose(
-        parent,
-        gtk4::gio::Cancellable::NONE,
-        move |_result| {
-        },
-    );
+    dialog.choose(parent, gtk4::gio::Cancellable::NONE, move |_result| {});
 }

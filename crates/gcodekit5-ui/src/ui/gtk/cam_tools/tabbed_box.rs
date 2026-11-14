@@ -1,9 +1,11 @@
 //! Tabbed Box Maker Tool
 
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Paned, ScrolledWindow,
+    Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -11,8 +13,8 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use super::common::{create_dimension_row, set_paned_initial_fraction, write_preset_file};
 use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::tabbed_box::{
@@ -35,10 +37,10 @@ struct TabbedBoxWidgets {
     play: Entry,
     extra_length: Entry,
     // New controls
-    box_type: ComboBoxText,
+    box_type: DropDown,
     dividers_x: Entry,
     dividers_y: Entry,
-    divider_keying: ComboBoxText,
+    divider_keying: DropDown,
     optimize_layout: CheckButton,
     passes: Entry,
     power: Entry,
@@ -104,7 +106,7 @@ impl TabbedBoxMaker {
             .build();
 
         let desc_lbl = Label::builder()
-    .label(&format!(
+    .label(format!(
         r#"{} <a href="https://github.com/florianfesti/boxes">{}</a> {}"#,
         t!("Generate G-code for laser/CNC cut boxes with finger joints based on the boxes.py algorithm. For more cases involving boxes and other objects, it is recommended to use the "),
         t!("Boxes"),
@@ -154,7 +156,7 @@ impl TabbedBoxMaker {
             create_dimension_row(&t!("Extra Length:"), 0.0, &settings);
 
         // New Widgets
-        let box_type = ComboBoxText::new();
+        let box_type = new_text_dropdown();
         box_type.append(Some("0"), &t!("Full Box"));
         box_type.append(Some("1"), &t!("No Top"));
         box_type.append(Some("2"), &t!("No Bottom"));
@@ -167,7 +169,7 @@ impl TabbedBoxMaker {
         let dividers_x = Entry::builder().text("0").valign(Align::Center).build();
         let dividers_y = Entry::builder().text("0").valign(Align::Center).build();
 
-        let divider_keying = ComboBoxText::new();
+        let divider_keying = new_text_dropdown();
         divider_keying.append(Some("0"), &t!("Walls and Floor"));
         divider_keying.append(Some("1"), &t!("Walls Only"));
         divider_keying.append(Some("2"), &t!("Floor Only"));
@@ -266,6 +268,9 @@ impl TabbedBoxMaker {
 
         let home_row = ActionRow::builder()
             .title(t!("Home Device Before Start"))
+            .subtitle(t!(
+                "Runs $H, then cuts from the G54 work zero you set. Travel/retract moves then use machine Z-1 (G53), never above the homed position. Off: uses the work zero you set."
+            ))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -331,7 +336,6 @@ impl TabbedBoxMaker {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_unit = width_unit.clone();
             let depth_unit = depth_unit.clone();
@@ -348,14 +352,13 @@ impl TabbedBoxMaker {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -391,7 +394,6 @@ impl TabbedBoxMaker {
         let settings_gen = settings.clone();
         generate_gcode_btn.connect_clicked(move |_| {
             let params = Self::collect_params(&widgets_gen, &settings_gen);
-            let home_before = widgets_gen.home_before.is_active();
 
             // Create progress dialog
             let progress_window = gtk4::Window::builder()
@@ -423,7 +425,7 @@ impl TabbedBoxMaker {
             vbox.append(&button_box);
 
             progress_window.set_child(Some(&vbox));
-            progress_window.show();
+            progress_window.present();
 
             let on_generate_clone = on_generate.clone();
             let progress_window_clone = progress_window.clone();
@@ -433,9 +435,23 @@ impl TabbedBoxMaker {
             let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
 
             let cancel_tx_clone = cancel_tx.clone();
-            cancel_button.connect_clicked(move |_| {
-                let _ = cancel_tx_clone.send(());
-            });
+            // Cancelling (button or window close) discards the result; the worker
+            // thread cannot be interrupted mid-generation, so its output is ignored.
+            let cancelled = Rc::new(Cell::new(false));
+            {
+                let cancelled = cancelled.clone();
+                progress_window.connect_close_request(move |_| {
+                    cancelled.set(true);
+                    glib::Propagation::Proceed
+                });
+            }
+            {
+                let progress_window = progress_window.clone();
+                cancel_button.connect_clicked(move |_| {
+                    let _ = cancel_tx_clone.send(());
+                    progress_window.close();
+                });
+            }
 
             // Spawn background thread
             std::thread::spawn(move || {
@@ -445,13 +461,8 @@ impl TabbedBoxMaker {
                     }
                     let mut generator = Generator::new(params)?;
                     generator.generate()?;
-                    let mut gcode = generator.to_gcode();
-
-                    gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
-                    Ok(gcode)
+                    // Homing is part of the generated preamble (`home_before_job`).
+                    Ok(generator.to_gcode())
                 })();
 
                 let _ = result_tx.send(result);
@@ -459,7 +470,11 @@ impl TabbedBoxMaker {
 
             // Simulate progress
             let mut progress = 0.0;
+            let cancelled_poll = cancelled.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                if cancelled_poll.get() {
+                    return glib::ControlFlow::Break;
+                }
                 // Check for result
                 if let Ok(result) = result_rx.try_recv() {
                     progress_window_clone.close();
@@ -527,7 +542,7 @@ impl TabbedBoxMaker {
                 vbox.append(&button_box);
 
                 progress_window.set_child(Some(&vbox));
-                progress_window.show();
+                progress_window.present();
 
                 let designer_view_clone = designer_view.clone();
                 let progress_window_clone = progress_window.clone();
@@ -537,9 +552,23 @@ impl TabbedBoxMaker {
                 let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
 
                 let cancel_tx_clone = cancel_tx.clone();
-                cancel_button.connect_clicked(move |_| {
-                    let _ = cancel_tx_clone.send(());
-                });
+                // Cancelling (button or window close) discards the result; the worker
+                // thread cannot be interrupted mid-generation, so its output is ignored.
+                let cancelled = Rc::new(Cell::new(false));
+                {
+                    let cancelled = cancelled.clone();
+                    progress_window.connect_close_request(move |_| {
+                        cancelled.set(true);
+                        glib::Propagation::Proceed
+                    });
+                }
+                {
+                    let progress_window = progress_window.clone();
+                    cancel_button.connect_clicked(move |_| {
+                        let _ = cancel_tx_clone.send(());
+                        progress_window.close();
+                    });
+                }
 
                 // Spawn background thread for shape generation
                 std::thread::spawn(move || {
@@ -576,42 +605,49 @@ impl TabbedBoxMaker {
 
                 // Simulate progress and handle result
                 let mut progress = 0.0;
+                let cancelled_poll = cancelled.clone();
                 glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    if cancelled_poll.get() {
+                        return glib::ControlFlow::Break;
+                    }
                     // Check for result
-                    if let Ok(result) = result_rx.try_recv() {
-                        progress_window_clone.close();
+                    match result_rx.try_recv() {
+                        Ok(result) => {
+                            progress_window_clone.close();
 
-                        match result {
-                            Ok(shapes) => {
-                                // Add shapes to designer canvas
-                                for shape in shapes {
-                                    designer_view_clone.add_shape(shape);
-                                }
+                            match result {
+                                Ok(shapes) => {
+                                    // Add shapes to designer canvas
+                                    for shape in shapes {
+                                        designer_view_clone.add_shape(shape);
+                                    }
 
-                                // Switch to designer tab
-                                if let Some(parent) = designer_view_clone.widget.parent() {
-                                    if let Ok(stack) = parent.downcast::<gtk4::Stack>() {
+                                    // Switch to designer tab
+                                    if let Some(parent) = designer_view_clone.widget.parent()
+                                        && let Ok(stack) = parent.downcast::<gtk4::Stack>()
+                                    {
                                         stack.set_visible_child_name("designer");
                                     }
                                 }
+                                Err(e) => {
+                                    CamToolsView::show_error_dialog(
+                                        "Shape Generation Failed",
+                                        &format!("Failed to generate box shapes: {}", e),
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                CamToolsView::show_error_dialog(
-                                    "Shape Generation Failed",
-                                    &format!("Failed to generate box shapes: {}", e),
-                                );
+                            glib::ControlFlow::Break
+                        }
+                        _ => {
+                            // Simulate progress
+                            progress += 0.05;
+                            if progress > 0.95 {
+                                progress = 0.95;
                             }
+                            progress_bar_clone.set_fraction(progress);
+                            progress_bar_clone.set_text(Some(&format!("{:.0}%", progress * 100.0)));
+                            glib::ControlFlow::Continue
                         }
-                        glib::ControlFlow::Break
-                    } else {
-                        // Simulate progress
-                        progress += 0.05;
-                        if progress > 0.95 {
-                            progress = 0.95;
-                        }
-                        progress_bar_clone.set_fraction(progress);
-                        progress_bar_clone.set_text(Some(&format!("{:.0}%", progress * 100.0)));
-                        glib::ControlFlow::Continue
                     }
                 });
             } else {
@@ -691,71 +727,55 @@ impl TabbedBoxMaker {
         params.offset_x = units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0);
         params.offset_y = units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0);
         params.num_axes = crate::device_status::get_active_num_axes();
+        params.home_before_job = w.home_before.is_active();
 
         params
     }
 
     fn save_params(params: &BoxParameters) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Box Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Box Parameters");
 
-        dialog.set_current_name("box_params.json");
+        dialog.set_initial_name(Some("box_params.json"));
 
         let params_clone = params.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(json) = serde_json::to_string_pretty(&params_clone) {
-                            let _ = fs::write(path, json);
-                        }
-                    }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                match serde_json::to_string_pretty(&params_clone) {
+                    Ok(json) => write_preset_file(&path, &json),
+                    Err(e) => CamToolsView::show_error_dialog(&t!("Save Error"), &format!("{}", e)),
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &Rc<TabbedBoxWidgets>, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Box Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Box Parameters");
 
         let w_clone = w.clone();
         let settings_clone = settings.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) = serde_json::from_str::<BoxParameters>(&content) {
-                                Self::apply_params(&w_clone, &params, &settings_clone);
-                            }
-                        }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let loaded = fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|content| {
+                        serde_json::from_str::<BoxParameters>(&content).map_err(|e| e.to_string())
+                    });
+                match loaded {
+                    Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to load parameters"
+                        );
+                        CamToolsView::show_error_dialog(
+                            &t!("Load Error"),
+                            &format!("{}: {}", path.display(), e),
+                        );
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn apply_params(w: &TabbedBoxWidgets, p: &BoxParameters, settings: &Rc<SettingsController>) {
@@ -796,6 +816,7 @@ impl TabbedBoxMaker {
             .set_text(&units::format_length(p.offset_x, system));
         w.offset_y
             .set_text(&units::format_length(p.offset_y, system));
+        w.home_before.set_active(p.home_before_job);
     }
 }
 

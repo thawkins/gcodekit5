@@ -4,9 +4,12 @@
 //! Supports halftoning via pepecore, mirroring, rotation, grayscale power modulation,
 //! bidirectional scanning, and various image formats.
 //! Images are rendered from bottom to top to match device coordinate space where Y increases upward.
+//!
+//! Power polarity: dark pixels get more power (black = `max_power`, white = `min_power`), so
+//! a photo engraves as a positive. [`ImageTransformations::invert`] engraves the light areas
+//! instead (a negative).
 
 use anyhow::{Context, Result};
-use gcodekit5_core::types::BoxedIterator;
 use image::{DynamicImage, GrayImage};
 use std::path::Path;
 
@@ -62,7 +65,9 @@ pub struct ImageTransformations {
     pub halftone_dot_size: usize,
     /// Halftone threshold (0-255, deprecated - kept for compatibility)
     pub halftone_threshold: u8,
-    /// Invert image (dark becomes light, light becomes dark)
+    /// Engrave the light areas instead of the dark ones (photographic negative).
+    ///
+    /// When `false` (the default) dark pixels receive more laser power.
     pub invert: bool,
 }
 
@@ -107,14 +112,17 @@ pub struct EngravingParameters {
     pub power_scale: f32,
     /// Image transformations (halftoning, mirroring, rotation)
     pub transformations: ImageTransformations,
-    /// X offset from machine origin
+    /// X position of the image's lower-left corner in work coordinates (mm)
     pub offset_x: f32,
-    /// Y offset from machine origin
+    /// Y position of the image's lower-left corner in work coordinates (mm)
     pub offset_y: f32,
     /// Number of axes on the target device (default 3).
     pub num_axes: u8,
-    /// Homming
-    pub home_before: bool,
+    /// Home (`$H`) before engraving, keeping the G54 work offsets (default `false`).
+    ///
+    /// See [`crate::job_preamble`]. The engraver never moves Z, so the focus height set by
+    /// the user is kept either way.
+    pub home_before_job: bool,
 }
 
 impl Default for EngravingParameters {
@@ -135,9 +143,18 @@ impl Default for EngravingParameters {
             offset_x: 10.0,
             offset_y: 10.0,
             num_axes: 3,
-            home_before: false,
+            home_before_job: false,
         }
     }
+}
+
+/// Axis layout of a raster line: which axis is scanned and the fixed coordinate of the other.
+#[derive(Debug, Clone, Copy)]
+enum ScanAxes {
+    /// Scan along X at a fixed Y position (mm)
+    X { y: f32 },
+    /// Scan along Y at a fixed X position (mm)
+    Y { x: f32 },
 }
 
 /// Laser engraving tool for bitmap images
@@ -157,6 +174,23 @@ impl BitmapImageEngraver {
 
     /// Create a new laser engraver from a DynamicImage
     pub fn from_image(img: DynamicImage, params: EngravingParameters) -> Result<Self> {
+        let positive = |v: f32| v.is_finite() && v > 0.0;
+        if !positive(params.width_mm) || params.height_mm.is_some_and(|h| !positive(h)) {
+            anyhow::bail!("Output width and height must be positive");
+        }
+        if !positive(params.pixels_per_mm) {
+            anyhow::bail!("Resolution (pixels per mm) must be positive");
+        }
+        if !positive(params.line_spacing) {
+            anyhow::bail!("Line spacing must be positive");
+        }
+        if !positive(params.feed_rate) || !positive(params.travel_rate) {
+            anyhow::bail!("Feed and travel rates must be positive");
+        }
+        if img.width() == 0 || img.height() == 0 {
+            anyhow::bail!("Image is empty");
+        }
+
         let mut gray = img.to_luma8();
 
         // Apply transformations: mirroring -> rotation -> inversion -> halftoning
@@ -181,6 +215,13 @@ impl BitmapImageEngraver {
         } else {
             (output_width as f32 * aspect_ratio) as u32
         };
+        if output_width == 0 || output_height == 0 {
+            anyhow::bail!(
+                "Output resolution is too small ({}x{} pixels)",
+                output_width,
+                output_height
+            );
+        }
 
         // Resize image to output dimensions BEFORE halftoning
         // Use Lanczos3 for high quality downscaling/upscaling of continuous tone images
@@ -456,7 +497,7 @@ impl BitmapImageEngraver {
         ));
         gcode.push_str(&format!(
             "; Estimated time: {:.1} minutes\n",
-            self.estimate_time() / 6.0
+            self.estimate_time() / 60.0
         ));
         gcode.push_str(";\n");
 
@@ -465,19 +506,13 @@ impl BitmapImageEngraver {
         gcode.push_str("G17 ; XY plane selection\n");
         gcode.push('\n');
 
-        // Solo se escribe si el usuario activó la casilla
-        if self.params.home_before {
-            gcode.push_str("; Home device\n");
-            gcode.push_str("$H ; Home all axes (bottom-left corner)\n");
-            gcode.push('\n');
-        }
-
-        if self.params.num_axes >= 3 {
-            gcode.push_str(&format!(
-                "G0 Z{:.2} F{:.0} ; Move to safe height\n",
-                5.0, self.params.travel_rate
-            ));
-        }
+        // The engraver never moves Z: the user's focus height is kept, so homing cannot lead
+        // to a Z move above the homed position.
+        crate::job_preamble::push_work_setup(&mut gcode, self.params.home_before_job);
+        gcode.push_str(&format!(
+            "; Image origin (lower-left) at X{:.2} Y{:.2}\n",
+            self.params.offset_x, self.params.offset_y
+        ));
         gcode.push('\n');
 
         // Image is already resized in from_image
@@ -523,6 +558,16 @@ impl BitmapImageEngraver {
         Ok(gcode)
     }
 
+    /// Number of scan lines and the pixel step between them for `pixel_count` pixels.
+    ///
+    /// `line_spacing` is a multiplier of the pixel pitch, so lines are sampled every
+    /// `line_spacing` pixels rather than stretching the image.
+    fn scan_line_layout(&self, pixel_count: u32) -> (u32, f32) {
+        let step_px = self.params.line_spacing.max(f32::EPSILON);
+        let lines = ((pixel_count as f32 / step_px).ceil() as u32).clamp(1, pixel_count.max(1));
+        (lines, step_px)
+    }
+
     fn generate_horizontal_scan_with_progress<F>(
         &self,
         gcode: &mut String,
@@ -536,125 +581,120 @@ impl BitmapImageEngraver {
     {
         let height = image.height();
         let width = image.width();
-        let mut left_to_right = true;
+        let (num_lines, step_px) = self.scan_line_layout(height);
+        let mut forward = true;
 
         // Render from bottom to top
-        for y_reversed in 0..height {
-            if y_reversed % 10 == 0 || y_reversed == height - 1 {
-                let progress = 0.1 + (y_reversed as f32 / height as f32) * 0.8;
+        for line in 0..num_lines {
+            if line % 10 == 0 || line == num_lines - 1 {
+                let progress = 0.1 + (line as f32 / num_lines as f32) * 0.8;
                 progress_callback(progress);
             }
 
-            let y = height - 1 - y_reversed;
-            // CAMBIO: Sumamos de manera nativa el offset Y al cálculo de la línea
-            let y_pos = (y_reversed as f32 * line_spacing) + self.params.offset_y;
+            let row_from_bottom = ((line as f32 * step_px) as u32).min(height - 1);
+            let y = height - 1 - row_from_bottom;
+            let y_pos = line as f32 * line_spacing;
 
             // Turn off laser before rapid movement
             gcode.push_str("M5 ; Laser off\n");
             gcode.push('\n');
 
-            // Position according to direction
-            if left_to_right {
-                // CAMBIO: Sumamos offset_x en el origen izquierdo de la línea
-                gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", self.params.offset_x, y_pos));
+            let start_x = if forward {
+                0.0
             } else {
-                // CAMBIO: Sumamos offset_x al extremo derecho de la línea
-                let end_x = ((width - 1) as f32 * pixel_width) + self.params.offset_x;
-                gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", end_x, y_pos));
-            }
+                width as f32 * pixel_width
+            };
+            gcode.push_str(&format!(
+                "G0 X{:.3} Y{:.3}\n",
+                start_x + self.params.offset_x,
+                y_pos + self.params.offset_y
+            ));
 
-            // Record the line with the current address
-            self.scan_line(gcode, image, y, y_pos, pixel_width, left_to_right);
+            let powers: Vec<u32> = (0..width)
+                .map(|x| self.pixel_power(image.get_pixel(x, y).0[0]))
+                .collect();
+            self.scan_line(
+                gcode,
+                &powers,
+                ScanAxes::X {
+                    y: y_pos + self.params.offset_y,
+                },
+                pixel_width,
+                forward,
+            );
 
             // Alternate direction if it is bidirectional
             if self.params.bidirectional {
-                left_to_right = !left_to_right;
+                forward = !forward;
             }
         }
 
         Ok(())
     }
 
+    /// Emit the burn segments for one raster line.
+    ///
+    /// `powers[k]` is the S value of pixel `k` along the scan axis (pixel `k` spans
+    /// `[k, k + 1) * pixel_width`). When `forward` is false the line is traversed from the
+    /// last pixel back to the first. Segment endpoints are placed on pixel edges so that
+    /// single-pixel runs still burn a full pixel and reverse passes cover the same area as
+    /// forward passes.
     fn scan_line(
         &self,
         gcode: &mut String,
-        image: &GrayImage,
-        y: u32,
-        y_pos: f32,
+        powers: &[u32],
+        axes: ScanAxes,
         pixel_width: f32,
-        left_to_right: bool,
+        forward: bool,
     ) {
-        let width = image.width();
+        let n = powers.len();
         let mut in_burn = false;
-        let mut current_power = 0u32;
-        let mut segment_start = 0.0;
-        let mut segment_end = 0.0;
         let mut first_segment_of_burst = true;
+        let mut current_power = 0u32;
+        let mut segment_start = 0.0f32;
+        let mut segment_end = 0.0f32;
 
-        let indices: Vec<u32> = if left_to_right {
-            (0..width).collect()
-        } else {
-            (0..width).rev().collect()
-        };
-
-        for &x in &indices {
-            let intensity = image.get_pixel(x, y).0[0];
-            let power = self.intensity_to_power(intensity);
-            let mut power_value = (power * self.params.power_scale / 100.0).round() as u32;
-
-            // Threshold filter
-            if power_value < 5 {
-                power_value = 0;
-            }
-
-            // Power rounding to "flatten" similar colors
-            if power_value > 0 {
-                let step = 5; // try with 5 or 10
-                power_value = (power_value / step) * step;
-            }
-
-            let power_value = power_value.clamp(0, 1000);
-            let x_pos = x as f32 * pixel_width;
+        for i in 0..n {
+            let k = if forward { i } else { n - 1 - i };
+            let power_value = powers[k];
+            // Entry and exit edges of pixel k in the direction of travel
+            let (entry, exit) = if forward {
+                (k as f32 * pixel_width, (k + 1) as f32 * pixel_width)
+            } else {
+                ((k + 1) as f32 * pixel_width, k as f32 * pixel_width)
+            };
 
             if power_value > 0 {
                 if !in_burn {
                     in_burn = true;
-                    current_power = power_value;
-                    segment_start = x_pos;
-                    segment_end = x_pos;
                     first_segment_of_burst = true;
-                } else if power_value == current_power {
-                    segment_end = x_pos;
-                } else {
-                    // Power change attached to the previous one: is_new_segment = first_segment_of_burst
+                    current_power = power_value;
+                    segment_start = entry;
+                } else if power_value != current_power {
                     self.emit_segment(
                         gcode,
                         segment_start,
                         segment_end,
-                        y_pos,
+                        axes,
                         current_power,
-                        left_to_right,
                         first_segment_of_burst,
                     );
-
+                    first_segment_of_burst = false;
                     current_power = power_value;
-                    segment_start = x_pos;
-                    segment_end = x_pos;
-                    first_segment_of_burst = false; // The following ones no longer need G0
+                    segment_start = entry;
                 }
+                segment_end = exit;
             } else if in_burn {
                 self.emit_segment(
                     gcode,
                     segment_start,
                     segment_end,
-                    y_pos,
+                    axes,
                     current_power,
-                    left_to_right,
                     first_segment_of_burst,
                 );
                 gcode.push_str("M5\n");
                 in_burn = false;
-                current_power = 0;
             }
         }
 
@@ -663,41 +703,49 @@ impl BitmapImageEngraver {
                 gcode,
                 segment_start,
                 segment_end,
-                y_pos,
+                axes,
                 current_power,
-                left_to_right,
                 first_segment_of_burst,
             );
             gcode.push_str("M5\n");
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Emit one constant-power burn segment from `start` to `end` along the scan axis.
     fn emit_segment(
         &self,
         gcode: &mut String,
         start: f32,
         end: f32,
-        y_pos: f32,
+        axes: ScanAxes,
         power: u32,
-        left_to_right: bool,
         is_new_segment: bool,
     ) {
-        // CAMBIO: Aplicamos matemáticamente el offset X a los segmentos de grabado
-        let pos_x = (if left_to_right { start } else { end }) + self.params.offset_x;
-        let target_x = (if left_to_right { end } else { start }) + self.params.offset_x;
+        // `start`/`end` are image-relative; shift them into work coordinates.
+        let (scan_axis, scan_offset) = match axes {
+            ScanAxes::X { .. } => ('X', self.params.offset_x),
+            ScanAxes::Y { .. } => ('Y', self.params.offset_y),
+        };
+        let start = start + scan_offset;
+        let end = end + scan_offset;
 
         if is_new_segment {
-            // Rapid positioning
-            gcode.push_str(&format!("G0 X{:.3} Y{:.3} S0\n", pos_x, y_pos));
-            // First line of the segment
+            // Rapid positioning with the laser at zero power
+            match axes {
+                ScanAxes::X { y } => {
+                    gcode.push_str(&format!("G0 X{:.3} Y{:.3} S0\n", start, y));
+                }
+                ScanAxes::Y { x } => {
+                    gcode.push_str(&format!("G0 X{:.3} Y{:.3} S0\n", x, start));
+                }
+            }
             gcode.push_str(&format!(
-                "G1 X{:.3} S{} F{:.0} M4\n",
-                target_x, power, self.params.feed_rate
+                "G1 {}{:.3} S{} F{:.0} M4\n",
+                scan_axis, end, power, self.params.feed_rate
             ));
         } else {
-            // Continuation of the segment
-            gcode.push_str(&format!("G1 X{:.3} S{}\n", target_x, power));
+            // Continuation of the burst at a new power level
+            gcode.push_str(&format!("G1 {}{:.3} S{}\n", scan_axis, end, power));
         }
     }
 
@@ -714,77 +762,80 @@ impl BitmapImageEngraver {
     {
         let height = image.height();
         let width = image.width();
-        let mut top_to_bottom = true;
+        let (num_lines, step_px) = self.scan_line_layout(width);
+        let mut forward = true;
 
-        for x in 0..width {
-            if x % 10 == 0 || x == width - 1 {
-                let progress = 0.1 + (x as f32 / width as f32) * 0.8;
+        for line in 0..num_lines {
+            if line % 10 == 0 || line == num_lines - 1 {
+                let progress = 0.1 + (line as f32 / num_lines as f32) * 0.8;
                 progress_callback(progress);
             }
-            // CAMBIO: Sumamos de manera nativa el offset X al cálculo de la columna
-            let x_pos = (x as f32 * line_spacing) + self.params.offset_x;
 
-            if top_to_bottom || !self.params.bidirectional {
-                // CAMBIO: Sumamos offset_y al inicio del movimiento rápido vertical
-                gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", x_pos, self.params.offset_y));
+            let x = ((line as f32 * step_px) as u32).min(width - 1);
+            let x_pos = line as f32 * line_spacing;
+
+            gcode.push_str("M5\n");
+            let start_y = if forward {
+                0.0
             } else {
-                // CAMBIO: Sumamos offset_y al extremo final del escaneo
-                let end_y = ((height - 1) as f32 * pixel_width) + self.params.offset_y;
-                gcode.push_str(&format!("G0 X{:.3} Y{:.3}\n", x_pos, end_y));
-            }
-
-            let mut in_burn = false;
-            let mut last_power = 0;
-
-            let y_range: BoxedIterator<u32> = if top_to_bottom || !self.params.bidirectional {
-                Box::new(0..height)
-            } else {
-                Box::new((0..height).rev())
+                height as f32 * pixel_width
             };
+            gcode.push_str(&format!(
+                "G0 X{:.3} Y{:.3}\n",
+                x_pos + self.params.offset_x,
+                start_y + self.params.offset_y
+            ));
 
-            for y_reversed in y_range {
-                let y = height - 1 - y_reversed;
-                let intensity = image.get_pixel(x, y).0[0];
-                let power = self.intensity_to_power(intensity);
-                let power_value = (power * self.params.power_scale / 100.0) as u32;
-                // CAMBIO: Sumamos de manera nativa el offset Y a cada píxel vertical
-                let y_pos = (y_reversed as f32 * pixel_width) + self.params.offset_y;
-
-                if power_value > 0 {
-                    if !in_burn || power_value != last_power {
-                        gcode.push_str(&format!(
-                            "G1 X{:.3} Y{:.3} F{:.0} M4 S{}\n",
-                            x_pos, y_pos, self.params.feed_rate, power_value
-                        ));
-                        in_burn = true;
-                        last_power = power_value;
-                    } else {
-                        gcode.push_str(&format!("G1 X{:.3} Y{:.3}\n", x_pos, y_pos));
-                    }
-                } else if in_burn {
-                    gcode.push_str("M5\n");
-                    in_burn = false;
-                }
-            }
-
-            if in_burn {
-                gcode.push_str("M5\n");
-            }
+            // Pixel k along the line counts from the bottom of the image (device Y up).
+            let powers: Vec<u32> = (0..height)
+                .map(|k| self.pixel_power(image.get_pixel(x, height - 1 - k).0[0]))
+                .collect();
+            self.scan_line(
+                gcode,
+                &powers,
+                ScanAxes::Y {
+                    x: x_pos + self.params.offset_x,
+                },
+                pixel_width,
+                forward,
+            );
 
             if self.params.bidirectional {
-                top_to_bottom = !top_to_bottom;
+                forward = !forward;
             }
         }
 
         Ok(())
     }
 
-    /// Convert pixel intensity to laser power
+    /// Convert a pixel intensity to a quantized S value (0 = laser off).
+    fn pixel_power(&self, intensity: u8) -> u32 {
+        let power = self.intensity_to_power(intensity);
+        let mut power_value = (power * self.params.power_scale / 100.0).round().max(0.0) as u32;
+
+        // Threshold filter
+        if power_value < 5 {
+            power_value = 0;
+        }
+
+        // Power rounding to "flatten" similar colors and reduce command churn
+        if power_value > 0 {
+            let step = 5;
+            power_value = (power_value / step) * step;
+        }
+
+        power_value.min(self.params.power_scale.max(0.0).round() as u32)
+    }
+
+    /// Convert pixel intensity to laser power.
+    ///
+    /// Dark pixels burn: intensity 0 (black) maps to `max_power` and 255 (white) to
+    /// `min_power`. Inversion, when requested, has already been applied to the image.
     fn intensity_to_power(&self, intensity: u8) -> f32 {
-        let normalized = intensity as f32 / 255.0;
+        let darkness = 1.0 - intensity as f32 / 255.0;
 
         let gamma = 0.7;
-        let corrected = normalized.powf(gamma);
+        let corrected = darkness.powf(gamma);
 
         self.params.min_power + (corrected * (self.params.max_power - self.params.min_power))
     }

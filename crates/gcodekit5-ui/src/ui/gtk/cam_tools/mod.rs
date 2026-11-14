@@ -4,10 +4,11 @@
 //! including box makers, engravers, spoilboard tools, and more.
 
 mod bitmap_engraving;
-mod common;
+pub mod common;
 mod drill_press;
 mod gerber;
 mod jigsaw;
+mod probe_routines;
 mod speeds_feeds_page;
 mod spoilboard_grid;
 mod spoilboard_surfacing;
@@ -19,17 +20,17 @@ pub use bitmap_engraving::BitmapEngravingTool;
 pub use drill_press::DrillPressTool;
 pub use gerber::GerberTool;
 pub use jigsaw::JigsawTool;
+pub use probe_routines::ProbeRoutinesTool;
 pub use speeds_feeds_page::SpeedsFeedsTool;
 pub use spoilboard_grid::SpoilboardGridTool;
 pub use spoilboard_surfacing::SpoilboardSurfacingTool;
 pub use tabbed_box::TabbedBoxMaker;
 
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use common::set_paned_initial_fraction;
 
 use gtk4::prelude::*;
-use gtk4::{
-    Align, Box, Button, ComboBoxText, Image, Label, Orientation, Paned, ScrolledWindow, Stack,
-};
+use gtk4::{Align, Box, Button, Image, Label, Orientation, Paned, ScrolledWindow, Stack};
 use std::rc::Rc;
 
 use crate::ui::gtk::machine_control::MachineControlView;
@@ -43,7 +44,9 @@ pub struct CamToolsView {
 
 impl CamToolsView {
     fn show_error_dialog(title: &str, message: &str) {
-        crate::ui::gtk::file_dialog::show_error_dialog(title, message, None);
+        // Parent the dialog on the active window, like the other pages.
+        let parent = gtk4::Application::default().active_window();
+        crate::ui::gtk::file_dialog::show_error_dialog(title, message, parent.as_ref());
     }
 
     pub fn new<F: Fn(String) + 'static>(
@@ -51,7 +54,7 @@ impl CamToolsView {
         machine_control: Option<MachineControlView>,
         on_generate: F,
     ) -> Self {
-        Self::new_with_designer(settings, machine_control, on_generate, None)
+        Self::new_with_designer(settings, machine_control, on_generate, None, None)
     }
 
     pub fn new_with_designer<F: Fn(String) + 'static>(
@@ -59,6 +62,7 @@ impl CamToolsView {
         machine_control: Option<MachineControlView>,
         on_generate: F,
         designer_view: Option<Rc<crate::ui::gtk::designer::DesignerView>>,
+        device_manager: Option<std::sync::Arc<gcodekit5_devicedb::DeviceManager>>,
     ) -> Self {
         let on_generate = Rc::new(on_generate);
         let stack = Stack::new();
@@ -86,9 +90,13 @@ impl CamToolsView {
         // Bitmap Engraving Tool
         let bitmap_tool = BitmapEngravingTool::new(&stack, settings.clone(), on_generate.clone());
         stack.add_named(bitmap_tool.widget(), Some("laser_image"));
-
+        /*
+                // Vector Engraving Tool
+                let vector_tool = VectorEngravingTool::new(&stack, settings.clone(), on_generate.clone());
+                stack.add_named(vector_tool.widget(), Some("laser_vector"));
+        */
         // Speeds & Feeds Calculator
-        let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone());
+        let feeds_tool = SpeedsFeedsTool::new(&stack, settings.clone(), device_manager);
         stack.add_named(feeds_tool.widget(), Some("feeds"));
 
         // Spoilboard Surfacing
@@ -113,6 +121,15 @@ impl CamToolsView {
         );
         stack.add_named(drill_tool.widget(), Some("drill_press"));
 
+        // Probe Routines Tool
+        let probe_tool = ProbeRoutinesTool::new(
+            &stack,
+            settings.clone(),
+            machine_control.clone(),
+            on_generate.clone(),
+        );
+        stack.add_named(probe_tool.widget(), Some("probe_routines"));
+
         Self { content: stack }
     }
 
@@ -131,7 +148,8 @@ impl CamToolsView {
             title: String,
             desc: String,
             icon: &'static str,
-            category: String,
+            // Untranslated category id; must match the filter combo's ids.
+            category: &'static str,
         }
 
         fn get_tools() -> Vec<Tool> {
@@ -141,56 +159,74 @@ impl CamToolsView {
                     title: t!("Jigsaw Puzzle Generator"),
                     desc: t!("Create custom jigsaw puzzle patterns from images"),
                     icon: "/com/gcodekit5/icons/puzzle-piece.svg",
-                    category: t!("generators"),
+                    category: "generators",
                 },
                 Tool {
                     page: "tabbed_box",
                     title: t!("Tabbed Box Maker"),
                     desc: t!("Generate G-code for laser/CNC cut boxes with finger joints"),
                     icon: "/com/gcodekit5/icons/boxes.svg",
-                    category: t!("generators"),
+                    category: "generators",
                 },
                 Tool {
                     page: "laser_image",
                     title: t!("Laser Image Engraver"),
                     desc: t!("Convert raster images to G-code for laser engraving"),
                     icon: "camera-photo-symbolic",
-                    category: t!("engraving"),
+                    category: "engraving",
                 },
+                /*
+                                Tool {
+                                    page: "laser_vector",
+                                    title: t!("Laser Vector Engraver"),
+                                    desc: t!("Convert SVG and DXF vector files to G-code"),
+                                    icon: "insert-image-symbolic",
+                                    category: "engraving",
+                                },
+                */
                 Tool {
                     page: "feeds",
                     title: t!("Speeds and Feeds Calculator"),
                     desc: t!("Calculate cutting speeds and feeds for your materials"),
                     icon: "accessories-calculator-symbolic",
-                    category: t!("calculators"),
+                    category: "calculators",
                 },
                 Tool {
                     page: "surfacing",
                     title: t!("Spoilboard Surfacing"),
                     desc: t!("Generate surfacing toolpaths to flatten your spoilboard"),
                     icon: "view-refresh-symbolic",
-                    category: t!("maintenance"),
+                    category: "maintenance",
                 },
                 Tool {
                     page: "grid",
                     title: t!("Create Spoilboard Grid"),
                     desc: t!("Generate grid patterns for spoilboard alignment"),
                     icon: "view-grid-symbolic",
-                    category: t!("maintenance"),
+                    category: "maintenance",
                 },
                 Tool {
                     page: "gerber",
                     title: t!("Gerber to G-Code"),
                     desc: t!("Convert Gerber files to G-Code for PCB milling"),
                     icon: "media-floppy-symbolic",
-                    category: t!("generators"),
+                    category: "generators",
                 },
                 Tool {
                     page: "drill_press",
                     title: t!("Drill Press"),
                     desc: t!("Emulate a drill press with peck drilling and helical cycles"),
                     icon: "input-mouse-symbolic",
-                    category: t!("generators"),
+                    category: "generators",
+                },
+                Tool {
+                    page: "probe_routines",
+                    title: t!("Probe Tools"),
+                    desc: t!(
+                        "Touch probe routines for WCS setup: Z-touch, edge find, corner find, bore/boss center, tool length"
+                    ),
+                    icon: "input-touchpad-symbolic",
+                    category: "maintenance",
                 },
             ]
         }
@@ -204,6 +240,7 @@ impl CamToolsView {
                 let Ok(row) = w.downcast::<gtk4::ListBoxRow>() else {
                     continue;
                 };
+                #[allow(unsafe_code)]
                 let idx = unsafe {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
@@ -250,7 +287,7 @@ impl CamToolsView {
             .hexpand(true)
             .build();
 
-        let category = ComboBoxText::new();
+        let category = new_text_dropdown();
         category.append(Some("all"), "All");
         category.append(Some("generators"), "Generators");
         category.append(Some("engraving"), "Engraving");
@@ -278,6 +315,7 @@ impl CamToolsView {
             row.set_selectable(true);
             // SAFETY: set_data stores a u32 keyed by "camtool-index". The data
             // is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data("camtool-index", idx as u32);
             }
@@ -364,15 +402,16 @@ impl CamToolsView {
                 if let Some(row) = row {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
+                    #[allow(unsafe_code)]
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
                     };
-                    if let Some(idx) = idx {
-                        if let Some(tool) = get_tools().get(idx) {
-                            details_title.set_text(&tool.title);
-                            details_desc.set_text(&tool.desc);
-                        }
+                    if let Some(idx) = idx
+                        && let Some(tool) = get_tools().get(idx)
+                    {
+                        details_title.set_text(&tool.title);
+                        details_desc.set_text(&tool.desc);
                     }
                     open_btn.set_sensitive(true);
                 } else {
@@ -391,14 +430,15 @@ impl CamToolsView {
                 if let Some(row) = list_for_click.selected_row() {
                     // SAFETY: row.data() retrieves a u32 previously stored via
                     // set_data("camtool-index", ...). Type and key match.
+                    #[allow(unsafe_code)]
                     let idx = unsafe {
                         row.data::<u32>("camtool-index")
                             .map(|p| *p.as_ref() as usize)
                     };
-                    if let Some(idx) = idx {
-                        if let Some(tool) = get_tools().get(idx) {
-                            stack_for_click.set_visible_child_name(tool.page);
-                        }
+                    if let Some(idx) = idx
+                        && let Some(tool) = get_tools().get(idx)
+                    {
+                        stack_for_click.set_visible_child_name(tool.page);
                     }
                 }
             });
@@ -407,14 +447,15 @@ impl CamToolsView {
             list.connect_row_activated(move |_, row| {
                 // SAFETY: row.data() retrieves a u32 previously stored via
                 // set_data("camtool-index", ...). Type and key match.
+                #[allow(unsafe_code)]
                 let idx = unsafe {
                     row.data::<u32>("camtool-index")
                         .map(|p| *p.as_ref() as usize)
                 };
-                if let Some(idx) = idx {
-                    if let Some(tool) = tools.get(idx) {
-                        stack_for_activate.set_visible_child_name(tool.page);
-                    }
+                if let Some(idx) = idx
+                    && let Some(tool) = tools.get(idx)
+                {
+                    stack_for_activate.set_visible_child_name(tool.page);
                 }
             });
         }

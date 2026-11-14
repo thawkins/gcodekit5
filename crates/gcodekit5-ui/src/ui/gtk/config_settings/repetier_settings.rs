@@ -3,7 +3,6 @@
 //! UI panel definitions and default values for Repetier firmware EEPROM settings.
 
 use gcodekit5_communication::firmware::grbl::settings::Setting;
-
 use super::ConfigSettingsView;
 
 impl ConfigSettingsView {

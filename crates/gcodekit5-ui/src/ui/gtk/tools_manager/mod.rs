@@ -7,9 +7,11 @@
 mod event_handlers;
 mod ui_builders;
 
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, ComboBoxText, Entry, Frame, Label, ListBox, ListBoxRow, Orientation, Paned,
+    Align, Box, Button, DropDown, Entry, Frame, Label, ListBox, ListBoxRow, Orientation, Paned,
     PolicyType, ScrolledWindow, SearchEntry, SelectionMode, SpinButton, Stack, StackSwitcher,
     TextView,
 };
@@ -19,11 +21,10 @@ use std::rc::Rc;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::help_browser;
 use crate::ui::gtk::platform;
-use crate::ui::tools_manager_backend::{string_to_tool_material, ToolsManagerBackend};
+use crate::ui::tools_manager_backend::{ToolsManagerBackend, string_to_tool_material};
 
 use gcodekit5_core::data::tools::{ShankType, Tool, ToolCoating, ToolId, ToolMaterial, ToolType};
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
-use gcodekit5_settings::manager::SettingsManager;
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gcodekit5_settings::SettingsController;
 
 pub(crate) const ROW_TOOL_ID_KEY: &str = "gcodekit5-tool-id";
@@ -37,8 +38,8 @@ pub struct ToolsManagerView {
     // Left panel widgets
     pub(crate) tools_list: ListBox,
     pub(crate) search_entry: SearchEntry,
-    pub(crate) type_filter: ComboBoxText,
-    pub(crate) material_filter: ComboBoxText,
+    pub(crate) type_filter: DropDown,
+    pub(crate) material_filter: DropDown,
     pub(crate) dia_min: Entry,
     pub(crate) dia_max: Entry,
     // Right panel
@@ -48,10 +49,10 @@ pub struct ToolsManagerView {
     pub(crate) edit_id: Entry,
     pub(crate) edit_number: SpinButton,
     pub(crate) edit_name: Entry,
-    pub(crate) edit_tool_type: ComboBoxText,
-    pub(crate) edit_material: ComboBoxText,
-    pub(crate) edit_coating: ComboBoxText,
-    pub(crate) edit_shank: ComboBoxText,
+    pub(crate) edit_tool_type: DropDown,
+    pub(crate) edit_material: DropDown,
+    pub(crate) edit_coating: DropDown,
+    pub(crate) edit_shank: DropDown,
 
     pub(crate) edit_diameter: Entry,
     pub(crate) edit_length: Entry,
@@ -122,7 +123,7 @@ impl ToolsManagerView {
         sidebar.append(&search_entry);
 
         // Type filter
-        let type_filter = ComboBoxText::new();
+        let type_filter = new_text_dropdown();
         type_filter.append(Some("all"), "All Types");
         type_filter.append(Some("endmill_flat"), "Flat End Mill");
         type_filter.append(Some("endmill_ball"), "Ball End Mill");
@@ -137,7 +138,7 @@ impl ToolsManagerView {
         sidebar.append(&type_filter);
 
         // Material filter
-        let material_filter = ComboBoxText::new();
+        let material_filter = new_text_dropdown();
         material_filter.append(Some("all"), "All Materials");
         material_filter.append(Some("HSS"), "HSS");
         material_filter.append(Some("Carbide"), "Carbide");
@@ -384,10 +385,7 @@ impl ToolsManagerView {
         {
             let mut p = self.settings_controller.persistence.borrow_mut();
             p.config_mut().ui.tools_sidebar_position = Some(pos);
-            if let Ok(path) = SettingsManager::config_file_path() {
-                let _ = SettingsManager::ensure_config_dir();
-                let _ = p.save_to_file(&path);
-            }
+            p.persist_or_log();
         }
     }
 
@@ -410,10 +408,7 @@ impl ToolsManagerView {
             p.config_mut().ui.tools_manager_selected_tool =
                 self.last_selected_tool_id.borrow().clone();
 
-            if let Ok(path) = SettingsManager::config_file_path() {
-                let _ = SettingsManager::ensure_config_dir();
-                let _ = p.save_to_file(&path);
-            }
+            p.persist_or_log();
         }
     }
 
@@ -422,6 +417,7 @@ impl ToolsManagerView {
         while let Some(w) = child {
             let next = w.next_sibling();
             if let Ok(row) = w.downcast::<ListBoxRow>() {
+                #[allow(unsafe_code)]
                 let stored = unsafe {
                     // SAFETY: row.data() retrieves a String previously stored
                     // via set_data() with the same key. Type and key match.
@@ -456,29 +452,29 @@ impl ToolsManagerView {
             });
         }
 
-        if let Some(type_id) = self.type_filter.active_id() {
-            if type_id.as_str() != "all" {
-                tools.retain(|tool| {
-                    let tool_type_str = match tool.tool_type {
-                        ToolType::EndMillFlat => "endmill_flat",
-                        ToolType::EndMillBall => "endmill_ball",
-                        ToolType::EndMillCornerRadius => "endmill_cr",
-                        ToolType::VBit => "vbit",
-                        ToolType::DrillBit => "drill",
-                        ToolType::SpotDrill => "spot",
-                        ToolType::EngravingBit => "engraving",
-                        ToolType::ChamferTool => "chamfer",
-                        ToolType::Specialty => "specialty",
-                    };
-                    tool_type_str == type_id.as_str()
-                });
-            }
+        if let Some(type_id) = self.type_filter.active_id()
+            && type_id.as_str() != "all"
+        {
+            tools.retain(|tool| {
+                let tool_type_str = match tool.tool_type {
+                    ToolType::EndMillFlat => "endmill_flat",
+                    ToolType::EndMillBall => "endmill_ball",
+                    ToolType::EndMillCornerRadius => "endmill_cr",
+                    ToolType::VBit => "vbit",
+                    ToolType::DrillBit => "drill",
+                    ToolType::SpotDrill => "spot",
+                    ToolType::EngravingBit => "engraving",
+                    ToolType::ChamferTool => "chamfer",
+                    ToolType::Specialty => "specialty",
+                };
+                tool_type_str == type_id.as_str()
+            });
         }
 
-        if let Some(mat_id) = self.material_filter.active_id() {
-            if mat_id.as_str() != "all" {
-                tools.retain(|tool| tool.material.to_string() == mat_id.as_str());
-            }
+        if let Some(mat_id) = self.material_filter.active_id()
+            && mat_id.as_str() != "all"
+        {
+            tools.retain(|tool| tool.material.to_string() == mat_id.as_str());
         }
 
         let dia_min_txt = self.dia_min.text().to_string();
@@ -510,6 +506,7 @@ impl ToolsManagerView {
             let row = ListBoxRow::new();
             // SAFETY: set_data stores a String keyed by ROW_TOOL_ID_KEY. The
             // data is valid while the row widget exists in the list.
+            #[allow(unsafe_code)]
             unsafe {
                 row.set_data(ROW_TOOL_ID_KEY, tool.id.0.clone());
             }
@@ -599,10 +596,13 @@ impl ToolsManagerView {
         if let Some(tool) = backend.get_tool(&ToolId(tool_id.to_string())) {
             *self.is_creating.borrow_mut() = false;
             *self.selected_tool.borrow_mut() = Some(tool.clone());
-            if let Ok(mut last) = self.last_selected_tool_id.try_borrow_mut() {
-                *last = Some(tool.id.0.clone());
-            } else {
-                tracing::warn!("last_selected_tool_id already borrowed; skipping update");
+            match self.last_selected_tool_id.try_borrow_mut() {
+                Ok(mut last) => {
+                    *last = Some(tool.id.0.clone());
+                }
+                _ => {
+                    tracing::warn!("last_selected_tool_id already borrowed; skipping update");
+                }
             }
 
             self.edit_id.set_text(&tool.id.0);
@@ -847,20 +847,12 @@ impl ToolsManagerView {
 
         let manufacturer = {
             let text = self.edit_manufacturer.text().trim().to_string();
-            if text.is_empty() {
-                None
-            } else {
-                Some(text)
-            }
+            if text.is_empty() { None } else { Some(text) }
         };
 
         let part_number = {
             let text = self.edit_part_number.text().trim().to_string();
-            if text.is_empty() {
-                None
-            } else {
-                Some(text)
-            }
+            if text.is_empty() { None } else { Some(text) }
         };
 
         let description = Self::read_text_view(&self.edit_description);
@@ -914,6 +906,7 @@ impl ToolsManagerView {
         };
 
         a.id.0 == b.id.0
+            && a.number == b.number
             && a.name == b.name
             && a.description == b.description
             && a.tool_type == b.tool_type
@@ -958,23 +951,16 @@ impl ToolsManagerView {
             return;
         };
 
-        let dialog = gtk4::MessageDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .message_type(gtk4::MessageType::Question)
-            .buttons(gtk4::ButtonsType::YesNo)
-            .text("Discard changes?")
-            .secondary_text("You have unsaved changes. Discard them?")
-            .build();
-
-        dialog.connect_response(move |d, resp| {
-            if resp == gtk4::ResponseType::Yes {
-                on_yes();
-            }
-            d.close();
-        });
-
-        dialog.show();
+        crate::ui::gtk::common::dialog::show_question(
+            "Discard changes?",
+            "You have unsaved changes. Discard them?",
+            Some(&window),
+            move |resp| {
+                if resp == gtk4::ResponseType::Yes {
+                    on_yes();
+                }
+            },
+        );
     }
 
     fn update_save_state(&self) {
@@ -1053,34 +1039,27 @@ impl ToolsManagerView {
             let tool_id = tool.id.clone();
 
             if let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() {
-                let dialog = gtk4::MessageDialog::builder()
-                .transient_for(&window)
-                .modal(true)
-                .message_type(gtk4::MessageType::Warning)
-                .buttons(gtk4::ButtonsType::YesNo)
-                .text("Delete Tool?")
-                .secondary_text(format!(
-                    "Are you sure you want to delete tool '{}' (id: {})?\n\nThis action cannot be undone.",
-                                        tool.name, tool.id.0
-                ))
-                .build();
-
                 let backend = self.backend.clone();
                 let view = self.clone();
 
-                dialog.connect_response(move |d, response| {
-                    if response == gtk4::ResponseType::Yes {
-                        let mut backend_mut = backend.borrow_mut();
-                        backend_mut.remove_tool(&tool_id);
-                        drop(backend_mut);
+                crate::ui::gtk::common::dialog::show_question(
+                    "Delete Tool?",
+                    &format!(
+                        "Are you sure you want to delete tool '{}' (id: {})?\n\nThis action cannot be undone.",
+                        tool.name, tool.id.0
+                    ),
+                    Some(&window),
+                    move |response| {
+                        if response == gtk4::ResponseType::Yes {
+                            let mut backend_mut = backend.borrow_mut();
+                            backend_mut.remove_tool(&tool_id);
+                            drop(backend_mut);
 
-                        view.load_tools();
-                        view.cancel_edit();
-                    }
-                    d.close();
-                });
-
-                dialog.show();
+                            view.load_tools();
+                            view.cancel_edit();
+                        }
+                    },
+                );
             }
         }
     }
@@ -1128,40 +1107,33 @@ impl ToolsManagerView {
             return;
         };
 
-        let dialog = super::file_dialog::open_dialog("Import GTC Package", Some(&window));
+        let dialog = crate::ui::gtk::file_dialog::open_dialog("Import GTC Package");
 
         let backend = self.backend.clone();
         let view = self.clone();
 
-        dialog.connect_response(move |dialog, resp| {
-            if resp == gtk4::ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        let mut backend = backend.borrow_mut();
-                        match backend.import_gtc_package(path) {
-                            Ok(result) => {
-                                view.load_tools();
-                                view.show_info_dialog(
-                                    "Import Complete",
-                                    &format!(
-                                        "Imported: {}\nSkipped: {}\nErrors: {}",
-                                        result.imported_tools.len(),
-                                        result.skipped_tools,
-                                        result.errors.len()
-                                    ),
-                                );
-                            }
-                            Err(e) => {
-                                view.show_error_dialog("Import Failed", &e.to_string());
-                            }
-                        }
+        dialog.pick_open(Some(&window), move |file| {
+            if let Some(path) = file.path() {
+                let mut backend = backend.borrow_mut();
+                match backend.import_gtc_package(path) {
+                    Ok(result) => {
+                        view.load_tools();
+                        view.show_info_dialog(
+                            "Import Complete",
+                            &format!(
+                                "Imported: {}\nSkipped: {}\nErrors: {}",
+                                result.imported_tools.len(),
+                                result.skipped_tools,
+                                result.errors.len()
+                            ),
+                        );
+                    }
+                    Err(e) => {
+                        view.show_error_dialog("Import Failed", &e.to_string());
                     }
                 }
             }
-            dialog.destroy();
         });
-
-        dialog.show();
     }
 
     fn import_gtc_json(&self) {
@@ -1169,40 +1141,33 @@ impl ToolsManagerView {
             return;
         };
 
-        let dialog = super::file_dialog::open_dialog("Import GTC JSON", Some(&window));
+        let dialog = crate::ui::gtk::file_dialog::open_dialog("Import GTC JSON");
 
         let backend = self.backend.clone();
         let view = self.clone();
 
-        dialog.connect_response(move |dialog, resp| {
-            if resp == gtk4::ResponseType::Accept {
-                if let Some(file) = dialog.file() {
-                    if let Some(path) = file.path() {
-                        let mut backend = backend.borrow_mut();
-                        match backend.import_gtc_json(path) {
-                            Ok(result) => {
-                                view.load_tools();
-                                view.show_info_dialog(
-                                    "Import Complete",
-                                    &format!(
-                                        "Imported: {}\nSkipped: {}\nErrors: {}",
-                                        result.imported_tools.len(),
-                                        result.skipped_tools,
-                                        result.errors.len()
-                                    ),
-                                );
-                            }
-                            Err(e) => {
-                                view.show_error_dialog("Import Failed", &e.to_string());
-                            }
-                        }
+        dialog.pick_open(Some(&window), move |file| {
+            if let Some(path) = file.path() {
+                let mut backend = backend.borrow_mut();
+                match backend.import_gtc_json(path) {
+                    Ok(result) => {
+                        view.load_tools();
+                        view.show_info_dialog(
+                            "Import Complete",
+                            &format!(
+                                "Imported: {}\nSkipped: {}\nErrors: {}",
+                                result.imported_tools.len(),
+                                result.skipped_tools,
+                                result.errors.len()
+                            ),
+                        );
+                    }
+                    Err(e) => {
+                        view.show_error_dialog("Import Failed", &e.to_string());
                     }
                 }
             }
-            dialog.destroy();
         });
-
-        dialog.show();
     }
 
     fn export_custom_tools(&self) {
@@ -1228,50 +1193,32 @@ impl ToolsManagerView {
             return;
         };
 
-        let dialog = gtk4::MessageDialog::builder()
-        .transient_for(&window)
-        .modal(true)
-        .message_type(gtk4::MessageType::Warning)
-        .buttons(gtk4::ButtonsType::YesNo)
-        .text("Reset custom tools?")
-        .secondary_text(
-            "This will delete all custom/imported tools and remove local custom tools storage.\n\nContinue?",
-        )
-        .build();
-
         let backend = self.backend.clone();
         let view = self.clone();
 
-        dialog.connect_response(move |d, resp| {
-            if resp == gtk4::ResponseType::Yes {
-                let mut backend = backend.borrow_mut();
-                match backend.reset_custom_tools() {
-                    Ok(_) => {
-                        view.cancel_edit();
-                        view.load_tools();
-                        view.show_info_dialog("Reset Complete", "Custom tools removed.");
+        crate::ui::gtk::common::dialog::show_question(
+            "Reset custom tools?",
+            "This will delete all custom/imported tools and remove local custom tools storage.\n\nContinue?",
+            Some(&window),
+            move |resp| {
+                if resp == gtk4::ResponseType::Yes {
+                    let mut backend = backend.borrow_mut();
+                    match backend.reset_custom_tools() {
+                        Ok(_) => {
+                            view.cancel_edit();
+                            view.load_tools();
+                            view.show_info_dialog("Reset Complete", "Custom tools removed.");
+                        }
+                        Err(e) => view.show_error_dialog("Reset Failed", &e.to_string()),
                     }
-                    Err(e) => view.show_error_dialog("Reset Failed", &e.to_string()),
                 }
-            }
-            d.close();
-        });
-
-        dialog.show();
+            },
+        );
     }
 
     fn show_info_dialog(&self, title: &str, message: &str) {
         if let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() {
-            let dialog = gtk4::MessageDialog::builder()
-                .transient_for(&window)
-                .modal(true)
-                .message_type(gtk4::MessageType::Info)
-                .buttons(gtk4::ButtonsType::Ok)
-                .text(title)
-                .secondary_text(message)
-                .build();
-            dialog.connect_response(|d, _| d.close());
-            dialog.show();
+            crate::ui::gtk::common::dialog::show_info(title, message, Some(&window));
         }
     }
 

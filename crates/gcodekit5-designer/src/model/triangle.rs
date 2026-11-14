@@ -3,7 +3,7 @@
 //! A right isosceles triangle design shape defined by width, height, and center.
 //! Supports rotation and CSG boolean operations.
 
-use lyon::math::{point, Point as LyonPoint, Transform};
+use lyon::math::{Point as LyonPoint, Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
@@ -273,7 +273,7 @@ impl DesignerShape for DesignTriangle {
         // Transformar punto al espacio local
         let dx = p.x - self.center.x;
         let dy = p.y - self.center.y;
-        let angle = -self.rotation;
+        let angle = (-self.rotation).to_radians();
         let rx = dx * angle.cos() - dy * angle.sin();
         let ry = dx * angle.sin() + dy * angle.cos();
 

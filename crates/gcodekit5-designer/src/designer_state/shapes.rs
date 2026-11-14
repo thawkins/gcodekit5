@@ -4,7 +4,7 @@ use super::DesignerState;
 use crate::canvas::DrawingObject;
 use crate::commands::*;
 use crate::model::{DesignPath as PathShape, DesignText as TextShape, DesignerShape, Shape};
-use crate::ops::{perform_boolean, BooleanOp};
+use crate::ops::{BooleanOp, perform_boolean};
 use crate::shapes::OperationType;
 use crate::{Circle, DrawingMode, Ellipse, Line, Point, Rectangle};
 
@@ -45,7 +45,7 @@ impl DesignerState {
         }
 
         if obj.pocket_strategy != default_props.pocket_strategy {
-            obj.pocket_strategy = default_props.pocket_strategy.clone();
+            obj.pocket_strategy = default_props.pocket_strategy;
         }
 
         if (obj.raster_fill_ratio - FACTORY_RASTER_FILL_RATIO).abs() < f64::EPSILON
@@ -231,10 +231,10 @@ impl DesignerState {
         let mut group_map: std::collections::HashMap<u64, Vec<u64>> =
             std::collections::HashMap::new();
         for obj in self.canvas.shapes() {
-            if obj.selected {
-                if let Some(gid) = obj.group_id {
-                    group_map.entry(gid).or_default().push(obj.id);
-                }
+            if obj.selected
+                && let Some(gid) = obj.group_id
+            {
+                group_map.entry(gid).or_default().push(obj.id);
             }
         }
 

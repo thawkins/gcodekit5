@@ -1,9 +1,11 @@
 //! Gerber to G-Code Converter Tool
 
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Paned, ScrolledWindow,
+    Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -13,12 +15,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tracing::warn;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use super::common::{
+    create_dimension_row, set_paned_initial_fraction, track_measurement_system, write_preset_file,
+};
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::gerber::{GerberConverter, GerberLayerType, GerberParameters};
 use gcodekit5_core::units;
-use gcodekit5_core::{shared, SharedHashMap};
+use gcodekit5_core::{SharedHashMap, shared};
 use gcodekit5_settings::SettingsController;
 
 pub struct GerberTool {
@@ -26,7 +30,7 @@ pub struct GerberTool {
 }
 
 struct GerberWidgets {
-    layer_type: ComboBoxText,
+    layer_type: DropDown,
     feed_rate: Entry,
     spindle_speed: Entry,
     board_width: Entry,
@@ -36,6 +40,7 @@ struct GerberWidgets {
     generate_alignment_holes: CheckButton,
     alignment_hole_diameter: Entry,
     alignment_hole_margin: Entry,
+    alignment_hole_depth: Entry,
     cut_depth: Entry,
     safe_z: Entry,
     tool_diameter: Entry,
@@ -175,44 +180,29 @@ impl GerberTool {
         };
 
         file_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some("Open Gerber Directory"),
-                None::<&gtk4::Window>,
-                FileChooserAction::SelectFolder,
-                &[
-                    ("Cancel", ResponseType::Cancel),
-                    ("Select", ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(800, 600);
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Open Gerber Directory");
 
             let lf = layer_files_clone.clone();
             let fl = file_label_clone.clone();
 
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            let map = detect_layers(&path);
-                            *lf.borrow_mut() = map;
-                            fl.set_text(
-                                path.file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("unnamed"),
-                            );
-                        }
-                    }
+            dialog.pick_folder(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    let map = detect_layers(&path);
+                    *lf.borrow_mut() = map;
+                    fl.set_text(
+                        path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unnamed"),
+                    );
                 }
-                d.close();
             });
-            dialog.show();
         });
 
         // Parameters
         let params_group = PreferencesGroup::new();
         params_group.set_title("Parameters");
 
-        let layer_type = ComboBoxText::new();
+        let layer_type = new_text_dropdown();
         layer_type.append(Some("TopCopper"), "Top Copper");
         layer_type.append(Some("BottomCopper"), "Bottom Copper");
         layer_type.append(Some("TopSolderMask"), "Top Solder Mask");
@@ -227,14 +217,16 @@ impl GerberTool {
         layer_row.add_suffix(&layer_type);
         params_group.add(&layer_row);
 
-        let (w_row, board_width, _) = create_dimension_row("Board Width", 100.0, &settings);
+        let (w_row, board_width, board_width_unit) =
+            create_dimension_row("Board Width", 100.0, &settings);
         params_group.add(&w_row);
-        let (h_row, board_height, _) = create_dimension_row("Board Height", 100.0, &settings);
+        let (h_row, board_height, board_height_unit) =
+            create_dimension_row("Board Height", 100.0, &settings);
         params_group.add(&h_row);
 
-        let (ox_row, offset_x, _) = create_dimension_row("Offset X", 0.0, &settings);
+        let (ox_row, offset_x, offset_x_unit) = create_dimension_row("Offset X", 0.0, &settings);
         params_group.add(&ox_row);
-        let (oy_row, offset_y, _) = create_dimension_row("Offset Y", 0.0, &settings);
+        let (oy_row, offset_y, offset_y_unit) = create_dimension_row("Offset Y", 0.0, &settings);
         params_group.add(&oy_row);
 
         let feed_rate = Entry::builder()
@@ -255,16 +247,19 @@ impl GerberTool {
         ss_row.add_suffix(&spindle_speed);
         params_group.add(&ss_row);
 
-        let (cd_row, cut_depth, _) = create_dimension_row("Cut Depth", -0.1, &settings);
+        let (cd_row, cut_depth, cut_depth_unit) =
+            create_dimension_row("Cut Depth", -0.1, &settings);
         params_group.add(&cd_row);
 
-        let (sz_row, safe_z, _) = create_dimension_row("Safe Z", 5.0, &settings);
+        let (sz_row, safe_z, safe_z_unit) = create_dimension_row("Safe Z", 5.0, &settings);
         params_group.add(&sz_row);
 
-        let (td_row, tool_diameter, _) = create_dimension_row("Tool Diameter", 0.1, &settings);
+        let (td_row, tool_diameter, tool_diameter_unit) =
+            create_dimension_row("Tool Diameter", 0.1, &settings);
         params_group.add(&td_row);
 
-        let (iw_row, isolation_width, _) = create_dimension_row("Isolation Width", 0.0, &settings);
+        let (iw_row, isolation_width, isolation_width_unit) =
+            create_dimension_row("Isolation Width", 0.0, &settings);
         params_group.add(&iw_row);
 
         let rubout = CheckButton::builder()
@@ -301,14 +296,42 @@ impl GerberTool {
         ah_row.add_suffix(&generate_alignment_holes);
         align_group.add(&ah_row);
 
-        let (ahd_row, alignment_hole_diameter, _) =
+        let (ahd_row, alignment_hole_diameter, alignment_hole_diameter_unit) =
             create_dimension_row("Hole Diameter", 3.175, &settings);
         align_group.add(&ahd_row);
 
-        let (ahm_row, alignment_hole_margin, _) = create_dimension_row("Margin", 5.0, &settings);
+        let (ahm_row, alignment_hole_margin, alignment_hole_margin_unit) =
+            create_dimension_row("Margin", 5.0, &settings);
         align_group.add(&ahm_row);
 
+        let (ahz_row, alignment_hole_depth, alignment_hole_depth_unit) =
+            create_dimension_row("Drill Depth (Z)", -1.8, &settings);
+        ahz_row.set_subtitle("Negative Z for the alignment holes (through the board)");
+        align_group.add(&ahz_row);
+
         sidebar_box.append(&align_group);
+
+        // Keep displayed dimensions consistent with the measurement system used to
+        // parse them when generating.
+        track_measurement_system(
+            &settings,
+            vec![
+                (board_width.clone(), board_width_unit),
+                (board_height.clone(), board_height_unit),
+                (offset_x.clone(), offset_x_unit),
+                (offset_y.clone(), offset_y_unit),
+                (cut_depth.clone(), cut_depth_unit),
+                (safe_z.clone(), safe_z_unit),
+                (tool_diameter.clone(), tool_diameter_unit),
+                (isolation_width.clone(), isolation_width_unit),
+                (
+                    alignment_hole_diameter.clone(),
+                    alignment_hole_diameter_unit,
+                ),
+                (alignment_hole_margin.clone(), alignment_hole_margin_unit),
+                (alignment_hole_depth.clone(), alignment_hole_depth_unit),
+            ],
+        );
 
         // Left Panel (Description)
         let left_panel = Box::new(Orientation::Vertical, 12);
@@ -374,6 +397,7 @@ impl GerberTool {
             generate_alignment_holes,
             alignment_hole_diameter,
             alignment_hole_margin,
+            alignment_hole_depth,
             cut_depth,
             safe_z,
             tool_diameter,
@@ -527,6 +551,8 @@ impl GerberTool {
                 .unwrap_or(3.175) as f32,
             alignment_hole_margin: units::parse_length(&w.alignment_hole_margin.text(), system)
                 .unwrap_or(5.0) as f32,
+            alignment_hole_depth: units::parse_length(&w.alignment_hole_depth.text(), system)
+                .unwrap_or(-1.8),
             cut_depth: units::parse_length(&w.cut_depth.text(), system).unwrap_or(-0.1) as f32,
             safe_z: units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0) as f32,
             tool_diameter: units::parse_length(&w.tool_diameter.text(), system).unwrap_or(0.1)
@@ -548,68 +574,45 @@ impl GerberTool {
     }
 
     fn save_params(params: &GerberParameters) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Gerber Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
-        dialog.set_current_name("gerber_params.json");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Gerber Parameters");
+        dialog.set_initial_name(Some("gerber_params.json"));
 
         let params_clone = params.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(json) = serde_json::to_string_pretty(&params_clone) {
-                            let _ = fs::write(path, json);
-                        }
-                    }
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                match serde_json::to_string_pretty(&params_clone) {
+                    Ok(json) => write_preset_file(&path, &json),
+                    Err(e) => CamToolsView::show_error_dialog("Save Error", &format!("{}", e)),
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn load_params(w: &Rc<GerberWidgets>, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Gerber Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Gerber Parameters");
 
         let w_clone = w.clone();
         let settings_clone = settings.clone();
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            match serde_json::from_str::<GerberParameters>(&content) {
-                                Ok(params) => {
-                                    Self::apply_params(&w_clone, &params, &settings_clone)
-                                }
-                                Err(e) => warn!("Failed to load parameters: {}", e),
-                            }
-                        }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let loaded = fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|content| {
+                        serde_json::from_str::<GerberParameters>(&content)
+                            .map_err(|e| e.to_string())
+                    });
+                match loaded {
+                    Ok(params) => Self::apply_params(&w_clone, &params, &settings_clone),
+                    Err(e) => {
+                        warn!("Failed to load parameters: {}", e);
+                        CamToolsView::show_error_dialog(
+                            "Load Error",
+                            &format!("{}: {}", path.display(), e),
+                        );
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 
     fn apply_params(w: &GerberWidgets, p: &GerberParameters, settings: &Rc<SettingsController>) {
@@ -643,6 +646,8 @@ impl GerberTool {
             .set_text(&units::format_length(p.alignment_hole_diameter, system));
         w.alignment_hole_margin
             .set_text(&units::format_length(p.alignment_hole_margin, system));
+        w.alignment_hole_depth
+            .set_text(&units::format_length(p.alignment_hole_depth, system));
         w.cut_depth
             .set_text(&units::format_length(p.cut_depth, system));
         w.safe_z.set_text(&units::format_length(p.safe_z, system));

@@ -16,6 +16,7 @@ pub(crate) fn load_gl_func(name: &str) -> *const std::ffi::c_void {
     // subsequent reads are immutable. The FFI calls to epoxy_get_proc_addr
     // and libloading::Library::get are safe because the libraries are valid
     // shared objects loaded by the OS dynamic linker.
+    #[allow(unsafe_code)]
     unsafe {
         EPOXY_INIT.call_once(|| {
             let lib = Library::new("libepoxy.so.0")
@@ -36,29 +37,27 @@ pub(crate) fn load_gl_func(name: &str) -> *const std::ffi::c_void {
                 .get::<unsafe extern "C" fn(*const i8) -> *const std::ffi::c_void>(
                     b"epoxy_get_proc_addr",
                 )
+                && let Ok(c_name) = std::ffi::CString::new(name)
             {
-                if let Ok(c_name) = std::ffi::CString::new(name) {
-                    let ptr = get_proc_addr(c_name.as_ptr());
-                    if !ptr.is_null() {
-                        return ptr;
-                    }
+                let ptr = get_proc_addr(c_name.as_ptr());
+                if !ptr.is_null() {
+                    return ptr;
                 }
             }
             // Fallback: try to load symbol directly from epoxy
-            if let Ok(c_name) = std::ffi::CString::new(name) {
-                if let Ok(sym) = lib.get::<*const std::ffi::c_void>(c_name.as_bytes()) {
-                    return *sym;
-                }
+            if let Ok(c_name) = std::ffi::CString::new(name)
+                && let Ok(sym) = lib.get::<*const std::ffi::c_void>(c_name.as_bytes())
+            {
+                return *sym;
             }
         }
 
         // Try libGL as fallback
-        if let Some(lib) = (*std::ptr::addr_of!(GL_LIB)).as_ref() {
-            if let Ok(c_name) = std::ffi::CString::new(name) {
-                if let Ok(sym) = lib.get::<*const std::ffi::c_void>(c_name.as_bytes()) {
-                    return *sym;
-                }
-            }
+        if let Some(lib) = (*std::ptr::addr_of!(GL_LIB)).as_ref()
+            && let Ok(c_name) = std::ffi::CString::new(name)
+            && let Ok(sym) = lib.get::<*const std::ffi::c_void>(c_name.as_bytes())
+        {
+            return *sym;
         }
 
         std::ptr::null()

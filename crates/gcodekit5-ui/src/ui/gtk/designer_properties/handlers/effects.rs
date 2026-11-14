@@ -1,11 +1,33 @@
 //! Effects property handlers (offset, chamfer with live preview).
 
+use crate::ui::gtk::designer_properties::SharedMeasurementSystem;
+use gcodekit5_core::units;
 use gcodekit5_core::{Shared, SharedOption, SharedVec};
+use gcodekit5_designer::canvas::DrawingObject;
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::Shape;
 use gtk4::prelude::*;
 use gtk4::{Entry, EventControllerFocus};
 use std::rc::Rc;
+
+/// Smallest difference (mm) that counts as a real edit, given that values are shown
+/// with 3 decimals in the active measurement system; anything below is display rounding.
+fn edit_tolerance_mm(system: units::MeasurementSystem) -> f64 {
+    match system {
+        units::MeasurementSystem::Metric => 0.0005 + 1e-9,
+        units::MeasurementSystem::Imperial => 0.0005 * 25.4 + 1e-9,
+    }
+}
+
+/// The parts of a live-preview effect (offset, chamfer) that differ.
+struct Effect {
+    /// The previewed shape for a distance.
+    preview: fn(&Shape, f64) -> Shape,
+    /// The shape's current value of the effect.
+    current: fn(&DrawingObject) -> f64,
+    /// Applies the distance to the selected shapes (one undo step).
+    apply: fn(&mut DesignerState, f64),
+}
 
 /// Setup offset entry handler with preview
 #[allow(clippy::type_complexity)]
@@ -14,92 +36,24 @@ pub fn setup_offset_handler(
     state: Shared<DesignerState>,
     preview_shapes: SharedVec<Shape>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
+    measurement_system: SharedMeasurementSystem,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
 ) {
-    let preview = preview_shapes.clone();
-    let redraw = redraw_callback.clone();
-    let offset_entry_clone = offset_entry.clone();
-    let state_clone = state.clone();
-    let updating_clone = updating.clone();
-
-    // Live preview on change
-    let update_preview = {
-        let state = state_clone.clone();
-        let preview = preview.clone();
-        let redraw = redraw.clone();
-        let offset_entry = offset_entry_clone.clone();
-        let updating = updating_clone.clone();
-        move || {
-            if *updating.borrow() {
-                return;
-            }
-            if let Ok(dist) = offset_entry.text().parse::<f64>() {
-                offset_entry.remove_css_class("entry-invalid");
-                let designer_state = state.borrow();
-                let preview_shapes: Vec<Shape> = designer_state
-                    .canvas
-                    .shapes()
-                    .filter(|s| s.selected)
-                    .map(|s| gcodekit5_designer::ops::perform_offset(&s.shape, dist))
-                    .collect();
-                *preview.borrow_mut() = preview_shapes;
-            } else {
-                offset_entry.add_css_class("entry-invalid");
-                preview.borrow_mut().clear();
-            }
-            if let Some(ref cb) = *redraw.borrow() {
-                cb();
-            }
-        }
-    };
-
-    let update_preview_clone = update_preview.clone();
-    offset_entry.connect_changed(move |_| {
-        update_preview_clone();
-    });
-
-    // Apply on activate (Enter)
-    let state_activate = state.clone();
-    let preview_activate = preview_shapes.clone();
-    let redraw_activate = redraw_callback.clone();
-    let offset_entry_activate = offset_entry.clone();
-    offset_entry.connect_activate(move |_| {
-        if let Ok(dist) = offset_entry_activate.text().parse::<f64>() {
-            let mut designer_state = state_activate.borrow_mut();
-            designer_state.set_offset_selected(dist);
-            preview_activate.borrow_mut().clear();
-            drop(designer_state);
-            if let Some(ref cb) = *redraw_activate.borrow() {
-                cb();
-            }
-        }
-    });
-
-    // Apply on focus out
-    let focus_controller = EventControllerFocus::new();
-    let state_focus = state.clone();
-    let preview_focus = preview_shapes.clone();
-    let redraw_focus = redraw_callback.clone();
-    let offset_entry_focus = offset_entry.clone();
-    let has_focus_enter = has_focus.clone();
-    focus_controller.connect_enter(move |_| {
-        *has_focus_enter.borrow_mut() = true;
-    });
-    let has_focus_leave = has_focus.clone();
-    focus_controller.connect_leave(move |_| {
-        *has_focus_leave.borrow_mut() = false;
-        if let Ok(dist) = offset_entry_focus.text().parse::<f64>() {
-            let mut designer_state = state_focus.borrow_mut();
-            designer_state.set_offset_selected(dist);
-            preview_focus.borrow_mut().clear();
-            drop(designer_state);
-            if let Some(ref cb) = *redraw_focus.borrow() {
-                cb();
-            }
-        }
-    });
-    offset_entry.add_controller(focus_controller);
+    setup_effect_handler(
+        offset_entry,
+        state,
+        preview_shapes,
+        redraw_callback,
+        measurement_system,
+        updating,
+        has_focus,
+        Effect {
+            preview: gcodekit5_designer::ops::perform_offset,
+            current: |o| o.offset,
+            apply: DesignerState::set_offset_selected,
+        },
+    );
 }
 
 /// Setup chamfer entry handler with preview
@@ -109,90 +63,120 @@ pub fn setup_chamfer_handler(
     state: Shared<DesignerState>,
     preview_shapes: SharedVec<Shape>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
+    measurement_system: SharedMeasurementSystem,
     updating: Shared<bool>,
     has_focus: Shared<bool>,
 ) {
-    let preview = preview_shapes.clone();
-    let redraw = redraw_callback.clone();
-    let chamfer_entry_clone = chamfer_entry.clone();
-    let state_clone = state.clone();
-    let updating_clone = updating.clone();
+    setup_effect_handler(
+        chamfer_entry,
+        state,
+        preview_shapes,
+        redraw_callback,
+        measurement_system,
+        updating,
+        has_focus,
+        Effect {
+            preview: gcodekit5_designer::ops::perform_chamfer,
+            current: |o| o.chamfer,
+            apply: DesignerState::set_chamfer_selected,
+        },
+    );
+}
 
-    // Live preview on change
-    let update_preview = {
-        let state = state_clone.clone();
-        let preview = preview.clone();
-        let redraw = redraw.clone();
-        let chamfer_entry = chamfer_entry_clone.clone();
-        let updating = updating_clone.clone();
+/// Wires an effect entry: live preview while typing, and apply on Enter or
+/// when the entry loses focus.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn setup_effect_handler(
+    entry: &Entry,
+    state: Shared<DesignerState>,
+    preview_shapes: SharedVec<Shape>,
+    redraw_callback: SharedOption<Rc<dyn Fn()>>,
+    measurement_system: SharedMeasurementSystem,
+    updating: Shared<bool>,
+    has_focus: Shared<bool>,
+    effect: Effect,
+) {
+    let redraw = {
+        let redraw_callback = redraw_callback.clone();
         move || {
-            if *updating.borrow() {
-                return;
-            }
-            if let Ok(dist) = chamfer_entry.text().parse::<f64>() {
-                chamfer_entry.remove_css_class("entry-invalid");
-                let designer_state = state.borrow();
-                let preview_shapes: Vec<Shape> = designer_state
-                    .canvas
-                    .shapes()
-                    .filter(|s| s.selected)
-                    .map(|s| gcodekit5_designer::ops::perform_chamfer(&s.shape, dist))
-                    .collect();
-                *preview.borrow_mut() = preview_shapes;
-            } else {
-                chamfer_entry.add_css_class("entry-invalid");
-                preview.borrow_mut().clear();
-            }
-            if let Some(ref cb) = *redraw.borrow() {
+            if let Some(ref cb) = *redraw_callback.borrow() {
                 cb();
             }
         }
     };
 
-    let update_preview_clone = update_preview.clone();
-    chamfer_entry.connect_changed(move |_| {
-        update_preview_clone();
-    });
-
-    // Apply on activate (Enter)
-    let state_activate = state.clone();
-    let preview_activate = preview_shapes.clone();
-    let redraw_activate = redraw_callback.clone();
-    let chamfer_entry_activate = chamfer_entry.clone();
-    chamfer_entry.connect_activate(move |_| {
-        if let Ok(dist) = chamfer_entry_activate.text().parse::<f64>() {
-            let mut designer_state = state_activate.borrow_mut();
-            designer_state.set_chamfer_selected(dist);
-            preview_activate.borrow_mut().clear();
-            drop(designer_state);
-            if let Some(ref cb) = *redraw_activate.borrow() {
-                cb();
+    // Live preview on change
+    {
+        let state = state.clone();
+        let preview = preview_shapes.clone();
+        let entry_c = entry.clone();
+        let measurement_system = measurement_system.clone();
+        let redraw = redraw.clone();
+        entry.connect_changed(move |_| {
+            if *updating.borrow() {
+                return;
             }
-        }
-    });
+            let system = measurement_system.get();
+            match units::parse_length(&entry_c.text(), system).map(f64::from) {
+                Ok(dist) => {
+                    entry_c.remove_css_class("entry-invalid");
+                    let designer_state = state.borrow();
+                    *preview.borrow_mut() = designer_state
+                        .canvas
+                        .shapes()
+                        .filter(|s| s.selected)
+                        .map(|s| (effect.preview)(&s.shape, dist))
+                        .collect();
+                }
+                _ => {
+                    entry_c.add_css_class("entry-invalid");
+                    preview.borrow_mut().clear();
+                }
+            }
+            redraw();
+        });
+    }
 
-    // Apply on focus out
+    // Apply the entered value (Enter or focus out).
+    let apply: Rc<dyn Fn()> = {
+        let entry_c = entry.clone();
+        Rc::new(move || {
+            let system = measurement_system.get();
+            if let Ok(dist) = units::parse_length(&entry_c.text(), system).map(f64::from) {
+                preview_shapes.borrow_mut().clear();
+                let mut designer_state = state.borrow_mut();
+                // Only record a change when the value actually differs; otherwise merely
+                // tabbing through the field would push no-op undo entries (and for chamfer,
+                // reset a path's fillet).
+                let changed = designer_state
+                    .canvas
+                    .shapes()
+                    .filter(|s| s.selected)
+                    .any(|s| ((effect.current)(s) - dist).abs() > edit_tolerance_mm(system));
+                if changed {
+                    (effect.apply)(&mut designer_state, dist);
+                }
+                drop(designer_state);
+                redraw();
+            }
+        })
+    };
+
+    {
+        let apply = apply.clone();
+        entry.connect_activate(move |_| apply());
+    }
+
     let focus_controller = EventControllerFocus::new();
-    let state_focus = state.clone();
-    let preview_focus = preview_shapes.clone();
-    let redraw_focus = redraw_callback.clone();
-    let chamfer_entry_focus = chamfer_entry.clone();
-    let has_focus_enter = has_focus.clone();
-    focus_controller.connect_enter(move |_| {
-        *has_focus_enter.borrow_mut() = true;
-    });
-    let has_focus_leave = has_focus.clone();
+    {
+        let has_focus = has_focus.clone();
+        focus_controller.connect_enter(move |_| {
+            *has_focus.borrow_mut() = true;
+        });
+    }
     focus_controller.connect_leave(move |_| {
-        *has_focus_leave.borrow_mut() = false;
-        if let Ok(dist) = chamfer_entry_focus.text().parse::<f64>() {
-            let mut designer_state = state_focus.borrow_mut();
-            designer_state.set_chamfer_selected(dist);
-            preview_focus.borrow_mut().clear();
-            drop(designer_state);
-            if let Some(ref cb) = *redraw_focus.borrow() {
-                cb();
-            }
-        }
+        *has_focus.borrow_mut() = false;
+        apply();
     });
-    chamfer_entry.add_controller(focus_controller);
+    entry.add_controller(focus_controller);
 }

@@ -1,15 +1,150 @@
-//! Toolpath preview generation for the designer canvas
+//! Toolpath preview generation for the designer canvas.
+//!
+//! The preview must match the generated G-code, so the per-shape parameters are
+//! resolved exactly as `DesignerState::generate_gcode_with_warning_info` does:
+//! in CNC mode shapes without custom values use the global/default CAM values and
+//! depths are measured from the stock top; in laser mode the shape's own values apply.
 
 use super::*;
-use gcodekit5_designer::model::{DesignCircle as Circle, DesignerShape, Point, Shape};
+use gcodekit5_designer::canvas::DrawingObject;
+use gcodekit5_designer::model::{DesignPath, DesignerShape, Shape};
 use gcodekit5_designer::shapes::OperationType;
-use gcodekit5_designer::toolpath::Toolpath;
+use gcodekit5_designer::toolpath::{Toolpath, ToolpathGenerator};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
+/// Settings snapshot needed to resolve the effective per-shape CAM parameters.
+struct PreviewSettings {
+    is_cnc_mode: bool,
+    /// Global step down from the tool settings (mm).
+    global_step_down: f64,
+    /// Stock top Z (mm); G-code assumes 10 mm when no stock is configured.
+    stock_top_z: f64,
+    /// Default CAM properties applied to shapes that do not use custom values.
+    defaults: DrawingObject,
+}
+
+impl PreviewSettings {
+    /// Returns the shape with the CAM parameters G-code generation would use.
+    fn effective_object(&self, shape: &DrawingObject) -> DrawingObject {
+        if !self.is_cnc_mode {
+            return shape.clone();
+        }
+        let mut effective = shape.clone();
+        if !shape.use_custom_values {
+            effective.operation_type = self.defaults.operation_type;
+            effective.step_in = self.defaults.step_in;
+            effective.ramp_angle = self.defaults.ramp_angle;
+            effective.pocket_strategy = self.defaults.pocket_strategy;
+            effective.raster_fill_ratio = self.defaults.raster_fill_ratio;
+            effective.step_down = if self.global_step_down > 0.0 {
+                self.global_step_down as f32
+            } else {
+                self.defaults.step_down
+            };
+        }
+        if effective.step_down <= 0.0 {
+            effective.step_down = 0.1;
+        }
+        if effective.pocket_depth < 0.0 {
+            effective.pocket_depth = 0.0;
+        }
+        effective
+    }
+
+    /// Returns `(start_depth, cut_depth)` for the toolpath generator.
+    fn depths(&self, effective: &DrawingObject) -> (f64, f64) {
+        if self.is_cnc_mode {
+            // Machine Z is absolute (table at 0, stock top at stock thickness); passes
+            // start at the stock top and descend to the object's Z.
+            let start_z = self.stock_top_z - effective.start_depth;
+            (self.stock_top_z, (self.stock_top_z - start_z).max(0.0))
+        } else {
+            (effective.start_depth, 0.0)
+        }
+    }
+}
+
+/// Generates the toolpaths for one shape using the same per-shape parameters and
+/// generator calls as G-code generation.
+fn shape_preview_toolpaths(
+    generator: &mut ToolpathGenerator,
+    settings: &PreviewSettings,
+    shape: &DrawingObject,
+) -> Vec<Toolpath> {
+    let obj = settings.effective_object(shape);
+    let (start_depth, cut_depth) = settings.depths(&obj);
+
+    generator.set_pocket_strategy(obj.pocket_strategy);
+    generator.set_start_depth(start_depth);
+    generator.set_cut_depth(cut_depth);
+    generator.set_step_in(obj.step_in as f64);
+    generator.set_ramp_angle(obj.ramp_angle as f64);
+    generator.set_raster_fill_ratio(obj.raster_fill_ratio);
+
+    let is_pocket = obj.operation_type == OperationType::Pocket;
+    let step_down = obj.step_down as f64;
+    let step_in = obj.step_in as f64;
+    let pocket_depth = obj.effective_pocket_depth();
+
+    let effective_shape = obj.get_effective_shape();
+    match &effective_shape {
+        Shape::Rectangle(rect) if is_pocket => {
+            generator.generate_rectangle_pocket(rect, pocket_depth, step_down, step_in)
+        }
+        Shape::Rectangle(rect) => generator.generate_rectangle_contour(rect, step_down),
+        Shape::Circle(circle) if is_pocket => {
+            generator.generate_circle_pocket(circle, pocket_depth, step_down, step_in)
+        }
+        Shape::Circle(circle) => generator.generate_circle_contour(circle, step_down),
+        Shape::Line(line) => generator.generate_line_contour(line, step_down),
+        Shape::Ellipse(ellipse) if is_pocket => {
+            generator.generate_ellipse_pocket(ellipse, pocket_depth, step_down, step_in)
+        }
+        Shape::Ellipse(ellipse) => generator.generate_ellipse_contour(ellipse, step_down),
+        Shape::Path(path) if is_pocket => {
+            generator.generate_path_pocket(path, pocket_depth, step_down, step_in)
+        }
+        Shape::Path(path) => generator.generate_path_contour(path, step_down),
+        Shape::Text(text) if is_pocket => {
+            let pocket = generator.generate_text_pocket_toolpath(text, step_down);
+            let length: f64 = pocket.iter().map(|tp| tp.total_length()).sum();
+            if length <= 1e-9 {
+                // Same fallback as G-code generation: profile the glyphs.
+                generator.generate_text_toolpath(text, step_down)
+            } else {
+                pocket
+            }
+        }
+        Shape::Text(text) => generator.generate_text_toolpath(text, step_down),
+        Shape::Triangle(triangle) if is_pocket => {
+            generator.generate_triangle_pocket(triangle, pocket_depth, step_down, step_in)
+        }
+        Shape::Triangle(triangle) => generator.generate_triangle_contour(triangle, step_down),
+        Shape::Polygon(polygon) if is_pocket => {
+            generator.generate_polygon_pocket(polygon, pocket_depth, step_down, step_in)
+        }
+        Shape::Polygon(polygon) => generator.generate_polygon_contour(polygon, step_down),
+        // Raster images are engraved line by line, not as a vector toolpath.
+        Shape::RasterImage(_) => Vec::new(),
+        // Gears and sprockets go through their rendered outline, as in G-code.
+        Shape::Gear(_) | Shape::Sprocket(_) => {
+            let path = DesignPath::from_lyon_path(&effective_shape.render());
+            if is_pocket {
+                generator.generate_path_pocket(&path, pocket_depth, step_down, step_in)
+            } else {
+                generator.generate_path_contour(&path, step_down)
+            }
+        }
+    }
+}
 
 impl DesignerCanvas {
+    /// Regenerates the toolpath preview in a background thread.
+    ///
+    /// If a generation is already running it is cancelled and restarted once it stops.
     pub fn generate_preview_toolpaths(&self) {
         if self.preview_generating.get() {
             self.preview_pending.set(true);
@@ -22,14 +157,25 @@ impl DesignerCanvas {
 
         let started_at = std::time::Instant::now();
 
-        let (shapes, feed_rate, spindle_speed, tool_diameter, is_cnc_mode) = {
+        let (shapes, feed_rate, spindle_speed, tool_diameter, settings) = {
             let state = self.state.borrow();
+            let settings = PreviewSettings {
+                is_cnc_mode: state.machine_mode()
+                    == gcodekit5_designer::designer_state::MachineMode::Cnc3D,
+                global_step_down: state.tool_settings.step_down,
+                stock_top_z: state
+                    .stock_material
+                    .as_ref()
+                    .map(|s| s.thickness as f64)
+                    .unwrap_or(10.0),
+                defaults: state.default_properties_shape.clone(),
+            };
             (
                 state.canvas.shapes().cloned().collect::<Vec<_>>(),
                 state.tool_settings.feed_rate,
                 state.tool_settings.spindle_speed,
                 state.tool_settings.tool_diameter,
-                state.machine_mode() == gcodekit5_designer::designer_state::MachineMode::Cnc3D,
+                settings,
             )
         };
 
@@ -55,139 +201,18 @@ impl DesignerCanvas {
         let result_arc_thread = result_arc.clone();
 
         std::thread::spawn(move || {
-            use gcodekit5_designer::toolpath::ToolpathGenerator;
-            let mut gen = ToolpathGenerator::new();
-            gen.set_feed_rate(feed_rate);
-            gen.set_spindle_speed(spindle_speed);
-            gen.set_tool_diameter(tool_diameter);
-            gen.set_step_in(tool_diameter * 0.4);
+            let mut generator = ToolpathGenerator::new();
+            generator.set_feed_rate(feed_rate);
+            generator.set_spindle_speed(spindle_speed);
+            generator.set_tool_diameter(tool_diameter);
+            generator.set_step_in(tool_diameter * 0.4);
 
             let mut toolpaths = Vec::new();
-            for shape in shapes {
+            for shape in &shapes {
                 if cancel.load(Ordering::SeqCst) {
                     return;
                 }
-
-                gen.set_pocket_strategy(shape.pocket_strategy);
-                let effective_start_depth = if is_cnc_mode {
-                    shape.start_depth
-                } else {
-                    shape.start_depth
-                };
-                gen.set_start_depth(effective_start_depth);
-                gen.set_cut_depth(shape.pocket_depth);
-                gen.set_step_in(shape.step_in as f64);
-                gen.set_raster_fill_ratio(shape.raster_fill_ratio);
-
-                let effective_shape = shape.get_effective_shape();
-                let shape_toolpaths = match &effective_shape {
-                    Shape::Rectangle(rect) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_rectangle_pocket(
-                                rect,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_rectangle_contour(rect, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Circle(circle) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_circle_pocket(
-                                circle,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_circle_contour(circle, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Line(line) => gen.generate_line_contour(line, shape.step_down as f64),
-                    Shape::Ellipse(ellipse) => {
-                        let (x1, y1, x2, y2) = ellipse.bounds();
-                        let cx = (x1 + x2) / 2.0;
-                        let cy = (y1 + y2) / 2.0;
-                        let radius = ((x2 - x1).abs().max((y2 - y1).abs())) / 2.0;
-                        let circle = Circle::new(Point::new(cx, cy), radius);
-                        gen.generate_circle_contour(&circle, shape.step_down as f64)
-                    }
-                    Shape::Path(path_shape) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_path_pocket(
-                                path_shape,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_path_contour(path_shape, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Text(text) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_text_pocket_toolpath(text, shape.step_down as f64)
-                        } else {
-                            gen.generate_text_toolpath(text, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Triangle(triangle) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_triangle_pocket(
-                                triangle,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_triangle_contour(triangle, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Polygon(polygon) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_polygon_pocket(
-                                polygon,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_polygon_contour(polygon, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Gear(gear) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_gear_pocket(
-                                gear,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_gear_contour(gear, shape.step_down as f64)
-                        }
-                    }
-                    Shape::Sprocket(sprocket) => {
-                        if shape.operation_type == OperationType::Pocket {
-                            gen.generate_sprocket_pocket(
-                                sprocket,
-                                shape.pocket_depth,
-                                shape.step_down as f64,
-                                shape.step_in as f64,
-                            )
-                        } else {
-                            gen.generate_sprocket_contour(sprocket, shape.step_down as f64)
-                        }
-                    }
-
-                    Shape::RasterImage(_) => {
-                        // Raster images do not generate a toolpath in preview.
-                        Vec::new()
-                    }
-                };
-                toolpaths.extend(shape_toolpaths);
+                toolpaths.extend(shape_preview_toolpaths(&mut generator, &settings, shape));
                 done_shapes_thread.fetch_add(1, Ordering::Relaxed);
             }
 
@@ -238,23 +263,23 @@ impl DesignerCanvas {
                 return gtk4::glib::ControlFlow::Break;
             }
 
-            if let Some(mut guard) = result_arc_poll.try_lock() {
-                if let Some(tp) = guard.take() {
-                    if !cancel_poll.load(Ordering::SeqCst) {
-                        *out.borrow_mut() = tp;
-                        canvas.queue_draw();
-                    }
-
-                    generating.set(false);
-                    if let Some(sb) = sb_poll.as_ref() {
-                        sb.set_progress(0.0, "", "");
-                        sb.set_cancel_action(None);
-                    }
-                    if pending.replace(false) {
-                        self_ref.generate_preview_toolpaths();
-                    }
-                    return gtk4::glib::ControlFlow::Break;
+            if let Some(mut guard) = result_arc_poll.try_lock()
+                && let Some(tp) = guard.take()
+            {
+                if !cancel_poll.load(Ordering::SeqCst) {
+                    *out.borrow_mut() = tp;
+                    canvas.queue_draw();
                 }
+
+                generating.set(false);
+                if let Some(sb) = sb_poll.as_ref() {
+                    sb.set_progress(0.0, "", "");
+                    sb.set_cancel_action(None);
+                }
+                if pending.replace(false) {
+                    self_ref.generate_preview_toolpaths();
+                }
+                return gtk4::glib::ControlFlow::Break;
             }
 
             gtk4::glib::ControlFlow::Continue

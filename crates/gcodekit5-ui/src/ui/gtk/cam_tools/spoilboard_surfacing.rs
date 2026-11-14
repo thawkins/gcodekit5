@@ -1,20 +1,23 @@
 //! Spoilboard Surfacing Tool
 
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, Entry, FileChooserAction, FileChooserDialog, Label,
-    Orientation, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, Entry, Label, Orientation, Paned, ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
 use serde_json;
 use std::cell::Cell;
-use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use super::common::{
+    create_dimension_row, load_preset_json, preset_length, save_preset_json,
+    set_paned_initial_fraction,
+};
 use crate::device_status;
+use crate::t;
 use crate::ui::gtk::help_browser;
 use gcodekit5_camtools::spoilboard_surfacing::{
     SpoilboardSurfacingGenerator, SpoilboardSurfacingParameters,
@@ -194,7 +197,6 @@ impl SpoilboardSurfacingTool {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_unit = width_unit.clone();
             let height_unit = height_unit.clone();
@@ -206,14 +208,13 @@ impl SpoilboardSurfacingTool {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -270,15 +271,12 @@ impl SpoilboardSurfacingTool {
                     as f64,
                 stepover_percent: w_gen.stepover_percent.text().parse().unwrap_or(40.0),
                 safe_z: units::parse_length(&w_gen.safe_z.text(), system).unwrap_or(5.0) as f64,
+                home_before_job: home_before,
             };
 
             let generator = SpoilboardSurfacingGenerator::new(params);
             match generator.generate() {
-                Ok(mut gcode) => {
-                    gcode = gcode.replace("$H\n", "").replace("$H", "");
-                    if home_before {
-                        gcode = format!("$H\n{}", gcode);
-                    }
+                Ok(gcode) => {
                     on_generate(gcode);
                 }
                 Err(e) => {
@@ -324,68 +322,49 @@ impl SpoilboardSurfacingTool {
     }
 
     fn save_params(w: &SpoilboardSurfacingWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Save Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Save,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Save", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
-        dialog.set_current_name("surfacing_params.json");
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Save Parameters");
+        dialog.set_initial_name(Some("surfacing_params.json"));
 
         let system = settings.persistence.borrow().config().ui.measurement_system;
-        let w_clone = Rc::new((
-            units::parse_length(&w.width.text(), system).unwrap_or(400.0),
-            units::parse_length(&w.height.text(), system).unwrap_or(300.0),
-            units::parse_length(&w.tool_diameter.text(), system).unwrap_or(25.0),
-            w.feed_rate.text().to_string(),
-            w.spindle_speed.text().to_string(),
-            units::parse_length(&w.cut_depth.text(), system).unwrap_or(1.0),
-            w.stepover_percent.text().to_string(),
-            units::parse_length(&w.safe_z.text(), system).unwrap_or(5.0),
-        ));
-
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        let json = serde_json::json!({
-                            "width": w_clone.0,
-                            "height": w_clone.1,
-                            "tool_diameter": w_clone.2,
-                            "feed_rate": w_clone.3,
-                            "spindle_speed": w_clone.4,
-                            "cut_depth": w_clone.5,
-                            "stepover_percent": w_clone.6,
-                            "safe_z": w_clone.7,
-                        });
-                        let _ = fs::write(
-                            path,
-                            serde_json::to_string_pretty(&json).unwrap_or_default(),
-                        );
-                    }
-                }
+        let values = (|| -> Result<_, String> {
+            Ok((
+                preset_length("width", &w.width, system)?,
+                preset_length("height", &w.height, system)?,
+                preset_length("tool diameter", &w.tool_diameter, system)?,
+                w.feed_rate.text().to_string(),
+                w.spindle_speed.text().to_string(),
+                preset_length("cut depth", &w.cut_depth, system)?,
+                w.stepover_percent.text().to_string(),
+                preset_length("safe z", &w.safe_z, system)?,
+            ))
+        })();
+        let w_clone = match values {
+            Ok(values) => Rc::new(values),
+            Err(e) => {
+                CamToolsView::show_error_dialog(&t!("Save Error"), &e);
+                return;
             }
-            d.close();
-        });
+        };
 
-        dialog.show();
+        dialog.pick_save(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path() {
+                let json = serde_json::json!({
+                    "width": w_clone.0,
+                    "height": w_clone.1,
+                    "tool_diameter": w_clone.2,
+                    "feed_rate": w_clone.3,
+                    "spindle_speed": w_clone.4,
+                    "cut_depth": w_clone.5,
+                    "stepover_percent": w_clone.6,
+                    "safe_z": w_clone.7,
+                });
+                save_preset_json(&path, &json);
+            }
+        });
     }
 
     fn load_params(w: &SpoilboardSurfacingWidgets, settings: &Rc<SettingsController>) {
-        let dialog = FileChooserDialog::new(
-            Some("Load Parameters"),
-            None::<&gtk4::Window>,
-            FileChooserAction::Open,
-            &[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
-            ],
-        );
-        dialog.set_default_size(900, 700);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog("Load Parameters");
 
         let w_clone = Rc::new((
             w.width.clone(),
@@ -399,58 +378,44 @@ impl SpoilboardSurfacingTool {
         ));
         let settings_clone = settings.clone();
 
-        dialog.connect_response(move |d, response| {
-            if response == ResponseType::Accept {
-                if let Some(file) = d.file() {
-                    if let Some(path) = file.path() {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            if let Ok(params) = serde_json::from_str::<serde_json::Value>(&content)
-                            {
-                                let system = settings_clone
-                                    .persistence
-                                    .borrow()
-                                    .config()
-                                    .ui
-                                    .measurement_system;
-                                if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
-                                    w_clone.0.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
-                                    w_clone.1.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) =
-                                    params.get("tool_diameter").and_then(|v| v.as_f64())
-                                {
-                                    w_clone.2.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-                                    w_clone.3.set_text(v);
-                                }
-                                if let Some(v) =
-                                    params.get("spindle_speed").and_then(|v| v.as_str())
-                                {
-                                    w_clone.4.set_text(v);
-                                }
-                                if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
-                                    w_clone.5.set_text(&units::format_length(v as f32, system));
-                                }
-                                if let Some(v) =
-                                    params.get("stepover_percent").and_then(|v| v.as_str())
-                                {
-                                    w_clone.6.set_text(v);
-                                }
-                                if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
-                                    w_clone.7.set_text(&units::format_length(v as f32, system));
-                                }
-                            }
-                        }
+        dialog.pick_open(None::<&gtk4::Window>, move |file| {
+            if let Some(path) = file.path()
+                && let Some(params) = load_preset_json::<serde_json::Value>(&path)
+            {
+                {
+                    let system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    if let Some(v) = params.get("width").and_then(|v| v.as_f64()) {
+                        w_clone.0.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("height").and_then(|v| v.as_f64()) {
+                        w_clone.1.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("tool_diameter").and_then(|v| v.as_f64()) {
+                        w_clone.2.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
+                        w_clone.3.set_text(v);
+                    }
+                    if let Some(v) = params.get("spindle_speed").and_then(|v| v.as_str()) {
+                        w_clone.4.set_text(v);
+                    }
+                    if let Some(v) = params.get("cut_depth").and_then(|v| v.as_f64()) {
+                        w_clone.5.set_text(&units::format_length(v as f32, system));
+                    }
+                    if let Some(v) = params.get("stepover_percent").and_then(|v| v.as_str()) {
+                        w_clone.6.set_text(v);
+                    }
+                    if let Some(v) = params.get("safe_z").and_then(|v| v.as_f64()) {
+                        w_clone.7.set_text(&units::format_length(v as f32, system));
                     }
                 }
             }
-            d.close();
         });
-
-        dialog.show();
     }
 }
 

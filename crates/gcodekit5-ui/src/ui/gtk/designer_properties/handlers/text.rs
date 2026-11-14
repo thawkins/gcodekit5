@@ -1,19 +1,14 @@
 //! Text property handlers (content, font family, size, bold, italic).
 
+use super::{change_selected_with_undo, connect_entry_commit};
 use gcodekit5_core::{Shared, SharedOption};
-use gcodekit5_designer::canvas::DrawingObject;
-use gcodekit5_designer::commands::{ChangeProperty, DesignerCommand};
 use gcodekit5_designer::designer_state::DesignerState;
-use gcodekit5_designer::model::Shape;
+use gcodekit5_designer::model::{DesignText, Shape};
 use gtk4::prelude::*;
 use gtk4::{CheckButton, DropDown, Entry};
 use std::rc::Rc;
 
-const MM_PER_PT: f64 = 25.4 / 72.0;
-
-fn pt_to_mm(pt: f64) -> f64 {
-    pt * MM_PER_PT
-}
+use crate::ui::gtk::designer_canvas::pt_to_mm;
 
 fn parse_font_points_mm(s: &str) -> Option<f64> {
     let s = s.trim().trim_end_matches("pt").trim().replace(',', ".");
@@ -24,85 +19,76 @@ fn parse_font_points_mm(s: &str) -> Option<f64> {
     Some(pt_to_mm(pt))
 }
 
-fn modify_selected_shape_with_undo<F>(designer_state: &mut DesignerState, modifier: F)
+/// Applies `modify` to every selected text shape as one undo step.
+fn modify_selected_text_with_undo<F>(designer_state: &mut DesignerState, name: &str, modify: F)
 where
-    F: FnOnce(&mut DrawingObject),
+    F: Fn(&mut DesignText) -> bool,
 {
-    if let Some(id) = designer_state.canvas.selection_manager.selected_id() {
-        if let Some(old_obj) = designer_state.canvas.get_shape(id) {
-            let old_obj = old_obj.clone();
+    change_selected_with_undo(designer_state, name, |obj| match &mut obj.shape {
+        Shape::Text(text_shape) => modify(text_shape),
+        _ => false,
+    });
+}
 
-            if let Some(obj) = designer_state.canvas.get_shape_mut(id) {
-                modifier(obj);
-                let new_obj = obj.clone();
-
-                let cmd = DesignerCommand::ChangeProperty(ChangeProperty {
-                    id,
-                    old_state: old_obj,
-                    new_state: new_obj,
-                });
-                designer_state.record_command(cmd);
-            }
-        }
+/// Invokes the redraw callback (if any) without holding its borrow during the call.
+#[allow(clippy::type_complexity)]
+fn redraw(redraw_callback: &SharedOption<Rc<dyn Fn()>>) {
+    let cb = redraw_callback.borrow().clone();
+    if let Some(cb) = cb {
+        cb();
     }
 }
 
-/// Setup text content entry handler
+/// Setup text content entry handler (applied on Enter / focus-out).
 #[allow(clippy::type_complexity)]
 pub fn setup_text_content_handler(
     text_entry: &Entry,
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    text_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
+    let apply_state = state.clone();
+    connect_entry_commit(text_entry, state, updating, has_focus, move |entry| {
         let text = entry.text().to_string();
-        let mut designer_state = state.borrow_mut();
-
-        modify_selected_shape_with_undo(&mut designer_state, |obj| {
-            if let Shape::Text(text_shape) = &mut obj.shape {
-                text_shape.text = text;
-            }
+        modify_selected_text_with_undo(&mut apply_state.borrow_mut(), "Change Text", |t| {
+            let changed = t.text != text;
+            t.text = text.clone();
+            changed
         });
-
-        drop(designer_state);
-        if let Some(ref cb) = *redraw_callback.borrow() {
-            cb();
-        }
+        redraw(&redraw_callback);
     });
 }
 
-/// Setup font size entry handler (entered in points, stored in mm)
+/// Setup font size entry handler (entered in points, stored in mm; applied on
+/// Enter / focus-out).
 #[allow(clippy::type_complexity)]
 pub fn setup_font_size_handler(
     font_size_entry: &Entry,
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    font_size_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Some(size_mm) = parse_font_points_mm(&entry.text()) {
-            entry.remove_css_class("entry-invalid");
-            let mut designer_state = state.borrow_mut();
-
-            modify_selected_shape_with_undo(&mut designer_state, |obj| {
-                if let Shape::Text(text_shape) = &mut obj.shape {
-                    text_shape.font_size = size_mm;
-                }
-            });
-
-            drop(designer_state);
-            if let Some(ref cb) = *redraw_callback.borrow() {
-                cb();
+    let apply_state = state.clone();
+    connect_entry_commit(font_size_entry, state, updating, has_focus, move |entry| {
+        match parse_font_points_mm(&entry.text()) {
+            Some(size_mm) => {
+                entry.remove_css_class("entry-invalid");
+                modify_selected_text_with_undo(
+                    &mut apply_state.borrow_mut(),
+                    "Change Font Size",
+                    |t| {
+                        let changed = (t.font_size - size_mm).abs() > f64::EPSILON;
+                        t.font_size = size_mm;
+                        changed
+                    },
+                );
+                redraw(&redraw_callback);
             }
-        } else {
-            entry.add_css_class("entry-invalid");
+            _ => {
+                entry.add_css_class("entry-invalid");
+            }
         }
     });
 }
@@ -133,19 +119,14 @@ pub fn setup_font_family_handler(
         let bold = bold_check.is_active();
         let italic = italic_check.is_active();
 
-        let mut designer_state = state.borrow_mut();
-        let family_clone = family.clone();
-        modify_selected_shape_with_undo(&mut designer_state, |obj| {
-            if let Shape::Text(text_shape) = &mut obj.shape {
-                text_shape.font_family = family_clone;
-                text_shape.bold = bold;
-                text_shape.italic = italic;
-            }
+        modify_selected_text_with_undo(&mut state.borrow_mut(), "Change Font", |t| {
+            let changed = t.font_family != family || t.bold != bold || t.italic != italic;
+            t.font_family = family.clone();
+            t.bold = bold;
+            t.italic = italic;
+            changed
         });
-        drop(designer_state);
-        if let Some(ref cb) = *redraw_callback.borrow() {
-            cb();
-        }
+        redraw(&redraw_callback);
     });
 }
 
@@ -175,19 +156,14 @@ pub fn setup_font_bold_handler(
         let bold = bold_check.is_active();
         let italic = italic_check.is_active();
 
-        let mut designer_state = state.borrow_mut();
-        let family_clone = family.clone();
-        modify_selected_shape_with_undo(&mut designer_state, |obj| {
-            if let Shape::Text(text_shape) = &mut obj.shape {
-                text_shape.font_family = family_clone;
-                text_shape.bold = bold;
-                text_shape.italic = italic;
-            }
+        modify_selected_text_with_undo(&mut state.borrow_mut(), "Change Font", |t| {
+            let changed = t.font_family != family || t.bold != bold || t.italic != italic;
+            t.font_family = family.clone();
+            t.bold = bold;
+            t.italic = italic;
+            changed
         });
-        drop(designer_state);
-        if let Some(ref cb) = *redraw_callback.borrow() {
-            cb();
-        }
+        redraw(&redraw_callback);
     });
 }
 
@@ -217,18 +193,13 @@ pub fn setup_font_italic_handler(
         let bold = bold_check.is_active();
         let italic = italic_check.is_active();
 
-        let mut designer_state = state.borrow_mut();
-        let family_clone = family.clone();
-        modify_selected_shape_with_undo(&mut designer_state, |obj| {
-            if let Shape::Text(text_shape) = &mut obj.shape {
-                text_shape.font_family = family_clone;
-                text_shape.bold = bold;
-                text_shape.italic = italic;
-            }
+        modify_selected_text_with_undo(&mut state.borrow_mut(), "Change Font", |t| {
+            let changed = t.font_family != family || t.bold != bold || t.italic != italic;
+            t.font_family = family.clone();
+            t.bold = bold;
+            t.italic = italic;
+            changed
         });
-        drop(designer_state);
-        if let Some(ref cb) = *redraw_callback.borrow() {
-            cb();
-        }
+        redraw(&redraw_callback);
     });
 }

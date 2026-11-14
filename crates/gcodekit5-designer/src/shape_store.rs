@@ -80,8 +80,15 @@ impl ShapeStore {
     /// but the draw order will have a duplicate entry. Use `remove` first
     /// if replacing an existing shape.
     pub fn insert(&mut self, id: u64, object: DrawingObject) {
-        self.shapes.insert(id, object);
-        self.draw_order.push(id);
+        // Replacing an existing shape must not duplicate it in the draw order.
+        if self.shapes.insert(id, object).is_none() {
+            self.draw_order.push(id);
+        }
+        // Shapes restored with explicit IDs (file load, undo) must never be
+        // overwritten by a later `generate_id()`.
+        if id >= self.next_id {
+            self.next_id = id + 1;
+        }
     }
 
     /// Removes a shape from the store by ID.
@@ -96,13 +103,14 @@ impl ShapeStore {
     ///
     /// The removed `DrawingObject` if it existed, or `None` if not found.
     pub fn remove(&mut self, id: u64) -> Option<DrawingObject> {
-        if let Some(obj) = self.shapes.remove(&id) {
-            if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
-                self.draw_order.remove(pos);
+        match self.shapes.remove(&id) {
+            Some(obj) => {
+                if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
+                    self.draw_order.remove(pos);
+                }
+                Some(obj)
             }
-            Some(obj)
-        } else {
-            None
+            _ => None,
         }
     }
 
@@ -247,10 +255,10 @@ impl ShapeStore {
     ///
     /// * `id` - The ID of the shape to move forward
     pub fn bring_forward(&mut self, id: u64) {
-        if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
-            if pos < self.draw_order.len() - 1 {
-                self.draw_order.swap(pos, pos + 1);
-            }
+        if let Some(pos) = self.draw_order.iter().position(|&x| x == id)
+            && pos < self.draw_order.len() - 1
+        {
+            self.draw_order.swap(pos, pos + 1);
         }
     }
 
@@ -260,10 +268,10 @@ impl ShapeStore {
     ///
     /// * `id` - The ID of the shape to move backward
     pub fn send_backward(&mut self, id: u64) {
-        if let Some(pos) = self.draw_order.iter().position(|&x| x == id) {
-            if pos > 0 {
-                self.draw_order.swap(pos, pos - 1);
-            }
+        if let Some(pos) = self.draw_order.iter().position(|&x| x == id)
+            && pos > 0
+        {
+            self.draw_order.swap(pos, pos - 1);
         }
     }
     /// Sets the next ID to be generated.
@@ -383,31 +391,25 @@ impl ShapeStore {
         let mut groups: std::collections::HashMap<u64, Vec<usize>> =
             std::collections::HashMap::new();
         for (pos, &shape_id) in order.iter().enumerate() {
-            if let Some(obj) = self.shapes.get(&shape_id) {
-                if let Some(gid) = obj.group_id {
-                    groups.entry(gid).or_default().push(pos);
-                }
+            if let Some(obj) = self.shapes.get(&shape_id)
+                && let Some(gid) = obj.group_id
+            {
+                groups.entry(gid).or_default().push(pos);
             }
         }
 
-        for positions in groups.values() {
-            if positions.is_empty() {
-                continue;
-            }
-            let min = *positions.iter().min().unwrap();
-            let max = *positions.iter().max().unwrap();
-            if positions.len() != (max - min + 1) {
-                return true;
-            }
-        }
-        false
+        groups.values().any(
+            |positions| match (positions.iter().min(), positions.iter().max()) {
+                (Some(&min), Some(&max)) => positions.len() != max - min + 1,
+                _ => false,
+            },
+        )
     }
 
     /// Reemplaza el `draw_order` por el dado. No comprueba nada.
     pub fn apply_order(&mut self, new_order: Vec<u64>) {
         self.draw_order = new_order;
     }
-
 }
 
 impl Default for ShapeStore {

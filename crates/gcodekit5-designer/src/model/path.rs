@@ -4,9 +4,9 @@
 //! Used for imported SVG/DXF paths and boolean operation results.
 //! Supports serialization via SVG path data.
 
-use lyon::math::{point, Transform};
-use lyon::path::iterator::*;
+use lyon::math::{Transform, point};
 use lyon::path::Path;
+use lyon::path::iterator::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use csgrs::io::svg::{FromSVG, ToSVG};
@@ -85,10 +85,11 @@ impl DesignPath {
     }
 
     pub fn scale(&mut self, sx: f64, sy: f64, center: Point) {
+        // Move the pivot to the origin, scale, then move it back.
         let transform = Transform::identity()
-            .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32))
+            .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32))
             .then_scale(sx as f32, sy as f32)
-            .then_translate(lyon::math::Vector::new(-center.x as f32, -center.y as f32));
+            .then_translate(lyon::math::Vector::new(center.x as f32, center.y as f32));
         self.transform(&transform);
     }
 
@@ -129,18 +130,16 @@ impl DesignPath {
                     prev_point = Some(to);
                 }
                 lyon::path::Event::End { close, .. } => {
-                    if close {
-                        if let (Some(from), Some(to)) = (prev_point, first_point) {
-                            let dist = distance_to_line_segment(
-                                from.x as f64,
-                                from.y as f64,
-                                to.x as f64,
-                                to.y as f64,
-                                point.x,
-                                point.y,
-                            );
-                            min_distance = min_distance.min(dist);
-                        }
+                    if close && let (Some(from), Some(to)) = (prev_point, first_point) {
+                        let dist = distance_to_line_segment(
+                            from.x as f64,
+                            from.y as f64,
+                            to.x as f64,
+                            to.y as f64,
+                            point.x,
+                            point.y,
+                        );
+                        min_distance = min_distance.min(dist);
                     }
                     prev_point = None;
                     first_point = None;
@@ -1134,7 +1133,28 @@ impl DesignerShape for DesignPath {
         self.sketch.clone()
     }
 
+    /// Returns the bounds of the same geometry [`DesignerShape::render`] draws
+    /// (the stored path, before the render-time `rotation`), so that the rotation
+    /// pivot, hit-testing and toolpaths all agree with what is displayed.
     fn bounds(&self) -> (f64, f64, f64, f64) {
+        if let Some(path) = &self.original_path {
+            let mut min = (f64::INFINITY, f64::INFINITY);
+            let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+            let mut include = |p: lyon::math::Point| {
+                min = (min.0.min(p.x as f64), min.1.min(p.y as f64));
+                max = (max.0.max(p.x as f64), max.1.max(p.y as f64));
+            };
+            for event in path.iter().flattened(0.01) {
+                match event {
+                    lyon::path::Event::Begin { at } => include(at),
+                    lyon::path::Event::Line { to, .. } => include(to),
+                    _ => {}
+                }
+            }
+            if min.0.is_finite() && max.0.is_finite() {
+                return (min.0, min.1, max.0, max.1);
+            }
+        }
         let bb = CSG::bounding_box(&self.sketch);
         (bb.mins.x, bb.mins.y, bb.maxs.x, bb.maxs.y)
     }
@@ -1155,9 +1175,15 @@ impl DesignerShape for DesignPath {
             }
         }
 
-        // Update rotation
-        let angle_deg = (t.m12.atan2(t.m11) as f64).to_degrees();
-        self.rotation += angle_deg;
+        // `rotation` is a render-time rotation applied on top of the stored
+        // geometry (see renderers, ops and G-code generation). The transform
+        // below is baked into the geometry itself, so it must not also be added
+        // to `rotation` (that would rotate the path twice). A reflection does
+        // mirror the sense of any pending render-time rotation, though.
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
+        if det < 0.0 {
+            self.rotation = -self.rotation;
+        }
 
         // Transform the sketch
         let m = Matrix4::new(

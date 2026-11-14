@@ -35,6 +35,7 @@ impl DesignerState {
         design.toolpath_params.spindle_speed = self.tool_settings.spindle_speed as f64;
         design.toolpath_params.tool_diameter = self.tool_settings.tool_diameter;
         design.toolpath_params.cut_depth = self.tool_settings.cut_depth;
+        design.toolpath_params.step_down = self.tool_settings.step_down;
         design.toolpath_params.continuous_z_between_passes =
             self.tool_settings.continuous_z_between_passes;
 
@@ -85,10 +86,10 @@ impl DesignerState {
         }
 
         // Restore default properties
-        if let Some(default_props) = &design.default_properties {
-            if let Ok(obj) = DesignFile::to_drawing_object(default_props, 0) {
-                self.default_properties_shape = obj;
-            }
+        if let Some(default_props) = &design.default_properties
+            && let Ok(obj) = DesignFile::to_drawing_object(default_props, 0)
+        {
+            self.default_properties_shape = obj;
         }
 
         // Restore tool settings
@@ -96,6 +97,13 @@ impl DesignerState {
         self.tool_settings.spindle_speed = design.toolpath_params.spindle_speed as u32;
         self.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
         self.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+        // Machine mode is restored above, so step-down is validated for that mode.
+        // A non-positive value means "unset" (fall back to per-object defaults).
+        if design.toolpath_params.step_down > 0.0 {
+            self.set_step_down(design.toolpath_params.step_down);
+        } else {
+            self.tool_settings.step_down = 0.0;
+        }
         self.tool_settings.continuous_z_between_passes =
             design.toolpath_params.continuous_z_between_passes;
 

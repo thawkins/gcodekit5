@@ -1,9 +1,11 @@
 //! Bitmap Image Engraving Tool
 
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
+use crate::ui::gtk::file_dialog::FileDialogHelpers;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, FileChooserAction, FileChooserDialog,
-    Label, Orientation, Overlay, Paned, ResponseType, ScrolledWindow, Stack,
+    Align, Box, Button, CheckButton, DropDown, Entry, Label, Orientation, Overlay, Paned,
+    ScrolledWindow, Stack,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, PreferencesGroup};
@@ -11,10 +13,13 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use super::common::{create_dimension_row, set_paned_initial_fraction};
 use super::CamToolsView;
+use super::common::{
+    create_dimension_row, set_paned_initial_fraction, show_load_warnings, write_preset_file,
+};
 use crate::t;
 use crate::ui::gtk::help_browser;
+use gcodekit5_camtools::cam_presets::BitmapEngravingPreset;
 use gcodekit5_camtools::laser_engraver::{
     BitmapImageEngraver, EngravingParameters, HalftoneMethod, ImageTransformations, RotationAngle,
     ScanDirection,
@@ -33,13 +38,13 @@ struct BitmapEngravingWidgets {
     power_scale: Entry,
     offset_x: Entry,
     offset_y: Entry,
-    scan_direction: ComboBoxText,
+    scan_direction: DropDown,
     bidirectional: CheckButton,
     invert: CheckButton,
     mirror_x: CheckButton,
     mirror_y: CheckButton,
-    rotation: ComboBoxText,
-    halftone: ComboBoxText,
+    rotation: DropDown,
+    halftone: DropDown,
     halftone_dot_size: Entry,
     halftone_threshold: Entry,
     image_path: Entry,
@@ -163,7 +168,7 @@ impl BitmapEngravingTool {
         let (offset_y_row, offset_y, offset_y_unit) =
             create_dimension_row("Offset Y:", 10.0, &settings);
 
-        let scan_direction = ComboBoxText::new();
+        let scan_direction = new_text_dropdown();
         scan_direction.append(Some("0"), "Horizontal");
         scan_direction.append(Some("1"), "Vertical");
         scan_direction.set_active_id(Some("0"));
@@ -186,7 +191,7 @@ impl BitmapEngravingTool {
             .valign(Align::Center)
             .build();
 
-        let rotation = ComboBoxText::new();
+        let rotation = new_text_dropdown();
         rotation.append(Some("0"), "0°");
         rotation.append(Some("90"), "90°");
         rotation.append(Some("180"), "180°");
@@ -194,7 +199,7 @@ impl BitmapEngravingTool {
         rotation.set_active_id(Some("0"));
         rotation.set_valign(Align::Center);
 
-        let halftone = ComboBoxText::new();
+        let halftone = new_text_dropdown();
         halftone.append(Some("none"), "None");
         halftone.append(Some("threshold"), "Threshold");
         halftone.append(Some("bayer"), "Bayer 4x4");
@@ -247,7 +252,14 @@ impl BitmapEngravingTool {
         let transform_group = PreferencesGroup::builder()
             .title(t!("Image Transformations"))
             .build();
-        let invert_row = ActionRow::builder().title(t!("Invert:")).build();
+        invert.set_tooltip_text(Some(&t!(
+            "Off (default): dark areas get more laser power, so a photo engraves as a positive. \
+             On: engrave the light areas instead (negative)."
+        )));
+        let invert_row = ActionRow::builder()
+            .title(t!("Invert:"))
+            .subtitle(t!("Engrave light areas instead of dark ones"))
+            .build();
         invert_row.add_suffix(&invert);
         transform_group.add(&invert_row);
         let mirror_x_row = ActionRow::builder().title(t!("Mirror X:")).build();
@@ -273,6 +285,9 @@ impl BitmapEngravingTool {
 
         let home_row = ActionRow::builder()
             .title(t!("Home Device Before Start"))
+            .subtitle(t!(
+                "Runs $H, then engraves from the G54 work zero you set. The engraver never moves Z."
+            ))
             .build();
         home_row.add_suffix(&home_before);
         offset_group.add(&home_row);
@@ -333,7 +348,6 @@ impl BitmapEngravingTool {
 
         // Unit update listener
         {
-            let settings_clone = settings.clone();
             let w = widgets.clone();
             let width_mm_unit = width_mm_unit.clone();
             let offset_x_unit = offset_x_unit.clone();
@@ -343,14 +357,13 @@ impl BitmapEngravingTool {
                 settings.persistence.borrow().config().ui.measurement_system,
             ));
 
-            settings.on_setting_changed(move |key, _| {
+            settings.on_setting_changed(move |key, value| {
                 if key == "measurement_system" {
-                    let new_system = settings_clone
-                        .persistence
-                        .borrow()
-                        .config()
-                        .ui
-                        .measurement_system;
+                    // Listeners fire when the setting is edited, before it is saved to
+                    // persistence, so the new system must be taken from `value`.
+                    let Ok(new_system) = value.parse::<units::MeasurementSystem>() else {
+                        return;
+                    };
                     let old_system = last_system.get();
 
                     if new_system != old_system {
@@ -376,16 +389,7 @@ impl BitmapEngravingTool {
         // Load Image Button
         let w_load_image = widgets.clone();
         load_image_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some(&t!("Select Image")),
-                None::<&gtk4::Window>,
-                FileChooserAction::Open,
-                &[
-                    (&t!("Cancel"), ResponseType::Cancel),
-                    (&t!("Open"), ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(900, 700);
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Select Image"));
 
             let filter = gtk4::FileFilter::new();
             filter.set_name(Some("Image Files"));
@@ -397,60 +401,57 @@ impl BitmapEngravingTool {
             dialog.add_filter(&filter);
 
             let w_clone = w_load_image.clone();
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            w_clone.image_path.set_text(&path.display().to_string());
+            dialog.pick_open(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    w_clone.image_path.set_text(&path.display().to_string());
 
-                            // Show spinner and load preview in background
-                            w_clone.preview_spinner.set_visible(true);
-                            w_clone.preview_spinner.start();
+                    // Show spinner and load preview in background
+                    w_clone.preview_spinner.set_visible(true);
+                    w_clone.preview_spinner.start();
 
-                            let preview_img = w_clone.preview_image.clone();
-                            let spinner = w_clone.preview_spinner.clone();
-                            let path_clone = path.clone();
+                    let preview_img = w_clone.preview_image.clone();
+                    let spinner = w_clone.preview_spinner.clone();
+                    let path_clone = path.clone();
 
-                            let (tx, rx) = std::sync::mpsc::channel();
+                    let (tx, rx) = std::sync::mpsc::channel();
 
-                            std::thread::spawn(move || {
-                                let file = gtk4::gio::File::for_path(&path_clone);
-                                let texture_result = gtk4::gdk::Texture::from_file(&file);
-                                let _ = tx.send(texture_result);
-                            });
+                    std::thread::spawn(move || {
+                        let file = gtk4::gio::File::for_path(&path_clone);
+                        let texture_result = gtk4::gdk::Texture::from_file(&file);
+                        let _ = tx.send(texture_result);
+                    });
 
-                            glib::timeout_add_local(
-                                std::time::Duration::from_millis(50),
-                                move || {
-                                    if let Ok(texture_result) = rx.try_recv() {
-                                        spinner.stop();
-                                        spinner.set_visible(false);
+                    glib::timeout_add_local(std::time::Duration::from_millis(50), move || match rx
+                        .try_recv()
+                    {
+                        Ok(texture_result) => {
+                            spinner.stop();
+                            spinner.set_visible(false);
 
-                                        if let Ok(texture) = texture_result {
-                                            preview_img.set_paintable(Some(&texture));
-                                        }
-                                        glib::ControlFlow::Break
-                                    } else {
-                                        glib::ControlFlow::Continue
-                                    }
-                                },
-                            );
+                            if let Ok(texture) = texture_result {
+                                preview_img.set_paintable(Some(&texture));
+                            }
+                            glib::ControlFlow::Break
                         }
-                    }
+                        _ => glib::ControlFlow::Continue,
+                    });
                 }
-                d.close();
             });
-
-            dialog.show();
         });
 
         // Connect Generate
         let w_gen = widgets.clone();
         let on_gen = on_generate.clone();
+        let settings_gen = settings.clone();
         generate_btn.connect_clicked(move |_| {
-            let params = Self::collect_params(&w_gen);
+            let system = settings_gen
+                .persistence
+                .borrow()
+                .config()
+                .ui
+                .measurement_system;
+            let params = Self::collect_params(&w_gen, system);
             let image_path = w_gen.image_path.text().to_string();
-            let home_before = w_gen.home_before.is_active();
 
             if image_path.is_empty() {
                 CamToolsView::show_error_dialog(
@@ -489,7 +490,7 @@ impl BitmapEngravingTool {
             vbox.append(&button_box);
 
             progress_window.set_child(Some(&vbox));
-            progress_window.show();
+            progress_window.present();
 
             // Clone what we need
             let image_path_thread = image_path.clone();
@@ -505,40 +506,47 @@ impl BitmapEngravingTool {
 
             // Cancel button handler
             let cancel_tx_clone = cancel_tx.clone();
-            cancel_button.connect_clicked(move |_| {
-                let _ = cancel_tx_clone.send(());
-            });
+            // Cancelling (button or window close) discards the result; the worker
+            // thread cannot be interrupted mid-generation, so its output is ignored.
+            let cancelled = Rc::new(Cell::new(false));
+            {
+                let cancelled = cancelled.clone();
+                progress_window.connect_close_request(move |_| {
+                    cancelled.set(true);
+                    glib::Propagation::Proceed
+                });
+            }
+            {
+                let progress_window = progress_window.clone();
+                cancel_button.connect_clicked(move |_| {
+                    let _ = cancel_tx_clone.send(());
+                    progress_window.close();
+                });
+            }
 
             // Spawn background thread for generation
             std::thread::spawn(move || {
-                let result = BitmapImageEngraver::from_file(&image_path_thread, params)
-                    .and_then(|engraver| {
+                let result = BitmapImageEngraver::from_file(&image_path_thread, params).and_then(
+                    |engraver| {
                         engraver.generate_gcode_with_progress(|progress| {
                             if cancel_rx.try_recv().is_ok() {
                                 return; // Abort
                             }
                             let _ = progress_tx.send(progress);
                         })
-                    })
-                    .map(|gcode| {
-                        // If homing check button is active
-                        if home_before {
-                            let target_position = "G17 ; XY plane selection\n\n";
-                            let homing_block = "G17 ; XY plane selection\n\n; Home device\n$H ; Home all axes (bottom-left corner)\n\n";
-
-                            gcode.replace(target_position, homing_block)
-                        } else {
-                            gcode
-                        }
-                    });
+                    },
+                );
 
                 // Send result back
                 let _ = result_tx.send(result);
             });
 
-
             // Poll for progress and result on main thread
+            let cancelled_poll = cancelled.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                if cancelled_poll.get() {
+                    return glib::ControlFlow::Break;
+                }
                 // Check for progress updates
                 while let Ok(progress) = progress_rx.try_recv() {
                     progress_bar_clone.set_fraction(progress as f64);
@@ -555,93 +563,97 @@ impl BitmapEngravingTool {
                 }
 
                 // Check for result
-                if let Ok(result) = result_rx.try_recv() {
-                    progress_window_clone.close();
+                match result_rx.try_recv() {
+                    Ok(result) => {
+                        progress_window_clone.close();
 
-                    match result {
-                        Ok(gcode) => {
-                            on_gen_clone(gcode);
+                        match result {
+                            Ok(gcode) => {
+                                on_gen_clone(gcode);
+                            }
+                            Err(e) => {
+                                CamToolsView::show_error_dialog(
+                                    &t!("Engraving Generation Failed"),
+                                    &format!("{}: {}", t!("Failed to generate engraving"), e),
+                                );
+                            }
                         }
-                        Err(e) => {
-                            CamToolsView::show_error_dialog(
-                                &t!("Engraving Generation Failed"),
-                                &format!("{}: {}", t!("Failed to generate engraving"), e),
-                            );
-                        }
+                        glib::ControlFlow::Break
                     }
-                    glib::ControlFlow::Break
-                } else {
-                    glib::ControlFlow::Continue
+                    _ => glib::ControlFlow::Continue,
                 }
             });
         });
 
         // Save params
         let w_save = widgets.clone();
+        let settings_save = settings.clone();
         save_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some(&t!("Save Parameters")),
-                None::<&gtk4::Window>,
-                FileChooserAction::Save,
-                &[
-                    (&t!("Cancel"), ResponseType::Cancel),
-                    (&t!("Save"), ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(900, 700);
-            dialog.set_current_name("bitmap_params.json");
-
-            let w_clone = w_save.clone();
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            let params = Self::collect_params_for_save(&w_clone);
-                            if let Ok(json) = serde_json::to_string_pretty(&params) {
-                                let _ = fs::write(path, json);
-                            }
-                        }
-                    }
+            let system = settings_save
+                .persistence
+                .borrow()
+                .config()
+                .ui
+                .measurement_system;
+            let json = match Self::collect_preset(&w_save, system)
+                .and_then(|p| p.to_json().map_err(|e| e.to_string()))
+            {
+                Ok(json) => json,
+                Err(e) => {
+                    CamToolsView::show_error_dialog(&t!("Save Error"), &e);
+                    return;
                 }
-                d.close();
-            });
+            };
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Save Parameters"));
+            dialog.set_initial_name(Some("bitmap_params.json"));
 
-            dialog.show();
+            dialog.pick_save(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    write_preset_file(&path, &json);
+                }
+            });
         });
 
         // Load params
         let w_load = widgets.clone();
+        let settings_load = settings.clone();
         load_btn.connect_clicked(move |_| {
-            let dialog = FileChooserDialog::new(
-                Some(&t!("Load Parameters")),
-                None::<&gtk4::Window>,
-                FileChooserAction::Open,
-                &[
-                    (&t!("Cancel"), ResponseType::Cancel),
-                    (&t!("Open"), ResponseType::Accept),
-                ],
-            );
-            dialog.set_default_size(900, 700);
+            let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Load Parameters"));
 
             let w_clone = w_load.clone();
-            dialog.connect_response(move |d, response| {
-                if response == ResponseType::Accept {
-                    if let Some(file) = d.file() {
-                        if let Some(path) = file.path() {
-                            if let Ok(content) = fs::read_to_string(path) {
-                                if let Ok(params) =
-                                    serde_json::from_str::<serde_json::Value>(&content)
-                                {
-                                    Self::apply_params(&w_clone, &params);
-                                }
-                            }
+            let settings_clone = settings_load.clone();
+            dialog.pick_open(None::<&gtk4::Window>, move |file| {
+                if let Some(path) = file.path() {
+                    // Old files stored display text without a unit; they are read in the
+                    // current measurement system (as before) and flagged in a warning.
+                    let system = settings_clone
+                        .persistence
+                        .borrow()
+                        .config()
+                        .ui
+                        .measurement_system;
+                    let loaded = fs::read_to_string(&path)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|json| BitmapEngravingPreset::from_json(&json, system));
+                    match loaded {
+                        Ok(loaded) => {
+                            Self::apply_preset(&w_clone, &loaded.preset, system);
+                            show_load_warnings(&loaded.warnings);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "Failed to load bitmap preset"
+                            );
+                            CamToolsView::show_error_dialog(
+                                &t!("Load Error"),
+                                &format!("{}: {}", path.display(), e),
+                            );
                         }
                     }
                 }
-                d.close();
             });
-
-            dialog.show();
         });
 
         // Cancel
@@ -665,7 +677,10 @@ impl BitmapEngravingTool {
         row
     }
 
-    fn collect_params(w: &BitmapEngravingWidgets) -> EngravingParameters {
+    fn collect_params(
+        w: &BitmapEngravingWidgets,
+        system: units::MeasurementSystem,
+    ) -> EngravingParameters {
         let rotation = match w.rotation.active_id().as_ref().map(|s| s.as_str()) {
             Some("90") => RotationAngle::Degrees90,
             Some("180") => RotationAngle::Degrees180,
@@ -689,7 +704,8 @@ impl BitmapEngravingTool {
             };
 
         EngravingParameters {
-            width_mm: w.width_mm.text().parse().unwrap_or(100.0),
+            // Dimension entries are shown in the current measurement system.
+            width_mm: units::parse_length(&w.width_mm.text(), system).unwrap_or(100.0),
             height_mm: None,
             feed_rate: w.feed_rate.text().parse().unwrap_or(1000.0),
             travel_rate: w.travel_rate.text().parse().unwrap_or(3000.0),
@@ -709,60 +725,132 @@ impl BitmapEngravingTool {
                 halftone_threshold: w.halftone_threshold.text().parse().unwrap_or(127),
                 invert: w.invert.is_active(),
             },
-            offset_x: w.offset_x.text().parse().unwrap_or(10.0),
-            offset_y: w.offset_y.text().parse().unwrap_or(10.0),
+            offset_x: units::parse_length(&w.offset_x.text(), system).unwrap_or(10.0),
+            offset_y: units::parse_length(&w.offset_y.text(), system).unwrap_or(10.0),
             num_axes: crate::device_status::get_active_num_axes(),
-            home_before: false,
+            home_before_job: w.home_before.is_active(),
         }
     }
 
-    fn collect_params_for_save(w: &BitmapEngravingWidgets) -> serde_json::Value {
-        serde_json::json!({
-            "image_path": w.image_path.text().to_string(),
-            "width_mm": w.width_mm.text().to_string(),
-            "feed_rate": w.feed_rate.text().to_string(),
-            "travel_rate": w.travel_rate.text().to_string(),
-            "min_power": w.min_power.text().to_string(),
-            "max_power": w.max_power.text().to_string(),
-            "pixels_per_mm": w.pixels_per_mm.text().to_string(),
-            "line_spacing": w.line_spacing.text().to_string(),
-            "power_scale": w.power_scale.text().to_string(),
-            "offset_x": w.offset_x.text().to_string(),
-            "offset_y": w.offset_y.text().to_string(),
-            "scan_direction": w.scan_direction.active_id().unwrap_or_default().to_string(),
-            "bidirectional": w.bidirectional.is_active(),
-            "invert": w.invert.is_active(),
-            "mirror_x": w.mirror_x.is_active(),
-            "mirror_y": w.mirror_y.is_active(),
-            "rotation": w.rotation.active_id().unwrap_or_default().to_string(),
-            "halftone": w.halftone.active_id().unwrap_or_default().to_string(),
-            "halftone_dot_size": w.halftone_dot_size.text().to_string(),
-            "halftone_threshold": w.halftone_threshold.text().to_string(),
-        })
+    /// Read the form into a preset with all lengths converted to mm.
+    ///
+    /// # Returns
+    /// The preset, or the list of fields that could not be parsed.
+    fn collect_preset(
+        w: &BitmapEngravingWidgets,
+        system: units::MeasurementSystem,
+    ) -> Result<BitmapEngravingPreset, String> {
+        let mut invalid: Vec<&str> = Vec::new();
+        let mut len = |e: &Entry, name: &'static str| match units::parse_length(&e.text(), system) {
+            Ok(v) if v.is_finite() => v,
+            _ => {
+                invalid.push(name);
+                0.0
+            }
+        };
+        let width_mm = len(&w.width_mm, "Width");
+        let offset_x = len(&w.offset_x, "Offset X");
+        let offset_y = len(&w.offset_y, "Offset Y");
+        fn num<T: std::str::FromStr + Default>(
+            e: &Entry,
+            name: &'static str,
+            invalid: &mut Vec<&'static str>,
+        ) -> T {
+            e.text().trim().parse::<T>().unwrap_or_else(|_| {
+                invalid.push(name);
+                T::default()
+            })
+        }
+        let preset = BitmapEngravingPreset {
+            image_path: w.image_path.text().to_string(),
+            width_mm,
+            feed_rate: num(&w.feed_rate, "Feed Rate", &mut invalid),
+            travel_rate: num(&w.travel_rate, "Travel Rate", &mut invalid),
+            min_power: num(&w.min_power, "Min Power", &mut invalid),
+            max_power: num(&w.max_power, "Max Power", &mut invalid),
+            pixels_per_mm: num(&w.pixels_per_mm, "Pixels per mm", &mut invalid),
+            line_spacing: num(&w.line_spacing, "Line Spacing", &mut invalid),
+            power_scale: num(&w.power_scale, "Power Scale", &mut invalid),
+            offset_x,
+            offset_y,
+            scan_direction: w.scan_direction.active_id().unwrap_or_default().to_string(),
+            bidirectional: w.bidirectional.is_active(),
+            invert: w.invert.is_active(),
+            mirror_x: w.mirror_x.is_active(),
+            mirror_y: w.mirror_y.is_active(),
+            rotation: w.rotation.active_id().unwrap_or_default().to_string(),
+            halftone: w.halftone.active_id().unwrap_or_default().to_string(),
+            halftone_dot_size: num(&w.halftone_dot_size, "Dot Size", &mut invalid),
+            halftone_threshold: num(&w.halftone_threshold, "Threshold", &mut invalid),
+            home_before_job: w.home_before.is_active(),
+            ..BitmapEngravingPreset::default()
+        };
+        if invalid.is_empty() {
+            Ok(preset)
+        } else {
+            Err(format!("Please correct: {}", invalid.join(", ")))
+        }
     }
 
-    fn apply_params(w: &BitmapEngravingWidgets, params: &serde_json::Value) {
-        if let Some(image_path) = params.get("image_path").and_then(|v| v.as_str()) {
-            w.image_path.set_text(image_path);
+    /// Fill the form from a preset (lengths in mm, shown in `system`).
+    fn apply_preset(
+        w: &BitmapEngravingWidgets,
+        p: &BitmapEngravingPreset,
+        system: units::MeasurementSystem,
+    ) {
+        if !p.image_path.is_empty() {
+            Self::load_image_preview(w, &p.image_path);
+        }
+        w.width_mm
+            .set_text(&units::format_length(p.width_mm, system));
+        w.feed_rate.set_text(&p.feed_rate.to_string());
+        w.travel_rate.set_text(&p.travel_rate.to_string());
+        w.min_power.set_text(&p.min_power.to_string());
+        w.max_power.set_text(&p.max_power.to_string());
+        w.pixels_per_mm.set_text(&p.pixels_per_mm.to_string());
+        w.line_spacing.set_text(&p.line_spacing.to_string());
+        w.power_scale.set_text(&p.power_scale.to_string());
+        w.offset_x
+            .set_text(&units::format_length(p.offset_x, system));
+        w.offset_y
+            .set_text(&units::format_length(p.offset_y, system));
+        w.scan_direction.set_active_id(Some(&p.scan_direction));
+        w.bidirectional.set_active(p.bidirectional);
+        w.invert.set_active(p.invert);
+        w.mirror_x.set_active(p.mirror_x);
+        w.mirror_y.set_active(p.mirror_y);
+        w.rotation.set_active_id(Some(&p.rotation));
+        w.halftone.set_active_id(Some(&p.halftone));
+        w.halftone_dot_size
+            .set_text(&p.halftone_dot_size.to_string());
+        w.halftone_threshold
+            .set_text(&p.halftone_threshold.to_string());
+        w.home_before.set_active(p.home_before_job);
+    }
 
-            // Show spinner and load preview in background
-            w.preview_spinner.set_visible(true);
-            w.preview_spinner.start();
+    /// Show `path` in the preview, loading it on a worker thread.
+    fn load_image_preview(w: &BitmapEngravingWidgets, image_path: &str) {
+        w.image_path.set_text(image_path);
 
-            let preview_img = w.preview_image.clone();
-            let spinner = w.preview_spinner.clone();
-            let path = image_path.to_string();
+        // Show spinner and load preview in background
+        w.preview_spinner.set_visible(true);
+        w.preview_spinner.start();
 
-            let (tx, rx) = std::sync::mpsc::channel();
+        let preview_img = w.preview_image.clone();
+        let spinner = w.preview_spinner.clone();
+        let path = image_path.to_string();
 
-            std::thread::spawn(move || {
-                let file = gtk4::gio::File::for_path(&path);
-                let texture_result = gtk4::gdk::Texture::from_file(&file);
-                let _ = tx.send(texture_result);
-            });
+        let (tx, rx) = std::sync::mpsc::channel();
 
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                if let Ok(texture_result) = rx.try_recv() {
+        std::thread::spawn(move || {
+            let file = gtk4::gio::File::for_path(&path);
+            let texture_result = gtk4::gdk::Texture::from_file(&file);
+            let _ = tx.send(texture_result);
+        });
+
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            match rx.try_recv() {
+                Ok(texture_result) => {
                     spinner.stop();
                     spinner.set_visible(false);
 
@@ -770,67 +858,9 @@ impl BitmapEngravingTool {
                         preview_img.set_paintable(Some(&texture));
                     }
                     glib::ControlFlow::Break
-                } else {
-                    glib::ControlFlow::Continue
                 }
-            });
-        }
-        if let Some(v) = params.get("width_mm").and_then(|v| v.as_str()) {
-            w.width_mm.set_text(v);
-        }
-        if let Some(v) = params.get("feed_rate").and_then(|v| v.as_str()) {
-            w.feed_rate.set_text(v);
-        }
-        if let Some(v) = params.get("travel_rate").and_then(|v| v.as_str()) {
-            w.travel_rate.set_text(v);
-        }
-        if let Some(v) = params.get("min_power").and_then(|v| v.as_str()) {
-            w.min_power.set_text(v);
-        }
-        if let Some(v) = params.get("max_power").and_then(|v| v.as_str()) {
-            w.max_power.set_text(v);
-        }
-        if let Some(v) = params.get("pixels_per_mm").and_then(|v| v.as_str()) {
-            w.pixels_per_mm.set_text(v);
-        }
-        if let Some(v) = params.get("line_spacing").and_then(|v| v.as_str()) {
-            w.line_spacing.set_text(v);
-        }
-        if let Some(v) = params.get("power_scale").and_then(|v| v.as_str()) {
-            w.power_scale.set_text(v);
-        }
-        if let Some(v) = params.get("offset_x").and_then(|v| v.as_str()) {
-            w.offset_x.set_text(v);
-        }
-        if let Some(v) = params.get("offset_y").and_then(|v| v.as_str()) {
-            w.offset_y.set_text(v);
-        }
-        if let Some(v) = params.get("scan_direction").and_then(|v| v.as_str()) {
-            w.scan_direction.set_active_id(Some(v));
-        }
-        if let Some(v) = params.get("bidirectional").and_then(|v| v.as_bool()) {
-            w.bidirectional.set_active(v);
-        }
-        if let Some(v) = params.get("invert").and_then(|v| v.as_bool()) {
-            w.invert.set_active(v);
-        }
-        if let Some(v) = params.get("mirror_x").and_then(|v| v.as_bool()) {
-            w.mirror_x.set_active(v);
-        }
-        if let Some(v) = params.get("mirror_y").and_then(|v| v.as_bool()) {
-            w.mirror_y.set_active(v);
-        }
-        if let Some(v) = params.get("rotation").and_then(|v| v.as_str()) {
-            w.rotation.set_active_id(Some(v));
-        }
-        if let Some(v) = params.get("halftone").and_then(|v| v.as_str()) {
-            w.halftone.set_active_id(Some(v));
-        }
-        if let Some(v) = params.get("halftone_dot_size").and_then(|v| v.as_str()) {
-            w.halftone_dot_size.set_text(v);
-        }
-        if let Some(v) = params.get("halftone_threshold").and_then(|v| v.as_str()) {
-            w.halftone_threshold.set_text(v);
-        }
+                _ => glib::ControlFlow::Continue,
+            }
+        });
     }
 }

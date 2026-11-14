@@ -4,49 +4,26 @@
 //! Supported controllers:
 //! - GRBL: Open-source CNC control software
 //! - Repetier: 3D printer firmware with its own line processor and flow-control sender
-//! Supported via GRBL
+//!
+//! Supported via GRBL:
 //! - FluidNC: Powerful open-source CNC control
 //! - grblHAL: Enhanced GRBL with additional features
-//! Planned but not supported
+//!
+//! Planned but not supported:
 //! - TinyG: CNC control for 3D printers and engravers
 //! - g2core: Next generation of TinyG
 //! - Smoothieware: CNC control software
 //! - Marlin: 3D printer firmware
 
-pub mod capabilities;
-pub mod connection_watch;
-pub mod device_status;
-pub mod file_service;
-pub mod fluidnc;
-pub mod g2core;
 pub mod grbl;
-pub mod grblhal;
-pub mod override_manager;
 pub mod protocol_registry;
 pub mod repetier;
 pub mod sender;
-pub mod settings;
-pub mod smoothieware;
-pub mod tinyg;
-
-pub use capabilities::{CapabilitiesTrait, Capability, DefaultCapabilities};
-pub use connection_watch::{ConnectionWatchConfig, ConnectionWatchState, ConnectionWatcher};
-pub use file_service::{FileInfo, FileServiceTrait, NoOpFileService, StorageInfo};
-pub use fluidnc::{FluidNCCapabilities, FluidNCController, FluidNCVersion};
-pub use g2core::{G2CoreCapabilities, G2CoreController, G2CoreVersion as G2CoreVer};
-pub use grblhal::{GrblHalCapabilities, GrblHalVersion};
-pub use override_manager::{
-    DefaultOverrideManager, OverrideManagerTrait, OverrideState, RapidOverrideLevel,
-};
 
 pub use protocol_registry::{
-    protocol_profile, ProtocolProfile, SenderKind, FALLBACK_PROFILE, PROTOCOLS,
+    FALLBACK_PROFILE, PROTOCOLS, ProtocolProfile, SenderKind, protocol_profile,
 };
 
-pub use settings::{DefaultFirmwareSettings, FirmwareSetting, FirmwareSettingsTrait, SettingType};
-
-pub use smoothieware::{SmoothiewareCapabilities, SmoothiewareController, SmoothiewareVersion};
-pub use tinyg::{TinyGCapabilities, TinyGController, TinyGVersion as TinyGVer};
 pub use sender::Sender;
 
 /// Supported CNC controller types
@@ -117,7 +94,6 @@ pub enum ControllerProtocol {
     // G2Core,
     // Smoothieware,
     // GrblHal,
-
     /// Unknown or not yet detected.
     #[default]
     Unknown,
@@ -138,16 +114,18 @@ impl ControllerProtocol {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    /// Parses a controller type name (as stored in device profiles).
+    ///
+    /// grblHAL and FluidNC speak the GRBL protocol, so they map to
+    /// [`Self::Grbl`].
+    pub fn from_name(s: &str) -> Self {
         match s {
-            "GRBL" | "Grbl" => Self::Grbl,
+            "GRBL" | "Grbl" | "grblHAL" | "GrblHal" | "FluidNC" => Self::Grbl,
             "Repetier" => Self::Repetier,
             // "Marlin" => Self::Marlin,
-            // "FluidNC" => Self::FluidNC,
             // "TinyG" => Self::TinyG,
             // "g2core" | "G2Core" => Self::G2Core,
             // "Smoothieware" => Self::Smoothieware,
-            // "grblHAL" | "GrblHal" => Self::GrblHal,
             _ => Self::Unknown,
         }
     }

@@ -3,7 +3,7 @@
 //! A regular polygon design shape with configurable number of sides.
 //! Supports rotation and CSG boolean operations.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
@@ -108,7 +108,12 @@ impl DesignerShape for DesignPolygon {
         self.center = Point::new(p.x as f64, p.y as f64);
 
         let angle_deg = t.m12.atan2(t.m11).to_degrees() as f64;
+        // A reflection (negative determinant) mirrors the vertex orientation.
+        let det = t.m11 * t.m22 - t.m12 * t.m21;
         self.rotation += angle_deg;
+        if det < 0.0 {
+            self.rotation = -self.rotation;
+        }
 
         let sx = (t.m11 * t.m11 + t.m12 * t.m12).sqrt() as f64;
         self.radius *= sx;
@@ -144,7 +149,7 @@ impl DesignerShape for DesignPolygon {
         // Transform point to local space
         let dx = p.x - self.center.x;
         let dy = p.y - self.center.y;
-        let angle = -self.rotation;
+        let angle = (-self.rotation).to_radians();
         let rx = dx * angle.cos() - dy * angle.sin();
         let ry = dx * angle.sin() + dy * angle.cos();
 

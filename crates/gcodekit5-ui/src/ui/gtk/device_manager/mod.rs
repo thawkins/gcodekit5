@@ -8,11 +8,12 @@
 mod operations;
 mod tabs;
 
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, CheckButton, ComboBoxText, Entry, Grid, Label, ListBox, ListBoxRow,
-    MessageDialog, MessageType, Orientation, Paned, PolicyType, ResponseType, ScrolledWindow,
-    SearchEntry, Stack, StackSwitcher,
+    Align, Box, Button, CheckButton, DropDown, Entry, Grid, Label, ListBox, ListBoxRow,
+    Orientation, Paned, PolicyType, ResponseType, ScrolledWindow, SearchEntry, Stack,
+    StackSwitcher,
 };
 use std::rc::Rc;
 use tracing::error;
@@ -24,12 +25,11 @@ use crate::device_status;
 use gcodekit5_devicedb::ui_integration::{DeviceProfileUiModel, DeviceUiController};
 
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, parse_feed_rate, parse_length, FeedRateUnits,
-    MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
+    parse_feed_rate, parse_length,
 };
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gcodekit5_settings::controller::SettingsController;
-use gcodekit5_settings::manager::SettingsManager;
 
 #[derive(Clone)]
 pub struct DeviceManagerWindow {
@@ -43,11 +43,12 @@ pub struct DeviceManagerWindow {
     // Edit form widgets
     pub(crate) edit_name: Entry,
     pub(crate) edit_description: Entry,
-    pub(crate) edit_device_type: ComboBoxText,
-    pub(crate) edit_controller_type: ComboBoxText,
-    pub(crate) edit_connection_type: ComboBoxText,
+    pub(crate) edit_device_type: DropDown,
+    pub(crate) edit_controller_type: DropDown,
+    pub(crate) edit_connection_type: DropDown,
     pub(crate) edit_port: Entry,
-    pub(crate) edit_baud_rate: ComboBoxText,
+    pub(crate) edit_baud_rate: DropDown,
+    pub(crate) edit_tcp_host: Entry,
     pub(crate) edit_tcp_port: Entry,
     pub(crate) edit_timeout: Entry,
     pub(crate) edit_auto_reconnect: CheckButton,
@@ -66,6 +67,7 @@ pub struct DeviceManagerWindow {
     pub(crate) edit_has_spindle: CheckButton,
     pub(crate) edit_has_laser: CheckButton,
     pub(crate) edit_has_coolant: CheckButton,
+    pub(crate) edit_pen_mode: CheckButton,
     pub(crate) edit_num_axes: Entry,
     pub(crate) edit_max_feed_rate: Entry,
     pub(crate) edit_max_feed_rate_unit: Label,
@@ -99,19 +101,14 @@ impl DeviceManagerWindow {
         widget.set_vexpand(true);
 
         // Units are stored internally as mm (and mm/min); convert for display/input.
-        let (initial_units, initial_feed_units) =
-            if let Ok(path) = SettingsManager::config_file_path() {
-                if let Ok(mgr) = SettingsManager::load_from_file(&path) {
-                    (
-                        mgr.config().ui.measurement_system,
-                        mgr.config().ui.feed_rate_units,
-                    )
-                } else {
-                    (MeasurementSystem::Metric, FeedRateUnits::default())
-                }
-            } else {
-                (MeasurementSystem::Metric, FeedRateUnits::default())
-            };
+        // Read from the loaded settings rather than re-reading config.json.
+        let (initial_units, initial_feed_units) = {
+            let p = settings_controller.persistence.borrow();
+            (
+                p.config().ui.measurement_system,
+                p.config().ui.feed_rate_units,
+            )
+        };
 
         let current_units = shared(initial_units);
         let current_feed_units = shared(initial_feed_units);
@@ -210,6 +207,7 @@ impl DeviceManagerWindow {
             edit_connection_type,
             edit_port,
             edit_baud_rate,
+            edit_tcp_host,
             edit_tcp_port,
             edit_timeout,
             edit_auto_reconnect,
@@ -234,6 +232,7 @@ impl DeviceManagerWindow {
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
+            edit_pen_mode,
             edit_num_axes,
             edit_max_feed_rate,
             edit_max_feed_rate_unit,
@@ -304,6 +303,7 @@ impl DeviceManagerWindow {
             edit_connection_type,
             edit_port,
             edit_baud_rate,
+            edit_tcp_host,
             edit_tcp_port,
             edit_timeout,
             edit_auto_reconnect,
@@ -322,6 +322,7 @@ impl DeviceManagerWindow {
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
+            edit_pen_mode,
             edit_num_axes,
             edit_max_feed_rate,
             edit_max_feed_rate_unit,

@@ -8,7 +8,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use crate::ui::gtk::common::accelerators;
+//! use gcodekit5_ui::ui::gtk::common::accelerators;
 //!
 //! // Reference standard accelerators:
 //! let open_accel = accelerators::StandardShortcuts::FILE_OPEN;
@@ -103,48 +103,4 @@ impl StandardShortcuts {
 
     /// Run shortcuts
     pub const FILE_RUN: &str = "<Ctrl>r";
-}
-
-/// Convert a key event to a normalized accelerator string
-pub fn key_event_to_accel(key: &gtk4::gdk::Key, modifiers: ModifierType) -> String {
-    let mut parts = Vec::new();
-
-    if modifiers.contains(ModifierType::CONTROL_MASK) {
-        parts.push("<Ctrl>".to_string());
-    }
-    if modifiers.contains(ModifierType::SHIFT_MASK) {
-        parts.push("<Shift>".to_string());
-    }
-    if modifiers.contains(ModifierType::ALT_MASK) {
-        parts.push("<Alt>".to_string());
-    }
-    if modifiers.contains(ModifierType::SUPER_MASK) {
-        parts.push("<Super>".to_string());
-    }
-
-    parts.push(format!("{}", key.name().unwrap_or_default()));
-    parts.concat()
-}
-
-/// Platform-aware modifier detection
-#[cfg(target_os = "macos")]
-pub fn is_primary_modifier(modifiers: ModifierType) -> bool {
-    modifiers.contains(ModifierType::META_MASK)
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn is_primary_modifier(modifiers: ModifierType) -> bool {
-    modifiers.contains(ModifierType::CONTROL_MASK)
-}
-
-/// Get the display string for the primary modifier on this platform
-pub fn primary_modifier_label() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        "⌘"
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        "Ctrl"
-    }
 }

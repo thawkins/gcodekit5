@@ -7,11 +7,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Communication protocols (Serial, TCP, WebSocket) for GCodeKit4"
+autotests = false
 
 [dependencies]
 gcodekit5-core = { path = "../gcodekit5-core" }
-tokio = { version = "1.35", features = ["full"] }
-async-trait = "0.1"
 serialport = "4.3"
 tracing = "0.1"
 anyhow = "1.0"
@@ -23,3 +22,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 proptest = "1.4"
+
+[[test]]
+name = "all"
+path = "tests/all.rs"

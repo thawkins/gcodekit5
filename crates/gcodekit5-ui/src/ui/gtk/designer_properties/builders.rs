@@ -1,6 +1,7 @@
 //! UI section builder methods for the properties panel.
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_designer::model::RasterImage;
 
 // UI Section builders
@@ -19,8 +20,8 @@ impl PropertiesPanel {
         frame
     }
 
-    pub(crate) fn build_position_section(
-    ) -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
+    pub(crate) fn build_position_section()
+    -> (Frame, Entry, Entry, Entry, Label, Label, Label, Label) {
         let frame = Self::create_section(&t!("Position"));
         let grid = gtk4::Grid::builder()
             .row_spacing(8)
@@ -602,16 +603,16 @@ impl PropertiesPanel {
 
     pub(crate) fn build_image_engraving_section() -> (
         Frame,
-        Entry,        // feed_rate
-        Entry,        // travel_rate
-        Entry,        // min_power
-        Entry,        // max_power
-        Entry,        // ppi
-        ComboBoxText, // scan_direction
-        CheckButton,  // bidirectional
-        CheckButton,  // invert
-                      //        ComboBoxText, // dithering
-                      //        Entry,        // halftone_threshold
+        Entry,       // feed_rate
+        Entry,       // travel_rate
+        Entry,       // min_power
+        Entry,       // max_power
+        Entry,       // ppi
+        DropDown,    // scan_direction
+        CheckButton, // bidirectional
+        CheckButton, // invert
+        DropDown,    // dithering
+        Entry,       // halftone threshold
     ) {
         let frame = Self::create_section(&t!("Laser Engraving"));
         let grid = gtk4::Grid::builder()
@@ -666,7 +667,7 @@ impl PropertiesPanel {
         // Scan Direction
         let scan_label = Label::new(Some(&t!("Scan:")));
         scan_label.set_halign(gtk4::Align::Start);
-        let scan_combo = ComboBoxText::new();
+        let scan_combo = new_text_dropdown();
         scan_combo.append(Some("horizontal"), &t!("Horizontal"));
         scan_combo.append(Some("vertical"), &t!("Vertical"));
         scan_combo.set_active_id(Some(&RasterImage::default().scan_direction));
@@ -676,18 +677,16 @@ impl PropertiesPanel {
         bidir_label.set_halign(gtk4::Align::Start);
         let bidir_check = CheckButton::new();
         bidir_check.set_active(RasterImage::default().bidirectional);
-        /*
-                // Dithering
-                let dither_label = Label::new(Some(&t!("Dithering:")));
-                dither_label.set_halign(gtk4::Align::Start);
-                let dither_combo = ComboBoxText::new();
-                dither_combo.append(Some("none"), &t!("None"));
-                dither_combo.append(Some("threshold"), &t!("Threshold"));
-                dither_combo.append(Some("floyd"), &t!("Floyd-Ste."));
-                dither_combo.append(Some("atkinson"), &t!("Atkinson"));
-                dither_combo.append(Some("bayer"), &t!("Bayer"));
-                dither_combo.set_active_id(Some(&RasterImage::default().dithering));
-        */
+        // Dithering
+        let dither_label = Label::new(Some(&t!("Dithering:")));
+        dither_label.set_halign(gtk4::Align::Start);
+        let dither_combo = new_text_dropdown();
+        dither_combo.append(Some("none"), &t!("None"));
+        dither_combo.append(Some("threshold"), &t!("Threshold"));
+        dither_combo.append(Some("floyd"), &t!("Floyd-Ste."));
+        dither_combo.append(Some("atkinson"), &t!("Atkinson"));
+        dither_combo.append(Some("bayer"), &t!("Bayer"));
+        dither_combo.set_active_id(Some(&RasterImage::default().dithering));
         // Invert
         let invert_label = Label::new(Some(&t!("Invert:")));
         invert_label.set_halign(gtk4::Align::Start);
@@ -733,12 +732,13 @@ impl PropertiesPanel {
         grid.attach(&invert_label, 0, 7, 1, 1);
         grid.attach(&invert_check, 1, 7, 1, 1);
 
-        //        grid.attach(&dither_label, 0, 8, 1, 1);
-        //        grid.attach(&dither_combo, 1, 8, 1, 1);
+        grid.attach(&dither_label, 0, 8, 1, 1);
+        grid.attach(&dither_combo, 1, 8, 1, 1);
 
-        //        grid.attach(&halftone_label, 0, 9, 1, 1);
-        //        grid.attach(&halftone_entry, 1, 9, 1, 1);
-        //        grid.attach(&halftone_range, 2, 9, 1, 1);
+        // The threshold is used by the Threshold dithering method.
+        grid.attach(&halftone_label, 0, 9, 1, 1);
+        grid.attach(&halftone_entry, 1, 9, 1, 1);
+        grid.attach(&halftone_range, 2, 9, 1, 1);
 
         frame.set_child(Some(&grid));
         (
@@ -751,8 +751,8 @@ impl PropertiesPanel {
             scan_combo,
             bidir_check,
             invert_check,
-            //            dither_combo,
-            //            halftone_entry,
+            dither_combo,
+            halftone_entry,
         )
     }
 

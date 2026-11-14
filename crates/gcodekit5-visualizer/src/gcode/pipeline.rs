@@ -244,60 +244,7 @@ impl ProcessorPipeline {
 
     /// Update G-Code state based on a command
     fn update_state(&self, command: &GcodeCommand, state: &mut GcodeState) -> Result<(), String> {
-        let cmd_upper = command.command.to_uppercase();
-
-        // Motion mode
-        if cmd_upper.contains("G00") {
-            state.set_motion_mode(0)?;
-        } else if cmd_upper.contains("G01") {
-            state.set_motion_mode(1)?;
-        } else if cmd_upper.contains("G02") {
-            state.set_motion_mode(2)?;
-        } else if cmd_upper.contains("G03") {
-            state.set_motion_mode(3)?;
-        }
-
-        // Plane selection
-        if cmd_upper.contains("G17") {
-            state.set_plane_mode(17)?;
-        } else if cmd_upper.contains("G18") {
-            state.set_plane_mode(18)?;
-        } else if cmd_upper.contains("G19") {
-            state.set_plane_mode(19)?;
-        }
-
-        // Distance mode
-        if cmd_upper.contains("G90") {
-            state.set_distance_mode(90)?;
-        } else if cmd_upper.contains("G91") {
-            state.set_distance_mode(91)?;
-        }
-
-        // Feed rate mode
-        if cmd_upper.contains("G93") {
-            state.set_feed_rate_mode(93)?;
-        } else if cmd_upper.contains("G94") {
-            state.set_feed_rate_mode(94)?;
-        } else if cmd_upper.contains("G95") {
-            state.set_feed_rate_mode(95)?;
-        }
-
-        // Units
-        if cmd_upper.contains("G20") {
-            state.set_units_mode(20)?;
-        } else if cmd_upper.contains("G21") {
-            state.set_units_mode(21)?;
-        }
-
-        // Coordinate system (G54-G59)
-        for cs in 54..=59 {
-            if cmd_upper.contains(&format!("G{}", cs)) {
-                state.set_coordinate_system(cs as u8)?;
-                break;
-            }
-        }
-
-        Ok(())
+        state.apply_line(&command.command)
     }
 
     /// Clear all processors from the pipeline

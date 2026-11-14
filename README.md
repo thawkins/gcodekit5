@@ -4,7 +4,7 @@ A modern, cross-platform G-Code sender for Laser and CNC machine controller writ
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
 [![License: APACHE](https://img.shields.io/badge/license-apache-blue.svg)](LICENSE-APACHE)
-[![Version](https://img.shields.io/badge/Version-1.2.0--beta.2a-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.1.0--beta.1-brightgreen.svg)](CHANGELOG.md)
 
 ## Overview
 
@@ -37,8 +37,7 @@ GCodeKit5 is organized as a Cargo workspace with 7 crates for modular compilatio
 - **gcodekit5-core** - Core types, traits, state management, events, and data models
 - **gcodekit5-camtools** - CAM tools and special G-code processing operations
 - **gcodekit5-designer** - Visual design tools and toolpath generation
-- **gcodekit5-gcodeeditor** - ✨ NEW - G-Code text editor and buffer management
-- **gcodekit5-communication** - Serial, TCP, WebSocket protocols and firmware implementations (5 firmware types)
+- **gcodekit5-communication** - Serial, TCP, WebSocket protocols and firmware implementations (GRBL family and Repetier)
 - **gcodekit5-ui** - GTK4-based UI components, visualizer, settings, and editor integration
 - **gcodekit5-devicedb** - Device profile management
 - **gcodekit5-settings** - Application settings management
@@ -203,6 +202,7 @@ The object positioning issue when opening "gckd" files.
   - Grid size indicator in status bar
   - Horizontal and vertical scrollbars for navigation
 - **Dynamic Canvas Sizing**: Automatically adjusts to window resize events
+- **2D/3D Toggle**: Switch between a locked top-down 2D view (left-drag pans) and the free-orbit 3D view
 - **Interactive Controls**: Zoom, pan, and fit-to-view, **Orbit and isometric cámera with mouse interaction**
 - **Color-Coded Paths**: Distinct colors for Rapid (G0) and Feed (G1/G2/G3) moves
 - **Performance**: Optimized rendering for large files
@@ -228,7 +228,6 @@ The object positioning issue when opening "gckd" files.
 
 ### ⚙️ Configuration Management
 - **GRBL Settings Editor**: Complete access to all $0-$130 parameters
-  - ***Caution when changing GRBL parameters on the machine***
 - **Inline Editing**: Click any setting value to edit
 - **Descriptions**: Tooltips explain each parameter's purpose
 - **Value Validation**: Ensures valid ranges and data types
@@ -328,7 +327,7 @@ The object positioning issue when opening "gckd" files.
 ## Installation
 
 ### Prerequisites
-- **Rust** 1.88 or later (MSRV - Minimum Supported Rust Version)
+- **Rust** 1.90 or later (MSRV - Minimum Supported Rust Version)
 - **Operating System**: Linux, macOS, or Windows
 - **Memory**: 512MB minimum (2GB recommended)
 - **Display**: 1024x768 minimum resolution
@@ -580,6 +579,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history and [GitHub Issues
 - **[SPEC.md](SPEC.md)** - Complete technical specification
 - **[PLAN.md](PLAN.md)** - Implementation roadmap
 - **[AGENTS.md](AGENTS.md)** - Development guidelines
+- **[AGENTS-LANGUAGE.md](AGENTS-LANGUAGE.md)** - Rust-specific development guidelines
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[STATS.md](STATS.md)** - Project statistics
 - **[docs/](docs/)** - Additional documentation and guides
@@ -616,18 +616,7 @@ You may choose either license for your use of this software.
 ## Updates
 
 ### Recent Updates (1.2.0-beta.2a) Fixed an issue with moving multiple objects using grips and Fix Dead Keys on Wayland (2026-10-25)
-
-  - Feat (Designer): prompt to save unsaved changes before destructive actions
-
-      - Ask the user before discarding unsaved design changes when creating a new
-document, opening another file, or closing the application.
-
-    - The change introduces a `confirm_discard_unsaved` dialog with three
-options (Cancel / Discard / Save) and wires it into:
-
-      - File → New 2D / New 3D
-      - File → Open
-      - Window close request (including `app.quit()`)
+  - When modifying the grips of a set of objects, they would lose their position. This issue has been fixed.
 
 - #### Fix: Accents and Dead Keys on Wayland (GTK 4.20+)
 
@@ -653,8 +642,6 @@ Chinese), set the environment variable `GTK_IM_MODULE=ibus` (or `fcitx`)
 before launching the application; the app will respect that value and
 will not overwrite it.
 
-- When modifying the grips of a set of objects, they would lose their position. This issue has been fixed.
-  
 ### Recent Updates (1.2.0-beta.2) - refactor: consolidate Sender trait, enforce protocol consistency, and dead code cleanup (2026-10-20)
 - This update consolidates communication architecture, enforces strict protocol validation, and removes obsolete code. All changes have been verified in real-world environments
 

@@ -22,6 +22,16 @@ pub enum DesignerCommand {
     PasteShapes(PasteShapes),
     Reorder(Reorder),
     CompositeCommand(CompositeCommand),
+    /// A shape removal that remembers the draw-order index the shape occupied.
+    ///
+    /// `RemoveShape` commands are converted to this variant the first time they are
+    /// applied, so undo can put the shape back at its original z-order position.
+    RemoveShapeAt(RemoveShapeAt),
+    /// A grouping that remembers each shape's previous group membership.
+    ///
+    /// `GroupShapes` commands are converted to this variant the first time they are
+    /// applied, so undo restores earlier groups instead of clearing them.
+    GroupShapesTracked(GroupShapesTracked),
 }
 
 /// A command that can be executed and undone on the canvas.
@@ -92,6 +102,28 @@ impl Command for AddShapeCommand {
     }
 }
 
+/// Removal of a shape together with the draw-order index it was removed from.
+#[derive(Debug, Clone)]
+pub struct RemoveShapeAt {
+    /// ID of the removed shape.
+    pub id: u64,
+    /// Draw-order index (0 = bottom) the shape had before removal.
+    pub index: Option<usize>,
+    /// The removed object while the command is applied; `None` while undone.
+    pub object: Option<DrawingObject>,
+}
+
+/// Grouping of shapes that records the group each shape belonged to beforehand.
+#[derive(Debug, Clone)]
+pub struct GroupShapesTracked {
+    /// IDs of the grouped shapes.
+    pub ids: Vec<u64>,
+    /// The new group ID assigned to all shapes.
+    pub group_id: u64,
+    /// Previous group ID of each shape in `ids` (same order).
+    pub previous_group_ids: Vec<Option<u64>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CompositeCommand {
     pub commands: Vec<DesignerCommand>,
@@ -160,7 +192,28 @@ pub struct PasteShapes {
     pub objects: Vec<Option<DrawingObject>>,
 }
 
+/// Removes `id` from the canvas, returning its previous draw-order index and the object.
+fn remove_with_index(canvas: &mut Canvas, id: u64) -> (Option<usize>, Option<DrawingObject>) {
+    let index = canvas.shape_store.get_depth(id);
+    let object = canvas.remove_shape_return(id);
+    (index, object)
+}
+
+/// Restores `obj` to the canvas and moves it back to draw-order `index` when known.
+fn restore_at_index(canvas: &mut Canvas, obj: DrawingObject, index: Option<usize>) {
+    let id = obj.id;
+    canvas.restore_shape(obj);
+    if let Some(index) = index {
+        canvas.shape_store.move_to_position(id, index);
+    }
+}
+
 impl DesignerCommand {
+    /// Applies (executes or redoes) the command on `canvas`.
+    ///
+    /// Some variants are normalised into richer variants on first application
+    /// (`RemoveShape` -> `RemoveShapeAt`, `GroupShapes` -> `GroupShapesTracked`) so
+    /// that undo can restore the exact previous state.
     pub fn apply(&mut self, canvas: &mut Canvas) {
         match self {
             DesignerCommand::AddShape(cmd) => {
@@ -169,9 +222,14 @@ impl DesignerCommand {
                 }
             }
             DesignerCommand::RemoveShape(cmd) => {
-                if let Some(obj) = canvas.remove_shape_return(cmd.id) {
-                    cmd.object = Some(obj);
-                }
+                let id = cmd.id;
+                let (index, object) = remove_with_index(canvas, id);
+                *self = DesignerCommand::RemoveShapeAt(RemoveShapeAt { id, index, object });
+            }
+            DesignerCommand::RemoveShapeAt(cmd) => {
+                let (index, object) = remove_with_index(canvas, cmd.id);
+                cmd.index = index;
+                cmd.object = object;
             }
             DesignerCommand::MoveShapes(cmd) => {
                 for id in &cmd.ids {
@@ -191,19 +249,19 @@ impl DesignerCommand {
             }
             DesignerCommand::ResizeShape(cmd) => {
                 // If we stored shapes, swap them
-                if let Some(new_shape) = &cmd.new_shape {
-                    if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let old_bounds = Bounds::new(x1, y1, x2, y2);
+                if let Some(new_shape) = &cmd.new_shape
+                    && let Some(obj) = canvas.get_shape_mut(cmd.id)
+                {
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
+                    let old_bounds = Bounds::new(x1, y1, x2, y2);
 
-                        obj.shape = new_shape.clone();
+                    obj.shape = new_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
-                        let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
+                    let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
-                        canvas.remove_from_index(cmd.id, &old_bounds);
-                        canvas.insert_into_index(cmd.id, &new_bounds);
-                    }
+                    canvas.remove_from_index(cmd.id, &old_bounds);
+                    canvas.insert_into_index(cmd.id, &new_bounds);
                 }
             }
             DesignerCommand::ChangeProperty(cmd) => {
@@ -221,11 +279,17 @@ impl DesignerCommand {
                 }
             }
             DesignerCommand::GroupShapes(cmd) => {
-                for id in &cmd.ids {
-                    if let Some(obj) = canvas.get_shape_mut(*id) {
-                        obj.group_id = Some(cmd.group_id);
-                    }
-                }
+                let ids = std::mem::take(&mut cmd.ids);
+                let group_id = cmd.group_id;
+                let previous_group_ids = assign_group(canvas, &ids, group_id);
+                *self = DesignerCommand::GroupShapesTracked(GroupShapesTracked {
+                    ids,
+                    group_id,
+                    previous_group_ids,
+                });
+            }
+            DesignerCommand::GroupShapesTracked(cmd) => {
+                cmd.previous_group_ids = assign_group(canvas, &cmd.ids, cmd.group_id);
             }
             DesignerCommand::UngroupShapes(cmd) => {
                 for id in &cmd.ids {
@@ -252,6 +316,7 @@ impl DesignerCommand {
         }
     }
 
+    /// Reverts the command on `canvas`.
     pub fn undo(&mut self, canvas: &mut Canvas) {
         match self {
             DesignerCommand::AddShape(cmd) => {
@@ -262,6 +327,11 @@ impl DesignerCommand {
             DesignerCommand::RemoveShape(cmd) => {
                 if let Some(obj) = cmd.object.take() {
                     canvas.restore_shape(obj);
+                }
+            }
+            DesignerCommand::RemoveShapeAt(cmd) => {
+                if let Some(obj) = cmd.object.take() {
+                    restore_at_index(canvas, obj, cmd.index);
                 }
             }
             DesignerCommand::MoveShapes(cmd) => {
@@ -281,19 +351,19 @@ impl DesignerCommand {
                 }
             }
             DesignerCommand::ResizeShape(cmd) => {
-                if let Some(old_shape) = &cmd.old_shape {
-                    if let Some(obj) = canvas.get_shape_mut(cmd.id) {
-                        let (x1, y1, x2, y2) = obj.get_total_bounds();
-                        let old_bounds = Bounds::new(x1, y1, x2, y2);
+                if let Some(old_shape) = &cmd.old_shape
+                    && let Some(obj) = canvas.get_shape_mut(cmd.id)
+                {
+                    let (x1, y1, x2, y2) = obj.get_total_bounds();
+                    let old_bounds = Bounds::new(x1, y1, x2, y2);
 
-                        obj.shape = old_shape.clone();
+                    obj.shape = old_shape.clone();
 
-                        let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
-                        let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
+                    let (nx1, ny1, nx2, ny2) = obj.get_total_bounds();
+                    let new_bounds = Bounds::new(nx1, ny1, nx2, ny2);
 
-                        canvas.remove_from_index(cmd.id, &old_bounds);
-                        canvas.insert_into_index(cmd.id, &new_bounds);
-                    }
+                    canvas.remove_from_index(cmd.id, &old_bounds);
+                    canvas.insert_into_index(cmd.id, &new_bounds);
                 }
             }
             DesignerCommand::ChangeProperty(cmd) => {
@@ -317,6 +387,13 @@ impl DesignerCommand {
                     }
                 }
             }
+            DesignerCommand::GroupShapesTracked(cmd) => {
+                for (id, previous) in cmd.ids.iter().zip(cmd.previous_group_ids.iter()) {
+                    if let Some(obj) = canvas.get_shape_mut(*id) {
+                        obj.group_id = *previous;
+                    }
+                }
+            }
             DesignerCommand::UngroupShapes(cmd) => {
                 for id in &cmd.ids {
                     if let Some(obj) = canvas.get_shape_mut(*id) {
@@ -328,10 +405,13 @@ impl DesignerCommand {
                 // Remove pasted shapes
                 cmd.objects.clear();
                 for id in &cmd.ids {
-                    if let Some(obj) = canvas.remove_shape_return(*id) {
-                        cmd.objects.push(Some(obj));
-                    } else {
-                        cmd.objects.push(None); // Should not happen
+                    match canvas.remove_shape_return(*id) {
+                        Some(obj) => {
+                            cmd.objects.push(Some(obj));
+                        }
+                        _ => {
+                            cmd.objects.push(None); // Should not happen
+                        }
                     }
                 }
             }
@@ -345,4 +425,14 @@ impl DesignerCommand {
             }
         }
     }
+}
+
+/// Sets `group_id` on every shape in `ids`, returning each shape's previous group id.
+fn assign_group(canvas: &mut Canvas, ids: &[u64], group_id: u64) -> Vec<Option<u64>> {
+    ids.iter()
+        .map(|id| match canvas.get_shape_mut(*id) {
+            Some(obj) => obj.group_id.replace(group_id),
+            None => None,
+        })
+        .collect()
 }

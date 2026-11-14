@@ -2,10 +2,10 @@
 //! Tab creation methods for the device manager window.
 
 use super::*;
+use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 
 impl DeviceManagerWindow {
-    pub(crate) fn create_general_tab() -> (ScrolledWindow, Entry, Entry, ComboBoxText, ComboBoxText)
-    {
+    pub(crate) fn create_general_tab() -> (ScrolledWindow, Entry, Entry, DropDown, DropDown) {
         let scroll = ScrolledWindow::new();
         scroll.set_policy(PolicyType::Never, PolicyType::Automatic);
 
@@ -40,7 +40,7 @@ impl DeviceManagerWindow {
         // Device Type
         let type_label = Label::new(Some("Device Type:"));
         type_label.set_halign(Align::Start);
-        let edit_device_type = ComboBoxText::new();
+        let edit_device_type = new_text_dropdown();
         edit_device_type.append(Some("CNC Mill"), "CNC Mill");
         edit_device_type.append(Some("CNC Lathe"), "CNC Lathe");
         edit_device_type.append(Some("Laser Cutter"), "Laser Cutter");
@@ -54,8 +54,7 @@ impl DeviceManagerWindow {
         // Controller Type
         let ctrl_label = Label::new(Some("Controller:"));
         ctrl_label.set_halign(Align::Start);
-        let edit_controller_type = ComboBoxText::new();
-
+        let edit_controller_type = new_text_dropdown();
         edit_controller_type.append(Some("GRBL"), "GRBL");
         edit_controller_type.append(Some("Repetier"), "Repetier");
         edit_controller_type.append(Some("FluidNC"), "FluidNC (supported via GRBL)");
@@ -81,9 +80,10 @@ impl DeviceManagerWindow {
 
     pub(crate) fn create_connection_tab() -> (
         ScrolledWindow,
-        ComboBoxText,
+        DropDown,
         Entry,
-        ComboBoxText,
+        DropDown,
+        Entry,
         Entry,
         Entry,
         CheckButton,
@@ -104,7 +104,7 @@ impl DeviceManagerWindow {
         // Connection Type
         let conn_label = Label::new(Some("Connection Type:"));
         conn_label.set_halign(Align::Start);
-        let edit_connection_type = ComboBoxText::new();
+        let edit_connection_type = new_text_dropdown();
         edit_connection_type.append(Some("Serial"), "Serial");
         edit_connection_type.append(Some("TCP/IP"), "TCP/IP");
         edit_connection_type.append(Some("WebSocket"), "WebSocket");
@@ -125,7 +125,7 @@ impl DeviceManagerWindow {
         // Baud Rate
         let baud_label = Label::new(Some("Baud Rate:"));
         baud_label.set_halign(Align::Start);
-        let edit_baud_rate = ComboBoxText::new();
+        let edit_baud_rate = new_text_dropdown();
         edit_baud_rate.append(Some("9600"), "9600");
         edit_baud_rate.append(Some("19200"), "19200");
         edit_baud_rate.append(Some("38400"), "38400");
@@ -135,6 +135,16 @@ impl DeviceManagerWindow {
         edit_baud_rate.set_active_id(Some("115200"));
         grid.attach(&baud_label, 0, row, 1, 1);
         grid.attach(&edit_baud_rate, 1, row, 1, 1);
+        row += 1;
+
+        // TCP Host
+        let tcp_host_label = Label::new(Some("TCP Host:"));
+        tcp_host_label.set_halign(Align::Start);
+        let edit_tcp_host = Entry::new();
+        edit_tcp_host.set_input_purpose(gtk4::InputPurpose::Url);
+        edit_tcp_host.set_placeholder_text(Some("192.168.1.100"));
+        grid.attach(&tcp_host_label, 0, row, 1, 1);
+        grid.attach(&edit_tcp_host, 1, row, 1, 1);
         row += 1;
 
         // TCP Port
@@ -167,6 +177,7 @@ impl DeviceManagerWindow {
             edit_connection_type,
             edit_port,
             edit_baud_rate,
+            edit_tcp_host,
             edit_tcp_port,
             edit_timeout,
             edit_auto_reconnect,
@@ -330,6 +341,7 @@ impl DeviceManagerWindow {
         CheckButton,
         CheckButton,
         CheckButton,
+        CheckButton,
         Entry,
         Entry,
         Label,
@@ -451,12 +463,18 @@ impl DeviceManagerWindow {
         let edit_has_coolant = CheckButton::with_label("Has Coolant");
         vbox.append(&edit_has_coolant);
 
+        // Pen mode (Repetier only)
+        let edit_pen_mode =
+            CheckButton::with_label("Pen Mode (Repetier: M3/M5 become pen down/up Z moves)");
+        vbox.append(&edit_pen_mode);
+
         scroll.set_child(Some(&vbox));
         (
             scroll,
             edit_has_spindle,
             edit_has_laser,
             edit_has_coolant,
+            edit_pen_mode,
             edit_num_axes,
             edit_max_feed_rate,
             edit_max_feed_rate_unit,

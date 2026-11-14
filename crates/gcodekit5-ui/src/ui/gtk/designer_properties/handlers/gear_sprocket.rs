@@ -1,10 +1,13 @@
 //! Gear and sprocket property handlers.
+//!
+//! Entries apply on commit (Enter / focus-out); see [`super::connect_entry_commit`].
 
+use super::connect_entry_commit;
 use gcodekit5_core::{Shared, SharedOption};
 use gcodekit5_designer::designer_state::DesignerState;
 use gcodekit5_designer::model::{DesignSprocket, ParametricPathSource, Shape};
-use gtk4::prelude::*;
 use gtk4::Entry;
+use gtk4::prelude::*;
 use std::rc::Rc;
 
 /// Setup gear pressure angle entry handler
@@ -14,52 +17,61 @@ pub fn setup_gear_pressure_angle_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    gear_pressure_angle_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(val_deg) = entry.text().parse::<f64>() {
-            if val_deg > 0.0 && val_deg < 45.0 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-                let module = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Gear(g) = &s.shape {
-                            Some(g.module)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(2.0);
-                let teeth = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Gear(g) = &s.shape {
-                            Some(g.teeth)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(20);
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        gear_pressure_angle_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(val_deg) = entry.text().parse::<f64>() {
+                if val_deg > 0.0 && val_deg < 45.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let module = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.module)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(2.0);
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20);
 
-                designer_state.set_selected_gear_properties(module, teeth, val_deg);
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_gear_properties(module, teeth, val_deg);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup gear module handler
@@ -68,52 +80,61 @@ pub fn setup_gear_module_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    gear_module_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(val) = entry.text().parse::<f64>() {
-            if val > 0.0 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-                let teeth = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Gear(g) = &s.shape {
-                            Some(g.teeth)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(20);
-                let pa_deg = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Gear(g) = &s.shape {
-                            Some(g.pressure_angle_deg) // Ya en grados
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(20.0);
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        gear_module_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20);
+                    let pa_deg = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.pressure_angle_deg) // Ya en grados
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20.0);
 
-                designer_state.set_selected_gear_properties(val, teeth, pa_deg);
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_gear_properties(val, teeth, pa_deg);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup gear teeth handler
@@ -122,52 +143,61 @@ pub fn setup_gear_teeth_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    gear_teeth_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(val) = entry.text().parse::<usize>() {
-            if val >= 3 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-                let module = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Gear(g) = &s.shape {
-                            Some(g.module)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(2.0);
-                let pa_deg = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Gear(g) = &s.shape {
-                            Some(g.pressure_angle_deg) // Ya en grados
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(20.0);
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        gear_teeth_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<usize>() {
+                if val >= 3 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let module = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.module)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(2.0);
+                    let pa_deg = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Gear(g) = &s.shape {
+                                Some(g.pressure_angle_deg) // Ya en grados
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(20.0);
 
-                designer_state.set_selected_gear_properties(module, val, pa_deg);
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_gear_properties(module, val, pa_deg);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup sprocket pitch entry handler
@@ -178,48 +208,61 @@ pub fn setup_sprocket_pitch_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
     let roller_entry = sprocket_roller_diameter_entry.clone();
-    sprocket_pitch_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(pitch) = entry.text().parse::<f64>() {
-            if pitch > 0.0 {
-                entry.remove_css_class("entry-invalid");
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        sprocket_pitch_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(pitch) = entry.text().parse::<f64>() {
+                if pitch > 0.0 {
+                    entry.remove_css_class("entry-invalid");
 
-                let standard_roller = DesignSprocket::standard_roller_diameter(pitch);
+                    let standard_roller = DesignSprocket::standard_roller_diameter(pitch);
 
-                // Actualizar el campo visual del roller diameter
-                roller_entry.set_text(&format!("{:.2}", standard_roller));
+                    // Actualizar el campo visual del roller diameter
+                    // Guard so the roller handler does not also fire and push a second,
+                    // intermediate (old pitch + new roller) undo step.
+                    *updating.borrow_mut() = true;
+                    roller_entry.set_text(&format!("{:.2}", standard_roller));
+                    *updating.borrow_mut() = false;
 
-                let mut designer_state = state.borrow_mut();
-                let teeth = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Sprocket(sp) = &s.shape {
-                            Some(sp.teeth)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(15);
+                    let mut designer_state = state.borrow_mut();
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(15);
 
-                designer_state.set_selected_sprocket_properties(pitch, teeth, standard_roller);
-                drop(designer_state);
+                    designer_state.set_selected_sprocket_properties(pitch, teeth, standard_roller);
+                    drop(designer_state);
 
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup sprocket teeth entry handler
@@ -229,52 +272,61 @@ pub fn setup_sprocket_teeth_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    sprocket_teeth_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(val) = entry.text().parse::<usize>() {
-            if val >= 3 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-                let pitch = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Sprocket(sp) = &s.shape {
-                            Some(sp.pitch)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(12.7);
-                let roller = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Sprocket(sp) = &s.shape {
-                            Some(sp.roller_diameter)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(7.75);
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        sprocket_teeth_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<usize>() {
+                if val >= 3 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let pitch = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.pitch)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(12.7);
+                    let roller = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.roller_diameter)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(7.75);
 
-                designer_state.set_selected_sprocket_properties(pitch, val, roller);
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_sprocket_properties(pitch, val, roller);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup sprocket roller diameter entry handler
@@ -284,52 +336,61 @@ pub fn setup_sprocket_roller_diameter_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    sprocket_roller_diameter_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(val) = entry.text().parse::<f64>() {
-            if val > 0.0 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
-                let pitch = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Sprocket(sp) = &s.shape {
-                            Some(sp.pitch)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(12.7);
-                let teeth = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Sprocket(sp) = &s.shape {
-                            Some(sp.teeth)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(15);
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        sprocket_roller_diameter_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(val) = entry.text().parse::<f64>() {
+                if val > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
+                    let pitch = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.pitch)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(12.7);
+                    let teeth = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Sprocket(sp) = &s.shape {
+                                Some(sp.teeth)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(15);
 
-                designer_state.set_selected_sprocket_properties(pitch, teeth, val);
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_sprocket_properties(pitch, teeth, val);
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup timing pulley pitch entry handler
@@ -339,53 +400,61 @@ pub fn setup_timing_pulley_pitch_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    timing_pulley_pitch_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(pitch) = entry.text().parse::<f64>() {
-            if pitch > 0.0 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        timing_pulley_pitch_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(pitch) = entry.text().parse::<f64>() {
+                if pitch > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
 
-                let (teeth, belt_width, hole_radius) = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Path(path) = &s.shape {
-                            if let Some(ParametricPathSource::TimingPulley {
-                                teeth,
-                                belt_width,
-                                hole_radius,
-                                ..
-                            }) = path.parametric_source.clone()
+                    let (teeth, belt_width, hole_radius) = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
+                                    teeth,
+                                    belt_width,
+                                    hole_radius,
+                                    ..
+                                }) = path.parametric_source.clone()
                             {
                                 return Some((teeth, belt_width, hole_radius));
                             }
-                        }
-                        None
-                    })
-                    .unwrap_or((20, 9.4, 5.0));
+                            None
+                        })
+                        .unwrap_or((20, 9.4, 5.0));
 
-                designer_state.set_selected_timing_pulley_properties(
-                    pitch,
-                    teeth,
-                    belt_width,
-                    hole_radius,
-                );
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_timing_pulley_properties(
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    );
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup timing pulley teeth entry handler
@@ -395,53 +464,61 @@ pub fn setup_timing_pulley_teeth_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    timing_pulley_teeth_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(teeth) = entry.text().parse::<usize>() {
-            if teeth >= 6 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        timing_pulley_teeth_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(teeth) = entry.text().parse::<usize>() {
+                if teeth >= 6 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
 
-                let (pitch, belt_width, hole_radius) = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Path(path) = &s.shape {
-                            if let Some(ParametricPathSource::TimingPulley {
-                                pitch,
-                                belt_width,
-                                hole_radius,
-                                ..
-                            }) = path.parametric_source.clone()
+                    let (pitch, belt_width, hole_radius) = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
+                                    pitch,
+                                    belt_width,
+                                    hole_radius,
+                                    ..
+                                }) = path.parametric_source.clone()
                             {
                                 return Some((pitch, belt_width, hole_radius));
                             }
-                        }
-                        None
-                    })
-                    .unwrap_or((5.08, 9.4, 5.0));
+                            None
+                        })
+                        .unwrap_or((5.08, 9.4, 5.0));
 
-                designer_state.set_selected_timing_pulley_properties(
-                    pitch,
-                    teeth,
-                    belt_width,
-                    hole_radius,
-                );
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_timing_pulley_properties(
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    );
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup timing pulley belt width entry handler
@@ -451,53 +528,61 @@ pub fn setup_timing_pulley_belt_width_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    timing_pulley_belt_width_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(belt_width) = entry.text().parse::<f64>() {
-            if belt_width > 0.0 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        timing_pulley_belt_width_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(belt_width) = entry.text().parse::<f64>() {
+                if belt_width > 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
 
-                let (pitch, teeth, hole_radius) = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Path(path) = &s.shape {
-                            if let Some(ParametricPathSource::TimingPulley {
-                                pitch,
-                                teeth,
-                                hole_radius,
-                                ..
-                            }) = path.parametric_source.clone()
+                    let (pitch, teeth, hole_radius) = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
+                                    pitch,
+                                    teeth,
+                                    hole_radius,
+                                    ..
+                                }) = path.parametric_source.clone()
                             {
                                 return Some((pitch, teeth, hole_radius));
                             }
-                        }
-                        None
-                    })
-                    .unwrap_or((5.08, 20, 5.0));
+                            None
+                        })
+                        .unwrap_or((5.08, 20, 5.0));
 
-                designer_state.set_selected_timing_pulley_properties(
-                    pitch,
-                    teeth,
-                    belt_width,
-                    hole_radius,
-                );
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_timing_pulley_properties(
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    );
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }
 
 /// Setup timing pulley hole radius entry handler
@@ -507,51 +592,59 @@ pub fn setup_timing_pulley_hole_radius_handler(
     state: Shared<DesignerState>,
     redraw_callback: SharedOption<Rc<dyn Fn()>>,
     updating: Shared<bool>,
+    has_focus: Shared<bool>,
 ) {
-    timing_pulley_hole_radius_entry.connect_changed(move |entry| {
-        if *updating.borrow() {
-            return;
-        }
-        if let Ok(hole_radius) = entry.text().parse::<f64>() {
-            if hole_radius >= 0.0 {
-                entry.remove_css_class("entry-invalid");
-                let mut designer_state = state.borrow_mut();
+    let commit_state = state.clone();
+    let commit_updating = updating.clone();
+    connect_entry_commit(
+        timing_pulley_hole_radius_entry,
+        commit_state,
+        commit_updating,
+        has_focus,
+        move |entry| {
+            if *updating.borrow() {
+                return;
+            }
+            if let Ok(hole_radius) = entry.text().parse::<f64>() {
+                if hole_radius >= 0.0 {
+                    entry.remove_css_class("entry-invalid");
+                    let mut designer_state = state.borrow_mut();
 
-                let (pitch, teeth, belt_width) = designer_state
-                    .canvas
-                    .shapes()
-                    .find(|s| s.selected)
-                    .and_then(|s| {
-                        if let Shape::Path(path) = &s.shape {
-                            if let Some(ParametricPathSource::TimingPulley {
-                                pitch,
-                                teeth,
-                                belt_width,
-                                ..
-                            }) = path.parametric_source.clone()
+                    let (pitch, teeth, belt_width) = designer_state
+                        .canvas
+                        .shapes()
+                        .find(|s| s.selected)
+                        .and_then(|s| {
+                            if let Shape::Path(path) = &s.shape
+                                && let Some(ParametricPathSource::TimingPulley {
+                                    pitch,
+                                    teeth,
+                                    belt_width,
+                                    ..
+                                }) = path.parametric_source.clone()
                             {
                                 return Some((pitch, teeth, belt_width));
                             }
-                        }
-                        None
-                    })
-                    .unwrap_or((5.08, 20, 9.4));
+                            None
+                        })
+                        .unwrap_or((5.08, 20, 9.4));
 
-                designer_state.set_selected_timing_pulley_properties(
-                    pitch,
-                    teeth,
-                    belt_width,
-                    hole_radius,
-                );
-                drop(designer_state);
-                if let Some(ref cb) = *redraw_callback.borrow() {
-                    cb();
+                    designer_state.set_selected_timing_pulley_properties(
+                        pitch,
+                        teeth,
+                        belt_width,
+                        hole_radius,
+                    );
+                    drop(designer_state);
+                    if let Some(ref cb) = *redraw_callback.borrow() {
+                        cb();
+                    }
+                } else {
+                    entry.add_css_class("entry-invalid");
                 }
             } else {
                 entry.add_css_class("entry-invalid");
             }
-        } else {
-            entry.add_css_class("entry-invalid");
-        }
-    });
+        },
+    );
 }

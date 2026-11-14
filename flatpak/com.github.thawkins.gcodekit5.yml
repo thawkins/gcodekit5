@@ -1,0 +1,30 @@
+app-id: com.github.thawkins.gcodekit5
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: gcodekit5
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all
+  - --share=network
+modules:
+  - name: gcodekit5
+    buildsystem: simple
+    build-commands:
+      - install -D -m 755 gcodekit5 /app/bin/gcodekit5
+      - install -D com.github.thawkins.gcodekit5.png /app/share/icons/hicolor/128x128/apps/com.github.thawkins.gcodekit5.png
+      - install -D com.github.thawkins.gcodekit5.desktop /app/share/applications/com.github.thawkins.gcodekit5.desktop
+      - install -D com.github.thawkins.gcodekit5.metainfo.xml /app/share/metainfo/com.github.thawkins.gcodekit5.metainfo.xml
+    sources:
+      - type: file
+        path: ../gcodekit5-linux-x86_64
+        dest-filename: gcodekit5
+      - type: file
+        path: ../assets/pictures/com.github.thawkins.gcodekit5.png
+        dest-filename: com.github.thawkins.gcodekit5.png
+      - type: file
+        path: com.github.thawkins.gcodekit5.desktop
+      - type: file
+        path: com.github.thawkins.gcodekit5.metainfo.xml

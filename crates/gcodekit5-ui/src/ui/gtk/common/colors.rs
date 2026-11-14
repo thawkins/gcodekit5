@@ -1,41 +1,51 @@
 //! # Shared Color Constants
 //!
 //! Centralized color definitions for consistent theming across the UI.
-//! Uses GTK theme colors where possible, with fallback values for custom rendering.
+//! Theme colors follow libadwaita (light/dark, accent); fixed values cover custom rendering.
 
 use gtk4::gdk::RGBA;
-use gtk4::prelude::StyleContextExt;
+use libadwaita::StyleManager;
 
 // =============================================================================
-// GTK Theme Color Lookups (preferred)
+// Theme Colors (follow libadwaita light/dark mode and the system accent)
 // =============================================================================
+//
+// GTK deprecated named-color lookup (`StyleContext::lookup_color`) in 4.10 with no
+// replacement. The status colors below are the values libadwaita defines for
+// `success_color`, `warning_color` and `error_color` (read from the running theme
+// before the switch), and the accent comes from `StyleManager`.
 
-/// Get the accent color from the GTK theme, with fallback
-pub fn accent_color(style_context: &gtk4::StyleContext) -> RGBA {
-    style_context
-        .lookup_color("accent_color")
-        .unwrap_or_else(|| RGBA::new(0.0, 0.5, 1.0, 1.0))
+/// Get the accent color (standalone variant, readable as text or lines).
+pub fn accent_color() -> RGBA {
+    let manager = StyleManager::default();
+    manager.accent_color().to_standalone_rgba(manager.is_dark())
 }
 
-/// Get the success color from the GTK theme, with fallback
-pub fn success_color(style_context: &gtk4::StyleContext) -> RGBA {
-    style_context
-        .lookup_color("success_color")
-        .unwrap_or_else(|| RGBA::new(0.0, 0.8, 0.0, 1.0))
+/// Get the success color for the current light/dark mode.
+pub fn success_color() -> RGBA {
+    if StyleManager::default().is_dark() {
+        RGBA::new(120.0 / 255.0, 233.0 / 255.0, 171.0 / 255.0, 1.0)
+    } else {
+        RGBA::new(0.0, 124.0 / 255.0, 61.0 / 255.0, 1.0)
+    }
 }
 
-/// Get the warning color from the GTK theme, with fallback
-pub fn warning_color(style_context: &gtk4::StyleContext) -> RGBA {
-    style_context
-        .lookup_color("warning_color")
-        .unwrap_or_else(|| RGBA::new(1.0, 0.8, 0.0, 1.0))
+/// Get the warning color for the current light/dark mode.
+pub fn warning_color() -> RGBA {
+    if StyleManager::default().is_dark() {
+        RGBA::new(1.0, 194.0 / 255.0, 82.0 / 255.0, 1.0)
+    } else {
+        RGBA::new(144.0 / 255.0, 84.0 / 255.0, 0.0, 1.0)
+    }
 }
 
-/// Get the error color from the GTK theme, with fallback
-pub fn error_color(style_context: &gtk4::StyleContext) -> RGBA {
-    style_context
-        .lookup_color("error_color")
-        .unwrap_or_else(|| RGBA::new(1.0, 0.0, 0.0, 1.0))
+/// Get the error color for the current light/dark mode.
+pub fn error_color() -> RGBA {
+    if StyleManager::default().is_dark() {
+        RGBA::new(1.0, 147.0 / 255.0, 140.0 / 255.0, 1.0)
+    } else {
+        RGBA::new(195.0 / 255.0, 0.0, 0.0, 1.0)
+    }
 }
 
 // =============================================================================
@@ -111,14 +121,4 @@ pub fn to_rgba_f64(color: &RGBA) -> (f64, f64, f64, f64) {
 pub fn grayscale(value: f64) -> RGBA {
     let v = value.clamp(0.0, 1.0) as f32;
     RGBA::new(v, v, v, 1.0)
-}
-
-/// Apply opacity to a color
-pub fn with_opacity(color: &RGBA, opacity: f64) -> RGBA {
-    RGBA::new(
-        color.red(),
-        color.green(),
-        color.blue(),
-        (color.alpha() as f64 * opacity) as f32,
-    )
 }

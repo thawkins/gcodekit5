@@ -24,7 +24,6 @@ exclude_globs = [
     "crates/gcodekit5-settings/**",
     "crates/gcodekit5-devicedb/**",
     "crates/gcodekit5-camtools/**",
-    "crates/gcodekit5-gcodeeditor/**",
 ]
 
 # Timeout settings — builds can be slow

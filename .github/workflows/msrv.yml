@@ -2,14 +2,14 @@ name: MSRV Check
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, develop, devel]
   pull_request:
-    branches: [main, develop]
+    branches: [master, develop, devel]
 
 env:
   CARGO_TERM_COLOR: always
   # Minimum Supported Rust Version
-  MSRV: "1.88"
+  MSRV: "1.90"
 
 jobs:
   msrv-check:
@@ -18,13 +18,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-26.04]
     
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust ${{ env.MSRV }}
-        uses: dtolnay/rust-action@master
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.MSRV }}
 
@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libudev-dev
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -59,7 +59,7 @@ jobs:
 
   msrv-verify:
     name: Verify MSRV in Cargo.toml
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 

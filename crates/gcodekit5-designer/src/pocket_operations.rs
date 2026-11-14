@@ -1,7 +1,11 @@
 //! Pocket operations for CAM toolpath generation.
 //!
 //! Implements pocket milling operations with island detection and offset path generation.
-//! Supports outline pocket and island preservation.
+//! Supports outline pocket and island preservation. Regions with polygonal holes are
+//! handled by the `holes` submodule
+//! ([`PocketGenerator::generate_polygon_pocket_with_holes`]).
+
+mod holes;
 
 use super::toolpath::{Toolpath, ToolpathSegment, ToolpathSegmentType};
 use crate::model::{DesignCircle as Circle, DesignRectangle as Rectangle, Point};
@@ -115,25 +119,6 @@ fn polygon_centroid(points: &[Point]) -> Option<Point> {
     cy /= 6.0 * area;
     Some(Point::new(cx, cy))
 }
-
-/*
-fn point_in_polygon(poly: &[Point], test: Point) -> bool {
-    // Standard ray casting test.
-    let mut inside = false;
-    let mut j = poly.len().saturating_sub(1);
-    for i in 0..poly.len() {
-        let pi = poly[i];
-        let pj = poly[j];
-        if ((pi.y > test.y) != (pj.y > test.y))
-            && (test.x < (pj.x - pi.x) * (test.y - pi.y) / (pj.y - pi.y + f64::EPSILON) + pi.x)
-        {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
-}
-*/
 
 /// Strategy for pocket milling.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Default)]
@@ -821,12 +806,12 @@ impl PocketGenerator {
             }
 
             // Remove closing vertex if it's the same as the first
-            if clean_vertices.len() > 1 {
-                if let (Some(first), Some(last)) = (clean_vertices.first(), clean_vertices.last()) {
-                    let dist = ((last.x - first.x).powi(2) + (last.y - first.y).powi(2)).sqrt();
-                    if dist < tolerance {
-                        clean_vertices.pop();
-                    }
+            if clean_vertices.len() > 1
+                && let (Some(first), Some(last)) = (clean_vertices.first(), clean_vertices.last())
+            {
+                let dist = ((last.x - first.x).powi(2) + (last.y - first.y).powi(2)).sqrt();
+                if dist < tolerance {
+                    clean_vertices.pop();
                 }
             }
         }
@@ -952,17 +937,17 @@ impl PocketGenerator {
             }
 
             // Final cleanup to remove residual core at the center (only if raster fill enabled)
-            if let Some(center_pt) = last_loop_centroid {
-                if self.operation.raster_fill_ratio > 0.0 {
-                    add_center_cleanup(
-                        &mut toolpath,
-                        center_pt,
-                        self.operation.tool_diameter,
-                        current_z,
-                        self.operation.feed_rate,
-                        self.operation.spindle_speed,
-                    );
-                }
+            if let Some(center_pt) = last_loop_centroid
+                && self.operation.raster_fill_ratio > 0.0
+            {
+                add_center_cleanup(
+                    &mut toolpath,
+                    center_pt,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
             }
 
             // Push main contour toolpath first, then raster cleanup
@@ -1020,20 +1005,19 @@ impl PocketGenerator {
         // Reverse levels to go Inside-Out
         levels.reverse();
 
-        if let Some(first_level) = levels.first() {
-            if let Some(first_path) = first_level.first() {
-                if !first_path.vertex_data.is_empty() {
-                    let mut pts: Vec<Point> = first_path
-                        .vertex_data
-                        .iter()
-                        .map(|v| Point::new(v.x, v.y))
-                        .collect();
-                    if let Some(first) = pts.first().copied() {
-                        pts.push(first);
-                    }
-                    innermost_centroid = polygon_centroid(&pts);
-                }
+        if let Some(first_level) = levels.first()
+            && let Some(first_path) = first_level.first()
+            && !first_path.vertex_data.is_empty()
+        {
+            let mut pts: Vec<Point> = first_path
+                .vertex_data
+                .iter()
+                .map(|v| Point::new(v.x, v.y))
+                .collect();
+            if let Some(first) = pts.first().copied() {
+                pts.push(first);
             }
+            innermost_centroid = polygon_centroid(&pts);
         }
 
         let mut prev_z = self.operation.start_depth;
@@ -1044,34 +1028,32 @@ impl PocketGenerator {
             let mut toolpath = Toolpath::new(self.operation.tool_diameter, current_z);
 
             // Entry for the first (innermost) level
-            if let Some(first_level) = levels.first() {
-                if let Some(first_path) = first_level.first() {
-                    if !first_path.vertex_data.is_empty() {
-                        let start_pt =
-                            Point::new(first_path.vertex_data[0].x, first_path.vertex_data[0].y);
+            if let Some(first_level) = levels.first()
+                && let Some(first_path) = first_level.first()
+                && !first_path.vertex_data.is_empty()
+            {
+                let start_pt = Point::new(first_path.vertex_data[0].x, first_path.vertex_data[0].y);
 
-                        if self.operation.ramp_angle > 0.0 {
-                            self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
-                        } else if is_first_z_pass {
-                            // First Z pass: Rapid to start XY from safe Z
-                            toolpath.add_segment(ToolpathSegment::new(
-                                ToolpathSegmentType::RapidMove,
-                                Point::new(0.0, 0.0),
-                                start_pt,
-                                self.operation.feed_rate,
-                                self.operation.spindle_speed,
-                            ));
-                        } else {
-                            // Subsequent Z passes: LinearMove to start XY, plunge handled by toolpath.depth
-                            toolpath.add_segment(ToolpathSegment::new(
-                                ToolpathSegmentType::LinearMove,
-                                start_pt, // Start from current position (will be handled by generator)
-                                start_pt,
-                                self.operation.feed_rate,
-                                self.operation.spindle_speed,
-                            ));
-                        }
-                    }
+                if self.operation.ramp_angle > 0.0 {
+                    self.add_helical_ramp(&mut toolpath, start_pt, prev_z, current_z);
+                } else if is_first_z_pass {
+                    // First Z pass: Rapid to start XY from safe Z
+                    toolpath.add_segment(ToolpathSegment::new(
+                        ToolpathSegmentType::RapidMove,
+                        Point::new(0.0, 0.0),
+                        start_pt,
+                        self.operation.feed_rate,
+                        self.operation.spindle_speed,
+                    ));
+                } else {
+                    // Subsequent Z passes: LinearMove to start XY, plunge handled by toolpath.depth
+                    toolpath.add_segment(ToolpathSegment::new(
+                        ToolpathSegmentType::LinearMove,
+                        start_pt, // Start from current position (will be handled by generator)
+                        start_pt,
+                        self.operation.feed_rate,
+                        self.operation.spindle_speed,
+                    ));
                 }
             }
 
@@ -1121,30 +1103,30 @@ impl PocketGenerator {
                     }
                 }
             }
-            if let Some(center_pt) = innermost_centroid {
-                if self.operation.raster_fill_ratio > 0.0 {
-                    add_center_cleanup(
-                        &mut toolpath,
-                        center_pt,
-                        self.operation.tool_diameter,
-                        current_z,
-                        self.operation.feed_rate,
-                        self.operation.spindle_speed,
-                    );
-                }
+            if let Some(center_pt) = innermost_centroid
+                && self.operation.raster_fill_ratio > 0.0
+            {
+                add_center_cleanup(
+                    &mut toolpath,
+                    center_pt,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
             }
 
-            if let Some(center_pt) = innermost_centroid {
-                if self.operation.raster_fill_ratio > 0.0 {
-                    add_center_cleanup(
-                        &mut toolpath,
-                        center_pt,
-                        self.operation.tool_diameter,
-                        current_z,
-                        self.operation.feed_rate,
-                        self.operation.spindle_speed,
-                    );
-                }
+            if let Some(center_pt) = innermost_centroid
+                && self.operation.raster_fill_ratio > 0.0
+            {
+                add_center_cleanup(
+                    &mut toolpath,
+                    center_pt,
+                    self.operation.tool_diameter,
+                    current_z,
+                    self.operation.feed_rate,
+                    self.operation.spindle_speed,
+                );
             }
 
             // Push main adaptive toolpath first, then raster cleanup

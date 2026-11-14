@@ -10,12 +10,14 @@ use gcodekit5_core::{shared, Shared, SharedOption, ThreadSafe};
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Dialog, DialogFlags, Entry, Grid, Label, ListBoxRow, Orientation, ResponseType,
+    Align, Box, Button, Entry, Grid, Label, ListBoxRow, Orientation,
 };
 
 use super::ConfigSettingRow;
 use super::ConfigSettingsView;
 use crate::device_status;
+use crate::ui::gtk::common::text_dropdown::TextDropDownExt;
+
 use crate::t;
 
 impl ConfigSettingsView {
@@ -77,8 +79,8 @@ impl ConfigSettingsView {
     }
 
     pub(crate) fn parse_repetier_epr_line(line: &str) -> Option<Setting> {
-        let rest = line.strip_prefix("EPR:")?;
-        let mut parts = rest.splitn(4, ' ');
+        let (_, rest) = line.split_once("EPR:")?;
+        let mut parts = rest.trim().splitn(4, ' ');
 
         let _data_type = parts.next()?;
         let pos: u16 = parts.next()?.parse().ok()?;
@@ -88,7 +90,7 @@ impl ConfigSettingsView {
         let (name, unit) = if let Some((n, u)) = raw_desc.rsplit_once('[') {
             (
                 n.trim().to_string(),
-             Some(u.trim_end_matches(']').to_string()),
+                Some(u.trim_end_matches(']').to_string()),
             )
         } else {
             (raw_desc.to_string(), None)
@@ -98,13 +100,14 @@ impl ConfigSettingsView {
             number: 1000 + pos,
             name,
             value: value.clone(),
-             numeric_value: value.parse::<f64>().ok(),
-             description: format!("EEPROM Pos {}: {}", pos, raw_desc),
-             range: None,
-             read_only: false,
-             unit,
+            numeric_value: value.parse::<f64>().ok(),
+            description: format!("EEPROM Pos {}: {}", pos, raw_desc),
+            range: None,
+            read_only: false,
+            unit,
         })
     }
+
 
     pub(crate) fn retrieve_settings(&self) {
         let mut is_connected = false;
@@ -115,40 +118,17 @@ impl ConfigSettingsView {
         }
 
         if !is_connected {
-            let Some(window) = self.container.root().and_downcast::<gtk4::Window>() else {
-                tracing::warn!("Failed to get parent window for alert dialog");
-                return;
-            };
-
-            let alert_dialog = Dialog::with_buttons(
-                Some(&t!("Connection Notice")),
-                                                    Some(&window),
-                                                    DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
-                                                    &[(&t!("Accept"), ResponseType::Ok)],
+            let parent = crate::ui::gtk::file_dialog::parent_window(&self.container);
+            crate::ui::gtk::common::dialog::show_error(
+                &t!("Connection Notice"),
+                &t!("Please connect the machine before retrieving parameters."),
+                parent.as_ref(),
             );
-
-            let content = alert_dialog.content_area();
-            content.set_spacing(15);
-            content.set_margin_top(15);
-            content.set_margin_bottom(15);
-            content.set_margin_start(15);
-            content.set_margin_end(15);
-
-            let msg_label = Label::new(Some(&t!(
-                "Please connect the machine before retrieving parameters."
-            )));
-            msg_label.set_wrap(true);
-            content.append(&msg_label);
-
-            alert_dialog.connect_response(|dialog, _response| {
-                dialog.close();
-            });
-
-            alert_dialog.show();
             self.status_label
-            .set_text(&t!("Operation cancelled: Device not connected"));
+                .set_text(&t!("Operation cancelled: Device not connected"));
             return;
         }
+
 
         // Detectar el tipo de controlador desde el perfil activo o desde la vista actual
         let mut is_repetier = false;
@@ -233,7 +213,9 @@ impl ConfigSettingsView {
                     };
 
                     let has_settings_response = if is_repetier {
-                        console_text.len() > start_log_length && console_text.contains("EPR:")
+                        console_text.len() > start_log_length
+                        && *attempt_count.borrow() >= 12
+                        && console_text.contains("EPR:")
                     } else {
                         console_text.len() > start_log_length
                         && (console_text.contains("$0=") || console_text.contains("$100="))
@@ -247,18 +229,25 @@ impl ConfigSettingsView {
                         let mut detected_version = device_info_view_clone.get_version();
                         let mut info_updated = false;
 
-                        for line in console_text.lines() {
+let new_console_text = if console_text.len() > start_log_length {
+    &console_text[start_log_length..]
+} else {
+    ""
+};
+
+for line in new_console_text.lines() {
                             let line = line.trim();
 
-                            if is_repetier {
-                                // Parsear líneas EEPROM de Repetier (EPR:...)
-                                if line.starts_with("EPR:") {
-                                    if let Some(setting) = Self::parse_repetier_epr_line(line) {
-                                        let mut manager = manager_clone.borrow_mut();
-                                        manager.set_setting(setting);
-                                        count += 1;
-                                    }
+                        if is_repetier {
+                            // Parsear líneas EEPROM de Repetier (contengan EPR: en cualquier posición)
+                            if line.contains("EPR:") {
+                                if let Some(setting) = Self::parse_repetier_epr_line(line) {
+                                    let mut manager = manager_clone.borrow_mut();
+                                    manager.set_setting(setting);
+                                    count += 1;
                                 }
+                            }
+
                                 // Parsear respuesta M115 de Repetier (FIRMWARE_NAME:Repetier_1.0.6 ...)
                                 if line.contains("FIRMWARE_NAME:") {
                                     if let Some(fw_part) = line.split("FIRMWARE_NAME:").nth(1) {
@@ -361,36 +350,10 @@ impl ConfigSettingsView {
                                 "Protocol mismatch: No valid parameters received from device"
                             ));
 
-                            if let Some(window) = container_clone.root().and_downcast::<gtk4::Window>() {
-                                let alert_dialog = Dialog::with_buttons(
-                                    Some(&t!("Protocol Mismatch")),
-                                    Some(&window),
-                                    DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
-                                    &[(&t!("Accept"), ResponseType::Ok)],
-                                );
-
-                                let content = alert_dialog.content_area();
-                                content.set_spacing(15);
-                                content.set_margin_top(15);
-                                content.set_margin_bottom(15);
-                                content.set_margin_start(15);
-                                content.set_margin_end(15);
-
-                                let msg_label = Label::new(Some(&t!(
-                                    "The connected machine does not match the selected device protocol."
-                                )));
-                                msg_label.set_wrap(true);
-                                content.append(&msg_label);
-
-                                alert_dialog.connect_response(|dialog, _| {
-                                    dialog.close();
-                                });
-
-                                alert_dialog.show();
-                            }
-
                             return glib::ControlFlow::Break;
                         }
+
+
 
                         if info_updated {
                             device_info_view_clone.set_connected(
@@ -408,7 +371,7 @@ impl ConfigSettingsView {
                         }
                         let search_text = search_entry_clone.text().to_string().to_lowercase();
                         let category = category_filter_clone
-                        .active_text()
+                        .active_id()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| "All".to_string());
                         let manager = manager_clone.borrow();
@@ -474,7 +437,7 @@ impl ConfigSettingsView {
         let search_text = self.search_entry.text().to_string().to_lowercase();
         let category = self
         .category_filter
-        .active_text()
+        .active_id()
         .map(|s| s.to_string())
         .unwrap_or_else(|| "All".to_string());
         let manager = self.settings_manager.borrow();
@@ -575,9 +538,11 @@ impl ConfigSettingsView {
         }
         row
     }
+
     fn create_setting_row(&self, setting: &ConfigSettingRow) -> ListBoxRow {
         Self::create_setting_row_static(setting, &self.container, self.communicator.clone())
     }
+
     pub(crate) fn show_edit_dialog(
         parent: &Box,
         setting: &ConfigSettingRow,
@@ -585,165 +550,179 @@ impl ConfigSettingsView {
         settings_manager: Shared<SettingsManager>,
         refresh_callback: impl Fn() + 'static,
     ) {
-        let Some(window) = parent.root().and_downcast::<gtk4::Window>() else {
+        let Some(parent_window) = parent.root().and_downcast::<gtk4::Window>() else {
             tracing::warn!("Failed to get parent window for settings dialog");
             return;
         };
+
         let title = if setting.number >= 1000 {
             format!("Edit EEPROM Pos {}", setting.number - 1000)
         } else {
             format!("Edit Setting ${}", setting.number)
         };
-        let dialog = Dialog::with_buttons(
-            Some(&title),
-                                          Some(&window),
-                                          DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
-                                          &[
-                                              ("Cancel", ResponseType::Cancel),
-                                          ("Save", ResponseType::Accept),
-                                          ],
-        );
-        let content = dialog.content_area();
-        content.set_spacing(10);
-        content.set_margin_top(10);
-        content.set_margin_bottom(10);
-        content.set_margin_start(10);
-        content.set_margin_end(10);
+
+        let dialog = gtk4::Window::builder()
+            .title(&title)
+            .transient_for(&parent_window)
+            .modal(true)
+            .resizable(false)
+            .build();
+
+        let vbox = Box::new(Orientation::Vertical, 12);
+        vbox.set_margin_top(15);
+        vbox.set_margin_bottom(15);
+        vbox.set_margin_start(15);
+        vbox.set_margin_end(15);
+
         let grid = Grid::new();
         grid.set_row_spacing(10);
         grid.set_column_spacing(10);
+
         let name_label = Label::new(Some("Name:"));
         name_label.set_xalign(0.0);
         name_label.add_css_class("heading");
         grid.attach(&name_label, 0, 0, 1, 1);
+
         let name_value = Label::new(Some(&setting.name));
         name_value.set_xalign(0.0);
         grid.attach(&name_value, 1, 0, 2, 1);
+
         let desc_label = Label::new(Some("Description:"));
         desc_label.set_xalign(0.0);
         desc_label.set_valign(Align::Start);
         desc_label.add_css_class("heading");
         grid.attach(&desc_label, 0, 1, 1, 1);
+
         let desc_value = Label::new(Some(&setting.description));
         desc_value.set_xalign(0.0);
         desc_value.set_wrap(true);
         desc_value.set_max_width_chars(50);
         desc_value.add_css_class("dim-label");
         grid.attach(&desc_value, 1, 1, 2, 1);
+
         let value_label = Label::new(Some("Value:"));
         value_label.set_xalign(0.0);
         value_label.add_css_class("heading");
         grid.attach(&value_label, 0, 2, 1, 1);
+
         let value_entry = Entry::new();
         value_entry.set_text(&setting.value);
         value_entry.set_hexpand(true);
         grid.attach(&value_entry, 1, 2, 1, 1);
+
         let unit_label = Label::new(Some(&setting.unit));
         unit_label.add_css_class("dim-label");
         grid.attach(&unit_label, 2, 2, 1, 1);
-        content.append(&grid);
+
+        vbox.append(&grid);
+
+        // Botones Cancel y Save
+        let btn_box = Box::new(Orientation::Horizontal, 10);
+        btn_box.set_halign(Align::End);
+
+        let cancel_btn = Button::with_label(&t!("Cancel"));
+        let dialog_cancel = dialog.clone();
+        cancel_btn.connect_clicked(move |_| {
+            dialog_cancel.close();
+        });
+        btn_box.append(&cancel_btn);
+
+        let save_btn = Button::with_label(&t!("Save"));
+        save_btn.add_css_class("suggested-action");
+
         let setting_number = setting.number;
         let comm_clone = communicator.clone();
         let manager_clone = settings_manager.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                let new_value = value_entry.text().to_string();
-                let mut manager = manager_clone.borrow_mut();
-                if let Some(setting) = manager.get_setting(setting_number) {
-                    let mut updated = setting.clone();
-                    updated.value = new_value.clone();
-                    updated.numeric_value = new_value.parse::<f64>().ok();
-                    manager.set_setting(updated);
-                }
-                drop(manager);
-                refresh_callback();
-                if let Some(ref comm) = *comm_clone.borrow() {
-                    let mut comm_lock = comm.lock();
-                    if comm_lock.is_connected() {
-                        let command = if setting_number >= 1000 {
-                            let epr_pos = setting_number - 1000;
-                            if new_value.contains('.') {
-                                format!("M206 T3 P{} X{}", epr_pos, new_value)
-                            } else {
-                                format!("M206 T2 P{} S{}", epr_pos, new_value)
-                            }
+        let dialog_save = dialog.clone();
+
+        save_btn.connect_clicked(move |_| {
+            let new_value = value_entry.text().to_string();
+            let mut manager = manager_clone.borrow_mut();
+            if let Some(setting) = manager.get_setting(setting_number) {
+                let mut updated = setting.clone();
+                updated.value = new_value.clone();
+                updated.numeric_value = new_value.parse::<f64>().ok();
+                manager.set_setting(updated);
+            }
+            drop(manager);
+            refresh_callback();
+
+            if let Some(ref comm) = *comm_clone.borrow() {
+                let mut comm_lock = comm.lock();
+                if comm_lock.is_connected() {
+                    let command = if setting_number >= 1000 {
+                        let epr_pos = setting_number - 1000;
+                        if new_value.contains('.') {
+                            format!("M206 T3 P{} X{}", epr_pos, new_value)
                         } else {
-                            format!("${}={}", setting_number, new_value)
-                        };
-                        let _ = comm_lock.send_command(&command);
-                    }
+                            format!("M206 T2 P{} S{}", epr_pos, new_value)
+                        }
+                    } else {
+                        format!("${}={}", setting_number, new_value)
+                    };
+                    let _ = comm_lock.send_command(&command);
                 }
             }
-            dialog.close();
+            dialog_save.close();
         });
-        dialog.show();
+        btn_box.append(&save_btn);
+
+        vbox.append(&btn_box);
+        dialog.set_child(Some(&vbox));
+        dialog.present();
     }
+
+
     pub(crate) fn save_to_file(&self) {
         let Some(window) = self.container.root().and_downcast::<gtk4::Window>() else {
             tracing::warn!("Failed to get parent window for export dialog");
             return;
         };
-        let dialog = gtk4::FileChooserDialog::new(
-            Some("Export Settings"),
-                                                  Some(&window),
-                                                  gtk4::FileChooserAction::Save,
-                                                  &[
-                                                      ("Cancel", ResponseType::Cancel),
-                                                  ("Save", ResponseType::Accept),
-                                                  ],
-        );
+
+        let dialog = gtk4::FileDialog::builder()
+            .title("Export Settings")
+            .initial_name("grbl_settings.json")
+            .build();
+
         let status_label = self.status_label.clone();
         let manager = self.settings_manager.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let res = manager.borrow().export_to_file(&path);
-                    match res {
+
+        dialog.save(Some(&window), gtk4::gio::Cancellable::NONE, move |res| {
+            if let Ok(file) = res {
+                if let Some(path) = file.path() {
+                    match manager.borrow().export_to_file(&path) {
                         Ok(_) => status_label.set_text(&format!("Exported settings to {:?}", path)),
-                                Err(e) => status_label.set_text(&format!("Export failed: {}", e)),
+                        Err(e) => status_label.set_text(&format!("Export failed: {}", e)),
                     }
                 }
             }
-            dialog.set_current_name("grbl_settings.json");
-            dialog.close();
         });
-        dialog.show();
     }
+
     pub(crate) fn load_from_file(&self) {
         let Some(window) = self.container.root().and_downcast::<gtk4::Window>() else {
             tracing::warn!("Failed to get parent window for import dialog");
             return;
         };
-        let dialog = gtk4::FileChooserDialog::new(
-            Some("Import Settings"),
-                                                  Some(&window),
-                                                  gtk4::FileChooserAction::Open,
-                                                  &[
-                                                      ("Cancel", ResponseType::Cancel),
-                                                  ("Open", ResponseType::Accept),
-                                                  ],
-        );
+
+        let dialog = gtk4::FileDialog::builder()
+            .title("Import Settings")
+            .build();
+
         let status_label = self.status_label.clone();
         let manager = self.settings_manager.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Accept {
-                if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let res = manager.borrow_mut().import_from_file(&path);
-                    match res {
-                        Ok(_) => {
-                            status_label.set_text(&format!("Imported settings from {:?}", path));
-                        }
+
+        dialog.open(Some(&window), gtk4::gio::Cancellable::NONE, move |res| {
+            if let Ok(file) = res {
+                if let Some(path) = file.path() {
+                    match manager.borrow_mut().import_from_file(&path) {
+                        Ok(_) => status_label.set_text(&format!("Imported settings from {:?}", path)),
                         Err(e) => status_label.set_text(&format!("Import failed: {}", e)),
                     }
                 }
             }
-            dialog.close();
         });
-        dialog.show();
     }
-    pub(crate) fn restore_to_device(&self) {
-        self.status_label
-        .set_text("Restoring settings to device...");
-    }
+
 }
 

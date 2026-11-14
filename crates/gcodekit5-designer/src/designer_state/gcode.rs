@@ -1,15 +1,25 @@
 //! G-code generation for designer state
 
 use super::DesignerState;
+use crate::ToolpathToGcode;
 use crate::canvas::DrawingObject;
 use crate::designer_state::MachineMode;
 use crate::gcode_gen::MachineLimits;
 use crate::model::DesignerShape;
 use crate::model::LaserParams;
 use crate::shapes::OperationType;
-use crate::ToolpathToGcode;
-use csgrs::traits::CSG;
 use gcodekit5_core::Units;
+
+/// Comment block added when a toolpath leaves the machine's working area.
+const LIMIT_WARNING: &str = ";
+; *********************************************
+; ********** WARNING: OUT OF LIMITS ***********
+; ** This toolpath contains coordinates      **
+; ** outside the machine working area.       **
+; ** Risk of collision if no limit switches! **
+; *********************************************
+;
+";
 
 impl DesignerState {
     fn shape_embedded_laser_use_global(shape: &DrawingObject) -> bool {
@@ -164,14 +174,9 @@ impl DesignerState {
         effective
     }
 
-    /// Generates G-code from the current design and reports whether any toolpath
-    /// falls outside the machine limits.
-    #[allow(clippy::collapsible_else_if)]
-    pub fn generate_gcode_with_warning_info(
-        &mut self,
-        machine_limits: Option<MachineLimits>,
-    ) -> (String, bool) {
-        let mut gcode = String::new();
+    /// Phase 1 of G-code generation: the G-code writer set up for the
+    /// stock (safe Z, Z floor), the machine limits and the machine mode.
+    fn configured_gcode_generator(&self, machine_limits: Option<MachineLimits>) -> ToolpathToGcode {
         // Get safe_z from stock_material, default to 10.0 if not set
         let safe_z = self
             .stock_material
@@ -183,6 +188,12 @@ impl DesignerState {
 
         if let Some(limits) = machine_limits {
             gcode_gen = gcode_gen.with_machine_limits(limits);
+        }
+
+        // In CNC mode machine Z is absolute with the table at 0 and the stock top
+        // at the stock thickness, so a configured stock bounds Z from below at 0.
+        if self.machine_mode() == MachineMode::Cnc3D && self.stock_material.is_some() {
+            gcode_gen = gcode_gen.with_z_min_limit(0.0);
         }
 
         // Use state mode:
@@ -206,6 +217,16 @@ impl DesignerState {
                 MachineMode::Cnc3D => {}
             }
         }
+        gcode_gen
+    }
+
+    /// Phase 2 of G-code generation: the toolpaths of every shape to cut
+    /// (the selection, or all shapes), in machining order, with whether a
+    /// pocket fell back to a profile cut.
+    fn build_shape_toolpaths(
+        &mut self,
+        gcode_gen: &ToolpathToGcode,
+    ) -> Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> {
         // Store shape-to-toolpath mapping
         let mut shape_toolpaths: Vec<(DrawingObject, Vec<crate::Toolpath>, bool)> = Vec::new();
 
@@ -223,10 +244,8 @@ impl DesignerState {
                 continue;
             };
 
-            if !selected_ids.is_empty() {
-                if !selected_ids.contains(&shape_obj.id) {
-                    continue; // Saltar si no está en la selección
-                }
+            if !selected_ids.is_empty() && !selected_ids.contains(&shape_obj.id) {
+                continue; // Saltar si no está en la selección
             }
 
             let effective_shape_obj = if self.machine_mode() == MachineMode::Cnc3D {
@@ -252,6 +271,13 @@ impl DesignerState {
                     self.toolpath_generator
                         .set_spindle_speed(self.tool_settings.spindle_speed);
                 }
+            } else {
+                // CNC: shapes using global values read feed/speed from the generator,
+                // so make sure it reflects the current tool settings.
+                self.toolpath_generator
+                    .set_feed_rate(self.tool_settings.feed_rate);
+                self.toolpath_generator
+                    .set_spindle_speed(self.tool_settings.spindle_speed);
             }
 
             // ============================================================
@@ -295,10 +321,10 @@ impl DesignerState {
 
             // Keep shape-embedded laser params in sync with the effective
             // per-object/global choice so 2D toolpath generation cannot drift.
-            if gcode_gen.is_laser_2d {
-                if let Some(params) = effective_params {
-                    Self::apply_laser_params_to_shape(&mut effective_shape, params);
-                }
+            if gcode_gen.is_laser_2d
+                && let Some(params) = effective_params
+            {
+                Self::apply_laser_params_to_shape(&mut effective_shape, params);
             }
 
             // ============================================================
@@ -310,7 +336,7 @@ impl DesignerState {
                         (
                             self.toolpath_generator.generate_rectangle_pocket(
                                 rect,
-                                effective_shape_obj.start_depth,
+                                effective_shape_obj.effective_pocket_depth(),
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
                             ),
@@ -329,13 +355,7 @@ impl DesignerState {
 
                 crate::model::Shape::Circle(circle) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        // Asegurar que pocket_depth sea positivo
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            // Si no hay pocket_depth definido, usar un valor por defecto
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_circle_pocket(
                                 circle,
@@ -364,11 +384,7 @@ impl DesignerState {
 
                 crate::model::Shape::Ellipse(ellipse) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_ellipse_pocket(
                                 ellipse,
@@ -390,39 +406,16 @@ impl DesignerState {
                 }
 
                 crate::model::Shape::Path(path_shape) => {
-                    // 1. Clonar para no alterar el objeto original
-                    let mut rotated_path = path_shape.clone();
-
-                    // 2. Aplicar rotación si existe
-                    if rotated_path.rotation.abs() > f64::EPSILON {
-                        let (x1, y1, x2, y2) = rotated_path.bounds();
-                        let cx = (x1 + x2) / 2.0;
-                        let cy = (y1 + y2) / 2.0;
-                        let rad = rotated_path.rotation.to_radians();
-                        let translation_to_origin = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(-cx, -cy, 0.0),
-                        );
-                        let rotation_matrix =
-                            nalgebra::Matrix4::new_rotation(nalgebra::Vector3::z() * rad);
-                        let translation_back = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(cx, cy, 0.0),
-                        );
-
-                        let full_transform =
-                            translation_back * rotation_matrix * translation_to_origin;
-
-                        rotated_path.sketch = rotated_path.sketch.transform(&full_transform);
-                    }
+                    // Path rotation is a render-time rotation about the path bounds
+                    // centre; the toolpath generator applies it for both contour and
+                    // pocket, so it must not be baked into the geometry here as well.
+                    let rotated_path = path_shape;
 
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_path_pocket(
-                                &rotated_path,
+                                rotated_path,
                                 pocket_depth,
                                 effective_shape_obj.step_down as f64,
                                 effective_shape_obj.step_in as f64,
@@ -432,7 +425,7 @@ impl DesignerState {
                     } else {
                         (
                             self.toolpath_generator.generate_path_contour(
-                                &rotated_path,
+                                rotated_path,
                                 effective_shape_obj.step_down as f64,
                             ),
                             false,
@@ -471,11 +464,7 @@ impl DesignerState {
 
                 crate::model::Shape::Triangle(triangle) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_triangle_pocket(
                                 triangle,
@@ -498,11 +487,7 @@ impl DesignerState {
 
                 crate::model::Shape::Polygon(polygon) => {
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_polygon_pocket(
                                 polygon,
@@ -534,11 +519,7 @@ impl DesignerState {
                     let design_path = crate::PathShape::from_lyon_path(&path);
 
                     if effective_shape_obj.operation_type == OperationType::Pocket {
-                        let pocket_depth = if effective_shape_obj.pocket_depth > 0.0 {
-                            effective_shape_obj.pocket_depth
-                        } else {
-                            effective_shape_obj.start_depth.abs().max(0.1)
-                        };
+                        let pocket_depth = effective_shape_obj.effective_pocket_depth();
                         (
                             self.toolpath_generator.generate_path_pocket(
                                 &design_path,
@@ -566,70 +547,23 @@ impl DesignerState {
             shape_toolpaths.push((effective_shape_obj, toolpaths, pocket_fallback_to_profile));
         }
 
-        // Calculate total length from all toolpaths
-        let total_length: f64 = shape_toolpaths
-            .iter()
-            .flat_map(|(_, tps, _)| tps.iter())
-            .map(|tp| tp.total_length())
-            .sum();
+        shape_toolpaths
+    }
 
-        // Use settings from first toolpath if available, or defaults
-        let (header_speed, header_feed, header_diam, header_depth) =
-            if let Some((_, tps, _)) = shape_toolpaths.first() {
-                if let Some(first) = tps.first() {
-                    let s = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.spindle_speed)
-                        .unwrap_or(3000);
-                    let f = first
-                        .segments
-                        .first()
-                        .map(|seg| seg.feed_rate)
-                        .unwrap_or(100.0);
-                    (s, f, first.tool_diameter, first.depth)
-                } else {
-                    (3000, 100.0, 3.175, -5.0)
-                }
-            } else {
-                (3000, 100.0, 3.175, -5.0)
-            };
-
-        gcode.push_str(&gcode_gen.generate_header(
-            header_speed,
-            header_feed,
-            header_diam,
-            header_depth,
-            total_length,
-        ));
-
-        // ========== ADVERTENCIA DE LÍMITES  ==========
-        let mut has_violation = false;
-        for (_, toolpaths, _) in &shape_toolpaths {
-            for toolpath in toolpaths {
-                if gcode_gen.has_boundary_violation(toolpath) {
-                    has_violation = true;
-                    break;
-                }
-            }
-            if has_violation {
-                break;
-            }
-        }
-
-        if has_violation {
-            gcode.push_str(";\n");
-            gcode.push_str("; *********************************************\n");
-            gcode.push_str("; ********** WARNING: OUT OF LIMITS ***********\n");
-            gcode.push_str("; ** This toolpath contains coordinates      **\n");
-            gcode.push_str("; ** outside the machine working area.       **\n");
-            gcode.push_str("; ** Risk of collision if no limit switches! **\n");
-            gcode.push_str("; *********************************************\n");
-            gcode.push_str(";\n");
-        }
-        // =============== FIN ADVERTENCIA ===============
-
+    /// Phase 3 of G-code generation: appends each shape's comment header
+    /// and passes to `gcode`, numbering lines from 10 in steps of 10.
+    /// `header_speed` is the CNC spindle speed the header started.
+    fn emit_shapes_gcode(
+        &mut self,
+        gcode: &mut String,
+        gcode_gen: &ToolpathToGcode,
+        shape_toolpaths: &[(DrawingObject, Vec<crate::Toolpath>, bool)],
+        header_speed: u32,
+    ) {
         let mut line_number = 10;
+        // The header starts the CNC spindle at `header_speed`; a later shape
+        // that asks for another speed gets an `S` word before it cuts.
+        let mut spindle_speed = header_speed;
 
         // ------ Loop Shape --------
         for (shape, toolpaths, pocket_fallback_to_profile) in shape_toolpaths.iter() {
@@ -657,7 +591,10 @@ impl DesignerState {
                 use crate::engraving::ImageEngraver;
 
                 if raster.image_data.is_empty() && raster.original_path.is_none() {
-                    eprintln!("Warning: RasterImage ID={} has no image data", shape.id);
+                    tracing::warn!(
+                        shape_id = shape.id,
+                        "RasterImage has no image data; skipping"
+                    );
                     continue;
                 }
 
@@ -693,8 +630,8 @@ impl DesignerState {
                     mirror_x: false,
                     mirror_y: false,
                     rotation: crate::engraving::RotationAngle::Degrees0,
-                    //                    halftone: crate::engraving::HalftoneMethod::None,
-                    //                    halftone_threshold: 128,
+                    halftone: crate::engraving::HalftoneMethod::from_name(&raster.dithering),
+                    halftone_threshold: raster.halftone_threshold,
                     offset_x: start_x as f32,
                     offset_y: start_y as f32,
                     power_scale: 1000.0,
@@ -707,7 +644,7 @@ impl DesignerState {
                     match image::load_from_memory(&raster.image_data) {
                         Ok(img) => ImageEngraver::from_image(img, params),
                         Err(e) => {
-                            eprintln!("Error loading image from memory: {}", e);
+                            tracing::error!(shape_id = shape.id, error = %e, "Failed to load raster image from memory");
                             continue;
                         }
                     }
@@ -722,13 +659,14 @@ impl DesignerState {
                             gcode.push('\n');
                         }
                         Err(e) => {
-                            eprintln!("Error generating G-code for image ID={}: {}", shape.id, e);
+                            tracing::error!(shape_id = shape.id, error = %e, "Failed to generate raster G-code");
                         }
                     },
                     Err(e) => {
-                        eprintln!(
-                            "Error creating ImageEngraver for image ID={}: {}",
-                            shape.id, e
+                        tracing::error!(
+                            shape_id = shape.id,
+                            error = %e,
+                            "Failed to create raster image engraver"
                         );
                     }
                 }
@@ -749,12 +687,14 @@ impl DesignerState {
             }
 
             // Add shape-specific data
-            Self::append_shape_metadata(&mut gcode, shape);
+            Self::append_shape_metadata(gcode, shape);
 
             if shape.operation_type == OperationType::Pocket {
                 gcode.push_str(&format!(
-                    "; Z depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n",
-                    shape.start_depth, shape.step_down, shape.step_in
+                    "; Pocket depth: {:.3}mm, Step down: {:.3}mm, Step in: {:.3}mm\n",
+                    shape.effective_pocket_depth(),
+                    shape.step_down,
+                    shape.step_in
                 ));
                 gcode.push_str(&format!("; Strategy: {:?}\n", shape.pocket_strategy));
             } else {
@@ -815,6 +755,12 @@ impl DesignerState {
                 } else {
                     // CNC mode without optimization
                     for toolpath in toolpaths {
+                        if let Some(speed) = toolpath.segments.first().map(|s| s.spindle_speed)
+                            && speed != spindle_speed
+                        {
+                            gcode.push_str(&format!("S{}        ; Spindle speed\n", speed));
+                            spindle_speed = speed;
+                        }
                         let (body_gcode, final_z) =
                             gcode_gen.generate_body_continuing(toolpath, line_number, current_z);
                         gcode.push_str(&body_gcode);
@@ -823,15 +769,64 @@ impl DesignerState {
                     }
                 }
             }
-
-            if let Some(last_tp) = toolpaths.last() {
-                for seg in last_tp.segments.iter().rev() {
-                    if seg.end.x != 0.0 || seg.end.y != 0.0 {
-                        break;
-                    }
-                }
-            }
         } // for (shape, toolpaths, pocket_fallback_to_profile)
+    }
+
+    /// Generates G-code from the current design and reports whether any toolpath
+    /// falls outside the machine limits.
+    #[allow(clippy::collapsible_else_if)]
+    pub fn generate_gcode_with_warning_info(
+        &mut self,
+        machine_limits: Option<MachineLimits>,
+    ) -> (String, bool) {
+        let mut gcode = String::new();
+        let gcode_gen = self.configured_gcode_generator(machine_limits);
+        let shape_toolpaths = self.build_shape_toolpaths(&gcode_gen);
+
+        // Calculate total length from all toolpaths
+        let total_length: f64 = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .map(|tp| tp.total_length())
+            .sum();
+
+        // Use settings from first toolpath if available, or defaults
+        // Taken from the first toolpath that cuts anything: a shape can yield
+        // empty toolpaths (e.g. a pocket smaller than the cutter).
+        let (header_speed, header_feed, header_diam) = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .find_map(|tp| {
+                tp.segments
+                    .first()
+                    .map(|seg| (seg.spindle_speed, seg.feed_rate, tp.tool_diameter))
+            })
+            .unwrap_or((3000, 100.0, 3.175));
+        // The header reports the deepest Z any pass reaches.
+        let header_depth = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .map(|tp| tp.depth)
+            .reduce(f64::min)
+            .unwrap_or(0.0);
+
+        gcode.push_str(&gcode_gen.generate_header(
+            header_speed,
+            header_feed,
+            header_diam,
+            header_depth,
+            total_length,
+        ));
+
+        let has_violation = shape_toolpaths
+            .iter()
+            .flat_map(|(_, tps, _)| tps.iter())
+            .any(|tp| gcode_gen.has_boundary_violation(tp));
+        if has_violation {
+            gcode.push_str(LIMIT_WARNING);
+        }
+
+        self.emit_shapes_gcode(&mut gcode, &gcode_gen, &shape_toolpaths, header_speed);
 
         gcode.push_str(&gcode_gen.generate_footer());
 

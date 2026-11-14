@@ -1,6 +1,6 @@
 # Visualizador
 
-<img src="../../help_images/visualizer3d.png" alt="Visualizer3d" width="800">
+<img src="../../help_images/visualizer3d.png" alt="Visualizer3d" width="1000">
 
 El Visualizador muestra una vista previa de las trayectorias de la herramienta y (opcionalmente) los límites del área de trabajo de la máquina.
 El visualizador es 3D y en la esquina superior derecha tiene los controles de visualización, Frontal, Lateral, trasera, isometricas, etc. Ajuste al dibujo, vista superior, zoom + y -, Visualización de barras de desplazamiento, Orbita.
@@ -18,9 +18,9 @@ Esta simulación también se puede iniciar mediante el menú Archivo/Run
 
 - Desplegable "Inspector" con los valores de bounds del trazado
 
-<img src="../../help_images/visualizer.png" alt="Visualizer" width="800">
+<img src="../../help_images/visualizer.png" alt="Visualizer" width="1000">
 
-<img src="../../help_images/visualizer3d1.png" alt="Visualizer3d1" width="800">
+<img src="../../help_images/visualizer3d1.png" alt="Visualizer3d1" width="1000">
 
 ## Relacionado
 [Preferencias](help:settings)

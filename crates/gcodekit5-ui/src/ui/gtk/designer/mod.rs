@@ -10,7 +10,7 @@ use crate::ui::gtk::designer_layers::LayersPanel;
 use crate::ui::gtk::designer_properties::PropertiesPanel;
 use crate::ui::gtk::designer_toolbox::{DesignerTool, DesignerToolbox};
 use crate::ui::gtk::osd_format::format_zoom_center_cursor;
-use gcodekit5_core::{shared, shared_none, Shared, SharedOption};
+use gcodekit5_core::{Shared, SharedOption, shared, shared_none};
 use gcodekit5_designer::designer_state::{DesignerState, MachineMode};
 use gcodekit5_designer::engraving::image_engraver;
 use gcodekit5_designer::model::{DesignerShape, Shape};
@@ -22,14 +22,40 @@ use gtk4::gdk::{Key, ModifierType};
 use gtk4::prelude::*;
 use gtk4::{
     Adjustment, Box, EventControllerKey, GestureClick, Grid, Label, Orientation, Overlay, Paned,
-    Popover, ResponseType, Scrollbar,
+    Popover, Scrollbar,
 };
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tracing::error;
+
+/// The XY working area the Designer checks its G-code against: the active
+/// device profile's axis limits, or, without an active profile, Preferences >
+/// Machine > X/Y limit (from 0). `None` when neither gives a usable area.
+pub(crate) fn designer_machine_limits(
+    device_manager: Option<&Arc<DeviceManager>>,
+    settings: &gcodekit5_settings::SettingsPersistence,
+) -> Option<gcodekit5_designer::gcode_gen::MachineLimits> {
+    if let Some(profile) = device_manager.and_then(|dm| dm.get_active_profile()) {
+        return Some(gcodekit5_designer::gcode_gen::MachineLimits {
+            x_min: profile.x_axis.min,
+            x_max: profile.x_axis.max,
+            y_min: profile.y_axis.min,
+            y_max: profile.y_axis.max,
+        });
+    }
+    let machine = &settings.config().machine;
+    (machine.x_limit > 0.0 && machine.y_limit > 0.0).then_some(
+        gcodekit5_designer::gcode_gen::MachineLimits {
+            x_min: 0.0,
+            x_max: machine.x_limit,
+            y_min: 0.0,
+            y_max: machine.y_limit,
+        },
+    )
+}
 
 // Complex type due to GTK widget and callback fields.
 #[allow(clippy::type_complexity)]
@@ -38,7 +64,8 @@ pub struct DesignerView {
     pub canvas: Rc<DesignerCanvas>,
     pub toolbox: Rc<DesignerToolbox>,
     pub(crate) _properties: Rc<PropertiesPanel>,
-    pub(crate) layers: Rc<LayersPanel>,
+    /// Kept alive with the view; the canvas refreshes it on model changes.
+    pub(crate) _layers: Rc<LayersPanel>,
     pub(crate) status_label: Label,
     pub(crate) _coord_label: Label,
     pub(crate) current_file: SharedOption<PathBuf>,
@@ -279,10 +306,11 @@ impl DesignerView {
                 // Ensure viewport knows the correct size before fitting
                 let width = canvas_run.widget.width() as f64;
                 let height = canvas_run.widget.height() as f64;
-                if width > 0.0 && height > 0.0 {
-                    if let Ok(mut state) = canvas_run.state.try_borrow_mut() {
-                        state.canvas.set_canvas_size(width, height);
-                    }
+                if width > 0.0
+                    && height > 0.0
+                    && let Ok(mut state) = canvas_run.state.try_borrow_mut()
+                {
+                    state.canvas.set_canvas_size(width, height);
                 }
 
                 // Always fit to device on initialization as per user request
@@ -332,22 +360,34 @@ impl DesignerView {
         properties.widget.set_vexpand(true);
         properties.widget.set_valign(gtk4::Align::Fill);
 
-        // Set up redraw callback for properties
-        let canvas_redraw = canvas.clone();
-        let properties_ui = properties.clone();
+        // Set up redraw callback for properties. The callback is stored inside the
+        // properties panel (and the canvas holds the panel), so it must only hold weak
+        // references to both, otherwise the Rc cycle is never freed.
+        let canvas_redraw = Rc::downgrade(&canvas);
+        let properties_ui = Rc::downgrade(&properties);
 
         properties.set_redraw_callback(move || {
-            let state = canvas_redraw.state.borrow();
-            let _has_selection = state.canvas.selection_manager.selected_id().is_some();
-
-            let show_toolpaths = state.show_toolpaths;
-            drop(state);
-            if show_toolpaths {
-                canvas_redraw.generate_preview_toolpaths();
+            if let Some(canvas) = canvas_redraw.upgrade() {
+                let show_toolpaths = canvas.state.borrow().show_toolpaths;
+                if show_toolpaths {
+                    canvas.generate_preview_toolpaths();
+                }
+                canvas.widget.queue_draw();
             }
-            canvas_redraw.widget.queue_draw();
-            properties_ui.update_from_selection();
+            if let Some(properties) = properties_ui.upgrade() {
+                properties.update_from_selection();
+            }
         });
+
+        // Laser fields that show global tool values must follow edits to those globals.
+        {
+            let properties_tools = Rc::downgrade(&properties);
+            toolbox.set_on_tool_settings_changed(move || {
+                if let Some(properties) = properties_tools.upgrade() {
+                    properties.update_from_selection();
+                }
+            });
+        }
 
         // Inspector header + hide button (matches DeviceConsole / Visualizer sidebar UX)
         let props_hidden = Rc::new(Cell::new(false));
@@ -460,6 +500,47 @@ impl DesignerView {
         canvas.set_properties_panel(properties.clone());
         canvas.set_layers_panel(layers.clone());
 
+        // Selection/model changes made in the layers panel refresh the properties panel
+        // (the panels are refreshed explicitly; nothing polls the selection).
+        {
+            let properties_weak = Rc::downgrade(&properties);
+            layers.set_on_change(move || {
+                if let Some(properties) = properties_weak.upgrade() {
+                    properties.update_from_selection();
+                }
+            });
+        }
+
+        // Machine-mode switches change which property sections are shown.
+        {
+            let properties_weak = Rc::downgrade(&properties);
+            toolbox.register_refresh_callback(move || {
+                if let Some(properties) = properties_weak.upgrade() {
+                    properties.update_from_selection();
+                }
+            });
+        }
+
+        // Measurement-system changes change the units shown in the properties panel.
+        // Listeners run before the change is saved (the settings dialog saves only
+        // on Accept), so the new system must come from `value`, not from the saved
+        // settings; the panel then uses it for both display and parsing.
+        {
+            let properties_weak = Rc::downgrade(&properties);
+            settings_controller.on_setting_changed(move |key, value| {
+                if key != "measurement_system" && key != "units.measurement_system" {
+                    return;
+                }
+                let Ok(system) = value.parse::<gcodekit5_core::units::MeasurementSystem>() else {
+                    tracing::warn!(value, "Ignoring unknown measurement system");
+                    return;
+                };
+                if let Some(properties) = properties_weak.upgrade() {
+                    properties.set_measurement_system(system);
+                }
+            });
+        }
+
         // Paned layout: right sidebar is resizable from the center paned
         let center_paned = Paned::new(Orientation::Horizontal);
         center_paned.set_start_child(Some(&canvas_grid));
@@ -526,6 +607,7 @@ impl DesignerView {
         let canvas_gen = canvas.clone();
         let on_gen = on_gcode_generated.clone();
         let status_label_gen = status_label.clone();
+        let settings_for_limits = settings_controller.persistence.clone();
 
         toolbox.connect_generate_clicked(move || {
             let mut state = canvas_gen.state.borrow_mut();
@@ -570,16 +652,8 @@ impl DesignerView {
                     mirror_x: false,
                     mirror_y: false,
                     rotation: image_engraver::RotationAngle::Degrees0,
-/*
-                    halftone: match raster_image.dithering.as_str() {
-                        "threshold" => image_engraver::HalftoneMethod::Threshold,
-                        "bayer" => image_engraver::HalftoneMethod::Bayer4x4,
-                        "floyd" => image_engraver::HalftoneMethod::FloydSteinberg,
-                        "atkinson" => image_engraver::HalftoneMethod::Atkinson,
-                        _ => image_engraver::HalftoneMethod::None,
-                    },
+                    halftone: image_engraver::HalftoneMethod::from_name(&raster_image.dithering),
                     halftone_threshold: raster_image.halftone_threshold,
-*/
                     offset_x: (raster_image.center.x - raster_image.width_mm / 2.0) as f32,
                     offset_y: (raster_image.center.y - raster_image.height_mm / 2.0) as f32,
                     power_scale: 1000.0,
@@ -600,13 +674,21 @@ impl DesignerView {
                             }
                         }
                         Err(e) => {
-                            status_label_gen.set_text(&format!("Error: {}", e));
                             error!("Failed to generate image G-code: {}", e);
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Image Engraving Failed"),
+                                &e.to_string(),
+                                None,
+                            );
                         }
                     },
                     Err(e) => {
-                        status_label_gen.set_text(&format!("Error loading image: {}", e));
                         error!("Failed to load image: {}", e);
+                        crate::ui::gtk::common::dialog::show_warning(
+                            &t!("Image Load Failed"),
+                            &e.to_string(),
+                            None,
+                        );
                     }
                 }
                 console_manager.set_silent_mode(false);
@@ -624,17 +706,15 @@ impl DesignerView {
                     crate::ui::gtk::common::dialog::show_warning(
                         &t!("Invalid Z positioning"),
                         &format!(
-                            "{}\n\n{}\n{}\n{}",
+                            "{}\n\n{}\n{}: {:.3} mm\n{}: {} ({}: {:.3} mm)",
                             t!("One or more objects are positioned at or above the Safe Z height."),
                             t!("Lower object Z positions before generating G-code."),
-                            format!("{}: {:.3} mm", t!("Safe Z"), safe_z),
-                            format!(
-                                "{}: {} ({}: {:.3} mm)",
-                                t!("Objects in conflict"),
-                                violating_count,
-                                t!("highest start Z"),
-                                max_start_z
-                            )
+                            t!("Safe Z"),
+                            safe_z,
+                            t!("Objects in conflict"),
+                            violating_count,
+                            t!("highest start Z"),
+                            max_start_z
                         ),
                         parent.as_ref(),
                     );
@@ -654,20 +734,10 @@ impl DesignerView {
                 state.toolpath_generator.set_start_depth(start_depth);
                 state.toolpath_generator.set_step_in(tool_diameter * 0.4);
 
-                let limits = if let Some(dm) = &device_manager {
-                    if let Some(profile) = dm.get_active_profile() {
-                        Some(gcodekit5_designer::gcode_gen::MachineLimits {
-                            x_min: profile.x_axis.min,
-                            x_max: profile.x_axis.max,
-                            y_min: profile.y_axis.min,
-                            y_max: profile.y_axis.max,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                let limits = designer_machine_limits(
+                    device_manager.as_ref(),
+                    &settings_for_limits.borrow(),
+                );
 
                 let (gcode, has_out_of_limits_warning) = state.generate_gcode_with_warning_info(limits);
 
@@ -692,12 +762,11 @@ impl DesignerView {
 
         // Connect fast shape gallery to insert shapes
         let canvas_shape = canvas.clone();
-        let layers_shape = layers.clone();
         toolbox
             .fast_shape_gallery()
             .connect_shape_selected(move |shape| {
+                // The shape is only added (and the panels refreshed) when it is placed.
                 canvas_shape.set_pending_fast_shape(shape);
-                layers_shape.refresh(&canvas_shape.state);
             });
 
         let view = Rc::new(Self {
@@ -705,7 +774,7 @@ impl DesignerView {
             canvas: canvas.clone(),
             toolbox: toolbox.clone(),
             _properties: properties.clone(),
-            layers: layers.clone(),
+            _layers: layers.clone(),
             status_label,
             _coord_label: coord_label,
             current_file,
@@ -749,14 +818,9 @@ impl DesignerView {
             });
         }
 
-        // Update properties panel and toolbox when selection changes
-        let props_update = properties.clone();
-        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            // Check if we need to update properties (when canvas is redrawn or selection changes)
-            props_update.update_from_selection();
-
-            gtk4::glib::ControlFlow::Continue
-        });
+        // The properties panel is refreshed explicitly on selection and model changes
+        // (see `DesignerCanvas::refresh_panels`); start it in sync with the state.
+        properties.update_from_selection();
 
         // Setup keyboard shortcuts
         Self::setup_keyboard_shortcuts(&canvas);
@@ -787,11 +851,6 @@ impl DesignerView {
         *self.on_gcode_generated.borrow_mut() = Some(std::boxed::Box::new(f));
     }
 
-    pub fn fit_to_device(&self) {
-        self.canvas.fit_to_device_area();
-        self.canvas.widget.queue_draw();
-    }
-
     pub fn undo(&self) {
         self.canvas.undo();
     }
@@ -801,8 +860,7 @@ impl DesignerView {
     }
 
     pub fn cut(&self) {
-        self.canvas.copy_selected();
-        self.canvas.delete_selected();
+        self.canvas.cut();
     }
 
     pub fn copy(&self) {
@@ -855,24 +913,21 @@ impl DesignerView {
         let state = self.canvas.state.borrow();
         let selected = state.canvas.selection_manager.selected_id();
 
-        if let Some(id) = selected {
-            if let Some(obj) = state.canvas.get_shape(id) {
-                if let Shape::RasterImage(ref img) = obj.shape {
-                    let original_offset_x = img.center.x - img.width_mm / 2.0;
-                    let original_offset_y = img.center.y - img.height_mm / 2.0;
+        if let Some(id) = selected
+            && let Some(obj) = state.canvas.get_shape(id)
+            && let Shape::RasterImage(ref img) = obj.shape
+        {
+            let original_offset_x = img.center.x - img.width_mm / 2.0;
+            let original_offset_y = img.center.y - img.height_mm / 2.0;
 
-                    let effective_offset_x =
-                        original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
-                    let effective_offset_y =
-                        original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
+            let effective_offset_x = original_offset_x.max(image_engraver::OVERSCAN_MM as f64);
+            let effective_offset_y = original_offset_y.max(image_engraver::OVERSCAN_MM as f64);
 
-                    let dx = effective_offset_x - original_offset_x;
-                    let dy = effective_offset_y - original_offset_y;
+            let dx = effective_offset_x - original_offset_x;
+            let dy = effective_offset_y - original_offset_y;
 
-                    let (x1, y1, x2, y2) = base_bounds;
-                    return Some((x1 + dx, y1 + dy, x2 + dx, y2 + dy));
-                }
-            }
+            let (x1, y1, x2, y2) = base_bounds;
+            return Some((x1 + dx, y1 + dy, x2 + dx, y2 + dy));
         }
 
         Some(base_bounds)

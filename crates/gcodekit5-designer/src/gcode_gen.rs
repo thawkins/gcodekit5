@@ -15,7 +15,6 @@ pub struct MachineLimits {
 
 /// G-code generator for converting toolpaths to G-code commands.
 pub struct ToolpathToGcode {
-    _units: Units,
     /// Safe Z height for rapid moves between shapes
     pub safe_z: f64,
     line_numbers_enabled: bool,
@@ -31,13 +30,18 @@ pub struct ToolpathToGcode {
     pub machine_limits: Option<MachineLimits>,
     /// Keep Z continuous between passes when possible (same XY rapid).
     pub continuous_z_between_passes: bool,
+    /// Lowest Z (mm) the tool may reach, e.g. the bottom of the configured stock.
+    /// `None` disables the Z check in [`Self::has_boundary_violation`].
+    pub z_min_limit: Option<f64>,
 }
 
 impl ToolpathToGcode {
     /// Creates a new G-code generator.
-    pub fn new(units: Units, safe_z: f64) -> Self {
+    ///
+    /// Output is always millimetres (`G21`); `_units` is kept for API
+    /// compatibility.
+    pub fn new(_units: Units, safe_z: f64) -> Self {
         Self {
-            _units: units,
             safe_z,
             line_numbers_enabled: false,
             num_axes: 3,
@@ -46,13 +50,13 @@ impl ToolpathToGcode {
             curve_simplification_tolerance: 0.05,
             machine_limits: None,
             continuous_z_between_passes: false,
+            z_min_limit: None,
         }
     }
 
     /// Creates a new G-code generator with line numbers enabled.
-    pub fn with_line_numbers(units: Units, safe_z: f64, enabled: bool) -> Self {
+    pub fn with_line_numbers(_units: Units, safe_z: f64, enabled: bool) -> Self {
         Self {
-            _units: units,
             safe_z,
             line_numbers_enabled: enabled,
             num_axes: 3,
@@ -61,6 +65,7 @@ impl ToolpathToGcode {
             curve_simplification_tolerance: 0.05,
             machine_limits: None,
             continuous_z_between_passes: false,
+            z_min_limit: None,
         }
     }
 
@@ -151,7 +156,10 @@ impl ToolpathToGcode {
 
                     // Try to merge with previous collinear segment
                     if let Some(prev) = &mut pending_segment {
-                        if prev.segment_type == ToolpathSegmentType::LinearMove {
+                        if prev.segment_type == ToolpathSegmentType::LinearMove
+                            && prev.spindle_speed == segment.spindle_speed
+                            && (prev.feed_rate - segment.feed_rate).abs() <= 1e-9
+                        {
                             let dir1 = (prev.end.x - prev.start.x, prev.end.y - prev.start.y);
                             let dir2 = (segment.end.x - prev.end.x, segment.end.y - prev.end.y);
                             let len1 = (dir1.0 * dir1.0 + dir1.1 * dir1.1).sqrt();
@@ -192,9 +200,16 @@ impl ToolpathToGcode {
     }
 
     /// Generates the G-code header.
+    ///
+    /// `depth` is the deepest Z the program cuts to; it is printed as
+    /// `; Final Z` (per-shape headers give each cut depth).
+    ///
+    /// In CNC mode the header ends by starting the spindle clockwise at
+    /// `spindle_speed` (`M3 S<rpm>`); laser output leaves the laser off and
+    /// switches it on per cut instead.
     pub fn generate_header(
         &self,
-        _spindle_speed: u32,
+        spindle_speed: u32,
         _feed_rate: f64,
         tool_diameter: f64,
         depth: f64,
@@ -202,33 +217,25 @@ impl ToolpathToGcode {
     ) -> String {
         let mut gcode = String::new();
 
-// NOTE: These lines are removed as they do not provide meaningful information;
+        // NOTE: These lines are removed as they do not provide meaningful information;
         //they fail to account for the varying speeds of objects
         //or the rapid movements occurring between them.
 
         if self.is_laser_2d {
             gcode.push_str("; Generated Laser G-code from Designer tool\n");
-//            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
-//            gcode.push_str(&format!("; Laser power (S): {}\n", spindle_speed));
+        //            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
+        //            gcode.push_str(&format!("; Laser power (S): {}\n", spindle_speed));
         } else {
             gcode.push_str("; Generated G-code from Designer tool\n");
+            // The designer's CNC workflow zeroes Z on the stock bottom (cuts start at the
+            // stock thickness). Record it so viewers/simulators use the right origin.
+            gcode.push_str("; Stock Z0: bottom\n");
             gcode.push_str(&format!("; Tool diameter: {:.2}mm\n", tool_diameter));
-            gcode.push_str(&format!("; Cut depth: {:.2}mm\n", depth));
-//            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
-//            gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
+            gcode.push_str(&format!("; Final Z: {:.3}mm\n", depth));
+            //            gcode.push_str(&format!("; Feed rate: {:.0} mm/min\n", feed_rate));
+            //            gcode.push_str(&format!("; Spindle speed: {} RPM / Power\n", spindle_speed));
         }
-//        gcode.push_str(&format!("; Total path length: {:.2}mm\n", total_length));
-/*
-        let estimated_minutes = if feed_rate > 0.0 {
-            total_length / feed_rate
-        } else {
-            0.0
-        };
-
-        let hours = (estimated_minutes / 60.0).floor() as u32;
-        let minutes = (estimated_minutes.rem_euclid(60.0)).round() as u32;
-        gcode.push_str(&format!("; Estimated time: {}h {}m\n", hours, minutes));
-*/
+        //        gcode.push_str(&format!("; Total path length: {:.2}mm\n", total_length));
 
         gcode.push('\n');
 
@@ -236,14 +243,27 @@ impl ToolpathToGcode {
         gcode.push_str("G90         ; Absolute positioning\n");
         gcode.push_str("G21         ; Millimeter units\n");
         gcode.push_str("G17         ; XY plane\n");
-        gcode.push_str("M5          ; Laser OFF ->\n");
+        if self.is_laser_2d {
+            gcode.push_str("M5          ; Laser OFF ->\n");
+        } else {
+            gcode.push_str(&format!("M3 S{}     ; Spindle ON (CW)\n", spindle_speed));
+        }
 
         gcode
     }
 
-    /// Helper para formatear coordenadas a 2 decimales (centésimas)
+    /// Formats a coordinate to 3 decimals (micrometres). Two decimals are not
+    /// enough for arcs: GRBL rejects an arc whose start and end radii differ
+    /// by more than 0.005 mm (error:33), and 0.01 mm rounding of X, Y, I and J
+    /// together can exceed that on small radii.
     fn fmt_coord(&self, value: f64) -> String {
-        format!("{:.2}", value)
+        format!("{:.3}", value)
+    }
+
+    /// Rounds a value the way [`Self::fmt_coord`] prints it, so arc centre
+    /// offsets can be taken from the position the controller actually has.
+    fn round_coord(value: f64) -> f64 {
+        (value * 1000.0).round() / 1000.0
     }
 
     /// Helper para obtener prefijo de línea
@@ -272,14 +292,10 @@ impl ToolpathToGcode {
         let mut gcode = String::new();
         let mut line_number = start_line_number;
         let mut current_z = initial_z;
-        let laser_power = toolpath
-            .segments
-            .first()
-            .map(|s| s.spindle_speed)
-            .unwrap_or(1000);
-
         // State tracking to avoid redundant commands
         let mut laser_on = false; // Initially OFF
+        // Laser power (S) currently in effect; re-emitted whenever a segment's power differs.
+        let mut laser_power: Option<u32> = None;
         let mut last_feed_rate: Option<f64> = None;
         let mut last_point: Option<(f64, f64)> = None;
         let mut line_g01 = true;
@@ -287,8 +303,21 @@ impl ToolpathToGcode {
         let mut current_xy: Option<(f64, f64)> = None;
 
         let has_z = self.num_axes >= 3 && !self.is_laser_2d;
+        // CNC spindle speed in effect: the header (or the caller) started the
+        // spindle at the first segment's speed; a later change gets an `S`.
+        let mut cnc_speed = toolpath.segments.first().map(|s| s.spindle_speed);
 
         for segment in &toolpath.segments {
+            if !self.is_laser_2d
+                && segment.segment_type != ToolpathSegmentType::RapidMove
+                && cnc_speed != Some(segment.spindle_speed)
+            {
+                gcode.push_str(&format!(
+                    "S{}        ; Spindle speed\n",
+                    segment.spindle_speed
+                ));
+                cnc_speed = Some(segment.spindle_speed);
+            }
             match segment.segment_type {
                 ToolpathSegmentType::RapidMove => {
                     // Always turn off the laser before rapid movement
@@ -371,12 +400,6 @@ impl ToolpathToGcode {
                         toolpath.depth
                     });
 
-                    let line_prefix = if self.line_numbers_enabled {
-                        format!("N{} ", line_number)
-                    } else {
-                        String::new()
-                    };
-
                     // Laser filtering: skip points that are too close
                     if self.is_laser_2d {
                         if let Some((last_x, last_y)) = last_point {
@@ -391,15 +414,18 @@ impl ToolpathToGcode {
                         last_point = Some((segment.end.x, segment.end.y));
                     }
 
-                    if self.is_laser_2d && !laser_on {
-                        let line_prefix = self.get_line_prefix(line_number);
-                        gcode.push_str(&format!(
-                            "{}M4 S{}       ; Laser ON\n",
-                            line_prefix, laser_power
-                        ));
-                        laser_on = true;
-                        line_number += 10;
-                        line_g01 = true;
+                    if self.is_laser_2d {
+                        let was_on = laser_on;
+                        self.emit_laser_power(
+                            &mut gcode,
+                            &mut line_number,
+                            &mut laser_on,
+                            &mut laser_power,
+                            segment.spindle_speed,
+                        );
+                        if !was_on {
+                            line_g01 = true;
+                        }
                     }
 
                     // Determine whether to write "G01" or nothing.
@@ -436,9 +462,8 @@ impl ToolpathToGcode {
                     };
 
                     gcode.push_str(&format!(
-                        "{}{}{}{}{}\n",
+                        "{}{}{}{}\n",
                         self.get_line_prefix(line_number),
-                        line_prefix,
                         cmd,
                         coords,
                         feed_rate_cmd
@@ -479,19 +504,14 @@ impl ToolpathToGcode {
                         }
                     }
 
-                    if self.is_laser_2d && !laser_on {
-                        let line_prefix = self.get_line_prefix(line_number);
-                        let laser_power = toolpath
-                            .segments
-                            .first()
-                            .map(|s| s.spindle_speed)
-                            .unwrap_or(1000);
-                        gcode.push_str(&format!(
-                            "{}M4 S{}       ; Laser ON\n",
-                            line_prefix, laser_power
-                        ));
-                        laser_on = true;
-                        line_number += 10;
+                    if self.is_laser_2d {
+                        self.emit_laser_power(
+                            &mut gcode,
+                            &mut line_number,
+                            &mut laser_on,
+                            &mut laser_power,
+                            segment.spindle_speed,
+                        );
                     }
 
                     let target_z = segment.z_depth.unwrap_or(if segment.start_z.is_some() {
@@ -547,13 +567,18 @@ impl ToolpathToGcode {
                     } else {
                         // Arco normal → usar G02/G03
                         if let Some(center) = segment.center {
-                            let i = center.x - segment.start.x;
-                            let j = center.y - segment.start.y;
+                            // I/J are relative to the arc start as the controller
+                            // knows it: the previous endpoint as printed (rounded).
+                            let i = center.x - Self::round_coord(segment.start.x);
+                            let j = center.y - Self::round_coord(segment.start.y);
                             let cmd = if segment.segment_type == ToolpathSegmentType::ArcCW {
                                 "G02"
                             } else {
                                 "G03"
                             };
+                            // G02/G03 are modal: the next linear move must restate G01,
+                            // otherwise it would be interpreted as another arc.
+                            line_g01 = true;
 
                             if has_z && (target_z - current_z).abs() > 0.001 {
                                 gcode.push_str(&format!(
@@ -621,6 +646,33 @@ impl ToolpathToGcode {
         (gcode, current_z)
     }
 
+    /// Turns the laser on (`M4 S..`) or updates its power (`S..`) so that `power`
+    /// is in effect before the next cutting move. Emits nothing when the laser is
+    /// already on at that power.
+    fn emit_laser_power(
+        &self,
+        gcode: &mut String,
+        line_number: &mut u32,
+        laser_on: &mut bool,
+        current_power: &mut Option<u32>,
+        power: u32,
+    ) {
+        let line_prefix = self.get_line_prefix(*line_number);
+        if !*laser_on {
+            gcode.push_str(&format!("{}M4 S{}       ; Laser ON\n", line_prefix, power));
+            *laser_on = true;
+        } else if *current_power != Some(power) {
+            gcode.push_str(&format!(
+                "{}S{}          ; Laser power\n",
+                line_prefix, power
+            ));
+        } else {
+            return;
+        }
+        *current_power = Some(power);
+        *line_number += 10;
+    }
+
     /// Generates the G-code footer.
     pub fn generate_footer(&self) -> String {
         let mut gcode = String::new();
@@ -636,6 +688,7 @@ impl ToolpathToGcode {
                 "G00 Z{:.2}   ; Raise tool to safe height\n",
                 self.safe_z
             ));
+            gcode.push_str("M5          ; Spindle OFF\n");
         }
 
         gcode.push_str("G00 X0 Y0   ; Return to origin\n");
@@ -643,53 +696,62 @@ impl ToolpathToGcode {
         gcode
     }
 
+    /// Reports whether a toolpath leaves the allowed working volume.
+    ///
+    /// XY coordinates (segment endpoints and arc centres) are checked against
+    /// [`Self::machine_limits`] when set. Z is checked only against
+    /// [`Self::z_min_limit`] when set: a negative Z on its own is a normal cut
+    /// below a Z0-at-stock-top origin and is not a violation.
+    ///
+    /// # Arguments
+    /// * `toolpath` - Toolpath to check.
+    ///
+    /// # Returns
+    /// `true` when any coordinate is outside the configured limits.
     pub fn has_boundary_violation(&self, toolpath: &Toolpath) -> bool {
-        let Some(limits) = &self.machine_limits else {
-            return false;
-        };
+        const EPS: f64 = 1e-6;
 
-        if toolpath.depth < 0.0 {
-            return true;
-        }
-
-        let violates_z = |value: Option<f64>| value.is_some_and(|depth| depth < 0.0);
-
-        for segment in &toolpath.segments {
-            // Verificar punto inicial
-            if segment.start.x < limits.x_min
-                || segment.start.x > limits.x_max
-                || segment.start.y < limits.y_min
-                || segment.start.y > limits.y_max
-            {
+        if let Some(z_min) = self.z_min_limit {
+            let below = |z: f64| z < z_min - EPS;
+            if !toolpath.segments.is_empty() && below(toolpath.depth) {
                 return true;
             }
-            // Verificar punto final
-            if segment.end.x < limits.x_min
-                || segment.end.x > limits.x_max
-                || segment.end.y < limits.y_min
-                || segment.end.y > limits.y_max
-            {
-                return true;
-            }
-            if violates_z(segment.start_z) || violates_z(segment.z_depth) {
-                return true;
-            }
-            // Verificar centro de arco
-            if let Some(center) = segment.center {
-                if center.x < limits.x_min
-                    || center.x > limits.x_max
-                    || center.y < limits.y_min
-                    || center.y > limits.y_max
-                {
+            for segment in &toolpath.segments {
+                if segment.segment_type == ToolpathSegmentType::RapidMove {
+                    continue;
+                }
+                if segment.start_z.is_some_and(below) || segment.z_depth.is_some_and(below) {
                     return true;
                 }
             }
         }
-        false
+
+        let Some(limits) = &self.machine_limits else {
+            return false;
+        };
+        let outside = |p: &Point| {
+            p.x < limits.x_min - EPS
+                || p.x > limits.x_max + EPS
+                || p.y < limits.y_min - EPS
+                || p.y > limits.y_max + EPS
+        };
+
+        toolpath.segments.iter().any(|segment| {
+            outside(&segment.start)
+                || outside(&segment.end)
+                || segment.center.as_ref().is_some_and(outside)
+        })
     }
 
+    /// Sets the machine XY limits used by [`Self::has_boundary_violation`].
     pub fn with_machine_limits(mut self, limits: MachineLimits) -> Self {
         self.machine_limits = Some(limits);
+        self
+    }
+
+    /// Sets the lowest allowed Z (mm) used by [`Self::has_boundary_violation`].
+    pub fn with_z_min_limit(mut self, z_min: f64) -> Self {
+        self.z_min_limit = Some(z_min);
         self
     }
 }
@@ -697,70 +759,5 @@ impl ToolpathToGcode {
 impl Default for ToolpathToGcode {
     fn default() -> Self {
         Self::new(Units::MM, 10.0)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn generate_header_includes_estimated_time() {
-        let generator = ToolpathToGcode::new(Units::MM, 10.0);
-        let header = generator.generate_header(3000, 1000.0, 3.175, -5.0, 5000.0);
-
-        assert!(header.contains("; Total path length: 5000.00mm"));
-        assert!(header.contains("; Estimated time: 0h 5m"));
-    }
-
-    #[test]
-    fn has_boundary_violation_checks_z_axis() {
-        let generator = ToolpathToGcode {
-            machine_limits: Some(MachineLimits {
-                x_min: 0.0,
-                x_max: 100.0,
-                y_min: 0.0,
-                y_max: 100.0,
-            }),
-            ..ToolpathToGcode::new(Units::MM, 10.0)
-        };
-
-        let mut toolpath = Toolpath::new(6.0, 1.0);
-        let mut segment = ToolpathSegment::new(
-            ToolpathSegmentType::LinearMove,
-            Point::new(10.0, 10.0),
-            Point::new(20.0, 20.0),
-            1000.0,
-            12000,
-        );
-        segment.start_z = Some(-1.0);
-        segment.z_depth = Some(-1.0);
-        toolpath.add_segment(segment);
-
-        assert!(generator.has_boundary_violation(&toolpath));
-    }
-
-    #[test]
-    fn has_boundary_violation_checks_negative_toolpath_depth() {
-        let generator = ToolpathToGcode {
-            machine_limits: Some(MachineLimits {
-                x_min: 0.0,
-                x_max: 100.0,
-                y_min: 0.0,
-                y_max: 100.0,
-            }),
-            ..ToolpathToGcode::new(Units::MM, 10.0)
-        };
-
-        let mut toolpath = Toolpath::new(6.0, -7.0);
-        toolpath.add_segment(ToolpathSegment::new(
-            ToolpathSegmentType::LinearMove,
-            Point::new(10.0, 10.0),
-            Point::new(20.0, 20.0),
-            1000.0,
-            12000,
-        ));
-
-        assert!(generator.has_boundary_violation(&toolpath));
     }
 }

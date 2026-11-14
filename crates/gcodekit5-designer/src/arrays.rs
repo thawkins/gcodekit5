@@ -12,6 +12,29 @@
 use crate::model::Point;
 use anyhow::Result;
 
+/// Angle in degrees between consecutive items of a circular array.
+///
+/// A full circle (|`total_angle`| >= 360) places `count` items with `count` equal gaps,
+/// because the last gap closes the circle. A partial arc places the first item at the
+/// start and the last item at the end of the arc, so it has `count - 1` gaps.
+///
+/// # Arguments
+/// * `total_angle` - Angle covered by the array in degrees (negative for clockwise).
+/// * `count` - Number of items, including the original.
+///
+/// # Returns
+/// The angle step in degrees (0 for fewer than two items).
+pub fn circular_array_step(total_angle: f64, count: usize) -> f64 {
+    if count <= 1 {
+        return 0.0;
+    }
+    if total_angle.abs() >= 360.0 - 1e-9 {
+        total_angle / count as f64
+    } else {
+        total_angle / (count - 1) as f64
+    }
+}
+
 /// Represents different types of array operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArrayType {

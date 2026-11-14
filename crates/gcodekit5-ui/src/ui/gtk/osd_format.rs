@@ -3,10 +3,27 @@
 //! Formats machine status values (coordinates, feed rate, spindle speed)
 //! for on-screen display overlays in the visualizer view.
 
-use gcodekit5_core::units::{format_length, MeasurementSystem};
+use gcodekit5_core::units::{MeasurementSystem, format_length, get_unit_label};
 
 use crate::t;
 
+/// Format a length for display with two decimals and its unit label.
+///
+/// # Arguments
+/// * `value_mm` - Length in millimetres (internal unit).
+/// * `system` - Measurement system to display in (mm or inches).
+///
+/// # Returns
+/// e.g. `"12.50 mm"` (metric) or `"0.49 in"` (imperial).
+pub fn format_length_with_unit(value_mm: f32, system: MeasurementSystem) -> String {
+    let value = match system {
+        MeasurementSystem::Metric => value_mm,
+        MeasurementSystem::Imperial => value_mm / 25.4,
+    };
+    format!("{:.2} {}", value, get_unit_label(system))
+}
+
+/// Format the zoom / view-centre / cursor status line.
 pub fn format_zoom_center_cursor(
     zoom_scale: f64,
     center_x: f32,

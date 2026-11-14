@@ -4,14 +4,14 @@
 //! generation. Uses the font manager for font loading and supports
 //! bold, italic, font size, and letter spacing.
 
-use lyon::math::{point, Transform};
+use lyon::math::{Transform, point};
 use lyon::path::Path;
 use serde::{Deserialize, Serialize};
 
 use csgrs::sketch::Sketch;
 use csgrs::traits::CSG;
 use nalgebra::{Matrix4, Vector3};
-use rusttype::{point as rt_point, Scale};
+use rusttype::{Scale, point as rt_point};
 
 use super::{DesignerShape, LaserParams, Point, Property, PropertyValue};
 use crate::font_manager;
@@ -79,8 +79,7 @@ impl DesignText {
             }
         }
 
-        if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite()
-        {
+        if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite() {
             let approx_width = self.text.len() as f64 * self.font_size * 0.6;
             let height = self.font_size;
             return (
@@ -124,9 +123,9 @@ impl DesignerShape for DesignText {
         if self.rotation.abs() > 1e-6 {
             let cx = (x1 + x2) / 2.0;
             let cy = (y1 + y2) / 2.0;
-            let transform = Transform::translation(cx as f32, cy as f32)
+            let transform = Transform::translation(-cx as f32, -cy as f32)
                 .then_rotate(lyon::math::Angle::radians(self.rotation.to_radians() as f32))
-                .then_translate(lyon::math::vector(-cx as f32, -cy as f32));
+                .then_translate(lyon::math::vector(cx as f32, cy as f32));
             return path.transformed(&transform);
         }
         path
@@ -228,4 +227,3 @@ impl DesignerShape for DesignText {
         self.y += dy;
     }
 }
-

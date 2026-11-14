@@ -2,8 +2,6 @@
 //!
 //! Converts G2/G3 arc commands to linear segments for controllers without arc support.
 
-use std::f64::consts::PI;
-
 /// Arc expansion configuration
 #[derive(Debug, Clone)]
 pub struct ArcExpanderConfig {
@@ -53,17 +51,13 @@ impl ArcExpander {
         let radius_y = start_y - center_y;
         let radius = (radius_x * radius_x + radius_y * radius_y).sqrt();
 
-        // Calculate angles
+        // Shared GRBL-compatible sweep (start == end is a full circle).
         let start_angle = radius_y.atan2(radius_x);
-        let end_angle = (end_y - center_y).atan2(end_x - center_x);
-
-        // Calculate angle delta
-        let mut angle_delta = end_angle - start_angle;
-        if is_clockwise && angle_delta > 0.0 {
-            angle_delta -= 2.0 * PI;
-        } else if !is_clockwise && angle_delta < 0.0 {
-            angle_delta += 2.0 * PI;
-        }
+        let angle_delta = gcodekit5_core::gcode::arc::angular_travel(
+            (radius_x, radius_y),
+            (end_x - center_x, end_y - center_y),
+            is_clockwise,
+        );
 
         // Generate segments
         for i in 1..=self.config.num_segments {

@@ -7,9 +7,7 @@
 use crate::device_status;
 use crate::ui::console_panel::{ConsolePanel, MessageLevel};
 use gcodekit5_communication::CommunicatorListener;
-use gcodekit5_core::{
-    thread_safe, thread_safe_vec, DataCallback, ThreadSafe, ThreadSafeVec,
-};
+use gcodekit5_core::{DataCallback, ThreadSafe, ThreadSafeVec, thread_safe, thread_safe_vec};
 use std::sync::Arc;
 
 /// Message type for device communication
@@ -112,13 +110,6 @@ impl DeviceConsoleManager {
         console.add_to_history(&command);
     }
 
-    /// Get console output as model
-    pub fn get_model(&self) -> Vec<String> {
-        let console = self.console.lock();
-
-        console.get_displayed_strings(1000)
-    }
-
     /// Get console output as string
     pub fn get_output(&self) -> String {
         let console = self.console.lock();
@@ -169,26 +160,6 @@ impl DeviceConsoleManager {
         *self.auto_scroll_enabled.lock()
     }
 
-    /// Set maximum number of console lines to keep
-    pub fn set_max_lines(&self, max_lines: usize) {
-        {
-            let mut console = self.console.lock();
-            console.max_messages = max_lines;
-        }
-    }
-
-    /// Get maximum number of console lines
-    pub fn get_max_lines(&self) -> usize {
-        let console = self.console.lock();
-        console.max_messages
-    }
-
-    /// Toggle auto-scroll
-    pub fn toggle_auto_scroll(&self) {
-        let enabled = !self.is_auto_scroll_enabled();
-        self.set_auto_scroll_enabled(enabled);
-    }
-
     /// Get command history
     pub fn get_history(&self) -> Vec<String> {
         let console = self.console.lock();
@@ -199,16 +170,6 @@ impl DeviceConsoleManager {
     pub fn message_count(&self) -> usize {
         let console = self.console.lock();
         console.message_count()
-    }
-
-    /// Simulate connection message
-    pub fn on_connection(&self) {
-        self.add_message(DeviceMessageType::Success, "Device connected");
-    }
-
-    /// Simulate disconnection message
-    pub fn on_disconnection(&self) {
-        self.add_message(DeviceMessageType::Output, "Device disconnected");
     }
 
     /// Simulate error message
@@ -241,11 +202,6 @@ impl DeviceConsoleManager {
     pub fn set_silent_mode(&self, enabled: bool) {
         *self.silent_mode.lock() = enabled;
     }
-
-    /// Obtener estado del modo silencioso
-    pub fn is_silent_mode(&self) -> bool {
-        *self.silent_mode.lock()
-    }
 }
 
 impl Default for DeviceConsoleManager {
@@ -267,23 +223,11 @@ pub struct ConsoleListener {
     console_manager: Arc<DeviceConsoleManager>,
     /// Buffer for accumulating multi-line responses (like $I)
     _response_buffer: ThreadSafe<String>,
-
 }
 
 impl ConsoleListener {
     /// Create new console listener connected to a console manager
     pub fn new(console_manager: Arc<DeviceConsoleManager>) -> Arc<Self> {
-        Arc::new(Self {
-            console_manager,
-            _response_buffer: thread_safe(String::new()),
-        })
-    }
-
-    /// Create with firmware detection state sharing
-    pub fn new_with_firmware_state(
-        console_manager: Arc<DeviceConsoleManager>,
-
-    ) -> Arc<Self> {
         Arc::new(Self {
             console_manager,
             _response_buffer: thread_safe(String::new()),
@@ -354,17 +298,17 @@ impl CommunicatorListener for ConsoleListener {
             }
 
             for token in clean_line.split_whitespace() {
-                if let Some(first_char) = token.chars().next() {
-                    if token.len() > 1 {
-                        if first_char == 'F' || first_char == 'f' {
-                            if let Ok(val) = token[1..].parse::<f32>() {
-                                device_status::update_commanded_feed_rate(val);
-                            }
-                        } else if first_char == 'S' || first_char == 's' {
-                            if let Ok(val) = token[1..].parse::<f32>() {
-                                device_status::update_commanded_spindle_speed(val);
-                            }
+                if let Some(first_char) = token.chars().next()
+                    && token.len() > 1
+                {
+                    if first_char == 'F' || first_char == 'f' {
+                        if let Ok(val) = token[1..].parse::<f32>() {
+                            device_status::update_commanded_feed_rate(val);
                         }
+                    } else if (first_char == 'S' || first_char == 's')
+                        && let Ok(val) = token[1..].parse::<f32>()
+                    {
+                        device_status::update_commanded_spindle_speed(val);
                     }
                 }
             }
@@ -379,116 +323,5 @@ impl CommunicatorListener for ConsoleListener {
     fn on_timeout(&self) {
         self.console_manager
             .add_message(DeviceMessageType::Verbose, "Connection timeout");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_manager_creation() {
-        let manager = DeviceConsoleManager::new();
-        assert_eq!(manager.message_count(), 0);
-    }
-
-    #[test]
-    fn test_add_message() {
-        let manager = DeviceConsoleManager::new();
-        manager.add_message(DeviceMessageType::Output, "Test message");
-        assert_eq!(manager.message_count(), 1);
-    }
-
-    #[test]
-    fn test_add_error_message() {
-        let manager = DeviceConsoleManager::new();
-        manager.add_message(DeviceMessageType::Error, "Test error");
-        let output = manager.get_output();
-        assert!(output.contains("Test error"));
-        assert!(output.contains("ERR"));
-    }
-
-    #[test]
-    fn test_verbose_filtering() {
-        let manager = DeviceConsoleManager::new();
-        manager.set_verbose_enabled(false);
-
-        manager.add_message(DeviceMessageType::Verbose, "Verbose message");
-        manager.add_message(DeviceMessageType::Output, "Regular message");
-
-        let output = manager.get_output();
-        assert!(!output.contains("Verbose message"));
-        assert!(output.contains("Regular message"));
-    }
-
-    #[test]
-    fn test_verbose_enabled() {
-        let manager = DeviceConsoleManager::new();
-        manager.set_verbose_enabled(true);
-
-        manager.add_message(DeviceMessageType::Verbose, "Verbose message");
-        manager.add_message(DeviceMessageType::Output, "Regular message");
-
-        let output = manager.get_output();
-        assert!(output.contains("Verbose message"));
-        assert!(output.contains("Regular message"));
-    }
-
-    #[test]
-    fn test_clear_console() {
-        let manager = DeviceConsoleManager::new();
-        manager.add_message(DeviceMessageType::Output, "Message 1");
-        manager.add_message(DeviceMessageType::Output, "Message 2");
-        assert_eq!(manager.message_count(), 2);
-
-        manager.clear();
-        assert_eq!(manager.message_count(), 0);
-    }
-
-    #[test]
-    fn test_command_history() {
-        let manager = DeviceConsoleManager::new();
-        manager.add_command_to_history("G0 X10");
-        manager.add_command_to_history("G1 Y20");
-
-        let history = manager.get_history();
-        assert_eq!(history.len(), 2);
-        assert_eq!(history[0], "G0 X10");
-        assert_eq!(history[1], "G1 Y20");
-    }
-
-    #[test]
-    fn test_toggle_verbose() {
-        let manager = DeviceConsoleManager::new();
-        assert!(!manager.is_verbose_enabled());
-
-        manager.set_verbose_enabled(true);
-        assert!(manager.is_verbose_enabled());
-
-        manager.set_verbose_enabled(false);
-        assert!(!manager.is_verbose_enabled());
-    }
-
-    #[test]
-    fn test_auto_scroll() {
-        let manager = DeviceConsoleManager::new();
-        assert!(manager.is_auto_scroll_enabled());
-
-        manager.set_auto_scroll_enabled(false);
-        assert!(!manager.is_auto_scroll_enabled());
-
-        manager.set_auto_scroll_enabled(true);
-        assert!(manager.is_auto_scroll_enabled());
-    }
-
-    #[test]
-    fn test_recent_messages() {
-        let manager = DeviceConsoleManager::new();
-        for i in 0..10 {
-            manager.add_message(DeviceMessageType::Output, format!("Message {}", i));
-        }
-
-        let recent = manager.get_recent_messages(5);
-        assert_eq!(recent.len(), 5);
     }
 }

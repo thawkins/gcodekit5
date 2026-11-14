@@ -1,10 +1,13 @@
 //! # Standardized Dialog Creation
 //!
 //! Provides consistent dialog creation patterns across the UI.
-//! Uses MessageDialog as the base (widely supported) with standardized styling.
+//! Built on `gtk4::AlertDialog` (GTK 4.10+), which replaces the deprecated
+//! `MessageDialog`. `MessageType` is kept in [`DialogConfig`] for API stability, but
+//! `AlertDialog` shows no type icon, so it does not change what is displayed.
 
+use crate::t;
 use gtk4::prelude::*;
-use gtk4::{ButtonsType, MessageDialog, MessageType, ResponseType, Widget, Window};
+use gtk4::{AlertDialog, ButtonsType, MessageType, ResponseType, Widget, Window};
 
 /// Standard dialog configuration
 #[derive(Debug, Clone)]
@@ -61,55 +64,148 @@ impl DialogConfig {
 /// * `config` - Dialog configuration
 /// * `parent` - Optional parent window
 /// * `callback` - Optional callback to handle response
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
+
 pub fn show_message_dialog(
     config: DialogConfig,
     parent: Option<&Window>,
     callback: Option<Box<dyn FnOnce(ResponseType)>>,
 ) {
-    let mut builder = MessageDialog::builder()
-        .message_type(config.message_type)
-        .buttons(config.buttons)
-        .text(&config.title)
-        .secondary_text(&config.message);
-
-    if let Some(secondary) = &config.secondary_text {
-        builder = builder.secondary_text(secondary);
+    // Evita que se apilen dos diálogos idénticos uno encima del otro
+    if DIALOG_OPEN.swap(true, Ordering::SeqCst) {
+        return;
     }
 
-    if let Some(win) = parent {
-        builder = builder.transient_for(win).modal(config.modal);
-    }
+    let detail = match &config.secondary_text {
+        Some(secondary) => format!("{}\n\n{}", config.message, secondary),
+        None => config.message.clone(),
+    };
 
-    let dialog = builder.build();
+    let buttons: Vec<(String, ResponseType)> = match config.buttons {
+        ButtonsType::None => Vec::new(),
+        ButtonsType::Close => vec![(t!("Close"), ResponseType::Close)],
+        ButtonsType::Cancel => vec![(t!("Cancel"), ResponseType::Cancel)],
+        ButtonsType::YesNo => vec![(t!("No"), ResponseType::No), (t!("Yes"), ResponseType::Yes)],
+        ButtonsType::OkCancel => vec![
+            (t!("Cancel"), ResponseType::Cancel),
+            (t!("OK"), ResponseType::Ok),
+        ],
+        _ => vec![(t!("OK"), ResponseType::Ok)],
+    };
 
-    // Use Cell to allow moving the callback out of the Fn closure
-    let callback_cell = std::cell::Cell::new(callback);
-
-    dialog.connect_response(move |d, response| {
-        d.destroy();
-        if let Some(cb) = callback_cell.take() {
-            cb(response);
+    let labels: Vec<&str> = buttons.iter().map(|(label, _)| label.as_str()).collect();
+    let dialog = AlertDialog::builder()
+        .message(config.title.as_str())
+        .detail(detail.as_str())
+        .modal(config.modal)
+        .build();
+    if !labels.is_empty() {
+        dialog.set_buttons(&labels);
+        let last = labels.len() as i32 - 1;
+        dialog.set_default_button(last);
+        if labels.len() > 1 {
+            dialog.set_cancel_button(0);
         }
-    });
+    }
 
-    dialog.show();
+    let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
+    let parent_owned = parent.cloned();
+
+    // Esperar 100 ms para que el compositor (Wayland/X11) libere el foco del DropDown/Popover anterior
+    gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+        dialog.choose(
+            parent_owned.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                DIALOG_OPEN.store(false, Ordering::SeqCst);
+
+                let response = result
+                    .ok()
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| responses.get(index).copied())
+                    .unwrap_or(ResponseType::DeleteEvent);
+                if let Some(cb) = callback {
+                    cb(response);
+                }
+            },
+        );
+    });
 }
 
+/*
+pub fn show_message_dialog(
+    config: DialogConfig,
+    parent: Option<&Window>,
+    callback: Option<Box<dyn FnOnce(ResponseType)>>,
+) {
+    let detail = match &config.secondary_text {
+        Some(secondary) => format!("{}\n\n{}", config.message, secondary),
+        None => config.message.clone(),
+    };
+
+    // Buttons in display order, with the response each one reports. The first
+    // entry is what Escape/close maps to when the dialog has a cancel choice.
+    let buttons: Vec<(String, ResponseType)> = match config.buttons {
+        ButtonsType::None => Vec::new(),
+        ButtonsType::Close => vec![(t!("Close"), ResponseType::Close)],
+        ButtonsType::Cancel => vec![(t!("Cancel"), ResponseType::Cancel)],
+        ButtonsType::YesNo => vec![(t!("No"), ResponseType::No), (t!("Yes"), ResponseType::Yes)],
+        ButtonsType::OkCancel => vec![
+            (t!("Cancel"), ResponseType::Cancel),
+            (t!("OK"), ResponseType::Ok),
+        ],
+        // `Ok` and any future variant of this non-exhaustive GTK enum.
+        _ => vec![(t!("OK"), ResponseType::Ok)],
+    };
+
+    let labels: Vec<&str> = buttons.iter().map(|(label, _)| label.as_str()).collect();
+    let dialog = AlertDialog::builder()
+        .message(config.title.as_str())
+        .detail(detail.as_str())
+        .modal(config.modal)
+        .build();
+    if !labels.is_empty() {
+        dialog.set_buttons(&labels);
+        let last = labels.len() as i32 - 1;
+        dialog.set_default_button(last);
+        if labels.len() > 1 {
+            dialog.set_cancel_button(0);
+        }
+    }
+
+    let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
+    let parent_owned = parent.cloned();
+
+    gtk4::glib::idle_add_local_once(move || {
+        if let Some(ref win) = parent_owned {
+            win.present();
+        }
+        dialog.choose(
+            parent_owned.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                // Escape or closing the window reports an error, which MessageDialog
+                // reported as `DeleteEvent`.
+                let response = result
+                    .ok()
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| responses.get(index).copied())
+                    .unwrap_or(ResponseType::DeleteEvent);
+                if let Some(cb) = callback {
+                    cb(response);
+                }
+            },
+        );
+    });
+
+}
+*/
 /// Show an error dialog
 pub fn show_error(title: &str, message: &str, parent: Option<&Window>) {
     show_message_dialog(
         DialogConfig::new(title, message).message_type(MessageType::Error),
-        parent,
-        None,
-    );
-}
-
-/// Show an error dialog with secondary text
-pub fn show_error_with_details(title: &str, message: &str, details: &str, parent: Option<&Window>) {
-    show_message_dialog(
-        DialogConfig::new(title, message)
-            .message_type(MessageType::Error)
-            .secondary_text(details),
         parent,
         None,
     );
@@ -152,15 +248,6 @@ pub fn show_question(
 /// Try to obtain the parent `Window` from any widget
 pub fn parent_window(widget: &impl IsA<Widget>) -> Option<Window> {
     widget.root().and_then(|r| r.downcast::<Window>().ok())
-}
-
-/// Show an error dialog from any widget context
-///
-/// Convenience function that automatically gets the parent window from the widget
-pub fn show_error_from_widget(title: &str, message: &str, widget: &impl IsA<Widget>) {
-    let parent = parent_window(widget);
-    let parent_ref = parent.as_ref();
-    show_error(title, message, parent_ref);
 }
 
 /// Show a confirmation dialog with callback

@@ -1,10 +1,46 @@
 # GCodeKit5 - Specification Document
 
-**Version**: 0.41.0-alpha.1
-**Last Updated**: 2025-12-21
-**Status**: Alpha Release
+**Version**: 1.2.0-beta.2
+**Last Updated**: 2026-11-11
+**Status**: Beta Release
 
-### Latest Release (v0.41.0-alpha.1) - Non-Destructive Geometry
+### Unreleased (2026-11-11) - Visualiser 2D/3D Toggle
+- ✅ **Visualizer**
+  - 2D/3D toggle in the sidebar: 2D is the locked orthographic top view with left-drag pan and no nav cube; 3D is the isometric view with free orbit.
+  - The sidebar Fit button fits the toolpath without changing the view orientation.
+- ✅ **Internationalization**
+  - The UI language sets `LANGUAGE` only; `LANG` keeps the system locale.
+
+### Latest Release (v0.55.0-alpha.1) - 6-Axis Support, Touch Probe, Feeds & Speeds
+- ✅ **6-Axis Support** (per 6AXISPLAN.md)
+  - Machine Control Panel: Dynamic axis visibility based on axis count
+  - Rotary axis DRO containers with A/B/C zero buttons
+  - Machine limits display for all 6 axes
+  - G-Code Parser: A/B/C parameter extraction in visualizer
+  - `GcodeValidator` module with 6-axis validation, axis limits checking
+  - 5 test G-code files for 6-axis machines
+  - Visualizer: 6-axis bounds tracking, `RotaryPosition` type
+  - Settings: New `Machine` category with 6-axis configuration panel
+  - Firmware: Capability flags for 4/5/6 axis support across all 5 firmware types
+- ✅ **Touch Probe** (per PROBEPLAN.md)
+  - Core probe types: `ProbeType`, `ProbeRoutine`, `ProbeResult`, `ProbeReport`
+  - GRBL probe response parser (`[PRB:x,y,z:flag]`)
+  - Real-time probe pin tracking via status reports
+  - Probe routines: Z-Touch, Edge-Find, Corner-Find, Bore-Center, Boss-Center, Tool-Length
+  - WCS service: `WcsUpdateService`, `WcsUpdateConfig`, `PersistentProbeResults`
+  - UI probe dialogs integrated in CAM Tools panel
+- ✅ **Feeds & Speeds Calculator** (per FEEDSSPEEDS.md)
+  - New `calculator.rs` and `service.rs` modules
+  - Full integration with Tools and Materials databases
+  - UI dialog with tool/material selection and live calculation
+- ✅ **DeviceDB Templates**
+  - New `templates` module for device profile templates
+- ✅ **Documentation**
+  - `docs/user/6AXIS.md` — 6-axis user guide
+  - `docs/user/PROBING.md` — probing user guide
+  - `docs/UI_FIELDS_MISSING.md` — UI field tracking
+
+### Previous Release (v0.41.0-alpha.1) - Non-Destructive Geometry
 - ✅ **Designer**
   - Implemented non-destructive geometry operations (Offset, Fillet, Chamfer).
   - Geometry modifiers are now properties of the shape, allowing live tweaking.
@@ -1033,7 +1069,7 @@ Available as real-time commands (executed immediately):
 - Sets work position to offset
 
 **Jogging**:
-- Continuous jogging (pressed button held)
+- Continuous jogging (pressed button held): enabled with the "Continuous" checkbox next to the step selector. While a jog button or numpad key (8/2 Y, 4/6 X, 9/3 Z) is held, the jog is streamed as short `$J=` increments (one per 50 ms, each covering 50 ms of motion at the jog feed) with at most 3 unacknowledged; release, focus loss or unchecking sends jog-cancel (0x85), which also discards queued increments. Because no increment targets a point beyond the next ~50 ms of travel, GRBL soft limits stop the jog at the boundary (the rejected increment ends the jog with a console message instead of an error dialog). Refused while disconnected or while a job streams.
 - Incremental jogging (fixed distance per button click)
 - Selectable increments: 0.1mm, 1mm, 10mm, 100mm (configurable)
 - Selectable feed rate: user-defined
@@ -1064,8 +1100,9 @@ Available as real-time commands (executed immediately):
 #### 4.4.4 Overrides
 
 **Feed Rate Override**:
-- Range: 0-200% (configurable limits)
-- 10% increments via buttons
+- Range: 10-200% (GRBL limits)
+- ±10% and ±1% increments via buttons
+- Exact target: a percentage field and "Set %" button move the override one realtime step at a time, waiting for the controller's `Ov:` status report to confirm each step before sending the next (GRBL can merge identical realtime bytes sent back-to-back). Needs live status reports, so it is refused while a job is streaming; the ± buttons still work then.
 - Continuous via slider
 - Applied to non-rapid feed movements
 - Real-time without stopping
@@ -1077,8 +1114,9 @@ Available as real-time commands (executed immediately):
 - 100% is no override
 
 **Spindle Override**:
-- Range: 0-200% (configurable limits)
-- 10% increments via buttons
+- Range: 10-200% (GRBL limits)
+- ±10% and ±1% increments via buttons
+- Exact target: percentage field and "Set %" button, sequenced against `Ov:` reports as for feed
 - Continuous via slider
 - Real-time PWM/relay adjustment
 - May not work with all controller firmware
@@ -1417,7 +1455,7 @@ G54                ; Back to work coordinates
 ```
 - Buttons for each direction
 - Keyboard shortcuts: W/A/S/D or arrow keys
-- Key repeat support for continuous jog
+- Hold-to-jog (continuous mode) for buttons and numpad keys; see the Jogging section above
 
 **Alternative**: Pendant/gamepad support for jogging
 
@@ -1495,6 +1533,7 @@ G54                ; Back to work coordinates
 - Increment buttons: -10%, -5%, +5%, +10%
 - Reset to 100% button
 - Current percentage display
+- Target percentage field with "Set %" button (confirmed step-by-step against `Ov:` reports)
 
 **Rapid Traverse Override**:
 - Preset buttons: 25%, 50%, 100% (125% optional)
@@ -1505,6 +1544,7 @@ G54                ; Back to work coordinates
 - Increment buttons: -10%, -5%, +5%, +10%
 - Reset to 100% button
 - Current percentage display
+- Target percentage field with "Set %" button (confirmed step-by-step against `Ov:` reports)
 
 #### 5.2.9 Coordinate System Panel
 **Work Coordinate System**:
@@ -1965,13 +2005,11 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 ## Visualizer Updates (December 2025)
 
 ### 3D Stock Removal Simulation
-- **Voxel Engine**: Implemented a 400x400x20 voxel grid (0.5mm resolution) for real-time material removal simulation.
-- **Rendering**: Face-based mesh generation with efficient culling of hidden faces.
-- **Visualization**:
-  - Depth-based coloring (Yellow -> Red -> Blue) to indicate cut depth.
-  - Edge highlighting for better geometry perception.
-  - Configurable stock dimensions and tool radius.
-- **Performance**: Background thread processing to keep UI responsive.
+- **Engine**: Height map with one material height per XY cell (0.19 mm cells). The tool is a flat end mill, so a cut lowers every cell whose centre lies under the tool to the tool tip; depths are exact, not rounded to the cell size. Rapids through the stock cut too.
+- **Placement**: "Stock Z0 at: Top / Bottom" (defaulted from the program header when it records one) and "Stock XY0 at: Lower left / Center" place the stock in work coordinates.
+- **Limits**: Up to 2^27 cells (512 MiB), enough for a full 1220 x 2440 mm sheet; larger stock is refused with a message before allocating.
+- **Rendering**: Surface mesh with coplanar faces and walls merged into large quads, drawn in a single shaded steel-grey colour with back-face culling.
+- **Performance**: Simulation and mesh building run on a background thread with progress and cancel; each run has its own cancel token. Loading or editing G-code clears the result.
 - **Integration**: Fully integrated into the GTK4 Visualizer widget with toggle controls.
 
 ### 3D View Improvements
@@ -1998,6 +2036,7 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
   - Refactored `pocket_operations.rs` to support strategy pattern.
   - Integrated `cavalier_contours` for polygon operations.
   - Updated `DesignerShape` and `DrawingObject` to persist strategy settings.
+- **Holes (islands)**: paths (including imported SVG/DXF), gears, sprockets and text are pocketed with the even-odd rule. Each closed contour's nesting depth decides its role: even depth bounds material to remove, odd depth is a hole left uncut, and an island inside a hole is pocketed again. Each region is offset as a whole (`cavalier_contours` `Shape`), so the tool keeps a tool-radius clearance from the outer wall and from every hole; links between loops/spans stay at depth only when they remain inside the region, otherwise the tool retracts and re-enters. All three strategies support holes. Text pockets leave letter counters (the insides of O, A, B, ...) standing.
 
 ## Device Database (DeviceDB)
 - **New Crate**: `gcodekit5-devicedb`
@@ -2054,3 +2093,12 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - All 11 major UI panels have been refactored to use the new theme and shared components.
 - Removed ad-hoc styling and local component definitions from individual panel files.
 - Improved consistency in layout, spacing, and interaction patterns across the application.
+
+## Audit Follow-up (November 2026)
+- **Streaming**: GRBL character-counting flow control (bytes in flight ≤ 127). The job sender polls status (`?`, 200 ms) itself so the DRO, alarm state and overrides stay live; an `ALARM:`/`error:` reply stops the job with the reason.
+- **Connections**: device profiles carry a TCP host and port; connecting with a TCP profile opens a TCP stream through the same communicator as serial. WebSocket is not supported yet.
+- **Machine Control**: rotary A/B/C axes shown from the profile/status; Pause/Resume/Stop only during a job; inch jog presets (0.0001–1 in); probe failures restore G90 once idle.
+- **Stop and busy guard**: Stop sends feed hold (`!`), waits for `Hold:0` (up to 10 s), then soft-resets (0x18), so the position is kept; E-Stop still resets at once. While a job streams, console lines (except `!`, `~`, `?`) and `$$`/`$n=v` are refused with a message; `$` commands also need Idle or Alarm. Pause state clears when the machine reports Run/Jog
+- **Designer**: property fields commit on Enter/focus-out (one undo step per edit); every property edit is undoable; unsaved-changes prompt on New/Open/window close; SVG transforms and viewBox units; DXF `$INSUNITS`.
+- **CAM probe tool**: routines use relative (G91) moves from the current position with probe depth, tip-radius and plate-thickness compensation; "Probe" runs the routine and reports the result; "Apply to WCS" sends `G10 L2` (or `G43.1` for tool length).
+- **Bitmap engraving**: dark pixels receive more power by default; the Invert option engraves light areas.

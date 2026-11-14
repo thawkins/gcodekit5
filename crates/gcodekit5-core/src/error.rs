@@ -1,4 +1,4 @@
-//! Error handling for GCodeKit4
+//! Error handling for GCodeKit5
 //!
 //! Provides comprehensive error types for all layers of the application:
 //! - Controller errors (device/firmware related)
@@ -81,6 +81,28 @@ pub enum ControllerError {
     #[error("Probe failed: {reason}")]
     ProbeFailed {
         /// The reason the probe operation failed.
+        reason: String,
+    },
+
+    /// Probe operation timed out
+    #[error("Probe timeout after {timeout_ms}ms")]
+    ProbeTimeout {
+        /// The timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
+
+    /// Probe triggered unexpectedly before the probe command
+    #[error("Unexpected probe trigger")]
+    ProbeUnexpectedTrigger,
+
+    /// Probe remained closed (stuck) after a retract cycle
+    #[error("Probe stuck closed — check probe wiring")]
+    ProbeStuck,
+
+    /// Probing is not supported by the current firmware or configuration
+    #[error("Probing not supported: {reason}")]
+    ProbeNotSupported {
+        /// The reason probing is unavailable.
         reason: String,
     },
 
@@ -403,7 +425,7 @@ pub enum FirmwareError {
     },
 }
 
-/// Main error type for GCodeKit4
+/// Main error type for GCodeKit5
 ///
 /// A unified error type that can represent any error from all layers.
 /// This is the primary error type used in public APIs.

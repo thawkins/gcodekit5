@@ -4,13 +4,15 @@
 //! machine status, current position, and progress information.
 
 use gcodekit5_core::units::{
-    format_feed_rate, format_length, get_unit_label, FeedRateUnits, MeasurementSystem,
+    FeedRateUnits, MeasurementSystem, format_feed_rate, format_length, get_unit_label,
 };
 use gtk4::prelude::*;
 use gtk4::{Align, Box, Button, Image, Label, Orientation, ProgressBar};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::t;
-use gcodekit5_core::{shared_none, SharedOption};
+use gcodekit5_core::{SharedOption, shared_none};
 use gtk4::pango::EllipsizeMode; // Importación de tu macro de traducción
 
 #[derive(Clone)]
@@ -35,6 +37,9 @@ pub struct StatusBar {
     cancel_action: SharedOption<std::boxed::Box<dyn Fn() + 'static>>,
     pub device_info_label: Label,
     pub alert_label: Label, // <-- NUEVA: Para los avisos de la derecha
+    /// Timer that clears `alert_label`; replaced by each new notice so an
+    /// older notice's timer cannot clear a newer one.
+    alert_timer: Rc<Cell<Option<glib::SourceId>>>,
 }
 
 impl Default for StatusBar {
@@ -44,6 +49,7 @@ impl Default for StatusBar {
 }
 
 impl StatusBar {
+    /// Builds the status bar (connection, state, position, progress and E-stop).
     pub fn new() -> Self {
         let widget = Box::new(Orientation::Horizontal, 0);
         widget.set_height_request(30);
@@ -60,7 +66,7 @@ impl StatusBar {
         left_box.set_valign(Align::Center);
 
         // eStop Button
-        let estop_btn = Button::with_label("eStop");
+        let estop_btn = Button::with_label(&t!("eStop"));
         estop_btn.add_css_class("estop-button");
         estop_btn.set_sensitive(false);
         left_box.append(&estop_btn);
@@ -169,8 +175,14 @@ impl StatusBar {
         }
         {
             let cancel_action = cancel_action.clone();
-            cancel_btn.connect_clicked(move |_| {
-                if let Some(cb) = cancel_action.borrow().as_ref() {
+            cancel_btn.connect_clicked(move |btn| {
+                // Take the callback out before running it: callbacks commonly end up calling
+                // `set_cancel_action(None)` (e.g. via a toggled handler), which would panic
+                // with "already borrowed" if the RefCell were still borrowed here.
+                // Cancelling is one-shot, so the action is not restored afterwards.
+                let cb = cancel_action.borrow_mut().take();
+                btn.set_visible(false);
+                if let Some(cb) = cb {
                     cb();
                 }
             });
@@ -198,9 +210,11 @@ impl StatusBar {
             cancel_action,
             device_info_label,
             alert_label,
+            alert_timer: Rc::new(Cell::new(None)),
         }
     }
 
+    /// Shows the connection state and port name.
     pub fn set_connected(&self, connected: bool, port: &str) {
         self.estop_btn.set_sensitive(connected);
         if connected {
@@ -230,37 +244,35 @@ impl StatusBar {
         }
     }
 
-    pub fn set_version(&self, version: &str) {
-        self.version_label
-            .set_text(&format!("{}: {}", t!("Version"), version));
-    }
-
-    /// Muestra un aviso en el lado derecho de la barra de estado.
-    /// Si el texto es del sistema de estados nativos, se envía a la izquierda.
-    /// Si es un aviso personalizado ("Importing...", "Error..."), salta a la derecha y se borra a los 4 segundos.
+    /// Shows the machine state, coloured by state class, on the left.
+    ///
+    /// Any other text (e.g. "Importing image...") is shown on the right as a
+    /// notice and cleared after 4 seconds.
     pub fn set_state(&self, state: &str) {
-        // Lista de estados nativos de la máquina que pertenecen estrictamente a la izquierda
-        let is_machine_state = match state {
-            "ALARM" | "Run" | "Idle" | "IDLE" => true,
-            s if s.starts_with("Hold") => true,
-            _ => false,
-        };
+        // GRBL reports e.g. "Alarm", "Hold:0", "Run", "Idle" (case varies by firmware).
+        let low = state.to_ascii_lowercase();
+        let is_machine_state = [
+            "alarm", "run", "hold", "idle", "jog", "home", "door", "check", "sleep",
+        ]
+        .iter()
+        .any(|prefix| low.starts_with(prefix));
 
         if is_machine_state {
             self.state_label.set_text(state);
 
-            // Update color based on state
             self.state_label.remove_css_class("state-alarm");
             self.state_label.remove_css_class("state-run");
             self.state_label.remove_css_class("state-hold");
             self.state_label.remove_css_class("state-idle");
 
-            match state {
-                "ALARM" => self.state_label.add_css_class("state-alarm"),
-                "Run" => self.state_label.add_css_class("state-run"),
-                s if s.starts_with("Hold") => self.state_label.add_css_class("state-hold"),
-                "Idle" | "IDLE" => self.state_label.add_css_class("state-idle"),
-                _ => {}
+            if low.starts_with("alarm") {
+                self.state_label.add_css_class("state-alarm");
+            } else if low.starts_with("run") {
+                self.state_label.add_css_class("state-run");
+            } else if low.starts_with("hold") {
+                self.state_label.add_css_class("state-hold");
+            } else if low.starts_with("idle") {
+                self.state_label.add_css_class("state-idle");
             }
         } else {
             // Es un aviso personalizado de la interfaz (Ej: "Importing image...")
@@ -268,14 +280,21 @@ impl StatusBar {
             self.alert_label.set_text(state);
             // Temporizador: Limpia automáticamente el aviso de la derecha tras 4 segundos (4000ms)
             let alert_label_clone = self.alert_label.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(4000), move || {
+            let timer = self.alert_timer.clone();
+            if let Some(previous) = self.alert_timer.take() {
+                previous.remove();
+            }
+            let id = glib::timeout_add_local(std::time::Duration::from_millis(4000), move || {
                 alert_label_clone.set_text("");
+                timer.set(None);
                 glib::ControlFlow::Break
-                // Detiene el temporizador para que no se repita
             });
+            self.alert_timer.set(Some(id));
         }
     }
 
+    /// Shows the machine position (mm in, display units out).
+    // Status bar update requires all machine state fields.
     #[allow(clippy::too_many_arguments)]
     pub fn set_position(
         &self,
@@ -299,6 +318,8 @@ impl StatusBar {
             unit_label
         ));
     }
+
+    /// Shows feed (mm/min in, display units out) and spindle speed.
     pub fn set_feed_spindle(&self, feed_rate: f64, spindle_speed: u32, feed_units: FeedRateUnits) {
         self.feed_spindle_label.set_text(&format!(
             "F: {}  S: {} RPM",
@@ -307,6 +328,7 @@ impl StatusBar {
         ));
     }
 
+    /// Shows job progress (percent) with elapsed and remaining time; 0 hides it.
     pub fn set_progress(&self, progress: f64, elapsed: &str, remaining: &str) {
         if progress > 0.0 {
             self.progress_bar.set_visible(true);
@@ -318,13 +340,13 @@ impl StatusBar {
                 self.elapsed_label.set_text("");
             } else {
                 self.elapsed_label
-                    .set_text(&format!("{}: {}", t!("Elapsed"), elapsed));
+                    .set_text(&format!("{} {}", t!("Elapsed:"), elapsed));
             }
             if remaining.is_empty() {
                 self.remaining_label.set_text("");
             } else {
                 self.remaining_label
-                    .set_text(&format!("{}: {}", t!("Remaining"), remaining));
+                    .set_text(&format!("{} {}", t!("Remaining:"), remaining));
             }
         } else {
             self.progress_bar.set_visible(false);
@@ -333,6 +355,7 @@ impl StatusBar {
         }
     }
 
+    /// Sets (or clears) the action run by the Cancel button.
     pub fn set_cancel_action(&self, action: Option<std::boxed::Box<dyn Fn() + 'static>>) {
         *self.cancel_action.borrow_mut() = action;
         let visible = self.cancel_action.borrow().is_some();
@@ -340,11 +363,13 @@ impl StatusBar {
         self.cancel_btn.set_sensitive(visible);
     }
 
+    /// Shows the active device name, controller and type.
     pub fn set_device_info(&self, name: &str, controller: &str, device_type: &str) {
         let text = format!("{} | {} | {}", name, controller, device_type);
         self.device_info_label.set_text(&text);
     }
 
+    /// Shows the active device profile from the device manager.
     pub fn refresh_device_info(&self, device_manager: &gcodekit5_devicedb::DeviceManager) {
         if let Some(profile) = device_manager.get_active_profile() {
             let controller_type = format!("{:?}", profile.controller_type);
@@ -354,4 +379,3 @@ impl StatusBar {
         }
     }
 }
-

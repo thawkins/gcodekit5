@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 // On Windows, hide the console window for GUI applications
 #![cfg_attr(
     all(target_os = "windows", not(debug_assertions)),

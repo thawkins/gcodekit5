@@ -4,7 +4,7 @@ El diseñador tiene dos modos diferenciados de trabajo: "Laser 2D" y "CNC 3D". S
 
 En el modo Láser 2D no existe la coordenada Z por lo que está inhabilitada. Este modo se usa principalmente para grabado y corte por láser. En él se puede crear y editar objetos mediante las herramientas propias e importar diseños vectoriales como DXF y SVG. También se pueden importar Imágenes jpg, png etc para el grabado.
 
-  <img src="../../help_images/designer.png" alt="Diseñador" width="800">
+  <img src="../../help_images/designer.png" alt="Diseñador" width="700">
 
 ## Acciones principales en Modo Láser 2D
 - Dibujar primitivas (rectángulos, círculos, líneas, elipses, polilineas, triangulos, Polígonos, Piñones, Engranajes)
@@ -22,7 +22,7 @@ En el modo Láser 2D no existe la coordenada Z por lo que está inhabilitada. Es
 
 ---
 ## Propiedades globales
-  <img src="../../help_images/global_properties.png" alt="Propiedades Globales" width="700">
+  <img src="../../help_images/global_properties.png" alt="Propiedades Globales" width="600">
 
 Pulsando el botón "Configuración de Herramienta" se abre la ventana para la configuración Global de trabajo. Esta Configuración se utilizará para todos los objetos vectoriales que tengan marcado el CheckBox "Usar Valores Globales" en las propiedades de objeto "Configuración Láser (Objeto)"
 
@@ -38,13 +38,11 @@ Pulsando el botón "Configuración de Herramienta" se abre la ventana para la co
         <li> Propiedades CAM</li>
         <li> Configuración individual Láser (velocidad, potencia y pasadas) de un objeto determinado</li>
 
-### Notas sobre Esquina y Chaflán
-  - Para polilíneas (abiertas y cerradas), el redondeo de vértices se ajusta desde el panel Esquina usando Radius.
-  - En objetos tipo Path, Radius (Esquina) y Chaflán son excluyentes para evitar geometrías duplicadas.
-  - El valor de chaflán se aplica con medida real sobre la arista (por ejemplo, chaflán 10 = recorte de 10 mm por lado en una esquina de 90 grados).
-  
+      ### Notas sobre Esquina y Chaflán
+      - Para polilíneas (abiertas y cerradas), el redondeo de vértices se ajusta desde el panel Esquina usando Radius.
+      - En objetos tipo Path, Radius (Esquina) y Chaflán son excluyentes para evitar geometrías duplicadas.
+      - El valor de chaflán se aplica con medida real sobre la arista (por ejemplo, chaflán 10 = recorte de 10 mm por lado en una esquina de 90 grados).
 ---
-
 ## Panel de Objetos
   <img src="../../help_images/order_objects_1.png" width="300">
       En el panel de objetos aparece la lista de objetos con:
@@ -53,24 +51,10 @@ Pulsando el botón "Configuración de Herramienta" se abre la ventana para la co
         <li> Nombre del Objeto</li>
         <li> El número de orden es editable y sirve para organizar los objetos para que al generar el G-code, los objetos se ejecuten es ese orden.</li>
         <li> El Nombre también es editable, de modo que se puedan identificar los objetos convenientemente</li>
+
   <img src="../../help_images/order_objects_2" width="300">
   <li> </li>
-  
-  También se pueden ordenar los objetos con las flechas inferiores del panel,
-  pudiendo desplazar el objeto uno arriba, uno abajo, al principio o al final
-  <img src="../../help_images/designer_objects" width="300">
-  
-  Con los botones situados a la derecha del panel de objetos, se pueden agrupar y desagrupar
-  los objetos seleccionados, quedan marcados con G:XX y en el canvas se ven en color verde
-  - No se pueden intercalar objetos en un grupo anteriormente definido.
-  Si desea hacerlo tendrá que desagrupar el existente y volver a crear el grupo  
-  <img src="../../help_images/designer_group" width="300">
-  
-  Al seleccionar objetos en el canvas, pulsando el botón derecho de ratón aparece
-  el menú contextual, con el que también podrá Cortar, Copiar, Agrupar, Desagrupar,
-  operacione booleanas, Alinear, etc. entre varios objetos
-  <img src="../../help_images/designer_context" width="300">
-  
+
 ---
 ## Generador de Gcode y Frame
   <img src="../../help_images/gcode_frame.png" alt="Generador de Gcode y Frame" width="200">

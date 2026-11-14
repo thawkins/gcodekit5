@@ -7,8 +7,6 @@ use crate::model::{DesignerShape, ParametricPathSource, Shape};
 use crate::shapes::OperationType;
 use crate::{Point, Rectangle};
 
-use csgrs::traits::CSG; // Para poder usar .transform()
-
 impl DesignerState {
     /// Sets the use_custom_values flag for selected shapes.
     pub fn set_selected_use_custom_values(&mut self, use_custom: bool) {
@@ -65,79 +63,66 @@ impl DesignerState {
         }
     }
 
-    /// Sets the step down for selected shapes.
-    pub fn set_selected_step_down(&mut self, step_down: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.step_down as f64 - step_down).abs() > f64::EPSILON {
+    /// Sets one `f32` property on every selected shape that differs from
+    /// `value`, as one undo step named `name`.
+    fn set_selected_f32(
+        &mut self,
+        value: f64,
+        name: &str,
+        get: fn(&DrawingObject) -> f32,
+        set: fn(&mut DrawingObject, f32),
+    ) {
+        let commands: Vec<DesignerCommand> = self
+            .canvas
+            .shapes()
+            .filter(|s| s.selected && (get(s) as f64 - value).abs() > f64::EPSILON)
+            .map(|obj| {
                 let mut new_obj = obj.clone();
-                new_obj.step_down = step_down as f32;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                set(&mut new_obj, value as f32);
+                DesignerCommand::ChangeProperty(ChangeProperty {
                     id: obj.id,
                     old_state: obj.clone(),
                     new_state: new_obj,
-                }));
-            }
-        }
+                })
+            })
+            .collect();
 
         if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
+            self.push_command(DesignerCommand::CompositeCommand(CompositeCommand {
                 commands,
-                name: "Change Step Down".to_string(),
-            });
-            self.push_command(cmd);
+                name: name.to_string(),
+            }));
         }
+    }
+
+    /// Sets the step down for selected shapes.
+    pub fn set_selected_step_down(&mut self, step_down: f64) {
+        self.set_selected_f32(
+            step_down,
+            "Change Step Down",
+            |o| o.step_down,
+            |o, v| o.step_down = v,
+        );
     }
 
     /// Sets the step in for selected shapes.
     pub fn set_selected_step_in(&mut self, step_in: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.step_in as f64 - step_in).abs() > f64::EPSILON {
-                let mut new_obj = obj.clone();
-                new_obj.step_in = step_in as f32;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id: obj.id,
-                    old_state: obj.clone(),
-                    new_state: new_obj,
-                }));
-            }
-        }
-
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Change Step In".to_string(),
-            });
-            self.push_command(cmd);
-        }
+        self.set_selected_f32(
+            step_in,
+            "Change Step In",
+            |o| o.step_in,
+            |o, v| o.step_in = v,
+        );
     }
 
     /// Sets the ramp angle for selected shapes.
     pub fn set_selected_ramp_angle(&mut self, ramp_angle: f64) {
-        let mut commands = Vec::new();
-        for obj in self.canvas.shapes().filter(|s| s.selected) {
-            if (obj.ramp_angle as f64 - ramp_angle).abs() > f64::EPSILON {
-                let mut new_obj = obj.clone();
-                new_obj.ramp_angle = ramp_angle as f32;
-
-                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                    id: obj.id,
-                    old_state: obj.clone(),
-                    new_state: new_obj,
-                }));
-            }
-        }
-
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Change Ramp Angle".to_string(),
-            });
-            self.push_command(cmd);
-        }
+        self.set_selected_f32(
+            ramp_angle,
+            "Change Ramp Angle",
+            |o| o.ramp_angle,
+            |o, v| o.ramp_angle = v,
+        );
     }
 
     /// Sets the start depth for selected shapes.
@@ -246,7 +231,12 @@ impl DesignerState {
         }
     }
 
-    /// Sets the rotation of selected shapes.
+    /// Sets the rotation of selected shapes, in degrees.
+    ///
+    /// With a single shape selected `rotation` is the absolute target angle. With
+    /// several shapes selected it is a *relative* angle: the whole selection is rotated
+    /// by `rotation` degrees about its common centre. Either way exactly one undo step
+    /// is recorded per call, so callers must invoke this once per committed edit.
     pub fn set_selected_rotation(&mut self, rotation: f64) {
         let selected_count = self.selected_count();
 
@@ -307,40 +297,9 @@ impl DesignerState {
 
                     match &mut new_obj.shape {
                         crate::model::Shape::Path(s) => {
-                            // Obtain real limits from DXF
-                            let (x1, _, x2, _) = s.bounds();
-
-                            // Calculate the actual CURRENT CENTER of the object
-                            let current_center_x = (x1 + x2) / 2.0;
-
-                            // The displacement (dx) is the difference between
-                            // what the Inspector (center_x) asks for and where the center
-                            let dx = center_x - current_center_x;
-
-                            if dx.abs() > f64::EPSILON {
-                                // Physically move all points that distance dx
-                                let translation = nalgebra::Matrix4::new_translation(
-                                    &nalgebra::Vector3::new(dx, 0.0, 0.0),
-                                );
-                                s.sketch = s.sketch.transform(&translation);
-                            }
-                            // Obtain the vertical limits
-                            let (_, y1, _, y2) = s.bounds();
-
-                            // Calculate the current VERTICAL CENTER
-                            let current_center_y = (y1 + y2) / 2.0;
-
-                            // Displacement (dy) is: Destination (center_y) - Origin (current center)
-                            let dy = center_y - current_center_y;
-
-                            if dy.abs() > f64::EPSILON {
-                                // Move on the Y axis (second parameter of Vector3)
-                                let translation = nalgebra::Matrix4::new_translation(
-                                    &nalgebra::Vector3::new(0.0, dy, 0.0),
-                                );
-                                s.sketch = s.sketch.transform(&translation);
-                            }
-                            s.rotation = rotation;
+                            // The path was already moved to its orbit position by the
+                            // translate above; only the render-time rotation changes.
+                            s.rotation += angle_delta;
                         }
 
                         crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
@@ -371,50 +330,34 @@ impl DesignerState {
                 self.push_command(cmd);
             }
         } else {
-            let mut commands = Vec::new();
-            for obj in self.canvas.shapes_mut() {
-                if obj.selected {
-                    let mut new_obj = obj.clone();
-                    match &mut new_obj.shape {
-                        crate::model::Shape::Rectangle(s) => s.rotation = rotation,
-                        crate::model::Shape::Circle(s) => s.rotation = rotation,
-                        crate::model::Shape::Line(s) => {
-                            let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
-                            let cx = (sx1 + sx2) / 2.0;
-                            let cy = (sy1 + sy2) / 2.0;
-                            let current = s.current_angle_degrees();
-                            let delta = rotation - current;
-                            s.rotate_about(delta, cx, cy);
-                            s.rotation = rotation;
-                        }
-                        crate::model::Shape::Ellipse(s) => s.rotation = rotation,
-                        crate::model::Shape::Path(s) => s.rotation = rotation,
-                        crate::model::Shape::Text(s) => s.rotation = rotation,
-                        crate::model::Shape::Triangle(s) => s.rotation = rotation,
-                        crate::model::Shape::Polygon(s) => s.rotation = rotation,
-                        crate::model::Shape::Gear(s) => s.rotation = rotation,
-                        crate::model::Shape::Sprocket(s) => s.rotation = rotation,
-                        crate::model::Shape::RasterImage(s) => s.rotation = rotation,
-                    }
-
-                    if (obj.shape.rotation() - rotation).abs() > f64::EPSILON {
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj.clone(),
-                        }));
-                        *obj = new_obj;
-                    }
+            // Build the new state from a copy; the command applies it (and keeps the
+            // spatial index in sync), so the live object must not be mutated here.
+            self.change_selected_with_undo("Change Rotation", |obj| {
+                if (obj.shape.rotation() - rotation).abs() <= f64::EPSILON {
+                    return false;
                 }
-            }
-
-            if !commands.is_empty() {
-                let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                    commands,
-                    name: "Change Rotation".to_string(),
-                });
-                self.push_command(cmd);
-            }
+                let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
+                match &mut obj.shape {
+                    crate::model::Shape::Rectangle(s) => s.rotation = rotation,
+                    crate::model::Shape::Circle(s) => s.rotation = rotation,
+                    crate::model::Shape::Line(s) => {
+                        let cx = (sx1 + sx2) / 2.0;
+                        let cy = (sy1 + sy2) / 2.0;
+                        let delta = rotation - s.current_angle_degrees();
+                        s.rotate_about(delta, cx, cy);
+                        s.rotation = rotation;
+                    }
+                    crate::model::Shape::Ellipse(s) => s.rotation = rotation,
+                    crate::model::Shape::Path(s) => s.rotation = rotation,
+                    crate::model::Shape::Text(s) => s.rotation = rotation,
+                    crate::model::Shape::Triangle(s) => s.rotation = rotation,
+                    crate::model::Shape::Polygon(s) => s.rotation = rotation,
+                    crate::model::Shape::Gear(s) => s.rotation = rotation,
+                    crate::model::Shape::Sprocket(s) => s.rotation = rotation,
+                    crate::model::Shape::RasterImage(s) => s.rotation = rotation,
+                }
+                true
+            });
         }
     }
 
@@ -422,21 +365,20 @@ impl DesignerState {
     pub fn set_selected_is_slot(&mut self, is_slot: bool) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::Rectangle(rect) = &obj.shape {
-                    if rect.is_slot != is_slot {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
-                            new_rect.is_slot = is_slot;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
+            if obj.selected
+                && let crate::model::Shape::Rectangle(rect) = &obj.shape
+                && rect.is_slot != is_slot
+            {
+                let mut new_obj = obj.clone();
+                if let crate::model::Shape::Rectangle(new_rect) = &mut new_obj.shape {
+                    new_rect.is_slot = is_slot;
                 }
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
             }
         }
         if !commands.is_empty() {
@@ -476,26 +418,24 @@ impl DesignerState {
     pub fn set_selected_gear_properties(&mut self, module: f64, teeth: usize, pressure_angle: f64) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::Gear(gear) = &obj.shape {
-                    if (gear.module - module).abs() > f64::EPSILON
-                        || gear.teeth != teeth
-                        || (gear.pressure_angle_deg - pressure_angle).abs() > f64::EPSILON
-                    {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
-                            new_gear.module = module;
-                            new_gear.teeth = teeth;
-                            new_gear.pressure_angle_deg = pressure_angle;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
+            if obj.selected
+                && let crate::model::Shape::Gear(gear) = &obj.shape
+                && ((gear.module - module).abs() > f64::EPSILON
+                    || gear.teeth != teeth
+                    || (gear.pressure_angle_deg - pressure_angle).abs() > f64::EPSILON)
+            {
+                let mut new_obj = obj.clone();
+                if let crate::model::Shape::Gear(new_gear) = &mut new_obj.shape {
+                    new_gear.module = module;
+                    new_gear.teeth = teeth;
+                    new_gear.pressure_angle_deg = pressure_angle;
                 }
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
             }
         }
         if !commands.is_empty() {
@@ -516,26 +456,24 @@ impl DesignerState {
     ) {
         let mut commands = Vec::new();
         for obj in self.canvas.shapes_mut() {
-            if obj.selected {
-                if let crate::model::Shape::Sprocket(sprocket) = &obj.shape {
-                    if (sprocket.pitch - pitch).abs() > f64::EPSILON
-                        || sprocket.teeth != teeth
-                        || (sprocket.roller_diameter - roller_diameter).abs() > f64::EPSILON
-                    {
-                        let mut new_obj = obj.clone();
-                        if let crate::model::Shape::Sprocket(new_sprocket) = &mut new_obj.shape {
-                            new_sprocket.pitch = pitch;
-                            new_sprocket.teeth = teeth;
-                            new_sprocket.roller_diameter = roller_diameter;
-                        }
-
-                        commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                            id: obj.id,
-                            old_state: obj.clone(),
-                            new_state: new_obj,
-                        }));
-                    }
+            if obj.selected
+                && let crate::model::Shape::Sprocket(sprocket) = &obj.shape
+                && ((sprocket.pitch - pitch).abs() > f64::EPSILON
+                    || sprocket.teeth != teeth
+                    || (sprocket.roller_diameter - roller_diameter).abs() > f64::EPSILON)
+            {
+                let mut new_obj = obj.clone();
+                if let crate::model::Shape::Sprocket(new_sprocket) = &mut new_obj.shape {
+                    new_sprocket.pitch = pitch;
+                    new_sprocket.teeth = teeth;
+                    new_sprocket.roller_diameter = roller_diameter;
                 }
+
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
             }
         }
         if !commands.is_empty() {
@@ -852,17 +790,17 @@ impl DesignerState {
                     new_original.selected = true;
                     new_original.shape.translate(dx, dy);
 
-                    if is_circular {
-                        if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-                            let angle_step = params.angle_step();
-                            let angle_delta = if params.clockwise {
-                                -(i as f64) * angle_step
-                            } else {
-                                (i as f64) * angle_step
-                            };
+                    if is_circular
+                        && let crate::arrays::ArrayOperation::Circular(params) = &operation
+                    {
+                        let angle_step = params.angle_step();
+                        let angle_delta = if params.clockwise {
+                            -(i as f64) * angle_step
+                        } else {
+                            (i as f64) * angle_step
+                        };
 
-                            Self::apply_rotation_delta(&mut new_original.shape, angle_delta);
-                        }
+                        Self::apply_rotation_delta(&mut new_original.shape, angle_delta);
                     }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
@@ -879,17 +817,17 @@ impl DesignerState {
 
                     new_obj.shape.translate(dx, dy);
 
-                    if is_circular {
-                        if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-                            let angle_step = params.angle_step();
-                            let angle_delta = if params.clockwise {
-                                -(i as f64) * angle_step
-                            } else {
-                                (i as f64) * angle_step
-                            };
+                    if is_circular
+                        && let crate::arrays::ArrayOperation::Circular(params) = &operation
+                    {
+                        let angle_step = params.angle_step();
+                        let angle_delta = if params.clockwise {
+                            -(i as f64) * angle_step
+                        } else {
+                            (i as f64) * angle_step
+                        };
 
-                            Self::apply_rotation_delta(&mut new_obj.shape, angle_delta);
-                        }
+                        Self::apply_rotation_delta(&mut new_obj.shape, angle_delta);
                     }
 
                     commands.push(DesignerCommand::AddShape(AddShape {
@@ -914,7 +852,12 @@ impl DesignerState {
         match shape {
             crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
             crate::model::Shape::Circle(s) => s.rotation += angle_delta,
-            crate::model::Shape::Line(s) => s.rotation += angle_delta,
+            crate::model::Shape::Line(s) => {
+                // Line geometry is absolute: rotate the endpoints about the midpoint.
+                let cx = (s.start.x + s.end.x) / 2.0;
+                let cy = (s.start.y + s.end.y) / 2.0;
+                s.rotate_about(angle_delta, cx, cy);
+            }
             crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
             crate::model::Shape::Path(s) => s.rotation += angle_delta,
             crate::model::Shape::Text(s) => s.rotation += angle_delta,
@@ -926,97 +869,133 @@ impl DesignerState {
         }
     }
 
+    /// Applies `modify` to a copy of every selected shape and records all resulting
+    /// changes as a single undoable composite command named `name`.
+    ///
+    /// `modify` returns `true` when it changed the object; unchanged objects are not
+    /// recorded, and no command is pushed when nothing changed.
+    fn change_selected_with_undo<F>(&mut self, name: &str, mut modify: F)
+    where
+        F: FnMut(&mut DrawingObject) -> bool,
+    {
+        let mut commands = Vec::new();
+        for obj in self.canvas.shapes().filter(|s| s.selected) {
+            let mut new_obj = obj.clone();
+            if modify(&mut new_obj) {
+                commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
+                    id: obj.id,
+                    old_state: obj.clone(),
+                    new_state: new_obj,
+                }));
+            }
+        }
+
+        if !commands.is_empty() {
+            self.push_command(DesignerCommand::CompositeCommand(CompositeCommand {
+                commands,
+                name: name.to_string(),
+            }));
+        }
+    }
+
+    /// Moves every selected shape so that its left bounding edge is at `new_x` (mm).
+    ///
+    /// Recorded as a single undo step.
     pub fn set_selected_x(&mut self, new_x: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+        self.change_selected_with_undo("Change X", |obj| {
             let (current_x, _, _, _) = obj.shape.bounds();
             let dx = new_x - current_x;
-
-            if dx.abs() > f64::EPSILON {
-                match &mut obj.shape {
-                    crate::model::Shape::Path(s) => {
-                        // For imported objects: We move the physical points
-                        let translation = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(dx, 0.0, 0.0),
-                        );
-                        s.sketch = s.sketch.transform(&translation);
-                    }
-                    _ => {
-                        // For native objects: We use translate with the exact jump (0.0 on Y so that it doesn't jump)
-                        obj.shape.translate(dx, 0.0);
-                    }
-                }
+            if dx.abs() <= f64::EPSILON {
+                return false;
             }
-        }
+            // Paths translate both the sketch and the original curved geometry.
+            obj.shape.translate(dx, 0.0);
+            true
+        });
     }
 
+    /// Moves every selected shape so that its bottom bounding edge is at `new_y` (mm).
+    ///
+    /// Recorded as a single undo step.
     pub fn set_selected_y(&mut self, new_y: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
+        self.change_selected_with_undo("Change Y", |obj| {
             let (_, current_y, _, _) = obj.shape.bounds();
             let dy = new_y - current_y;
-
-            if dy.abs() > f64::EPSILON {
-                match &mut obj.shape {
-                    crate::model::Shape::Path(s) => {
-                        let translation = nalgebra::Matrix4::new_translation(
-                            &nalgebra::Vector3::new(0.0, dy, 0.0),
-                        );
-                        s.sketch = s.sketch.transform(&translation);
-                    }
-                    _ => {
-                        obj.shape.translate(0.0, dy);
-                    }
-                }
+            if dy.abs() <= f64::EPSILON {
+                return false;
             }
-        }
+            obj.shape.translate(0.0, dy);
+            true
+        });
     }
 
+    /// Sets the width (mm) of every selected shape.
+    ///
+    /// Rectangles, ellipses and triangles change their native width; other shapes are
+    /// scaled horizontally about their centre. Recorded as a single undo step.
     pub fn set_selected_width(&mut self, width: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
-            match &mut obj.shape {
-                crate::model::Shape::Rectangle(r) => {
-                    r.width = width;
-                }
-                crate::model::Shape::Ellipse(e) => {
-                    e.rx = width / 2.0;
-                }
-                crate::model::Shape::Triangle(t) => {
-                    t.width = width;
-                }
-                _ => {
-                    let (x1, y1, x2, y2) = obj.shape.bounds();
-                    let current_width = x2 - x1;
-                    if current_width > 0.0 {
-                        let scale_factor = width / current_width;
-                        let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
-                        obj.shape.scale(scale_factor, 1.0, center);
-                    }
-                }
+        self.change_selected_with_undo("Change Width", |obj| match &mut obj.shape {
+            Shape::Rectangle(r) => {
+                let changed = (r.width - width).abs() > f64::EPSILON;
+                r.width = width;
+                changed
             }
-        }
+            Shape::Ellipse(e) => {
+                let changed = (e.rx - width / 2.0).abs() > f64::EPSILON;
+                e.rx = width / 2.0;
+                changed
+            }
+            Shape::Triangle(t) => {
+                let changed = (t.width - width).abs() > f64::EPSILON;
+                t.width = width;
+                changed
+            }
+            _ => {
+                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let current_width = x2 - x1;
+                if current_width <= 0.0 || (current_width - width).abs() <= f64::EPSILON {
+                    return false;
+                }
+                let scale_factor = width / current_width;
+                let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                obj.shape.scale(scale_factor, 1.0, center);
+                true
+            }
+        });
     }
 
+    /// Sets the height (mm) of every selected shape.
+    ///
+    /// Rectangles, ellipses and triangles change their native height; other shapes are
+    /// scaled vertically about their centre. Recorded as a single undo step.
     pub fn set_selected_height(&mut self, height: f64) {
-        for obj in self.canvas.shapes_mut().filter(|s| s.selected) {
-            match &mut obj.shape {
-                crate::model::Shape::Rectangle(r) => {
-                    r.height = height;
-                }
-                crate::model::Shape::Ellipse(e) => {
-                    e.ry = height / 2.0;
-                }
-                crate::model::Shape::Triangle(t) => {
-                    t.height = height;
-                }
-                _ => {
-                    let (x1, y1, x2, y2) = obj.shape.bounds();
-                    let current_height = y2 - y1;
-                    if current_height > 0.0 {
-                        let scale_factor = height / current_height;
-                        let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
-                        obj.shape.scale(1.0, scale_factor, center);
-                    }
-                }
+        self.change_selected_with_undo("Change Height", |obj| match &mut obj.shape {
+            Shape::Rectangle(r) => {
+                let changed = (r.height - height).abs() > f64::EPSILON;
+                r.height = height;
+                changed
             }
-        }
+            Shape::Ellipse(e) => {
+                let changed = (e.ry - height / 2.0).abs() > f64::EPSILON;
+                e.ry = height / 2.0;
+                changed
+            }
+            Shape::Triangle(t) => {
+                let changed = (t.height - height).abs() > f64::EPSILON;
+                t.height = height;
+                changed
+            }
+            _ => {
+                let (x1, y1, x2, y2) = obj.shape.bounds();
+                let current_height = y2 - y1;
+                if current_height <= 0.0 || (current_height - height).abs() <= f64::EPSILON {
+                    return false;
+                }
+                let scale_factor = height / current_height;
+                let center = crate::model::Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                obj.shape.scale(1.0, scale_factor, center);
+                true
+            }
+        });
     }
 }

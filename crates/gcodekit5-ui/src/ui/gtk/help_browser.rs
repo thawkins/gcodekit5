@@ -3,7 +3,7 @@
 //! Markdown files are loaded from GResources and displayed with inline images.
 
 use crate::t;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use gio::prelude::*;
 use gtk4::gdk_pixbuf::PixbufLoader;
 use gtk4::prelude::*;
@@ -57,16 +57,11 @@ fn running_app() -> Result<Application> {
 }
 
 fn get_current_language() -> String {
-    let config_path = gcodekit5_settings::SettingsManager::config_file_path()
-        .unwrap_or_else(|_| std::path::PathBuf::from("config.json"));
-
-    let language = if config_path.exists() {
-        gcodekit5_settings::SettingsPersistence::load_from_file(&config_path)
-            .map(|p| p.config().ui.language.clone())
-            .unwrap_or_else(|_| "system".to_string())
-    } else {
-        "system".to_string()
-    };
+    let language = gcodekit5_settings::SettingsManager::config_file_path()
+        .ok()
+        .and_then(|path| gcodekit5_settings::SettingsPersistence::load_from_file(&path).ok())
+        .map(|p| p.config().ui.language.clone())
+        .unwrap_or_else(|| "system".to_string());
 
     if language == "system" {
         let locale = std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string());
@@ -102,7 +97,7 @@ fn load_topic_markdown(topic: &str) -> Result<String> {
                 {
                     let s = std::str::from_utf8(bytes.as_ref())
                         .map_err(|e| anyhow!("Invalid UTF-8 in {}: {}", fallback_path, e))?;
-                    println!("Using English fallback for topic '{}'", topic);
+                    tracing::info!("Using English fallback for topic '{}'", topic);
                     return Ok(s.to_string());
                 }
             }
@@ -214,7 +209,8 @@ fn insert_inline_image(
 
                 if let Some(pixbuf) = scaled {
                     // Crear la imagen
-                    let picture = gtk4::Picture::for_pixbuf(&pixbuf);
+                    let picture =
+                        gtk4::Picture::for_paintable(&gtk4::gdk::Texture::for_pixbuf(&pixbuf));
                     picture.set_margin_top(5);
                     picture.set_margin_bottom(5);
                     picture.set_margin_start(5);
@@ -246,7 +242,13 @@ fn insert_inline_image(
 // Crear tag para un link y retornar el topic_id
 fn create_link_tag(buffer: &gtk4::TextBuffer, topic_id: &str) -> gtk4::TextTag {
     let tag_name = format!("link-{}", topic_id);
-    let tag = buffer.create_tag(Some(&tag_name), &[]).unwrap();
+    // A page may link to the same topic more than once; create_tag returns None for a
+    // name that already exists, so reuse the existing tag instead of panicking.
+    if let Some(existing) = buffer.tag_table().lookup(&tag_name) {
+        return existing;
+    }
+    let tag = gtk4::TextTag::new(Some(&tag_name));
+    buffer.tag_table().add(&tag);
 
     // Aplicar color azul y subrayado
     let color = gtk4::gdk::RGBA::new(0.0, 0.4, 0.8, 1.0);
@@ -255,22 +257,27 @@ fn create_link_tag(buffer: &gtk4::TextBuffer, topic_id: &str) -> gtk4::TextTag {
     tag
 }
 
+/// Returns the bold heading tag `name` with the given scale, reusing it if the buffer's tag
+/// table already has one (`create_tag` returns `None` for an existing name).
+fn heading_tag(buffer: &gtk4::TextBuffer, name: &str, scale: f64) -> gtk4::TextTag {
+    if let Some(existing) = buffer.tag_table().lookup(name) {
+        return existing;
+    }
+    let tag = gtk4::TextTag::new(Some(name));
+    tag.set_weight(700); // Bold
+    tag.set_scale(scale);
+    buffer.tag_table().add(&tag);
+    tag
+}
+
 fn render_markdown(view: &TextView, md: &str, stack: &Stack) {
     let buffer = view.buffer();
     buffer.set_text("");
 
     // Crear tags con la sintaxis correcta
-    let h1_tag = buffer.create_tag(Some("h1"), &[]).unwrap();
-    h1_tag.set_weight(700); // Bold
-    h1_tag.set_scale(1.6);
-
-    let h2_tag = buffer.create_tag(Some("h2"), &[]).unwrap();
-    h2_tag.set_weight(700); // Bold
-    h2_tag.set_scale(1.4);
-
-    let h3_tag = buffer.create_tag(Some("h3"), &[]).unwrap();
-    h3_tag.set_weight(700); // Bold
-    h3_tag.set_scale(1.2);
+    let h1_tag = heading_tag(&buffer, "h1", 1.6);
+    let h2_tag = heading_tag(&buffer, "h2", 1.4);
+    let h3_tag = heading_tag(&buffer, "h3", 1.2);
 
     // Conectar eventos de mouse para links
     setup_link_navigation(view, stack);
@@ -395,25 +402,24 @@ fn process_line_with_links(
 
             if abs_bracket_end + 1 < line.len()
                 && &line[abs_bracket_end + 1..abs_bracket_end + 2] == "("
+                && let Some(paren_end) = line[abs_bracket_end + 2..].find(')')
             {
-                if let Some(paren_end) = line[abs_bracket_end + 2..].find(')') {
-                    let abs_paren_end = abs_bracket_end + 2 + paren_end;
+                let abs_paren_end = abs_bracket_end + 2 + paren_end;
 
-                    let link_target = &line[abs_bracket_end + 2..abs_paren_end];
+                let link_target = &line[abs_bracket_end + 2..abs_paren_end];
 
-                    if link_target.starts_with("help:") {
-                        let topic_id = link_target.strip_prefix("help:").unwrap_or("");
+                if link_target.starts_with("help:") {
+                    let topic_id = link_target.strip_prefix("help:").unwrap_or("");
 
-                        // Crear tag para este link
-                        let tag = create_link_tag(buffer, topic_id);
+                    // Crear tag para este link
+                    let tag = create_link_tag(buffer, topic_id);
 
-                        // Insertar texto del link con tag
-                        let mut iter = buffer.end_iter();
-                        buffer.insert_with_tags(&mut iter, link_text, &[&tag]);
+                    // Insertar texto del link con tag
+                    let mut iter = buffer.end_iter();
+                    buffer.insert_with_tags(&mut iter, link_text, &[&tag]);
 
-                        pos = abs_paren_end + 1;
-                        continue;
-                    }
+                    pos = abs_paren_end + 1;
+                    continue;
                 }
             }
         }
@@ -447,15 +453,15 @@ fn setup_link_navigation(view: &TextView, stack: &Stack) {
             // Obtener todos los tags en esta posición
             let tags = iter.tags();
             for tag in tags {
-                if let Some(tag_name) = tag.name() {
-                    if tag_name.starts_with("link-") {
-                        let topic_id = tag_name.strip_prefix("link-").unwrap_or("");
-                        if let Some(child) = stack_clone.child_by_name(topic_id) {
-                            stack_clone.set_visible_child(&child);
-                        }
-                        gesture.set_state(gtk4::EventSequenceState::Claimed);
-                        return;
+                if let Some(tag_name) = tag.name()
+                    && tag_name.starts_with("link-")
+                {
+                    let topic_id = tag_name.strip_prefix("link-").unwrap_or("");
+                    if let Some(child) = stack_clone.child_by_name(topic_id) {
+                        stack_clone.set_visible_child(&child);
                     }
+                    gesture.set_state(gtk4::EventSequenceState::Claimed);
+                    return;
                 }
             }
         }
@@ -478,12 +484,13 @@ fn strip_markdown_links(text: &str) -> String {
             let abs_end = abs_start + 1 + bracket_end;
             let link_text = &remaining[abs_start + 1..abs_end];
 
-            if remaining.len() > abs_end + 1 && &remaining[abs_end + 1..abs_end + 2] == "(" {
-                if let Some(paren_end) = remaining[abs_end + 2..].find(')') {
-                    result.push_str(link_text);
-                    last_pos = abs_end + 2 + paren_end + 1;
-                    continue;
-                }
+            if remaining.len() > abs_end + 1
+                && &remaining[abs_end + 1..abs_end + 2] == "("
+                && let Some(paren_end) = remaining[abs_end + 2..].find(')')
+            {
+                result.push_str(link_text);
+                last_pos = abs_end + 2 + paren_end + 1;
+                continue;
             }
         }
 
@@ -561,8 +568,6 @@ fn create_help_page(topic_id: &str, _title: &str, stack: &Stack) -> (String, Scr
     let scroller = ScrolledWindow::builder()
         .child(&text_view)
         .hscrollbar_policy(gtk4::PolicyType::Never)
-        .propagate_natural_width(false)
-        .propagate_natural_height(false)
         .build();
 
     (topic_id.to_string(), scroller)
@@ -589,7 +594,7 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
 
     let window = Window::builder()
         .application(&app)
-        .title(&t!("GCodeKit5 Help"))
+        .title(t!("GCodeKit5 Help"))
         .default_width(1000)
         .default_height(700)
         .build();
@@ -639,7 +644,7 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
 
     // CSS para estilo consistente (sin pango)
     let provider = gtk4::CssProvider::new();
-    provider.load_from_data(
+    provider.load_from_string(
         "
         .help-sidebar {
             background-color: @theme_bg_color;
@@ -771,11 +776,8 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
 
                 // Comprobamos si la página nueva coincide con la que tocaría por historial
                 // (Si coincide, significa que el cambio viene de los botones, no del usuario pulsando un link)
-                let es_boton_atras = hist.back_stack.last().map_or(false, |p| p == &new_page_str);
-                let es_boton_adelante = hist
-                    .forward_stack
-                    .last()
-                    .map_or(false, |p| p == &new_page_str);
+                let es_boton_atras = hist.back_stack.last() == Some(&new_page_str);
+                let es_boton_adelante = hist.forward_stack.last() == Some(&new_page_str);
 
                 if !es_boton_atras && !es_boton_adelante {
                     // El usuario ha pinchado un link o el sidebar: guardamos historial manual
@@ -793,10 +795,15 @@ pub fn present_for_parent(initial_topic: &str, parent: Option<&Window>) {
     });
 
     // Seleccionar página inicial
-    if let Some(child) = stack.child_by_name(initial_topic) {
-        stack.set_visible_child(&child);
-    } else if let Some(first) = first_page {
-        stack.set_visible_child(&first);
+    match stack.child_by_name(initial_topic) {
+        Some(child) => {
+            stack.set_visible_child(&child);
+        }
+        _ => {
+            if let Some(first) = first_page {
+                stack.set_visible_child(&first);
+            }
+        }
     }
 
     // Organizar en la ventana
@@ -853,22 +860,21 @@ fn clean_html_tags(text: &str) -> String {
                 }
             } else if tag.starts_with("li") {
                 result.push_str("  • ");
-            } else if tag.starts_with("tr") || tag.starts_with("/tr") {
+            } else if tag.starts_with("tr")
+                || tag.starts_with("/tr")
+                || tag.starts_with("table")
+                || tag.starts_with("/table")
+                || tag.starts_with('p')
+                || tag == "br"
+                || tag == "br/"
+            {
                 result.push('\n');
-            } else if tag.starts_with("td") {
+            } else if tag.starts_with("td") || tag.starts_with("/td") {
                 result.push_str("  ");
-            } else if tag.starts_with("/td") {
-                result.push_str("  ");
-            } else if tag.starts_with("table") || tag.starts_with("/table") {
-                result.push_str("\n");
-            } else if tag.starts_with("p") {
-                result.push_str("\n");
-            } else if tag == "br" || tag == "br/" {
-                result.push_str("\n");
             } else if tag.starts_with("span") {
                 // Ignorar spans
             } else if tag.starts_with("div") {
-                result.push_str("\n");
+                result.push('\n');
             } else {
                 // Otras etiquetas: ignorar
             }
@@ -890,13 +896,12 @@ fn clean_html_tags(text: &str) -> String {
     }
 
     // Limpiar espacios múltiples y líneas vacías excesivas
-    let cleaned = result
+
+    result
         .lines()
         .filter(|line| !line.trim().is_empty())
         .collect::<Vec<_>>()
-        .join("\n");
-
-    cleaned
+        .join("\n")
 }
 
 // Procesar una línea de markdown/HTML

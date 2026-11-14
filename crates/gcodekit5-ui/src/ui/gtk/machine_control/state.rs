@@ -3,9 +3,10 @@
 //! Internal state management and helper functions for the Machine Control panel.
 
 use gtk4::prelude::*;
-use gtk4::{Button, ComboBoxText, ToggleButton};
+use gtk4::{Button, DropDown, ToggleButton};
 
 /// Disable/enable connection-dependent controls
+/// Includes support for 6-axis machines (X, Y, Z, A, B, C)
 #[allow(clippy::too_many_arguments)]
 pub fn set_controls_enabled(
     send_btn: &Button,
@@ -20,7 +21,7 @@ pub fn set_controls_enabled(
     z_zero_btn: &Button,
     zero_all_btn: &Button,
     goto_zero_btn: &Button,
-    step_combo: &ComboBoxText,
+    step_combo: &DropDown,
     jog_feed_entry: &gtk4::Entry,
     jog_x_pos: &Button,
     jog_x_neg: &Button,
@@ -29,6 +30,16 @@ pub fn set_controls_enabled(
     jog_z_pos: &Button,
     jog_z_neg: &Button,
     estop_btn: &Button,
+    // Rotary axis controls (optional - pass None if not available)
+    a_zero_btn: Option<&Button>,
+    b_zero_btn: Option<&Button>,
+    c_zero_btn: Option<&Button>,
+    jog_a_pos: Option<&Button>,
+    jog_a_neg: Option<&Button>,
+    jog_b_pos: Option<&Button>,
+    jog_b_neg: Option<&Button>,
+    jog_c_pos: Option<&Button>,
+    jog_c_neg: Option<&Button>,
     enabled: bool,
 ) {
     send_btn.set_sensitive(enabled);
@@ -54,4 +65,33 @@ pub fn set_controls_enabled(
     jog_z_pos.set_sensitive(enabled);
     jog_z_neg.set_sensitive(enabled);
     estop_btn.set_sensitive(enabled);
+
+    // Rotary axis controls (only if they exist)
+    if let Some(btn) = a_zero_btn {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = b_zero_btn {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = c_zero_btn {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = jog_a_pos {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = jog_a_neg {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = jog_b_pos {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = jog_b_neg {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = jog_c_pos {
+        btn.set_sensitive(enabled);
+    }
+    if let Some(btn) = jog_c_neg {
+        btn.set_sensitive(enabled);
+    }
 }

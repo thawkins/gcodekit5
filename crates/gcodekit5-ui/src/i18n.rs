@@ -2,18 +2,53 @@
 //!
 //! Provides translation support using gettext.
 //! Loads locale data and exposes the `i18n` macro for translatable strings.
+//!
+//! Every label is translated once, when its widget is built, so a new UI
+//! language takes effect by relaunching the application: [`request_restart`]
+//! marks it, and `gtk_app::main` runs [`restart_command`] after the GTK main
+//! loop has ended.
 
-use std::sync::Once;
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Once, OnceLock};
 
 static INIT: Once = Once::new();
 
+/// The language preference [`init`] applied (`"system"` when none).
+static APPLIED_LANGUAGE: OnceLock<String> = OnceLock::new();
+
+/// `LANGUAGE` as the process was launched with, before [`init`] replaced it.
+static ORIGINAL_LANGUAGE: OnceLock<Option<std::ffi::OsString>> = OnceLock::new();
+
+/// Set when the application should relaunch itself once it has quit.
+static RESTART_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Maps a stored language preference to its canonical form (`""` -> `"system"`).
+fn normalized(lang: &str) -> &str {
+    if lang.is_empty() { "system" } else { lang }
+}
+
+/// Applies the UI language preference and binds the gettext domain.
+///
+/// # Arguments
+/// * `lang` - the language preference (`"system"`, a code such as `"de"`, or `None`)
 pub fn init(lang: Option<String>) {
     INIT.call_once(|| {
-        if let Some(l) = lang {
-            if l != "system" && !l.is_empty() {
+        let _ = ORIGINAL_LANGUAGE.set(std::env::var_os("LANGUAGE"));
+        let _ = APPLIED_LANGUAGE.set(normalized(lang.as_deref().unwrap_or("system")).to_string());
+        if let Some(l) = lang
+            && l != "system"
+            && !l.is_empty()
+        {
+            // SAFETY: `gtk_app::main` calls `init` first, before GLib, GTK or
+            // the application exist, so no other thread is running and nothing
+            // reads the environment concurrently (`Once` keeps it to one call).
+            // gettext reads LANGUAGE to pick the translation. LANG is left as
+            // the system set it: a bare code such as `en.UTF-8` is not an
+            // installed locale, and GTK would fall back to "C" with a warning.
+            #[allow(unsafe_code)]
+            unsafe {
                 std::env::set_var("LANGUAGE", &l);
-                // Also set LANG as fallback, though LANGUAGE takes precedence for gettext
-                std::env::set_var("LANG", format!("{}.UTF-8", l));
             }
         }
 
@@ -32,6 +67,74 @@ pub fn init(lang: Option<String>) {
     });
 }
 
+/// The language preference that is in effect for this run.
+pub fn applied_language() -> &'static str {
+    APPLIED_LANGUAGE.get().map_or("system", String::as_str)
+}
+
+/// True when `saved` differs from the language this run was started with,
+/// so the application must restart for it to take effect.
+///
+/// # Arguments
+/// * `saved` - the language preference just saved in Preferences
+pub fn language_change_pending(saved: &str) -> bool {
+    needs_restart(applied_language(), saved)
+}
+
+/// True when switching from the `applied` language preference to `saved`
+/// needs a restart (`""` and `"system"` are the same preference).
+///
+/// # Arguments
+/// * `applied` - the preference in effect
+/// * `saved` - the preference just saved
+pub fn needs_restart(applied: &str, saved: &str) -> bool {
+    normalized(saved) != normalized(applied)
+}
+
+/// Asks for the application to relaunch itself after it quits.
+pub fn request_restart() {
+    RESTART_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+/// True when [`request_restart`] was called.
+pub fn restart_requested() -> bool {
+    RESTART_REQUESTED.load(Ordering::SeqCst)
+}
+
+/// Builds the command that relaunches this executable with its arguments.
+///
+/// `LANGUAGE` is reset to what the process was launched with, so the new
+/// instance applies the saved preference instead of inheriting the one
+/// [`init`] set (which matters when switching back to `"system"`).
+///
+/// # Errors
+/// Returns an error when the path of the running executable is unavailable.
+pub fn restart_command() -> std::io::Result<Command> {
+    relaunch_command(ORIGINAL_LANGUAGE.get().and_then(Option::as_deref))
+}
+
+/// Builds the relaunch command for this executable and its arguments, with
+/// `LANGUAGE` set to `original_language` or removed when it was unset.
+///
+/// # Arguments
+/// * `original_language` - `LANGUAGE` as the process was launched with
+///
+/// # Errors
+/// Returns an error when the path of the running executable is unavailable.
+pub fn relaunch_command(original_language: Option<&std::ffi::OsStr>) -> std::io::Result<Command> {
+    let mut command = Command::new(std::env::current_exe()?);
+    command.args(std::env::args_os().skip(1));
+    match original_language {
+        Some(original) => {
+            command.env("LANGUAGE", original);
+        }
+        None => {
+            command.env_remove("LANGUAGE");
+        }
+    }
+    Ok(command)
+}
+
 #[macro_export]
 macro_rules! t {
     ($s:expr) => {
@@ -39,5 +142,17 @@ macro_rules! t {
     };
     ($s:expr, $($args:tt)*) => {
         format!(gettextrs::gettext($s), $($args)*)
+    };
+}
+
+/// Marks a string literal for translation extraction without translating it.
+///
+/// Use it where the literal is stored or compared untranslated (an id) and
+/// translated later through a variable, e.g. `t!(*category)`, which
+/// `xgettext` cannot see. `scripts/update-po.sh` passes `--keyword=n_!`.
+#[macro_export]
+macro_rules! n_ {
+    ($s:literal) => {
+        $s
     };
 }
