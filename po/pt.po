@@ -2947,3 +2947,6 @@ msgstr "Simulação do bloco"
 
 msgid "to"
 msgstr "a"
+
+msgid "Repetier EEPROM"
+msgstr "EEPROM Repetier"

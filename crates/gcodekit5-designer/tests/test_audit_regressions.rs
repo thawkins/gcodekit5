@@ -61,7 +61,7 @@ fn test_gear_rotated_render_stays_at_center() {
 fn test_shape_rotate_uses_pivot() {
     // Rotating a circle 90 degrees about (0, 0) moves (10, 0) to (0, 10).
     let mut s = Shape::Circle(DesignCircle::new(Point::new(10.0, 0.0), 1.0));
-    s.rotate(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    s.rotate(90.0, 0.0, 0.0);
     let (cx, cy) = bounds_center(s.bounds());
     assert!(cx.abs() < 0.01 && (cy - 10.0).abs() < 0.01, "({cx}, {cy})");
 }

@@ -208,7 +208,8 @@ impl DesignerCanvas {
         }
 
         let mut new_objects = Vec::new();
-        let angle_step = gcodekit5_designer::arrays::circular_array_step(total_angle, count);
+        let angle_step = gcodekit5_designer::model::circular_array_step(total_angle, count);
+
 
         for i in 1..count {
             let angle = angle_step * i as f64;

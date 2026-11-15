@@ -2960,3 +2960,6 @@ msgstr "Simulation du brut"
 
 msgid "to"
 msgstr "à"
+
+msgid "Repetier EEPROM"
+msgstr "Repetier EEPROM"

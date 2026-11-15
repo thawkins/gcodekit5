@@ -2954,3 +2954,6 @@ msgstr "Simulazione del grezzo"
 
 msgid "to"
 msgstr "a"
+
+msgid "Repetier EEPROM"
+msgstr "EEPROM Repetier"

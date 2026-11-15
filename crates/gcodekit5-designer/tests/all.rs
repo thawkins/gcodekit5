@@ -23,8 +23,6 @@ mod test_audit_regressions;
 mod test_cam_depth_and_gcode;
 #[path = "test_chamfer_dimensions.rs"]
 mod test_chamfer_dimensions;
-#[path = "test_circular_array_step.rs"]
-mod test_circular_array_step;
 #[path = "test_default_properties_inheritance.rs"]
 mod test_default_properties_inheritance;
 #[path = "test_dxf_polyline_splinefit.rs"]

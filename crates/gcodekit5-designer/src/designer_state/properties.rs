@@ -5,7 +5,7 @@ use crate::canvas::DrawingObject;
 use crate::commands::*;
 use crate::model::{DesignerShape, ParametricPathSource, Shape};
 use crate::shapes::OperationType;
-use crate::{Point, Rectangle};
+use crate::Rectangle;
 
 impl DesignerState {
     /// Sets the use_custom_values flag for selected shapes.
@@ -268,51 +268,10 @@ impl DesignerState {
 
             let mut commands = Vec::new();
 
-            for obj in self.canvas.shapes_mut() {
+            for obj in self.canvas.shapes() {
                 if obj.selected {
                     let mut new_obj = obj.clone();
-
-                    let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
-                    let shape_center_x = (sx1 + sx2) / 2.0;
-                    let shape_center_y = (sy1 + sy2) / 2.0;
-
-                    let dx = shape_center_x - center_x;
-                    let dy = shape_center_y - center_y;
-                    let distance = (dx * dx + dy * dy).sqrt();
-                    let current_angle = dy.atan2(dx);
-
-                    let angle_delta_rad = angle_delta.to_radians();
-                    let new_angle = current_angle + angle_delta_rad;
-
-                    let new_center_x = center_x + distance * new_angle.cos();
-                    let new_center_y = center_y + distance * new_angle.sin();
-
-                    if let crate::model::Shape::Line(line) = &mut new_obj.shape {
-                        line.rotate_about(angle_delta, shape_center_x, shape_center_y);
-                    }
-
-                    let trans_x = new_center_x - shape_center_x;
-                    let trans_y = new_center_y - shape_center_y;
-                    new_obj.shape.translate(trans_x, trans_y);
-
-                    match &mut new_obj.shape {
-                        crate::model::Shape::Path(s) => {
-                            // The path was already moved to its orbit position by the
-                            // translate above; only the render-time rotation changes.
-                            s.rotation += angle_delta;
-                        }
-
-                        crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Circle(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Line(s) => s.rotation = s.current_angle_degrees(),
-                        crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Text(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Gear(s) => s.rotation += angle_delta,
-                        crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-                        crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
-                    }
+                    new_obj.shape.rotate(angle_delta, center_x, center_y);
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                         id: obj.id,
@@ -734,139 +693,6 @@ impl DesignerState {
             name: "Convert to Path".to_string(),
         });
         self.push_command(cmd);
-    }
-
-    /// Creates an array of copies for the selected shapes.
-    pub fn create_array(&mut self, operation: crate::arrays::ArrayOperation) {
-        use tracing::error;
-
-        let selected: Vec<_> = self
-            .canvas
-            .shapes()
-            .filter(|s| s.selected)
-            .cloned()
-            .collect();
-        if selected.is_empty() {
-            return;
-        }
-
-        let (is_circular, center) =
-            if let crate::arrays::ArrayOperation::Circular(params) = &operation {
-                (true, params.center)
-            } else {
-                (false, Point::new(0.0, 0.0))
-            };
-
-        let offsets = match crate::arrays::ArrayGenerator::generate(&operation) {
-            Ok(offsets) => offsets,
-            Err(e) => {
-                error!("Failed to generate array offsets: {}", e);
-                return;
-            }
-        };
-
-        let mut commands = Vec::new();
-        let array_group_id = self.canvas.generate_id();
-
-        self.canvas.deselect_all();
-
-        for obj in &selected {
-            let (x1, y1, x2, y2) = obj.shape.bounds();
-            let orig_x = (x1 + x2) / 2.0;
-            let orig_y = (y1 + y2) / 2.0;
-
-            for (i, (off_x, off_y)) in offsets.iter().enumerate() {
-                let (dx, dy) = if is_circular {
-                    let target_x = center.x + off_x;
-                    let target_y = center.y + off_y;
-                    (target_x - orig_x, target_y - orig_y)
-                } else {
-                    (*off_x, *off_y)
-                };
-
-                if i == 0 {
-                    let mut new_original = obj.clone();
-                    new_original.group_id = Some(array_group_id);
-                    new_original.selected = true;
-                    new_original.shape.translate(dx, dy);
-
-                    if is_circular
-                        && let crate::arrays::ArrayOperation::Circular(params) = &operation
-                    {
-                        let angle_step = params.angle_step();
-                        let angle_delta = if params.clockwise {
-                            -(i as f64) * angle_step
-                        } else {
-                            (i as f64) * angle_step
-                        };
-
-                        Self::apply_rotation_delta(&mut new_original.shape, angle_delta);
-                    }
-
-                    commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
-                        id: obj.id,
-                        old_state: obj.clone(),
-                        new_state: new_original,
-                    }));
-                } else {
-                    let mut new_obj = obj.clone();
-                    let id = self.canvas.generate_id();
-                    new_obj.id = id;
-                    new_obj.group_id = Some(array_group_id);
-                    new_obj.selected = true;
-
-                    new_obj.shape.translate(dx, dy);
-
-                    if is_circular
-                        && let crate::arrays::ArrayOperation::Circular(params) = &operation
-                    {
-                        let angle_step = params.angle_step();
-                        let angle_delta = if params.clockwise {
-                            -(i as f64) * angle_step
-                        } else {
-                            (i as f64) * angle_step
-                        };
-
-                        Self::apply_rotation_delta(&mut new_obj.shape, angle_delta);
-                    }
-
-                    commands.push(DesignerCommand::AddShape(AddShape {
-                        id,
-                        object: Some(new_obj),
-                    }));
-                }
-            }
-        }
-
-        if !commands.is_empty() {
-            let cmd = DesignerCommand::CompositeCommand(CompositeCommand {
-                commands,
-                name: "Create Array".to_string(),
-            });
-            self.push_command(cmd);
-        }
-    }
-
-    /// Helper to apply rotation delta to a shape.
-    fn apply_rotation_delta(shape: &mut Shape, angle_delta: f64) {
-        match shape {
-            crate::model::Shape::Rectangle(s) => s.rotation += angle_delta,
-            crate::model::Shape::Circle(s) => s.rotation += angle_delta,
-            crate::model::Shape::Line(s) => {
-                // Line geometry is absolute: rotate the endpoints about the midpoint.
-                let cx = (s.start.x + s.end.x) / 2.0;
-                let cy = (s.start.y + s.end.y) / 2.0;
-                s.rotate_about(angle_delta, cx, cy);
-            }
-            crate::model::Shape::Ellipse(s) => s.rotation += angle_delta,
-            crate::model::Shape::Path(s) => s.rotation += angle_delta,
-            crate::model::Shape::Text(s) => s.rotation += angle_delta,
-            crate::model::Shape::Triangle(s) => s.rotation += angle_delta,
-            crate::model::Shape::Polygon(s) => s.rotation += angle_delta,
-            crate::model::Shape::Gear(s) => s.rotation += angle_delta,
-            crate::model::Shape::Sprocket(s) => s.rotation += angle_delta,
-            crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
-        }
     }
 
     /// Applies `modify` to a copy of every selected shape and records all resulting
