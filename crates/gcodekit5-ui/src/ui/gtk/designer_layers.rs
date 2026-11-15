@@ -522,7 +522,16 @@ impl LayersPanel {
                         gcodekit5_designer::model::Shape::Circle(_) => t!("Circ"),
                         gcodekit5_designer::model::Shape::Line(_) => t!("Line"),
                         gcodekit5_designer::model::Shape::Ellipse(_) => t!("Ellip"),
-                        gcodekit5_designer::model::Shape::Path(_) => t!("Path"),
+                        gcodekit5_designer::model::Shape::Path(p) => {
+                            if matches!(
+                                p.parametric_source,
+                                Some(gcodekit5_designer::model::ParametricPathSource::TimingPulley { .. })
+                            ) {
+                                t!("Tpulley")
+                            } else {
+                                t!("Path")
+                            }
+                        }
                         gcodekit5_designer::model::Shape::Text(_) => t!("Text"),
                         gcodekit5_designer::model::Shape::Triangle(_) => t!("Tri"),
                         gcodekit5_designer::model::Shape::Polygon(_) => t!("Poly"),

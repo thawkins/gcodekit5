@@ -791,6 +791,7 @@ impl PropertiesPanel {
                     self.height_entry.set_sensitive(false);
                 }
                 Shape::Gear(g) => {
+                    self.size_frame.set_visible(false);
                     self.corner_frame.set_visible(false);
                     self.text_frame.set_visible(false);
                     self.polygon_frame.set_visible(false);
@@ -807,6 +808,7 @@ impl PropertiesPanel {
                     self.rot_frame.set_visible(false);
                 }
                 Shape::Sprocket(s) => {
+                    self.size_frame.set_visible(false);
                     self.corner_frame.set_visible(false);
                     self.text_frame.set_visible(false);
                     self.polygon_frame.set_visible(false);
@@ -830,7 +832,24 @@ impl PropertiesPanel {
                     let (x1, y1, x2, y2) = shape.bounds();
                     self.set_entry_text_if_changed(&self.width_entry, (x2 - x1) as f32, system);
                     self.set_entry_text_if_changed(&self.height_entry, (y2 - y1) as f32, system);
-                    self.corner_frame.set_visible(true);
+
+                    let timing_params = match &p.parametric_source {
+                        Some(ParametricPathSource::TimingPulley {
+                            pitch,
+                            teeth,
+                            belt_width,
+                            hole_radius,
+                        }) => Some((*pitch, *teeth, *belt_width, *hole_radius)),
+                        _ => None,
+                    };
+                    let is_timing_pulley = timing_params.is_some();
+
+                    self.size_frame.set_visible(!is_timing_pulley);
+                    self.rot_frame.set_visible(!is_timing_pulley);
+                    self.corner_frame.set_visible(!is_timing_pulley);
+                    self.path_frame.set_visible(!is_timing_pulley);
+                    self.timing_pulley_frame.set_visible(is_timing_pulley);
+
                     self.set_entry_text_if_changed(
                         &self.corner_radius_entry,
                         fillet as f32,
@@ -842,18 +861,6 @@ impl PropertiesPanel {
                     self.polygon_frame.set_visible(false);
                     self.gear_frame.set_visible(false);
                     self.sprocket_frame.set_visible(false);
-                    let timing_params = match &p.parametric_source {
-                        Some(ParametricPathSource::TimingPulley {
-                            pitch,
-                            teeth,
-                            belt_width,
-                            hole_radius,
-                        }) => Some((*pitch, *teeth, *belt_width, *hole_radius)),
-                        _ => None,
-                    };
-                    self.timing_pulley_frame
-                        .set_visible(timing_params.is_some());
-                    self.path_frame.set_visible(true);
                     self.path_closed_check.set_active(p.closed);
 
                     if let Some((pitch, teeth, belt_width, hole_radius)) = timing_params {

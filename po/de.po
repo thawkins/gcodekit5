@@ -2955,3 +2955,6 @@ msgstr "bis"
 msgid "Repetier EEPROM"
 msgstr "Repetier EEPROM"
 
+msgid "Tpulley"
+msgstr "Tpulley"
+
