@@ -386,21 +386,6 @@ impl DeviceInfoView {
             None => (false, t!("Unknown (settings not loaded)").to_string()),
         };
 
-        match laser {
-            Some(true) => {
-                // If the machine has laser mode enabled ($32=1), we select "Laser".
-                self.device_type_laser.set_active(true);
-            }
-            Some(false) => {
-                // If it is disabled ($32=0), we select "CNC"
-                self.device_type_cnc.set_active(true);
-            }
-            None => {
-                // If the parameters have not been loaded, it remains at the default "Other".
-                self.device_type_other.set_active(true);
-            }
-        }
-
         let capabilities = vec![
             CapabilityItem {
                 name: t!("Variable Spindle").to_string(),

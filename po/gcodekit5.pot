@@ -2917,3 +2917,6 @@ msgstr ""
 
 msgid "Retrieving settings and device info..."
 msgstr ""
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr ""

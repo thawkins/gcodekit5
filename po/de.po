@@ -2993,3 +2993,6 @@ msgstr "Vorgang abgebrochen: Gerät nicht verbunden"
 
 msgid "Retrieving settings and device info..."
 msgstr "Einstellungen und Geräteinformationen werden abgerufen..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Einstellungen unvollständig abgerufen (Zeitüberschreitung), empfangene Einstellungen:"

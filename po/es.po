@@ -2996,3 +2996,6 @@ msgstr "Operación cancelada: dispositivo no conectado"
 
 msgid "Retrieving settings and device info..."
 msgstr "Obteniendo ajustes e información del dispositivo..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Lectura de ajustes incompleta (tiempo agotado), ajustes recibidos:"

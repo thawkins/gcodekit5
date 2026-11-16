@@ -166,14 +166,20 @@ impl ConfigSettingsView {
             self.status_label
                 .set_text(&t!("Retrieving settings and device info..."));
 
-            if is_repetier {
+            // The identity query is sent after the settings dump. The controller
+            // answers in order, so its reply marks the end of the dump.
+            let identity_sent = if is_repetier {
                 if let Err(e) = comm_lock.send_command("M205") {
                     self.status_label
                         .set_text(&format!("{} {}", t!("Error sending M205:"), e));
                     return;
                 }
-                if let Err(e) = comm_lock.send_command("M115") {
-                    tracing::warn!("Error sending M115: {}", e);
+                match comm_lock.send_command("M115") {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::warn!("Error sending M115: {}", e);
+                        false
+                    }
                 }
             } else {
                 if let Err(e) = comm_lock.send_command("$$") {
@@ -181,10 +187,14 @@ impl ConfigSettingsView {
                         .set_text(&format!("{} {}", t!("Error sending $$:"), e));
                     return;
                 }
-                if let Err(e) = comm_lock.send_command("$I") {
-                    tracing::warn!("Error sending $I: {}", e);
+                match comm_lock.send_command("$I") {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::warn!("Error sending $I: {}", e);
+                        false
+                    }
                 }
-            }
+            };
 
             drop(comm_lock);
 
@@ -224,18 +234,28 @@ impl ConfigSettingsView {
                 };
                 let new_console_text = new_text.as_str();
 
-                // The reply streams in over several polls: wait until settings lines
-                // were seen *and* the log stopped growing, so a partial list is not parsed.
+                // The reply streams in over several polls. The dump is complete once the
+                // identity reply that follows it has arrived (`FIRMWARE_NAME:` for M115,
+                // `[VER:` for $I) and the log has stopped growing; a pause between dump
+                // lines alone does not end the wait.
                 let settled = log_pos == *last_log_pos.borrow();
                 *last_log_pos.borrow_mut() = log_pos;
-                let has_settings_response = settled
-                    && if is_repetier {
-                        new_console_text.contains("EPR:")
-                    } else {
-                        new_console_text.contains("$0=") || new_console_text.contains("$100=")
-                    };
+                let (has_settings, has_identity) = if is_repetier {
+                    (
+                        new_console_text.contains("EPR:"),
+                        new_console_text.contains("FIRMWARE_NAME:"),
+                    )
+                } else {
+                    (
+                        new_console_text.contains("$0=") || new_console_text.contains("$100="),
+                        new_console_text.contains("[VER:"),
+                    )
+                };
+                let complete = settled && has_settings && (has_identity || !identity_sent);
+                // 5 s at 50 ms per poll.
+                let timed_out = *attempt_count.borrow() > 100;
 
-                if has_settings_response || *attempt_count.borrow() > 40 {
+                if complete || timed_out {
                     let mut count = 0;
 
                     let mut detected_machine = device_info_view_clone.get_device_name();
@@ -389,20 +409,7 @@ impl ConfigSettingsView {
                     settings.sort_by_key(|s| s.number);
                     let mut displayed_count = 0;
                     for setting in settings {
-                        if !search_text.is_empty() {
-                            let id_str = if setting.number >= 1000 {
-                                format!("epr:{}", setting.number - 1000)
-                            } else {
-                                format!("${}", setting.number)
-                            };
-                            let matches = setting.name.to_lowercase().contains(&search_text)
-                                || setting.description.to_lowercase().contains(&search_text)
-                                || id_str.contains(&search_text);
-                            if !matches {
-                                continue;
-                            }
-                        }
-                        if category != "All" && setting.category != category {
+                        if !setting.matches_filter(&search_text, &category) {
                             continue;
                         }
                         let row = ConfigSettingsView::create_setting_row_static(
@@ -425,11 +432,12 @@ impl ConfigSettingsView {
                             t!("settings")
                         ));
                     }
-                    status_label_clone.set_text(&format!(
-                        "{} {}",
-                        t!("Settings retrieved from device:"),
-                        count
-                    ));
+                    let status = if complete {
+                        t!("Settings retrieved from device:")
+                    } else {
+                        t!("Settings retrieval incomplete (timed out), settings received:")
+                    };
+                    status_label_clone.set_text(&format!("{} {}", status, count));
                     save_btn_clone.set_sensitive(true);
                     restore_btn_clone.set_sensitive(true);
                     return glib::ControlFlow::Break;
@@ -456,20 +464,7 @@ impl ConfigSettingsView {
         settings.sort_by_key(|s| s.number);
         let mut count = 0;
         for setting in settings {
-            if !search_text.is_empty() {
-                let id_str = if setting.number >= 1000 {
-                    format!("epr:{}", setting.number - 1000)
-                } else {
-                    format!("${}", setting.number)
-                };
-                let matches = setting.name.to_lowercase().contains(&search_text)
-                    || setting.description.to_lowercase().contains(&search_text)
-                    || id_str.contains(&search_text);
-                if !matches {
-                    continue;
-                }
-            }
-            if category != "All" && setting.category != category {
+            if !setting.matches_filter(&search_text, &category) {
                 continue;
             }
             let row = self.create_setting_row(&setting);

@@ -3000,3 +3000,6 @@ msgstr "Opération annulée : appareil non connecté"
 
 msgid "Retrieving settings and device info..."
 msgstr "Récupération des paramètres et des informations de l'appareil..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Récupération des paramètres incomplète (délai dépassé), paramètres reçus :"
