@@ -1,7 +1,7 @@
 app-id: com.github.feveal.gcodekit5-design
-runtime: org.freedesktop.Platform
-runtime-version: '24.08'
-sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
 command: gcodekit5-design
 finish-args:
   - --share=ipc

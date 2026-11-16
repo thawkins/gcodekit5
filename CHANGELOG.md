@@ -8,6 +8,7 @@
 - **Group rotation of images and paths**: rotating a multi-selection moves raster images and already-rotated paths around the group centre and turns them, instead of moving images to the wrong place without turning them
 - **Tools Manager**: after Save while switching tools, the tool being edited is selected in the list again
 - **Flatpak (gcodekit5-design)**: the manifest installs the staged `gcodekit5-design` binary and reads the existing `gcodekit5-design.png`, and the desktop file names the installed icon
+- **Flatpak runtime**: both Flatpak manifests (and the release build) use the GNOME 50 runtime instead of Freedesktop 24.08, which does not ship GTK 4, libadwaita or GtkSourceView, so the packaged app could not start
 
 ## [Unreleased] - 2026-11-16 (minimum Rust version 1.95)
 
