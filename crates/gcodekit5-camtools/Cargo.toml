@@ -26,7 +26,7 @@ tracing.workspace = true
 gerber_parser = "0.3.1"
 serde_json.workspace = true
 csgrs = "0.20.1"
-nalgebra = "0.33.3"
+nalgebra = "0.35.0"
 
 [[test]]
 name = "all"
