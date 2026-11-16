@@ -636,6 +636,7 @@ impl ConfigSettingsView {
         let comm_clone = communicator.clone();
         let manager_clone = settings_manager.clone();
         let dialog_save = dialog.clone();
+        let refresh_callback = std::rc::Rc::new(refresh_callback);
 
         save_btn.connect_clicked(move |_| {
             let new_value = value_entry.text().to_string();
@@ -660,7 +661,8 @@ impl ConfigSettingsView {
                         if comm_lock.is_connected() {
                             let sent = comm_lock.send_command(&command).map_err(|e| e.to_string());
                             if sent.is_ok() {
-                                // GRBL replies `ok`, not the value: keep the cache in step.
+                                // The cache follows a `$n=v` only once the controller
+                                // answers `ok` (see `note_command_reply`).
                                 crate::device_status::note_setting_sent(&command);
                             }
                             sent
@@ -681,16 +683,44 @@ impl ConfigSettingsView {
                 return;
             }
 
-            let mut manager = manager_clone.borrow_mut();
-            if let Some(setting) = manager.get_setting(setting_number) {
-                let mut updated = setting.clone();
-                updated.value = new_value.clone();
-                updated.numeric_value = new_value.parse::<f64>().ok();
-                manager.set_setting(updated);
-            }
-            drop(manager);
-            refresh_callback();
             dialog_save.close();
+
+            // Repetier EEPROM writes are acknowledged as `ok <n>`, which is not
+            // tracked, so they are shown as sent.
+            if setting_number >= 1000 {
+                apply_setting_value(&manager_clone, setting_number, &new_value);
+                refresh_callback();
+                return;
+            }
+
+            // A GRBL `$n=v` is shown only once the controller accepts it.
+            let manager = manager_clone.clone();
+            let refresh = refresh_callback.clone();
+            let polls = std::rc::Rc::new(std::cell::Cell::new(0u32));
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                let reply = crate::device_status::take_setting_reply();
+                polls.set(polls.get() + 1);
+                // 2 s at 50 ms per poll.
+                let failure = match reply {
+                    Some(Ok(())) => {
+                        apply_setting_value(&manager, setting_number, &new_value);
+                        refresh();
+                        return glib::ControlFlow::Break;
+                    }
+                    Some(Err(code)) => format!("{} error:{code}", t!("the controller replied")),
+                    None if polls.get() > 40 => {
+                        crate::device_status::clear_pending_setting();
+                        t!("no reply from the controller").to_string()
+                    }
+                    None => return glib::ControlFlow::Continue,
+                };
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Setting not changed"),
+                    &format!("${setting_number}={new_value}: {failure}"),
+                    None,
+                );
+                glib::ControlFlow::Break
+            });
         });
         btn_box.append(&save_btn);
 
@@ -751,5 +781,21 @@ impl ConfigSettingsView {
                 }
             }
         });
+    }
+}
+
+/// Stores a new value for a setting in the Device Config list.
+///
+/// # Arguments
+/// * `manager` - The settings shown on the page.
+/// * `number` - Setting number (Repetier EEPROM positions are offset by 1000).
+/// * `value` - The value the controller now holds.
+fn apply_setting_value(manager: &Shared<SettingsManager>, number: u16, value: &str) {
+    let mut manager = manager.borrow_mut();
+    if let Some(setting) = manager.get_setting(number) {
+        let mut updated = setting.clone();
+        updated.value = value.to_string();
+        updated.numeric_value = value.parse::<f64>().ok();
+        manager.set_setting(updated);
     }
 }

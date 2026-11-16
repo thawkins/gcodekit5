@@ -362,10 +362,31 @@ pub fn machine_is_stopped(state: &str) -> bool {
     !(low.starts_with("run") || low.starts_with("jog") || low.starts_with("home"))
 }
 
-/// Records a `$n=v` setting assignment that was sent to the controller, so
-/// the cached settings (e.g. `$13`, which decides report units) match it.
-/// GRBL answers an assignment with `ok`, not with the new value, so the
-/// cache would otherwise keep the old value until the next `$$`.
+/// A `$n=v` assignment sent to the controller and waiting for its reply.
+#[derive(Debug)]
+struct PendingSetting {
+    number: u16,
+    value: String,
+    /// `None` until the controller answers; then `Ok` for `ok`, or the error code.
+    reply: Option<Result<(), String>>,
+}
+
+/// The assignment awaiting the controller's reply (at most one at a time).
+static PENDING_SETTING: Lazy<std::sync::Mutex<Option<PendingSetting>>> =
+    Lazy::new(|| std::sync::Mutex::new(None));
+
+fn pending_setting() -> std::sync::MutexGuard<'static, Option<PendingSetting>> {
+    PENDING_SETTING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Records a `$n=v` setting assignment that was sent to the controller.
+///
+/// GRBL answers an assignment with `ok` (or `error:N`), not with the new value.
+/// The cached settings (e.g. `$13`, which decides report units) take the new
+/// value only when [`note_command_reply`] reports the controller's `ok`; a
+/// rejected assignment leaves them unchanged.
 ///
 /// # Arguments
 /// * `command` - The line sent; anything that is not `$<number>=<value>` is ignored.
@@ -377,8 +398,53 @@ pub fn note_setting_sent(command: &str) {
         return;
     };
     if let Ok(number) = number.trim().parse::<u16>() {
-        update_grbl_setting(number, value.trim().to_string());
+        *pending_setting() = Some(PendingSetting {
+            number,
+            value: value.trim().to_string(),
+            reply: None,
+        });
     }
+}
+
+/// Passes the controller's reply to a sent line (`ok` or `error:N`) to the
+/// pending setting assignment, if one is waiting.
+///
+/// Settings are only sent while the machine is idle, so the first reply after
+/// an assignment is its own. On `ok` the cached value is updated.
+///
+/// # Arguments
+/// * `error` - `None` for `ok`, or the code after `error:`.
+pub fn note_command_reply(error: Option<&str>) {
+    let mut pending = pending_setting();
+    let Some(setting) = pending.as_mut().filter(|p| p.reply.is_none()) else {
+        return;
+    };
+    match error {
+        None => {
+            update_grbl_setting(setting.number, setting.value.clone());
+            setting.reply = Some(Ok(()));
+        }
+        Some(code) => setting.reply = Some(Err(code.to_string())),
+    }
+}
+
+/// Takes the outcome of the pending setting assignment once the controller
+/// answered it.
+///
+/// # Returns
+/// `None` while no assignment is pending or it is still unanswered;
+/// `Some(Ok(()))` when it was accepted; `Some(Err(code))` when it was rejected.
+pub fn take_setting_reply() -> Option<Result<(), String>> {
+    let mut pending = pending_setting();
+    let reply = pending.as_ref().and_then(|p| p.reply.clone())?;
+    *pending = None;
+    Some(reply)
+}
+
+/// Forgets a pending setting assignment that was never answered, so a later
+/// reply is not taken as its answer.
+pub fn clear_pending_setting() {
+    *pending_setting() = None;
 }
 
 /// Whether the controller reports positions in inches (`$13=1`).

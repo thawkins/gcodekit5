@@ -2996,3 +2996,9 @@ msgstr "Einstellungen und Geräteinformationen werden abgerufen..."
 
 msgid "Settings retrieval incomplete (timed out), settings received:"
 msgstr "Einstellungen unvollständig abgerufen (Zeitüberschreitung), empfangene Einstellungen:"
+
+msgid "the controller replied"
+msgstr "die Steuerung antwortete"
+
+msgid "no reply from the controller"
+msgstr "keine Antwort von der Steuerung"

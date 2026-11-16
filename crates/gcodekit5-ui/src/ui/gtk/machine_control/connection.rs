@@ -615,6 +615,18 @@ impl MachineControlView {
         // (e.g. soft limit) ends the jog and is logged, not shown as a dialog.
         let jog_reply = (is_ack || is_error) && self.continuous_jog.lock().on_reply(is_error);
 
+        // A pending `$n=v` assignment takes effect in the settings cache only on `ok`.
+        if !jog_reply && !probe_reply {
+            match &kind {
+                GrblResponseLine::Ok => device_status::note_command_reply(None),
+                GrblResponseLine::Error(code) => device_status::note_command_reply(Some(code)),
+                GrblResponseLine::Alarm(_)
+                | GrblResponseLine::Status(_)
+                | GrblResponseLine::Reset(_)
+                | GrblResponseLine::Other(_) => {}
+            }
+        }
+
         // ---
         let line_for_log = Self::decode_response_line(line);
         let protocol_ok = comm.detected_protocol() == comm.configured_protocol();
