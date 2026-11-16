@@ -228,6 +228,7 @@ The object positioning issue when opening "gckd" files.
 
 ### ⚙️ Configuration Management
 - **GRBL Settings Editor**: Complete access to all $0-$130 parameters
+- **Repetier EEPROM**: Read Repetier EEPROM parameters in Device Config
 - **Inline Editing**: Click any setting value to edit
 - **Descriptions**: Tooltips explain each parameter's purpose
 - **Value Validation**: Ensures valid ranges and data types

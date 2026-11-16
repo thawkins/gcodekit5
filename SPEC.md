@@ -1266,6 +1266,9 @@ Controller-specific parameters:
 - Spindle max value
 - Modes (parking, safety door, etc.)
 
+**Repetier Settings**:
+- EEPROM parameters read from the controller's `EPR:` report and shown in Device Config
+
 **Other Firmware**:
 Similar but firmware-specific parameter sets
 

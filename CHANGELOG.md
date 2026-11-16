@@ -1,3 +1,20 @@
+## [Unreleased] - 2026-11-16 (merge of PR #104: designer improvements and Repetier EEPROM)
+
+### Added
+- **Repetier EEPROM in Device Config**: Repetier controllers are detected and their EEPROM parameters (`EPR:` lines) are read and shown in Device Config
+- **Designer icons and desktop files**: new toolbar icons (move to top/bottom, boxes, puzzle piece), application pictures and Flatpak desktop/metainfo files
+
+### Changed
+- **Shape rotation in degrees**: shape rotation uses degrees, and rotating a group keeps the relative positions of its members
+- **Parametric shapes**: the size, rotation and corner panels are hidden for sprockets, gears and timing pulleys, whose geometry comes from their own parameters
+- **Circular arrays**: `circular_array_step` moved to `gcodekit5_designer::model`; the unused `arrays` module was removed
+- **Settings dialogs**: the deprecated `gtk4::Dialog` and `gtk4::FileChooserDialog` in Device Config were replaced with `gtk4::Window` and `gtk4::FileDialog`
+
+### Fixed
+- **Stacked message dialogs**: only one message dialog can be open at a time, and it is shown 100 ms later so a just-closed drop-down or popover releases focus first
+- **Connection errors**: pending initialisation commands are cancelled when the session changes or closes, and no error dialog is shown while the detected protocol does not yet match the configured one
+- **Dead keys on Wayland** and moving several selected objects with the grips
+
 ## [Unreleased] - 2026-11-12 (unsaved-changes prompts for the editor and Tools Manager)
 
 ### Added

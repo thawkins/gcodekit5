@@ -1539,7 +1539,7 @@ pub fn setup_designer_callbacks(
         let center_y = parse_from_string(&center_y_str, system).unwrap_or(0.0);
         let radius = parse_from_string(&radius_str, system).unwrap_or(50.0);
         let start_angle = parse_from_string(&start_angle_str, system).unwrap_or(0.0);
-        
+/*
         let params = gcodekit5_designer::CircularArrayParams::new(
             count as u32,
             gcodekit5_designer::Point::new(center_x as f64, center_y as f64),
@@ -1547,6 +1547,7 @@ pub fn setup_designer_callbacks(
             start_angle as f64,
             clockwise,
         );
+*/
         state.create_array(gcodekit5_designer::ArrayOperation::Circular(params));
         if let Some(window) = window_weak.upgrade() {
             update_designer_ui(&window, &mut state);

@@ -2893,3 +2893,9 @@ msgstr ""
 
 msgid "to"
 msgstr ""
+
+msgid "Repetier EEPROM"
+msgstr ""
+
+msgid "Tpulley"
+msgstr ""
