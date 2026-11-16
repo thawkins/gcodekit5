@@ -386,6 +386,12 @@ msgstr "Charger"
 msgid "Cancel"
 msgstr "Annuler"
 
+msgid "Accept"
+msgstr "Accepter"
+
+msgid "Discard"
+msgstr "Ignorer"
+
 msgid "Generate"
 msgstr "Générer"
 
@@ -1179,10 +1185,9 @@ msgstr "Échec de l'import :"
 msgid "Unsaved changes"
 msgstr "Modifications non enregistrées"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
+msgid "The current design has unsaved changes. Do you want to save them before continuing?"
 msgstr ""
-"Le dessin actuel contient des modifications non enregistrées. Les abandonner "
-"et continuer ?"
+"La conception actuelle comporte des modifications non enregistrées. Souhaitez-vous les enregistrer avant de continuer?"
 
 msgid "New 2D design created"
 msgstr "Nouveau dessin 2D créé"

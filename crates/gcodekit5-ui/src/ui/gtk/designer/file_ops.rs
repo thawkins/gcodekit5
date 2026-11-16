@@ -67,46 +67,7 @@ fn save_design(state: &Shared<DesignerState>, path: &std::path::Path) -> Result<
     Ok(())
 }
 
-impl DocumentHandles {
-    /// Clears the design and starts a new document in `mode`.
-    fn reset_document(&self, mode: MachineMode, status: &str) {
-        {
-            let mut state = self.canvas.state.borrow_mut();
-            state.canvas.clear();
-            // Undo history refers to shapes of the previous document; replaying it
-            // against the new one would corrupt it.
-            state.clear_history();
-            state.set_machine_mode(mode);
-            state.is_modified = false;
-        }
-        *self.current_file.borrow_mut() = None;
 
-        self.toolbox.refresh_settings();
-        self.canvas.notify_model_changed();
-        self.status_label.set_text(status);
-    }
-
-    /// Runs `proceed` right away when the design has no unsaved changes; otherwise
-    /// asks the user to confirm discarding them first.
-    fn confirm_discard_changes(&self, proceed: impl FnOnce() + 'static) {
-        let modified = self.canvas.state.borrow().is_modified;
-        if !modified {
-            proceed();
-            return;
-        }
-        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
-        crate::ui::gtk::common::dialog::show_confirmation(
-            &t!("Unsaved changes"),
-            &t!("The current design has unsaved changes. Discard them and continue?"),
-            parent.as_ref(),
-            move |confirmed| {
-                if confirmed {
-                    proceed();
-                }
-            },
-        );
-    }
-}
 
 impl DesignerView {
     fn document_handles(&self) -> DocumentHandles {
@@ -169,6 +130,156 @@ impl DesignerView {
 }
 
 impl DocumentHandles {
+    /// Clears the design and starts a new document in `mode`.
+    fn reset_document(&self, mode: MachineMode, status: &str) {
+        {
+            let mut state = self.canvas.state.borrow_mut();
+            state.canvas.clear();
+            // Undo history refers to shapes of the previous document; replaying it
+            // against the new one would corrupt it.
+            state.clear_history();
+            state.set_machine_mode(mode);
+            state.is_modified = false;
+        }
+        *self.current_file.borrow_mut() = None;
+
+        self.toolbox.refresh_settings();
+        self.canvas.notify_model_changed();
+        self.status_label.set_text(status);
+    }
+
+    /// Runs `proceed` right away when the design has no unsaved changes; otherwise
+    /// asks the user to Accept (save), Discard, or Cancel.
+    fn confirm_discard_changes(&self, proceed: impl FnOnce() + 'static) {
+        let modified = self.canvas.state.borrow().is_modified;
+        if !modified {
+            proceed();
+            return;
+        }
+
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        let handles = self.clone();
+
+        crate::ui::gtk::common::dialog::show_unsaved_changes_dialog(
+            &t!("Unsaved changes"),
+            &t!("The current design has unsaved changes. Do you want to save them before continuing?"),
+            parent.as_ref(),
+            move |response| match response {
+                crate::ui::gtk::common::dialog::UnsavedChangesResponse::Accept => {
+                    handles.save_and_then(proceed);
+                }
+                crate::ui::gtk::common::dialog::UnsavedChangesResponse::Discard => {
+                    proceed();
+                }
+                crate::ui::gtk::common::dialog::UnsavedChangesResponse::Cancel => {
+                // Cierra el diálogo y vuelve al programa
+                }
+            },
+        );
+    }
+
+    /// Saves the current file (or opens the Save As dialog if untitled) and runs `on_saved` on success.
+    fn save_and_then(&self, on_saved: impl FnOnce() + 'static) {
+        let current_path = self.current_file.borrow().clone();
+
+        if let Some(path) = current_path {
+            match save_design(&self.canvas.state, &path) {
+                Ok(()) => {
+                    self.status_label
+                    .set_text(&format!("{} {}", t!("Saved:"), path.display()));
+                    on_saved();
+                }
+                Err(e) => {
+                    error!("Error saving file: {}", e);
+                    let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+                    crate::ui::gtk::common::dialog::show_warning(
+                        &t!("Save Failed"),
+                        &format!("{}\n\n{}", path.display(), e),
+                        parent.as_ref(),
+                    );
+                }
+            }
+        } else {
+            self.save_as_and_then(on_saved);
+        }
+    }
+
+    /// Shows the Save As dialog and executes `on_saved` once the file is written.
+    fn save_as_and_then(&self, on_saved: impl FnOnce() + 'static) {
+        let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
+        let dialog = crate::ui::gtk::file_dialog::new_file_dialog(&t!("Save Design File"));
+
+        if let Some(ref settings) = self.settings_persistence
+            && let Ok(settings_ref) = settings.try_borrow()
+            {
+                let last_path = &settings_ref.config().file_processing.output_directory;
+                if last_path.exists() {
+                    let folder_path = if last_path.is_file() {
+                        last_path.parent().unwrap_or(last_path).to_path_buf()
+                    } else {
+                        last_path.clone()
+                    };
+                    let file = gtk4::gio::File::for_path(folder_path);
+                    dialog.set_initial_folder(Some(&file));
+                }
+            }
+
+            let filter = gtk4::FileFilter::new();
+            filter.set_name(Some(&t!("GCodeKit Design Files")));
+            filter.add_pattern("*.gckd");
+            dialog.add_filter(&filter);
+
+            let canvas = self.canvas.clone();
+            let current_file = self.current_file.clone();
+            let status_label = self.status_label.clone();
+            let settings_persistence_clone = self.settings_persistence.clone();
+
+            let current_file_borrow = self.current_file.borrow();
+            let default_name = if let Some(path) = current_file_borrow.as_ref() {
+                path.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| format!("{}.gckd", s))
+                .unwrap_or_else(|| "design.gckd".to_string())
+            } else {
+                "untitled_design.gckd".to_string()
+            };
+            dialog.set_initial_name(Some(&default_name));
+
+            dialog.pick_save(parent.as_ref(), move |file| {
+                if let Some(mut path) = file.path() {
+                    if path.extension().is_none() {
+                        path.set_extension("gckd");
+                    }
+
+                    if let Some(ref settings) = settings_persistence_clone
+                        && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+                        {
+                            settings_ref_mut
+                            .config_mut()
+                            .file_processing
+                            .output_directory = path.clone();
+                            settings_ref_mut.persist_or_log();
+                        }
+
+                        match save_design(&canvas.state, &path) {
+                            Ok(()) => {
+                                *current_file.borrow_mut() = Some(path.clone());
+                                status_label.set_text(&format!("{} {}", t!("Saved:"), path.display()));
+                                on_saved();
+                            }
+                            Err(e) => {
+                                error!("Error saving file: {}", e);
+                                crate::ui::gtk::common::dialog::show_warning(
+                                    &t!("Save Failed"),
+                                    &format!("{}\n\n{}", path.display(), e),
+                                    None,
+                                );
+                            }
+                        }
+                }
+            });
+    }
+
     /// Shows the "Open Design File" dialog and loads the chosen file.
     fn show_open_dialog(&self) {
         let parent = crate::ui::gtk::file_dialog::parent_window(&self.widget);
@@ -176,138 +287,122 @@ impl DocumentHandles {
 
         if let Some(ref settings) = self.settings_persistence
             && let Ok(settings_ref) = settings.try_borrow()
-        {
-            let last_path = &settings_ref.config().file_processing.output_directory;
-            if last_path.exists() {
-                let folder_path = if last_path.is_file() {
-                    last_path.parent().unwrap_or(last_path).to_path_buf()
-                } else {
-                    last_path.clone()
-                };
-                let file = gtk4::gio::File::for_path(folder_path);
-                dialog.set_initial_folder(Some(&file));
-            }
-        }
-
-        let filter = gtk4::FileFilter::new();
-        filter.set_name(Some(&t!("GCodeKit Design Files")));
-        filter.add_pattern("*.gckd");
-        filter.add_pattern("*.gck5");
-        dialog.add_filter(&filter);
-
-        let all_filter = gtk4::FileFilter::new();
-        all_filter.set_name(Some(&t!("All Files")));
-        all_filter.add_pattern("*");
-        dialog.add_filter(&all_filter);
-
-        let settings_persistence_clone = self.settings_persistence.clone();
-        let canvas = self.canvas.clone();
-        let current_file = self.current_file.clone();
-        let status_label = self.status_label.clone();
-        let toolbox = self.toolbox.clone();
-
-        // Open dialogs take no file name (`set_initial_name` only applies to Save).
-
-        dialog.pick_open(parent.as_ref(), move |file| {
-            if let Some(path) = file.path() {
-                match DesignFile::load_from_file(&path) {
-                    Ok(design) => {
-                        let mut state = canvas.state.borrow_mut();
-                        state.canvas.clear();
-
-                        // Restore persisted document mode (defaults to 2D on old files).
-                        state.set_machine_mode(match design.design_mode {
-                            DesignMode::TwoD => MachineMode::Laser2D,
-                            DesignMode::ThreeD => MachineMode::Cnc3D,
-                        });
-
-                        let mut max_id = 0;
-                        let mut restored_shapes = 0;
-                        for shape_data in design.shapes {
-                            let id = shape_data.id as u64;
-                            if id > max_id {
-                                max_id = id;
-                            }
-                            // In open_file(), after to_drawing_object:
-                            if let Ok(mut obj) =
-                                DesignFile::to_drawing_object(&shape_data, id as i32)
-                            {
-                                // Ensure valid values
-                                if obj.step_down <= 0.0 {
-                                    obj.step_down = 0.1; // default value
-                                }
-                                state.canvas.restore_shape(obj);
-                                restored_shapes += 1;
-                            }
-                        }
-
-                        state.canvas.set_next_id(max_id + 1);
-                        // Drop undo history of the previously open document.
-                        state.clear_history();
-                        state.is_modified = false;
-                        state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
-                        state.tool_settings.spindle_speed =
-                            design.toolpath_params.spindle_speed as u32;
-                        state.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
-                        state.tool_settings.cut_depth = design.toolpath_params.cut_depth;
-                        state.tool_settings.step_down = design.toolpath_params.step_down;
-                        state.tool_settings.continuous_z_between_passes =
-                            design.toolpath_params.continuous_z_between_passes;
-
-                        state.stock_material = Some(StockMaterial {
-                            width: design.toolpath_params.stock_width,
-                            height: design.toolpath_params.stock_height,
-                            thickness: design.toolpath_params.stock_thickness,
-                            origin: (0.0, 0.0, 0.0),
-                            safe_z: design.toolpath_params.safe_z_height,
-                        });
-
-                        let viewport_ok =
-                            design.viewport.zoom.is_finite() && design.viewport.zoom > 0.0001;
-                        if viewport_ok {
-                            state.canvas.set_zoom(design.viewport.zoom);
-                            state
-                                .canvas
-                                .set_pan(design.viewport.pan_x, design.viewport.pan_y);
-                        }
-
-                        *current_file.borrow_mut() = Some(path.clone());
-
-                        // --- SAVE PATH ---
-                        if let Some(ref settings) = settings_persistence_clone
-                            && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
-                        {
-                            settings_ref_mut
-                                .config_mut()
-                                .file_processing
-                                .output_directory = path.clone();
-
-                            // (Windows/Linux/macOS)
-                            settings_ref_mut.persist_or_log();
-                        } // ---------------------------
-
-                        drop(state);
-
-                        if restored_shapes > 0 && !viewport_ok {
-                            canvas.zoom_fit();
-                        }
-
-                        toolbox.refresh_settings();
-                        canvas.notify_model_changed();
-                        status_label.set_text(&format!("{} {}", t!("Loaded:"), path.display()));
-                    }
-                    Err(e) => {
-                        // The designer's status label is not shown: report it.
-                        error!("Error opening design {}: {}", path.display(), e);
-                        crate::ui::gtk::common::dialog::show_warning(
-                            &t!("Open Failed"),
-                            &format!("{}\n\n{}", path.display(), e),
-                            None,
-                        );
-                    }
+            {
+                let last_path = &settings_ref.config().file_processing.output_directory;
+                if last_path.exists() {
+                    let folder_path = if last_path.is_file() {
+                        last_path.parent().unwrap_or(last_path).to_path_buf()
+                    } else {
+                        last_path.clone()
+                    };
+                    let file = gtk4::gio::File::for_path(folder_path);
+                    dialog.set_initial_folder(Some(&file));
                 }
             }
-        });
+
+            let filter = gtk4::FileFilter::new();
+            filter.set_name(Some(&t!("GCodeKit Design Files")));
+            filter.add_pattern("*.gckd");
+            filter.add_pattern("*.gck5");
+            dialog.add_filter(&filter);
+
+            let all_filter = gtk4::FileFilter::new();
+            all_filter.set_name(Some(&t!("All Files")));
+            all_filter.add_pattern("*");
+            dialog.add_filter(&all_filter);
+
+            let settings_persistence_clone = self.settings_persistence.clone();
+            let canvas = self.canvas.clone();
+            let current_file = self.current_file.clone();
+            let status_label = self.status_label.clone();
+            let toolbox = self.toolbox.clone();
+
+            dialog.pick_open(parent.as_ref(), move |file| {
+                if let Some(path) = file.path() {
+                    match DesignFile::load_from_file(&path) {
+                        Ok(design) => {
+                            let mut state = canvas.state.borrow_mut();
+                            state.canvas.clear();
+
+                            state.set_machine_mode(match design.design_mode {
+                                DesignMode::TwoD => MachineMode::Laser2D,
+                                DesignMode::ThreeD => MachineMode::Cnc3D,
+                            });
+
+                            let mut max_id = 0;
+                            let mut restored_shapes = 0;
+                            for shape_data in design.shapes {
+                                let id = shape_data.id as u64;
+                                if id > max_id {
+                                    max_id = id;
+                                }
+                                if let Ok(mut obj) =
+                                    DesignFile::to_drawing_object(&shape_data, id as i32)
+                                    {
+                                        if obj.step_down <= 0.0 {
+                                            obj.step_down = 0.1;
+                                        }
+                                        state.canvas.restore_shape(obj);
+                                        restored_shapes += 1;
+                                    }
+                            }
+
+                            state.canvas.set_next_id(max_id + 1);
+                            state.clear_history();
+                            state.is_modified = false;
+                            state.tool_settings.feed_rate = design.toolpath_params.feed_rate;
+                            state.tool_settings.spindle_speed =
+                            design.toolpath_params.spindle_speed as u32;
+                            state.tool_settings.tool_diameter = design.toolpath_params.tool_diameter;
+                            state.tool_settings.cut_depth = design.toolpath_params.cut_depth;
+                            state.tool_settings.step_down = design.toolpath_params.step_down;
+                            state.tool_settings.continuous_z_between_passes =
+                            design.toolpath_params.continuous_z_between_passes;
+
+                            state.stock_material = Some(StockMaterial {
+                                width: design.toolpath_params.stock_width,
+                                height: design.toolpath_params.stock_height,
+                                thickness: design.toolpath_params.stock_thickness,
+                                origin: (0.0, 0.0, 0.0),
+                                                        safe_z: design.toolpath_params.safe_z_height,
+                            });
+                            let viewport_ok =
+                            design.viewport.zoom.is_finite() && design.viewport.zoom > 0.0001;
+                            if viewport_ok {
+                                state.canvas.set_zoom(design.viewport.zoom);
+                                state
+                                .canvas
+                                .set_pan(design.viewport.pan_x, design.viewport.pan_y);
+                            }
+                            *current_file.borrow_mut() = Some(path.clone());
+                            if let Some(ref settings) = settings_persistence_clone
+                                && let Ok(mut settings_ref_mut) = settings.try_borrow_mut()
+                                {
+                                    settings_ref_mut
+                                    .config_mut()
+                                    .file_processing
+                                    .output_directory = path.clone();
+                                    settings_ref_mut.persist_or_log();
+                                }
+                                drop(state);
+                            if restored_shapes > 0 && !viewport_ok {
+                                canvas.zoom_fit();
+                            }
+                            toolbox.refresh_settings();
+                            canvas.notify_model_changed();
+                            status_label.set_text(&format!("{} {}", t!("Loaded:"), path.display()));
+                        }
+                        Err(e) => {
+                            error!("Error opening design {}: {}", path.display(), e);
+                            crate::ui::gtk::common::dialog::show_warning(
+                                &t!("Open Failed"),
+                                &format!("{}\n\n{}", path.display(), e),
+                                None,
+                            );
+                        }
+                    }
+                }
+            });
     }
 }
 

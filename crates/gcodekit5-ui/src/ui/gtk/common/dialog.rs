@@ -58,6 +58,67 @@ impl DialogConfig {
     }
 }
 
+// ---
+/// Result for the three-button unsaved changes dialog
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsavedChangesResponse {
+    Accept,
+    Discard,
+    Cancel,
+}
+
+/// Show a three-button dialog for unsaved changes: Cancel, Discard, Accept
+pub fn show_unsaved_changes_dialog(
+    title: &str,
+    message: &str,
+    parent: Option<&Window>,
+    callback: impl FnOnce(UnsavedChangesResponse) + 'static,
+) {
+    if DIALOG_OPEN.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    let buttons = [
+        (t!("Cancel"), UnsavedChangesResponse::Cancel),
+        (t!("Discard"), UnsavedChangesResponse::Discard),
+        (t!("Accept"), UnsavedChangesResponse::Accept),
+    ];
+
+    let labels: Vec<&str> = buttons.iter().map(|(label, _)| label.as_str()).collect();
+    let dialog = AlertDialog::builder()
+        .message(title)
+        .detail(message)
+        .modal(true)
+        .build();
+
+    dialog.set_buttons(&labels);
+    dialog.set_cancel_button(0);
+    dialog.set_default_button(2);
+
+    let responses: Vec<UnsavedChangesResponse> = buttons.into_iter().map(|(_, r)| r).collect();
+    let parent_owned = parent.cloned();
+
+    gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+        dialog.choose(
+            parent_owned.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                DIALOG_OPEN.store(false, Ordering::SeqCst);
+
+                let response = result
+                    .ok()
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| responses.get(index).copied())
+                    .unwrap_or(UnsavedChangesResponse::Cancel);
+
+                callback(response);
+            },
+        );
+    });
+}
+
+// ---
+
 /// Show a standardized message dialog
 ///
 /// # Arguments
@@ -134,74 +195,6 @@ pub fn show_message_dialog(
     });
 }
 
-/*
-pub fn show_message_dialog(
-    config: DialogConfig,
-    parent: Option<&Window>,
-    callback: Option<Box<dyn FnOnce(ResponseType)>>,
-) {
-    let detail = match &config.secondary_text {
-        Some(secondary) => format!("{}\n\n{}", config.message, secondary),
-        None => config.message.clone(),
-    };
-
-    // Buttons in display order, with the response each one reports. The first
-    // entry is what Escape/close maps to when the dialog has a cancel choice.
-    let buttons: Vec<(String, ResponseType)> = match config.buttons {
-        ButtonsType::None => Vec::new(),
-        ButtonsType::Close => vec![(t!("Close"), ResponseType::Close)],
-        ButtonsType::Cancel => vec![(t!("Cancel"), ResponseType::Cancel)],
-        ButtonsType::YesNo => vec![(t!("No"), ResponseType::No), (t!("Yes"), ResponseType::Yes)],
-        ButtonsType::OkCancel => vec![
-            (t!("Cancel"), ResponseType::Cancel),
-            (t!("OK"), ResponseType::Ok),
-        ],
-        // `Ok` and any future variant of this non-exhaustive GTK enum.
-        _ => vec![(t!("OK"), ResponseType::Ok)],
-    };
-
-    let labels: Vec<&str> = buttons.iter().map(|(label, _)| label.as_str()).collect();
-    let dialog = AlertDialog::builder()
-        .message(config.title.as_str())
-        .detail(detail.as_str())
-        .modal(config.modal)
-        .build();
-    if !labels.is_empty() {
-        dialog.set_buttons(&labels);
-        let last = labels.len() as i32 - 1;
-        dialog.set_default_button(last);
-        if labels.len() > 1 {
-            dialog.set_cancel_button(0);
-        }
-    }
-
-    let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
-    let parent_owned = parent.cloned();
-
-    gtk4::glib::idle_add_local_once(move || {
-        if let Some(ref win) = parent_owned {
-            win.present();
-        }
-        dialog.choose(
-            parent_owned.as_ref(),
-            gtk4::gio::Cancellable::NONE,
-            move |result| {
-                // Escape or closing the window reports an error, which MessageDialog
-                // reported as `DeleteEvent`.
-                let response = result
-                    .ok()
-                    .and_then(|index| usize::try_from(index).ok())
-                    .and_then(|index| responses.get(index).copied())
-                    .unwrap_or(ResponseType::DeleteEvent);
-                if let Some(cb) = callback {
-                    cb(response);
-                }
-            },
-        );
-    });
-
-}
-*/
 /// Show an error dialog
 pub fn show_error(title: &str, message: &str, parent: Option<&Window>) {
     show_message_dialog(

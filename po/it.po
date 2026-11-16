@@ -384,6 +384,12 @@ msgstr "Carica"
 msgid "Cancel"
 msgstr "Annulla"
 
+msgid "Accept"
+msgstr "Accettare"
+
+msgid "Discard"
+msgstr "Escludere"
+
 msgid "Generate"
 msgstr "Genera"
 
@@ -1173,8 +1179,8 @@ msgstr "Importazione non riuscita:"
 msgid "Unsaved changes"
 msgstr "Modifiche non salvate"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr "Il progetto corrente ha modifiche non salvate. Scartarle e continuare?"
+msgid "The current design has unsaved changes. Do you want to save them before continuing?"
+msgstr "Il progetto attuale presenta modifiche non salvate. Vuoi salvarle prima di continuare?"
 
 msgid "New 2D design created"
 msgstr "Nuovo progetto 2D creato"

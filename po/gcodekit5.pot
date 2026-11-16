@@ -370,6 +370,12 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+msgid "Accept"
+msgstr ""
+
+msgid "Discard"
+msgstr ""
+
 msgid "Generate"
 msgstr ""
 
@@ -1140,7 +1146,7 @@ msgstr ""
 msgid "Unsaved changes"
 msgstr ""
 
-msgid "The current design has unsaved changes. Discard them and continue?"
+msgid "The current design has unsaved changes. Do you want to save them before continuing?"
 msgstr ""
 
 msgid "New 2D design created"
