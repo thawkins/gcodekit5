@@ -17,7 +17,7 @@ toml = "0.8"
 dirs = "6.0"
 tracing = "0.1"
 thiserror = { workspace = true }
-gettext-rs = { version = "0.7", features = ["gettext-system"] }
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
