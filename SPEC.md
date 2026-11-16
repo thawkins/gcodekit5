@@ -1889,7 +1889,7 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - Display: Minimum 1024x768 resolution (1920x1080 recommended)
 
 ### 9.2 Software Constraints
-- Rust version: 1.70.0 or newer
+- Rust version: 1.95.0 or newer
 - Platform: Linux, Windows (7+), macOS (10.13+)
 - No root/admin privileges required
 - Single application instance (planned: multi-instance support)

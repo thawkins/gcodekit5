@@ -15,7 +15,7 @@ This document describes how to set up your development environment with Rust and
 
 ## Installing Rust
 
-GCodeKit5 requires Rust 1.70 or later. We recommend using `rustup` for managing your Rust installation.
+GCodeKit5 requires Rust 1.95 or later. We recommend using `rustup` for managing your Rust installation.
 
 ### Install Rustup (Recommended)
 

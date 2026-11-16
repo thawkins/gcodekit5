@@ -1,7 +1,7 @@
 ## [Unreleased] - 2026-11-16 (minimum Rust version 1.95)
 
 ### Changed
-- **Minimum supported Rust version is now 1.95** (was 1.90): `rfd` 0.18 needs 1.92 and `parking_lot` 0.13 needs 1.95. `rust-version`, the MSRV CI job, `README.md` and `TOOLCHAIN.md` are updated
+- **Minimum supported Rust version is now 1.95** (was 1.90): `rfd` 0.18 needs 1.92 and `parking_lot` 0.13 needs 1.95. `rust-version`, the MSRV CI job, `README.md`, `TOOLCHAIN.md` and `SPEC.md` are updated
 
 ## [Unreleased] - 2026-11-16 (merge of PR #104: designer improvements and Repetier EEPROM)
 
