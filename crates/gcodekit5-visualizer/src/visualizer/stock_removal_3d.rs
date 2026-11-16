@@ -559,7 +559,7 @@ fn build_mesh(map: &HeightMap, builder: &mut MeshBuilder<'_>) -> Result<(), Mesh
 
 /// Surface mesh of the remaining stock in stock-local coordinates.
 ///
-/// Flat regions are merged into large quads (see [`greedy_rects`]), and walls
+/// Flat regions are merged into large quads (see `greedy_rects`), and walls
 /// are emitted only where neighbouring columns differ in height, merged along
 /// their length. Layout: [`MESH_FLOATS_PER_VERTEX`] floats per vertex, three
 /// vertices per triangle, counter-clockwise front faces. A mesh that would

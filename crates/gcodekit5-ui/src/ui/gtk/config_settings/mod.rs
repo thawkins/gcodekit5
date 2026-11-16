@@ -6,6 +6,7 @@
 
 mod grbl_settings;
 mod operations;
+mod repetier_settings;
 
 use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_communication::SerialCommunicator;
@@ -16,6 +17,7 @@ use gtk4::{
     Box, Button, DropDown, Label, ListBox, Orientation, PolicyType, ScrolledWindow, SearchEntry,
     Separator,
 };
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -53,6 +55,7 @@ impl From<&Setting> for ConfigSettingRow {
             600..=603 => "Encoder",
             650..=651 => "Modbus",
             680 => "RS485",
+            1000..=1999 => "Repetier EEPROM",
             _ => "Other",
         };
 
@@ -99,6 +102,7 @@ pub const SETTING_CATEGORIES: &[&str] = &[
     n_!("Encoder"),
     n_!("Modbus"),
     n_!("RS485"),
+    n_!("Repetier EEPROM"),
     n_!("Other"),
 ];
 
@@ -209,9 +213,8 @@ impl ConfigSettingsView {
         filter_bar.append(&category_label);
 
         let category_filter = new_text_dropdown();
-        // Ids stay in English (they match `ConfigSettingRow::category`); labels are translated.
-        for category in SETTING_CATEGORIES {
-            category_filter.append(Some(category), &t!(*category));
+        for cat in SETTING_CATEGORIES {
+            category_filter.append(Some(*cat), &t!(*cat));
         }
         category_filter.set_active_id(Some("All"));
         filter_bar.append(&category_filter);
@@ -332,7 +335,7 @@ impl ConfigSettingsView {
 
         // Connect signals
         let view_clone = view.clone();
-        search_entry.connect_search_changed(move |_| {
+        category_filter.connect_selected_notify(move |_| {
             view_clone.apply_filter();
         });
 

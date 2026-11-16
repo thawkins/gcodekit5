@@ -64,18 +64,25 @@ impl DialogConfig {
 /// * `config` - Dialog configuration
 /// * `parent` - Optional parent window
 /// * `callback` - Optional callback to handle response
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
+
 pub fn show_message_dialog(
     config: DialogConfig,
     parent: Option<&Window>,
     callback: Option<Box<dyn FnOnce(ResponseType)>>,
 ) {
+    // Evita que se apilen dos diálogos idénticos uno encima del otro
+    if DIALOG_OPEN.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
     let detail = match &config.secondary_text {
         Some(secondary) => format!("{}\n\n{}", config.message, secondary),
         None => config.message.clone(),
     };
 
-    // Buttons in display order, with the response each one reports. The first
-    // entry is what Escape/close maps to when the dialog has a cancel choice.
     let buttons: Vec<(String, ResponseType)> = match config.buttons {
         ButtonsType::None => Vec::new(),
         ButtonsType::Close => vec![(t!("Close"), ResponseType::Close)],
@@ -85,7 +92,6 @@ pub fn show_message_dialog(
             (t!("Cancel"), ResponseType::Cancel),
             (t!("OK"), ResponseType::Ok),
         ],
-        // `Ok` and any future variant of this non-exhaustive GTK enum.
         _ => vec![(t!("OK"), ResponseType::Ok)],
     };
 
@@ -105,17 +111,26 @@ pub fn show_message_dialog(
     }
 
     let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
-    dialog.choose(parent, gtk4::gio::Cancellable::NONE, move |result| {
-        // Escape or closing the window reports an error, which MessageDialog
-        // reported as `DeleteEvent`.
-        let response = result
-            .ok()
-            .and_then(|index| usize::try_from(index).ok())
-            .and_then(|index| responses.get(index).copied())
-            .unwrap_or(ResponseType::DeleteEvent);
-        if let Some(cb) = callback {
-            cb(response);
-        }
+    let parent_owned = parent.cloned();
+
+    // Esperar 100 ms para que el compositor (Wayland/X11) libere el foco del DropDown/Popover anterior
+    gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+        dialog.choose(
+            parent_owned.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                DIALOG_OPEN.store(false, Ordering::SeqCst);
+
+                let response = result
+                    .ok()
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| responses.get(index).copied())
+                    .unwrap_or(ResponseType::DeleteEvent);
+                if let Some(cb) = callback {
+                    cb(response);
+                }
+            },
+        );
     });
 }
 

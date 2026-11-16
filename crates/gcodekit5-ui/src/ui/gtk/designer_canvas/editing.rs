@@ -183,7 +183,7 @@ impl DesignerCanvas {
     }
 
     /// Creates `count - 1` rotated copies of the selection about (`center_x`, `center_y`)
-    /// spread over `total_angle` degrees (see [`gcodekit5_designer::arrays::circular_array_step`] for the spacing).
+    /// spread over `total_angle` degrees (see [`gcodekit5_designer::model::circular_array_step`] for the spacing).
     pub fn create_circular_array(
         &self,
         count: usize,
@@ -208,7 +208,7 @@ impl DesignerCanvas {
         }
 
         let mut new_objects = Vec::new();
-        let angle_step = gcodekit5_designer::arrays::circular_array_step(total_angle, count);
+        let angle_step = gcodekit5_designer::model::circular_array_step(total_angle, count);
 
         for i in 1..count {
             let angle = angle_step * i as f64;
