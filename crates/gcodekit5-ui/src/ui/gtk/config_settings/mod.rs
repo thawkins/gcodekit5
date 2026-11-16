@@ -213,8 +213,9 @@ impl ConfigSettingsView {
         filter_bar.append(&category_label);
 
         let category_filter = new_text_dropdown();
-        for cat in SETTING_CATEGORIES {
-            category_filter.append(Some(*cat), &t!(*cat));
+        // Ids stay in English (they match `ConfigSettingRow::category`); labels are translated.
+        for category in SETTING_CATEGORIES {
+            category_filter.append(Some(category), &t!(*category));
         }
         category_filter.set_active_id(Some("All"));
         filter_bar.append(&category_filter);
@@ -335,7 +336,7 @@ impl ConfigSettingsView {
 
         // Connect signals
         let view_clone = view.clone();
-        category_filter.connect_selected_notify(move |_| {
+        search_entry.connect_search_changed(move |_| {
             view_clone.apply_filter();
         });
 

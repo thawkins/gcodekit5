@@ -2978,3 +2978,21 @@ msgstr "EEPROM Repetier"
 
 msgid "Tpulley"
 msgstr "PoleaD"
+
+msgid "Edit EEPROM Pos"
+msgstr "Editar posición EEPROM"
+
+msgid "Error sending M205:"
+msgstr "Error al enviar M205:"
+
+msgid "Connection Notice"
+msgstr "Aviso de conexión"
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr "Conecte la máquina antes de obtener los parámetros."
+
+msgid "Operation cancelled: Device not connected"
+msgstr "Operación cancelada: dispositivo no conectado"
+
+msgid "Retrieving settings and device info..."
+msgstr "Obteniendo ajustes e información del dispositivo..."

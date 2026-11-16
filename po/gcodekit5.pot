@@ -2899,3 +2899,21 @@ msgstr ""
 
 msgid "Tpulley"
 msgstr ""
+
+msgid "Edit EEPROM Pos"
+msgstr ""
+
+msgid "Error sending M205:"
+msgstr ""
+
+msgid "Connection Notice"
+msgstr ""
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr ""
+
+msgid "Operation cancelled: Device not connected"
+msgstr ""
+
+msgid "Retrieving settings and device info..."
+msgstr ""

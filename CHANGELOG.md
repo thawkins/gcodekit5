@@ -1,3 +1,14 @@
+## [Unreleased] - 2026-11-16 (devel fixes restored after the PR #104 merge)
+
+### Fixed
+- **Device type selector** (restored from #74 and #79): reading `$32` after connecting selects CNC or Laser without writing `$32` back to the controller; changing the type is refused while a job runs or the machine is busy, and a failed change shows a message and returns to the previous selection
+- **Device Config settings** (restored from #74 and #79): Retrieve is refused while the machine is busy; the reply is read only from output that arrived after the request and once it has stopped streaming (Repetier `EPR:` lines too), so older or partial lines are not taken as current values; an edited setting is sent first and only shown once the controller accepted it, with a warning otherwise
+- **Settings search**: typing in the Device Config search box filters the list again (its change handler had been replaced by a second category handler)
+- **Connection start-up commands**: `$I`, `$$` and Repetier's `M110`/`M115` are sent again after connecting; they were skipped because their timers checked a session number the status poller replaced straight away
+- **Group rotation of images and paths**: rotating a multi-selection moves raster images and already-rotated paths around the group centre and turns them, instead of moving images to the wrong place without turning them
+- **Tools Manager**: after Save while switching tools, the tool being edited is selected in the list again
+- **Flatpak (gcodekit5-design)**: the manifest installs the staged `gcodekit5-design` binary and reads the existing `gcodekit5-design.png`, and the desktop file names the installed icon
+
 ## [Unreleased] - 2026-11-16 (minimum Rust version 1.95)
 
 ### Changed
