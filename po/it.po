@@ -2980,19 +2980,19 @@ msgid "Tpulley"
 msgstr "Tpulley"
 
 msgid "Edit EEPROM Pos"
-msgstr ""
+msgstr "Modifica posizione EEPROM"
 
 msgid "Error sending M205:"
-msgstr ""
+msgstr "Errore nell'invio di M205:"
 
 msgid "Connection Notice"
-msgstr ""
+msgstr "Avviso di connessione"
 
 msgid "Please connect the machine before retrieving parameters."
-msgstr ""
+msgstr "Collegare la macchina prima di recuperare i parametri."
 
 msgid "Operation cancelled: Device not connected"
-msgstr ""
+msgstr "Operazione annullata: dispositivo non connesso"
 
 msgid "Retrieving settings and device info..."
-msgstr ""
+msgstr "Recupero delle impostazioni e delle informazioni del dispositivo..."
