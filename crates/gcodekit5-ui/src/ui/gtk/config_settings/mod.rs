@@ -32,6 +32,34 @@ pub struct ConfigSettingRow {
     pub read_only: bool,
 }
 
+impl ConfigSettingRow {
+    /// Whether the row is shown for the given search text and category filter.
+    ///
+    /// The display list and row activation must use this same test, so that an
+    /// activated row index refers to the setting the user clicked.
+    ///
+    /// # Arguments
+    /// * `search_text` - Lower-cased search text; empty matches everything.
+    /// * `category` - Selected category id; "All" matches every category.
+    pub fn matches_filter(&self, search_text: &str, category: &str) -> bool {
+        if !search_text.is_empty() {
+            // Repetier EEPROM settings are numbered from 1000 and shown as `EPR:<pos>`.
+            let id = if self.number >= 1000 {
+                format!("epr:{}", self.number - 1000)
+            } else {
+                format!("${}", self.number)
+            };
+            let matches = self.name.to_lowercase().contains(search_text)
+                || self.description.to_lowercase().contains(search_text)
+                || id.contains(search_text);
+            if !matches {
+                return false;
+            }
+        }
+        category == "All" || self.category == category
+    }
+}
+
 impl From<&Setting> for ConfigSettingRow {
     fn from(s: &Setting) -> Self {
         let category = match s.number {
@@ -213,8 +241,9 @@ impl ConfigSettingsView {
         filter_bar.append(&category_label);
 
         let category_filter = new_text_dropdown();
-        for cat in SETTING_CATEGORIES {
-            category_filter.append(Some(*cat), &t!(*cat));
+        // Ids stay in English (they match `ConfigSettingRow::category`); labels are translated.
+        for category in SETTING_CATEGORIES {
+            category_filter.append(Some(category), &t!(*category));
         }
         category_filter.set_active_id(Some("All"));
         filter_bar.append(&category_filter);
@@ -335,7 +364,7 @@ impl ConfigSettingsView {
 
         // Connect signals
         let view_clone = view.clone();
-        category_filter.connect_selected_notify(move |_| {
+        search_entry.connect_search_changed(move |_| {
             view_clone.apply_filter();
         });
 
@@ -380,20 +409,7 @@ impl ConfigSettingsView {
 
                 let filtered_settings: Vec<ConfigSettingRow> = all_settings
                     .into_iter()
-                    .filter(|setting| {
-                        // Apply search filter
-                        if !search_text.is_empty() {
-                            let matches = setting.name.to_lowercase().contains(&search_text)
-                                || setting.description.to_lowercase().contains(&search_text)
-                                || format!("${}", setting.number).contains(&search_text);
-                            if !matches {
-                                return false;
-                            }
-                        }
-
-                        // Apply category filter
-                        !(category != "All" && setting.category != category)
-                    })
+                    .filter(|setting| setting.matches_filter(&search_text, &category))
                     .collect();
 
                 if let Some(setting) = filtered_settings.get(index as usize)

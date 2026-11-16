@@ -439,13 +439,15 @@ impl MachineControlView {
             self.log("> 0x18 (Reset)");
             let _ = comm.send(&[0x18]);
         }
-        // ---
+        // Start the poller first: it installs this session's generation, which the init
+        // timers below capture so they do nothing once the session has changed or closed.
+        self.start_status_poller();
         let current_gen = self.poll_generation.get();
         for (i, cmd) in profile.init_commands.iter().enumerate() {
             let view = self.clone();
             let delay = std::time::Duration::from_millis(250 + i as u64 * 300);
             glib::timeout_add_local_once(delay, move || {
-                // No enviar si ya se desconectó o cambió la sesión
+                // Do not send once the connection was closed or replaced.
                 if view.poll_generation.get() != current_gen {
                     return;
                 }
@@ -457,10 +459,6 @@ impl MachineControlView {
                 }
             });
         }
-
-        // ---
-
-        self.start_status_poller();
     }
 
     /// Starts the main-loop poller that reads responses while no DirectSender job runs.

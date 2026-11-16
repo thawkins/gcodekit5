@@ -1,7 +1,7 @@
 app-id: com.github.feveal.gcodekit5-design
-runtime: org.freedesktop.Platform
-runtime-version: '24.08'
-sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
 command: gcodekit5-design
 finish-args:
   - --share=ipc
@@ -13,7 +13,7 @@ modules:
   - name: gcodekit5-design
     buildsystem: simple
     build-commands:
-      - install -D -m 755 gcodekit5 /app/bin/gcodekit5-design
+      - install -D -m 755 gcodekit5-design /app/bin/gcodekit5-design
       - install -D com.github.feveal.gcodekit5-design.png /app/share/icons/hicolor/128x128/apps/com.github.feveal.gcodekit5-design.png
       - install -D com.github.feveal.gcodekit5-design.desktop /app/share/applications/com.github.feveal.gcodekit5-design.desktop
       - install -D com.github.feveal.gcodekit5-design.metainfo.xml /app/share/metainfo/com.github.feveal.gcodekit5-design.metainfo.xml
@@ -22,7 +22,7 @@ modules:
         path: ../gcodekit5-design
         dest-filename: gcodekit5-design
       - type: file
-        path: ../assets/pictures/com.github.feveal.gcodekit5-design.png
+        path: ../assets/pictures/gcodekit5-design.png
         dest-filename: com.github.feveal.gcodekit5-design.png
       - type: file
         path: com.github.feveal.gcodekit5-design.desktop
