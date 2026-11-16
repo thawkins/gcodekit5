@@ -1367,7 +1367,7 @@ dependencies = [
  "csgrs",
  "gcodekit5-core",
  "gcodekit5-devicedb",
- "gerber-types",
+ "gerber-types 0.6.0",
  "gerber_parser",
  "image",
  "lyon",
@@ -1652,13 +1652,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "gerber_parser"
-version = "0.3.1"
+name = "gerber-types"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52b362b1c8bc3e5f327283c6ee54730b872f3e91eb70035418e4bc9a978a78b9"
+checksum = "42103f088f731446755617a73b8d3a80633bd447317e6e1661195abac35150aa"
+dependencies = [
+ "chrono",
+ "num-rational",
+ "strum",
+ "strum_macros",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "gerber_parser"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73f675010c0dda2e38b3f276c45d96e743758929d4e6ae81052dcde35daf8dc1"
 dependencies = [
  "anyhow",
- "gerber-types",
+ "gerber-types 0.7.0",
  "lazy-regex",
  "log",
  "regex",
