@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-16 (dependency lockfile fix)
+
+### Fixed
+- **`mutants` requirement**: `Cargo.toml` now asks for `mutants` 0.0.4, matching `Cargo.lock`. A `0.0.x` requirement pins the exact version, so the 0.0.4 lockfile from the Dependabot update (#109) made `cargo build --locked` fail
+
 ## [Unreleased] - 2026-11-16 (minimum Rust version 1.95)
 
 ### Changed

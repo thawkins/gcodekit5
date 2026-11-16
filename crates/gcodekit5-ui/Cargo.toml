@@ -33,7 +33,7 @@ anyhow = "1.0"
 dirs = "6.0"
 glam = "0.29"
 glow = "0.17"
-libloading = "0.8"
+libloading = "0.9"
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
