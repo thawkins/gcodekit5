@@ -266,6 +266,8 @@ pub struct GcodeVisualizer {
     /// Run-preview position, `Some` while a preview trajectory is shown.
     pub(crate) preview_pos: Shared<Option<(f32, f32, f32)>>,
     pub(crate) fit_btn_3d: Button,
+    /// True while the 2D view mode is selected (top view, left-drag pans).
+    view_2d: Rc<std::cell::Cell<bool>>,
     gcode_debounce: Shared<GcodeDebounce>,
     run_preview_points: Shared<Vec<(f32, f32, f32)>>,
     run_preview_index: Shared<usize>,
@@ -517,10 +519,21 @@ impl GcodeVisualizer {
         }
     }
 
-    fn apply_top_3d_view(&self, min: Vec3, max: Vec3) {
+    /// Fits the camera to a newly loaded program in the selected view mode:
+    /// the top view in 2D, the isometric view in 3D, so the view always
+    /// matches the 2D/3D selector.
+    ///
+    /// # Arguments
+    /// * `min` - Lower corner of the program's bounds.
+    /// * `max` - Upper corner of the program's bounds.
+    fn apply_program_view(&self, min: Vec3, max: Vec3) {
         let (target_x, target_y) = {
             let mut cam = self.camera.borrow_mut();
-            cam.set_view(0.0, 90.0);
+            if self.view_2d.get() {
+                cam.set_view(0.0, 90.0);
+            } else {
+                cam.set_isometric();
+            }
             cam.fit_to_bounds(min, max);
             (cam.target.x, cam.target.y)
         };
@@ -3124,6 +3137,7 @@ impl GcodeVisualizer {
             current_pos,
             preview_pos,
             fit_btn_3d,
+            view_2d,
             gcode_debounce: shared(GcodeDebounce::default()),
             run_preview_points,
             run_preview_index,
@@ -3332,9 +3346,9 @@ impl GcodeVisualizer {
             return;
         }
 
-        // A newly loaded program: force 3D top view and fit
+        // A newly loaded program: fit it in the selected view mode.
         self.stack.set_visible_child_name("3d");
-        self.apply_top_3d_view(
+        self.apply_program_view(
             Vec3::new(min_x, min_y, min_z),
             Vec3::new(max_x, max_y, max_z),
         );

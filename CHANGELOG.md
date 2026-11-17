@@ -1,3 +1,38 @@
+## [Unreleased] - 2026-11-17 (keep Preferences edits when saving the first window size)
+
+### Fixed
+- **Main window**: saving the first-start window size updates only Window Width/Height in Preferences, so other Preferences edits not yet saved are no longer replaced by the stored values
+
+## [Unreleased] - 2026-11-17 (open maximized on first start)
+
+### Changed
+- **Main window**: when there is no saved window size (first start, or a settings file that could not be loaded) the window opens maximized, and that maximized size is saved as the Window Width/Height in Preferences. Later starts open at the saved size
+
+## [Unreleased] - 2026-11-17 (Dependabot nalgebra ignore)
+
+### Changed
+- **Dependabot**: nalgebra 0.34 and later are ignored until csgrs (latest 0.20.1, on nalgebra 0.33) updates; the two exchange nalgebra types, so the bump in #107 could not build
+
+## [Unreleased] - 2026-11-17 (gettext-rs update)
+
+### Changed
+- **Translations**: `gettext-rs` 0.7 → 0.8 in `gcodekit5-ui` and `gcodekit5-settings`. `setlocale` became `unsafe` in 0.8; the call in `i18n::init` is removed instead, because GTK already sets the locale when the application starts, before the first string is translated
+
+## [Unreleased] - 2026-11-17 (visualizer opens in 3D)
+
+### Fixed
+- **Visualizer 2D/3D mode** (#126): loading a program no longer turns the camera to the top-down view while **3D** is selected. The program is fitted in the selected mode (isometric in 3D, top view in 2D), so the view always matches the 2D/3D selector and the visualizer opens in 3D by default
+
+## [Unreleased] - 2026-11-17 (GTK bindings update)
+
+### Changed
+- **GTK bindings**: the gtk-rs crates move together to the current release set: `gtk4` 0.9 → 0.11, `libadwaita` 0.7 → 0.9, `sourceview5` 0.9 → 0.11, `glib` / `gio` / `glib-build-tools` 0.20 → 0.22. Updating `gio` alone (Dependabot #114) mixed two `glib` versions and failed to build. No code changes were needed; the system library requirements (GTK 4.14, libadwaita 1.6) are unchanged
+
+## [Unreleased] - 2026-11-17 (Gerber parser update)
+
+### Changed
+- **Gerber import**: `gerber_parser` 0.3.1 → 0.5.0 and `gerber-types` 0.6.0 → 0.7.0, updated together. `gerber_parser` 0.5 is built on `gerber-types` 0.7, so updating only the parser (Dependabot #108) left two incompatible `gerber-types` versions in the build
+
 ## [Unreleased] - 2026-11-17 (setting reply follow-ups)
 
 ### Fixed

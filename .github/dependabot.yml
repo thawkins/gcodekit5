@@ -18,6 +18,12 @@ updates:
     labels:
       - "dependencies"
       - "rust"
+    ignore:
+      # csgrs (latest 0.20.1) depends on nalgebra 0.33 and exchanges nalgebra
+      # types with our crates, so a newer nalgebra cannot build until csgrs
+      # updates (see #107). Remove this entry when it does.
+      - dependency-name: "nalgebra"
+        versions: [">=0.34"]
     groups:
       # Group minor and patch updates to reduce PR noise
       rust-minor-patch:
