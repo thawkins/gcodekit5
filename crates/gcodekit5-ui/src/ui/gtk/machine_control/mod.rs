@@ -2536,17 +2536,51 @@ impl MachineControlView {
                     }
                     // Realtime characters go out bare: with a newline GRBL would
                     // answer an extra `ok` that a running job would miscount.
-                    let sent = if realtime {
-                        comm.send(cmd.as_bytes()).map(|_| ())
+                    // A `$n=v` is tagged so the settings cache takes it only on `ok`.
+                    let setting_id = if realtime {
+                        None
                     } else {
-                        comm.send_command(&cmd)
+                        device_status::begin_setting_change(&cmd)
+                    };
+                    let sent = match (realtime, setting_id) {
+                        (true, _) => comm.send(cmd.as_bytes()).map(|_| ()),
+                        (false, Some(id)) => comm.send_tagged_command(&cmd, id),
+                        (false, None) => comm.send_command(&cmd),
                     };
                     match sent {
                         Ok(_) => {
-                            device_status::note_setting_sent(&cmd);
-                            console_clone.append_log(&format!("> {}\n", cmd))
+                            console_clone.append_log(&format!("> {}\n", cmd));
+                            // Report a rejected or unanswered setting; this also
+                            // releases the request once it is answered.
+                            if let Some(id) = setting_id {
+                                let console = console_clone.clone();
+                                let cmd = cmd.clone();
+                                crate::ui::gtk::config_settings::await_setting_reply(
+                                    id,
+                                    move |outcome| {
+                                        use crate::ui::gtk::config_settings::SettingOutcome;
+                                        let failure = match outcome {
+                                            SettingOutcome::Accepted => return,
+                                            SettingOutcome::Rejected(code) => format!(
+                                                "{} error:{code}",
+                                                t!("the controller replied")
+                                            ),
+                                            SettingOutcome::NoReply => {
+                                                t!("no reply from the controller").to_string()
+                                            }
+                                        };
+                                        console.append_log(&format!(
+                                            "{}: {cmd}: {failure}\n",
+                                            t!("Setting not changed")
+                                        ));
+                                    },
+                                );
+                            }
                         }
                         Err(e) => {
+                            if let Some(id) = setting_id {
+                                device_status::cancel_setting_change(id);
+                            }
                             console_clone.append_log(&format!("{}: {}\n", t!("Error sending"), e))
                         }
                     }

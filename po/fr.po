@@ -3003,3 +3003,9 @@ msgstr "Récupération des paramètres et des informations de l'appareil..."
 
 msgid "Settings retrieval incomplete (timed out), settings received:"
 msgstr "Récupération des paramètres incomplète (délai dépassé), paramètres reçus :"
+
+msgid "the controller replied"
+msgstr "le contrôleur a répondu"
+
+msgid "no reply from the controller"
+msgstr "aucune réponse du contrôleur"

@@ -1,3 +1,17 @@
+## [Unreleased] - 2026-11-17 (setting reply follow-ups)
+
+### Fixed
+- **Console settings**: a `$n=v` typed in the console now reports a rejection or a missing reply in the console after up to 2 s, and its request is released once answered
+- **Two quick edits to one setting**: the settings list shows the value the controller accepted last, instead of whichever edit's timer ran last
+- **Setting sent just before a job**: the job streamer retires replies one at a time, so a setting's `ok` that arrives after the job starts is applied to the setting instead of being counted as a job line; stopping a job early no longer forgets lines that are still to be answered
+- **Replies after a job stops**: when a job stops on `error:N`, an alarm or a reset, the replies already received after that line (and any partly received line) are handed back to the connection, so later settings are still matched to their own replies
+
+## [Unreleased] - 2026-11-16 (settings wait for the controller's reply)
+
+### Fixed
+- **Setting changes**: a `$n=v` setting edited in Device Config, or typed in the console, updates the cached settings (such as `$13` report units) and the settings list only once the controller answers `ok`. A rejected setting (`error:N`) or no reply within 2 s keeps the previous value and shows a warning. Repetier EEPROM edits are still shown as sent, because their `ok <n>` reply is not tracked
+- **Reply matching**: the communicator records every line it sends, so each `ok` / `error:N` is matched to the line it answers, in order. A setting is no longer credited with an earlier command's `ok` (for example `$I` followed quickly by `$13=-1`), two edits in flight keep their own results, and a reset, connect or disconnect forgets lines that will not be answered
+
 ## [Unreleased] - 2026-11-16 (devel fixes restored after the PR #104 merge)
 
 ### Fixed
