@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (open maximized on first start)
+
+### Changed
+- **Main window**: when there is no saved window size (first start, or a settings file that could not be loaded) the window opens maximized, and that maximized size is saved as the Window Width/Height in Preferences. Later starts open at the saved size
+
 ## [Unreleased] - 2026-11-17 (Dependabot nalgebra ignore)
 
 ### Changed
