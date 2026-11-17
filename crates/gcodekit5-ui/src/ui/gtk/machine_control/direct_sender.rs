@@ -151,10 +151,6 @@ impl DirectSender {
 
         thread::spawn(move || {
             let outcome = stream_lines(&lines, &comm, &stop_flag, &tx);
-            // The streamer reads the job's replies itself, so the communicator's
-            // reply ledger never saw them answered. Settings are refused while a
-            // job runs, so no tagged line is lost by forgetting them here.
-            comm.lock().clear_reply_ledger();
             *streaming_flag.lock() = false;
             running_flag.store(false, Ordering::SeqCst);
             let _ = tx.send(SenderEvent::Finished(outcome));
@@ -272,6 +268,11 @@ fn send_all(comm: &mut SerialCommunicator, data: &[u8]) -> Result<(), String> {
 /// line acknowledges one line. A status query (`?`) is sent every
 /// [`STATUS_QUERY_INTERVAL`] and the reports are forwarded to the UI.
 ///
+/// When the job ends, every received reply the streamer did not process (lines
+/// after the one that stopped it, and any incomplete line) is handed back to the
+/// communicator, so the connection handler reads them next and the reply ledger
+/// stays in step with the controller.
+///
 /// # Returns
 /// How the job ended.
 fn stream_lines(
@@ -280,11 +281,39 @@ fn stream_lines(
     stop_flag: &AtomicBool,
     tx: &mpsc::Sender<SenderEvent>,
 ) -> JobOutcome {
+    let mut splitter = ResponseLineSplitter::new();
+    let mut unprocessed: Vec<String> = Vec::new();
+    let outcome = stream_job(lines, comm, stop_flag, tx, &mut splitter, &mut unprocessed);
+
+    let mut rest: Vec<u8> = unprocessed
+        .iter()
+        .flat_map(|line| line.bytes().chain(std::iter::once(b'\n')))
+        .collect();
+    rest.extend_from_slice(splitter.pending());
+    if !rest.is_empty() {
+        comm.lock().unread(&rest);
+    }
+    outcome
+}
+
+/// The body of [`stream_lines`].
+///
+/// # Arguments
+/// * `splitter` - Splits received data into lines; keeps any incomplete line.
+/// * `unprocessed` - Receives the complete lines that followed the reply which
+///   ended the job.
+fn stream_job(
+    lines: &[String],
+    comm: &ThreadSafe<SerialCommunicator>,
+    stop_flag: &AtomicBool,
+    tx: &mpsc::Sender<SenderEvent>,
+    splitter: &mut ResponseLineSplitter,
+    unprocessed: &mut Vec<String>,
+) -> JobOutcome {
     let total = lines.len();
     let mut next = 0usize;
     let mut acked = 0usize;
     let mut window = CharCountWindow::default();
-    let mut splitter = ResponseLineSplitter::new();
     let mut last_query: Option<Instant> = None;
     let mut last_percent: Option<u32> = None;
 
@@ -340,35 +369,60 @@ fn stream_lines(
             continue;
         }
 
-        for line in splitter.push(&data) {
-            match classify_response(&line) {
+        let batch = splitter.push(&data);
+        for (index, line) in batch.iter().enumerate() {
+            let ended = match classify_response(line) {
                 GrblResponseLine::Ok => {
+                    // Each reply retires the oldest line awaiting one. A setting sent
+                    // just before the job started is answered first; its reply is the
+                    // setting's, not a job line's.
+                    if crate::device_status::dispatch_reply(comm.lock().take_reply_tag(), None) {
+                        continue;
+                    }
                     if window.on_ack() {
                         acked += 1;
                     }
+                    None
                 }
                 GrblResponseLine::Error(code) => {
+                    if crate::device_status::dispatch_reply(
+                        comm.lock().take_reply_tag(),
+                        Some(&code),
+                    ) {
+                        continue;
+                    }
                     window.on_ack();
                     let _ = tx.send(SenderEvent::Response(line.clone()));
-                    return JobOutcome::Stopped(format!("error:{code}"));
+                    Some(JobOutcome::Stopped(format!("error:{code}")))
                 }
                 GrblResponseLine::Alarm(code) => {
                     let _ = tx.send(SenderEvent::Response(line.clone()));
-                    return JobOutcome::Stopped(format!("ALARM:{code}"));
+                    Some(JobOutcome::Stopped(format!("ALARM:{code}")))
                 }
                 GrblResponseLine::Reset(banner) => {
+                    // A reset drops every line the controller had not answered.
+                    comm.lock().clear_reply_ledger();
+                    crate::device_status::clear_pending_settings();
                     let _ = tx.send(SenderEvent::Response(line.clone()));
-                    return JobOutcome::Stopped(format!(
+                    Some(JobOutcome::Stopped(format!(
                         "{} ({banner})",
                         t!("controller was reset")
-                    ));
+                    )))
                 }
                 GrblResponseLine::Status(status) => {
                     let _ = tx.send(SenderEvent::Status(status));
+                    None
                 }
                 GrblResponseLine::Other(other) => {
                     let _ = tx.send(SenderEvent::Response(other));
+                    None
                 }
+            };
+            if let Some(outcome) = ended {
+                // Replies after this one answer lines the job no longer tracks; the
+                // connection handler reads them next.
+                unprocessed.extend(batch[index + 1..].iter().cloned());
+                return outcome;
             }
         }
 

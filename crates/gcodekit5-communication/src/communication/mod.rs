@@ -400,6 +400,10 @@ pub struct SerialCommunicator {
 
     /// Lines written on the GRBL path that await their `ok` / `error:N`.
     reply_ledger: reply_ledger::ReplyLedger,
+
+    /// Received bytes handed back with [`Self::unread`]; returned by the next
+    /// `receive` before anything is read from the port.
+    unread: Vec<u8>,
 }
 
 impl SerialCommunicator {
@@ -416,7 +420,20 @@ impl SerialCommunicator {
             repetier_flow_paused: false,
             repetier_flow_stopped: false,
             reply_ledger: reply_ledger::ReplyLedger::new(),
+            unread: Vec::new(),
         }
+    }
+
+    /// Hands received bytes back, so the next `receive` returns them first.
+    ///
+    /// A reader that stops part-way through what it received (such as a job
+    /// streamer ending on `error:N`) uses this so the replies it did not
+    /// process still reach the next reader, in order.
+    ///
+    /// # Arguments
+    /// * `data` - Bytes to return before any new data from the port.
+    pub fn unread(&mut self, data: &[u8]) {
+        self.unread.extend_from_slice(data);
     }
 
     /// Sends `command` as one line and tags it, so its reply can be recognised
@@ -672,6 +689,7 @@ impl Communicator for SerialCommunicator {
 
         // Reset emulation flags upon connection
         self.reply_ledger.clear();
+        self.unread.clear();
         self.configured_protocol = ControllerProtocol::Unknown;
         self.detected_protocol = ControllerProtocol::Unknown;
         self.repetier_flow_paused = false;
@@ -698,6 +716,7 @@ impl Communicator for SerialCommunicator {
 
     fn disconnect(&mut self) -> gcodekit5_core::Result<()> {
         self.reply_ledger.clear();
+        self.unread.clear();
         self.configured_protocol = ControllerProtocol::Unknown;
         self.detected_protocol = ControllerProtocol::Unknown;
 
@@ -831,6 +850,9 @@ impl Communicator for SerialCommunicator {
     }
 
     fn receive(&mut self) -> gcodekit5_core::Result<Vec<u8>> {
+        if !self.unread.is_empty() && self.port.is_some() {
+            return Ok(std::mem::take(&mut self.unread));
+        }
         if let Some(port) = &mut self.port {
             let mut buf = [0u8; 4096];
             match port.read(&mut buf) {

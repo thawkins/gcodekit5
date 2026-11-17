@@ -75,3 +75,29 @@ fn test_disconnect_forgets_pending_settings() {
     assert!(!device_status::reports_in_inches());
     assert_eq!(device_status::take_setting_reply(id), None);
 }
+
+#[test]
+fn test_dispatch_reply_routes_only_tagged_replies() {
+    let _guard = crate::global_env_lock();
+    accept("$13=0");
+
+    // An untagged reply (a job line, `$I`, ...) is not a setting's.
+    assert!(!device_status::dispatch_reply(None, None));
+
+    // A tagged reply resolves its own setting, even inside a job stream.
+    let id = device_status::begin_setting_change("$13=1").expect("assignment");
+    assert!(device_status::dispatch_reply(Some(id), None));
+    assert!(device_status::reports_in_inches());
+    assert_eq!(device_status::take_setting_reply(id), Some(Ok(())));
+
+    // A rejected setting is the setting's error, not the job's.
+    let id = device_status::begin_setting_change("$13=0").expect("assignment");
+    assert!(device_status::dispatch_reply(Some(id), Some("3")));
+    assert!(device_status::reports_in_inches());
+    assert_eq!(
+        device_status::take_setting_reply(id),
+        Some(Err("3".to_string()))
+    );
+
+    accept("$13=0");
+}
