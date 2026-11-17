@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (GTK bindings update)
+
+### Changed
+- **GTK bindings**: the gtk-rs crates move together to the current release set: `gtk4` 0.9 → 0.11, `libadwaita` 0.7 → 0.9, `sourceview5` 0.9 → 0.11, `glib` / `gio` / `glib-build-tools` 0.20 → 0.22. Updating `gio` alone (Dependabot #114) mixed two `glib` versions and failed to build. No code changes were needed; the system library requirements (GTK 4.14, libadwaita 1.6) are unchanged
+
 ## [Unreleased] - 2026-11-17 (Gerber parser update)
 
 ### Changed
