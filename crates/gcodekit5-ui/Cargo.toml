@@ -22,7 +22,7 @@ libadwaita = { version = "0.7", features = ["v1_6"] }
 sourceview5 = "0.9"
 glib = "0.20"
 gio = "0.20"
-rfd = "0.15.4"
+rfd = "0.18.0"
 lyon = "1.0"
 image = "0.25"
 serde = { version = "1.0", features = ["derive"] }
@@ -33,7 +33,7 @@ anyhow = "1.0"
 dirs = "6.0"
 glam = "0.29"
 glow = "0.17"
-libloading = "0.8"
+libloading = "0.9"
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

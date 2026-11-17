@@ -27,6 +27,11 @@
 - **Flatpak (gcodekit5-design)**: the manifest installs the staged `gcodekit5-design` binary and reads the existing `gcodekit5-design.png`, and the desktop file names the installed icon
 - **Flatpak runtime**: both Flatpak manifests (and the release build) use the GNOME 50 runtime instead of Freedesktop 24.08, which does not ship GTK 4, libadwaita or GtkSourceView, so the packaged app could not start
 
+## [Unreleased] - 2026-11-16 (dependency lockfile fix)
+
+### Fixed
+- **`mutants` requirement**: `Cargo.toml` now asks for `mutants` 0.0.4, matching `Cargo.lock`. A `0.0.x` requirement pins the exact version, so the 0.0.4 lockfile from the Dependabot update (#109) made `cargo build --locked` fail
+
 ## [Unreleased] - 2026-11-16 (minimum Rust version 1.95)
 
 ### Changed
