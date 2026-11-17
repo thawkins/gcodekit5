@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (gettext-rs update)
+
+### Changed
+- **Translations**: `gettext-rs` 0.7 → 0.8 in `gcodekit5-ui` and `gcodekit5-settings`. `setlocale` is `unsafe` in 0.8, so the call in `i18n::init` now sits in a scoped `unsafe` block with its safety condition stated (it runs once at startup, before any other thread). It joins the existing approved `set_var` block in the same function; the approved-`unsafe` table in AGENTS-LANGUAGE.md lists both
+
 ## [Unreleased] - 2026-11-17 (GTK bindings update)
 
 ### Changed
