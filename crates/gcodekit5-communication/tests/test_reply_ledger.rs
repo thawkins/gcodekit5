@@ -82,3 +82,15 @@ fn test_reply_ledger_serial_communicator_clear_drops_pending_tags() {
     comm.clear_reply_ledger();
     assert_eq!(comm.take_reply_tag(), None);
 }
+
+#[test]
+fn test_reply_ledger_unread_data_is_received_first() {
+    use gcodekit5_communication::{Communicator, SerialCommunicator};
+
+    let mut comm = SerialCommunicator::with_port(Box::new(SinkPort));
+    comm.unread(b"ok\nerr");
+    comm.unread(b"or:20\n");
+    assert_eq!(comm.receive().expect("receive"), b"ok\nerror:20\n".to_vec());
+    // Then the port again (the sink has nothing).
+    assert!(comm.receive().expect("receive").is_empty());
+}
