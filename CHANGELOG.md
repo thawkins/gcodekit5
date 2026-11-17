@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (Dependabot nalgebra ignore)
+
+### Changed
+- **Dependabot**: nalgebra 0.34 and later are ignored until csgrs (latest 0.20.1, on nalgebra 0.33) updates; the two exchange nalgebra types, so the bump in #107 could not build
+
 ## [Unreleased] - 2026-11-17 (gettext-rs update)
 
 ### Changed
