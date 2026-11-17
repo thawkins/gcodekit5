@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (visualizer opens in 3D)
+
+### Fixed
+- **Visualizer 2D/3D mode** (#126): loading a program no longer turns the camera to the top-down view while **3D** is selected. The program is fitted in the selected mode (isometric in 3D, top view in 2D), so the view always matches the 2D/3D selector and the visualizer opens in 3D by default
+
 ## [Unreleased] - 2026-11-17 (GTK bindings update)
 
 ### Changed
