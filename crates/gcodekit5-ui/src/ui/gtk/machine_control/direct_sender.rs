@@ -151,10 +151,6 @@ impl DirectSender {
 
         thread::spawn(move || {
             let outcome = stream_lines(&lines, &comm, &stop_flag, &tx);
-            // The streamer reads the job's replies itself, so the communicator's
-            // reply ledger never saw them answered. Settings are refused while a
-            // job runs, so no tagged line is lost by forgetting them here.
-            comm.lock().clear_reply_ledger();
             *streaming_flag.lock() = false;
             running_flag.store(false, Ordering::SeqCst);
             let _ = tx.send(SenderEvent::Finished(outcome));
@@ -343,11 +339,23 @@ fn stream_lines(
         for line in splitter.push(&data) {
             match classify_response(&line) {
                 GrblResponseLine::Ok => {
+                    // Each reply retires the oldest line awaiting one. A setting sent
+                    // just before the job started is answered first; its reply is the
+                    // setting's, not a job line's.
+                    if crate::device_status::dispatch_reply(comm.lock().take_reply_tag(), None) {
+                        continue;
+                    }
                     if window.on_ack() {
                         acked += 1;
                     }
                 }
                 GrblResponseLine::Error(code) => {
+                    if crate::device_status::dispatch_reply(
+                        comm.lock().take_reply_tag(),
+                        Some(&code),
+                    ) {
+                        continue;
+                    }
                     window.on_ack();
                     let _ = tx.send(SenderEvent::Response(line.clone()));
                     return JobOutcome::Stopped(format!("error:{code}"));
@@ -357,6 +365,9 @@ fn stream_lines(
                     return JobOutcome::Stopped(format!("ALARM:{code}"));
                 }
                 GrblResponseLine::Reset(banner) => {
+                    // A reset drops every line the controller had not answered.
+                    comm.lock().clear_reply_ledger();
+                    crate::device_status::clear_pending_settings();
                     let _ = tx.send(SenderEvent::Response(line.clone()));
                     return JobOutcome::Stopped(format!(
                         "{} ({banner})",

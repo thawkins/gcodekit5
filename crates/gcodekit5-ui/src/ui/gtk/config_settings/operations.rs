@@ -706,30 +706,29 @@ impl ConfigSettingsView {
             // A GRBL `$n=v` is shown only once the controller accepts it.
             let manager = manager_clone.clone();
             let refresh = refresh_callback.clone();
-            let polls = std::rc::Rc::new(std::cell::Cell::new(0u32));
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                let reply = crate::device_status::take_setting_reply(setting_id);
-                polls.set(polls.get() + 1);
-                // 2 s at 50 ms per poll.
-                let failure = match reply {
-                    Some(Ok(())) => {
-                        apply_setting_value(&manager, setting_number, &new_value);
+            super::await_setting_reply(setting_id, move |outcome| {
+                let failure = match outcome {
+                    super::SettingOutcome::Accepted => {
+                        // Show the cache's value: it follows the controller's replies in
+                        // order, so a later edit's value is never replaced by an older one.
+                        let value = crate::device_status::get_grbl_setting(setting_number)
+                            .unwrap_or(new_value);
+                        apply_setting_value(&manager, setting_number, &value);
                         refresh();
-                        return glib::ControlFlow::Break;
+                        return;
                     }
-                    Some(Err(code)) => format!("{} error:{code}", t!("the controller replied")),
-                    None if polls.get() > 40 => {
-                        crate::device_status::cancel_setting_change(setting_id);
+                    super::SettingOutcome::Rejected(code) => {
+                        format!("{} error:{code}", t!("the controller replied"))
+                    }
+                    super::SettingOutcome::NoReply => {
                         t!("no reply from the controller").to_string()
                     }
-                    None => return glib::ControlFlow::Continue,
                 };
                 crate::ui::gtk::common::dialog::show_warning(
                     &t!("Setting not changed"),
                     &format!("${setting_number}={new_value}: {failure}"),
                     None,
                 );
-                glib::ControlFlow::Break
             });
         });
         btn_box.append(&save_btn);

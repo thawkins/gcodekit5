@@ -2548,7 +2548,35 @@ impl MachineControlView {
                         (false, None) => comm.send_command(&cmd),
                     };
                     match sent {
-                        Ok(_) => console_clone.append_log(&format!("> {}\n", cmd)),
+                        Ok(_) => {
+                            console_clone.append_log(&format!("> {}\n", cmd));
+                            // Report a rejected or unanswered setting; this also
+                            // releases the request once it is answered.
+                            if let Some(id) = setting_id {
+                                let console = console_clone.clone();
+                                let cmd = cmd.clone();
+                                crate::ui::gtk::config_settings::await_setting_reply(
+                                    id,
+                                    move |outcome| {
+                                        use crate::ui::gtk::config_settings::SettingOutcome;
+                                        let failure = match outcome {
+                                            SettingOutcome::Accepted => return,
+                                            SettingOutcome::Rejected(code) => format!(
+                                                "{} error:{code}",
+                                                t!("the controller replied")
+                                            ),
+                                            SettingOutcome::NoReply => {
+                                                t!("no reply from the controller").to_string()
+                                            }
+                                        };
+                                        console.append_log(&format!(
+                                            "{}: {cmd}: {failure}\n",
+                                            t!("Setting not changed")
+                                        ));
+                                    },
+                                );
+                            }
+                        }
                         Err(e) => {
                             if let Some(id) = setting_id {
                                 device_status::cancel_setting_change(id);

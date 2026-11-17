@@ -438,6 +438,26 @@ pub fn note_setting_reply(id: u64, error: Option<&str>) {
     }
 }
 
+/// Routes one `ok` / `error:N` reply, given the tag of the line it answers
+/// (`SerialCommunicator::take_reply_tag`).
+///
+/// # Arguments
+/// * `tag` - The answered line's tag, or `None` for an untagged line.
+/// * `error` - `None` for `ok`, or the code after `error:`.
+///
+/// # Returns
+/// `true` when the reply answered a tagged setting assignment, so it must not
+/// be counted as the reply to anything else (such as a streamed job line).
+pub fn dispatch_reply(tag: Option<u64>, error: Option<&str>) -> bool {
+    match tag {
+        Some(id) => {
+            note_setting_reply(id, error);
+            true
+        }
+        None => false,
+    }
+}
+
 /// Takes the outcome of the assignment with request id `id` once the
 /// controller answered it.
 ///
