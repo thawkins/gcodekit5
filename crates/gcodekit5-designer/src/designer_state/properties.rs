@@ -271,7 +271,28 @@ impl DesignerState {
             for obj in self.canvas.shapes() {
                 if obj.selected {
                     let mut new_obj = obj.clone();
-                    new_obj.shape.rotate(angle_delta, center_x, center_y);
+                    match &mut new_obj.shape {
+                        // Images and paths keep a render-time rotation about their own
+                        // centre that a baked transform does not update (an image's
+                        // transform only translates; baking a path moves the centre its
+                        // stored rotation pivots on). Orbit their centre around the
+                        // group centre and add the angle to that rotation instead.
+                        crate::model::Shape::RasterImage(_) | crate::model::Shape::Path(_) => {
+                            let (sx1, sy1, sx2, sy2) = obj.shape.bounds();
+                            let dx = (sx1 + sx2) / 2.0 - center_x;
+                            let dy = (sy1 + sy2) / 2.0 - center_y;
+                            let (sin, cos) = angle_delta.to_radians().sin_cos();
+                            new_obj
+                                .shape
+                                .translate(dx * cos - dy * sin - dx, dx * sin + dy * cos - dy);
+                            match &mut new_obj.shape {
+                                crate::model::Shape::RasterImage(s) => s.rotation += angle_delta,
+                                crate::model::Shape::Path(s) => s.rotation += angle_delta,
+                                _ => {}
+                            }
+                        }
+                        _ => new_obj.shape.rotate(angle_delta, center_x, center_y),
+                    }
 
                     commands.push(DesignerCommand::ChangeProperty(ChangeProperty {
                         id: obj.id,

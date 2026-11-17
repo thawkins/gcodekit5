@@ -243,3 +243,38 @@ fn test_undo_multi_rotation_is_relative_and_single_step() {
     }
     assert!(state.can_undo(), "shape creation steps must remain");
 }
+
+#[test]
+fn test_group_rotation_orbits_raster_image_center() {
+    use gcodekit5_designer::model::{Point, RasterImage};
+
+    let mut state = DesignerState::new();
+    let rect =
+        state.add_shape_with_undo(Shape::Rectangle(DesignRectangle::new(0.0, 0.0, 10.0, 10.0)));
+    let image = state.add_shape_with_undo(Shape::RasterImage(RasterImage {
+        center: Point::new(40.0, 5.0),
+        width_mm: 10.0,
+        height_mm: 10.0,
+        ..RasterImage::default()
+    }));
+    select_only(&mut state, &[rect, image]);
+
+    // Group bounds are x 0..45, y 0..10, so the pivot is (22.5, 5). A 90 degree
+    // turn moves the image centre from (40, 5) to (22.5, 22.5).
+    state.set_selected_rotation(90.0);
+
+    let obj = state.canvas.get_shape(image).expect("image");
+    let Shape::RasterImage(img) = &obj.shape else {
+        panic!("expected a raster image");
+    };
+    assert!(
+        (img.center.x - 22.5).abs() < 1e-6 && (img.center.y - 22.5).abs() < 1e-6,
+        "image centre {:?}",
+        (img.center.x, img.center.y)
+    );
+    assert!(
+        (img.rotation - 90.0).abs() < 1e-6,
+        "rotation {}",
+        img.rotation
+    );
+}

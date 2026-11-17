@@ -2982,3 +2982,24 @@ msgstr "Repetier EEPROM"
 
 msgid "Tpulley"
 msgstr "Tpulley"
+
+msgid "Edit EEPROM Pos"
+msgstr "Modifier la position EEPROM"
+
+msgid "Error sending M205:"
+msgstr "Erreur lors de l'envoi de M205 :"
+
+msgid "Connection Notice"
+msgstr "Avis de connexion"
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr "Veuillez connecter la machine avant de récupérer les paramètres."
+
+msgid "Operation cancelled: Device not connected"
+msgstr "Opération annulée : appareil non connecté"
+
+msgid "Retrieving settings and device info..."
+msgstr "Récupération des paramètres et des informations de l'appareil..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Récupération des paramètres incomplète (délai dépassé), paramètres reçus :"

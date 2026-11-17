@@ -54,6 +54,8 @@ mod machine_control_streaming;
 mod test_array_dialog;
 #[path = "test_command_history.rs"]
 mod test_command_history;
+#[path = "test_config_setting_filter.rs"]
+mod test_config_setting_filter;
 #[path = "test_device_console_manager.rs"]
 mod test_device_console_manager;
 #[path = "test_dialog_window.rs"]

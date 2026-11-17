@@ -8,6 +8,7 @@
 use crate::t;
 use gtk4::prelude::*;
 use gtk4::{AlertDialog, ButtonsType, MessageType, ResponseType, Widget, Window};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Standard dialog configuration
 #[derive(Debug, Clone)]
@@ -58,22 +59,24 @@ impl DialogConfig {
     }
 }
 
+/// True while a message dialog from [`show_message_dialog`] is open.
+static DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
+
 /// Show a standardized message dialog
+///
+/// Only one message dialog is shown at a time: a call made while one is open
+/// is ignored.
 ///
 /// # Arguments
 /// * `config` - Dialog configuration
 /// * `parent` - Optional parent window
 /// * `callback` - Optional callback to handle response
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
-
 pub fn show_message_dialog(
     config: DialogConfig,
     parent: Option<&Window>,
     callback: Option<Box<dyn FnOnce(ResponseType)>>,
 ) {
-    // Evita que se apilen dos diálogos idénticos uno encima del otro
+    // Keep two dialogs from stacking on top of each other.
     if DIALOG_OPEN.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -83,6 +86,8 @@ pub fn show_message_dialog(
         None => config.message.clone(),
     };
 
+    // Buttons in display order, with the response each one reports. The first
+    // entry is what Escape/close maps to when the dialog has a cancel choice.
     let buttons: Vec<(String, ResponseType)> = match config.buttons {
         ButtonsType::None => Vec::new(),
         ButtonsType::Close => vec![(t!("Close"), ResponseType::Close)],
@@ -92,6 +97,7 @@ pub fn show_message_dialog(
             (t!("Cancel"), ResponseType::Cancel),
             (t!("OK"), ResponseType::Ok),
         ],
+        // `Ok` and any future variant of this non-exhaustive GTK enum.
         _ => vec![(t!("OK"), ResponseType::Ok)],
     };
 
@@ -113,7 +119,8 @@ pub fn show_message_dialog(
     let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
     let parent_owned = parent.cloned();
 
-    // Esperar 100 ms para que el compositor (Wayland/X11) libere el foco del DropDown/Popover anterior
+    // Wait 100 ms so the compositor (Wayland/X11) releases the focus grab of a
+    // just-closed DropDown/Popover before the dialog takes focus.
     gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
         dialog.choose(
             parent_owned.as_ref(),
@@ -121,6 +128,8 @@ pub fn show_message_dialog(
             move |result| {
                 DIALOG_OPEN.store(false, Ordering::SeqCst);
 
+                // Escape or closing the window reports an error, which MessageDialog
+                // reported as `DeleteEvent`.
                 let response = result
                     .ok()
                     .and_then(|index| usize::try_from(index).ok())

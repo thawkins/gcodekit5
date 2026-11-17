@@ -214,6 +214,7 @@ impl ToolsManagerView {
                             move |choice| {
                                 // Save switches only if the save succeeded;
                                 // Discard switches without saving.
+                                let saved = choice == UnsavedChangesChoice::Save;
                                 let switch = match choice {
                                     UnsavedChangesChoice::Save => view2.save_tool(),
                                     UnsavedChangesChoice::Discard => true,
@@ -221,6 +222,10 @@ impl ToolsManagerView {
                                 };
                                 if switch {
                                     view2.load_tool_for_edit(&tool_id);
+                                    if saved {
+                                        // Saving rebuilt the list without a selection.
+                                        view2.select_row_by_tool_id(&list, &tool_id);
+                                    }
                                     view2.persist_ui_state();
                                 } else if *view2.is_creating.borrow() {
                                     // A new tool has no row: re-selecting the
