@@ -156,6 +156,41 @@ fn on_startup() {
     load_css();
 }
 
+/// Maximizes `window` and, once it has its maximized size, saves that size
+/// as the window size in Preferences, so later starts open at that size.
+///
+/// # Arguments
+/// * `window` - the main window, not yet presented
+/// * `persistence` - the settings the size is saved to
+/// * `dialog` - the Preferences model, refreshed to show the saved size
+fn open_maximized_and_save_size(
+    window: &ApplicationWindow,
+    persistence: &Rc<RefCell<gcodekit5_settings::SettingsPersistence>>,
+    dialog: &Rc<RefCell<gcodekit5_settings::SettingsDialog>>,
+) {
+    window.maximize();
+    let persistence = persistence.clone();
+    let dialog = dialog.clone();
+    // The size is known only after the compositor has maximized the window
+    // and it has been laid out, so check on each frame until then.
+    window.add_tick_callback(move |win, _clock| {
+        let (width, height) = (win.width(), win.height());
+        if !win.is_maximized() || width <= 0 || height <= 0 {
+            return glib::ControlFlow::Continue;
+        }
+        win.set_default_size(width, height);
+        if let Ok(mut p) = persistence.try_borrow_mut() {
+            p.config_mut().ui.window_width = width as u32;
+            p.config_mut().ui.window_height = height as u32;
+            p.persist_or_log();
+            if let Ok(mut d) = dialog.try_borrow_mut() {
+                p.populate_dialog(&mut d);
+            }
+        }
+        glib::ControlFlow::Break
+    });
+}
+
 /// Builds and shows the main window with all its pages.
 fn on_activate(app: &Application) {
     // Initialize Controllers
@@ -165,8 +200,12 @@ fn on_activate(app: &Application) {
     // A config file that fails to load is kept: the defaults are used and
     // the file is backed up before the first save replaces it.
     let mut settings_load_error: Option<String> = None;
+    // No settings file (first start) or an unreadable one: there is no saved
+    // window size, so the window opens maximized and saves that size.
+    let mut window_size_saved = false;
     let settings_persistence = match gcodekit5_settings::SettingsManager::config_file_path() {
         Ok(config_path) => {
+            let file_exists = config_path.exists();
             let (persistence, error) =
                 gcodekit5_settings::SettingsPersistence::load_or_default(&config_path);
             match &error {
@@ -177,6 +216,7 @@ fn on_activate(app: &Application) {
                 ),
                 None => debug!("Loaded settings from {:?}", config_path),
             }
+            window_size_saved = file_exists && error.is_none();
             settings_load_error = error.map(|e| format!("{}\n\n{e}", config_path.display()));
             Rc::new(RefCell::new(persistence))
         }
@@ -1269,7 +1309,9 @@ fn on_activate(app: &Application) {
         });
     }
 
-    //        window.maximize();
+    if !window_size_saved {
+        open_maximized_and_save_size(&window, &settings_persistence, &settings_dialog);
+    }
     window.present();
 
     if let Some(details) = settings_load_error {
