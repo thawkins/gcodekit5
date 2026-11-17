@@ -1121,9 +1121,6 @@ impl DesignerView {
             });
     }
 
-    // TODO(#17): File operations - Implement once shape structures are aligned
-    // Phase 8 infrastructure is in place but needs shape struct updates
-
     /// Adds `shape` to the design as an undoable edit.
     pub fn add_shape(&self, shape: gcodekit5_designer::model::Shape) {
         self.canvas.state.borrow_mut().add_shape_with_undo(shape);

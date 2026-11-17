@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (stale TODO removed)
+
+### Changed
+- **Designer**: removed the stale `TODO(#17)` comment in `designer/file_ops.rs`; Designer file operations are implemented and #17 is closed
+
 ## [Unreleased] - 2026-11-17 (keep Preferences edits when saving the first window size)
 
 ### Fixed
