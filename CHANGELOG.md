@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (Gerber parser update)
+
+### Changed
+- **Gerber import**: `gerber_parser` 0.3.1 → 0.5.0 and `gerber-types` 0.6.0 → 0.7.0, updated together. `gerber_parser` 0.5 is built on `gerber-types` 0.7, so updating only the parser (Dependabot #108) left two incompatible `gerber-types` versions in the build
+
 ## [Unreleased] - 2026-11-17 (setting reply follow-ups)
 
 ### Fixed

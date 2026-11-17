@@ -20,10 +20,10 @@ anyhow = "1.0"
 thiserror = { workspace = true }
 regex = "1.10"
 lyon = "1.0"
-gerber-types = "0.6.0"
+gerber-types = "0.7.0"
 cavalier_contours = "0.7.0"
 tracing.workspace = true
-gerber_parser = "0.3.1"
+gerber_parser = "0.5.0"
 serde_json.workspace = true
 csgrs = "0.20.1"
 nalgebra = "0.33.3"
