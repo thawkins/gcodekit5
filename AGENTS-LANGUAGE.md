@@ -277,7 +277,7 @@ Use the `Bash` tool to run the following cargo commands:
   | --- | --- |
   | `crates/gcodekit5-ui/src/ui/gtk/shaders.rs`, `renderer_3d.rs`, `visualizer/mod.rs`, `visualizer/gl_loader.rs` | OpenGL through `glow` (GL calls are `unsafe`); each block runs with the GLArea's context current (29 blocks) |
   | `crates/gcodekit5-ui/src/ui/gtk/cam_tools/mod.rs`, `cam_tools/speeds_feeds_page.rs`, `tools_manager/mod.rs`, `tools_manager/event_handlers.rs`, `materials_manager.rs` | `glib::ObjectExt::set_data`/`data` on list rows (typed by key) (14 blocks) |
-  | `crates/gcodekit5-ui/src/i18n.rs` (`init`) | `std::env::set_var` for `LANGUAGE`/`LANG` and `gettextrs::setlocale` (unsafe since gettext-rs 0.8), once at startup before any other thread exists (2 blocks) |
+  | `crates/gcodekit5-ui/src/i18n.rs` (`init`) | `std::env::set_var` for `LANGUAGE`/`LANG` once at startup (unsafe in edition 2024) |
   | `crates/gcodekit5-ui/src/ui/gtk/platform/windows.rs` | Win32 FFI for dialog parent handles (module-level allow; Windows only) |
 
   Tests may opt back in with a file-level `#![allow(unsafe_code)]` for the Rust 2024
