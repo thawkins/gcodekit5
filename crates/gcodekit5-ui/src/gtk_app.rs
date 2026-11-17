@@ -170,7 +170,7 @@ const MAXIMIZE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 /// # Arguments
 /// * `window` - the main window, not yet presented
 /// * `persistence` - the settings the size is saved to
-/// * `dialog` - the Preferences model, refreshed to show the saved size
+/// * `dialog` - the Preferences model, whose window size settings are set to the saved size
 fn open_maximized_and_save_size(
     window: &ApplicationWindow,
     persistence: &Rc<RefCell<gcodekit5_settings::SettingsPersistence>>,
@@ -188,8 +188,15 @@ fn open_maximized_and_save_size(
             p.config_mut().ui.window_width = width as u32;
             p.config_mut().ui.window_height = height as u32;
             p.persist_or_log();
-            if let Ok(mut d) = dialog.try_borrow_mut() {
-                p.populate_dialog(&mut d);
+        }
+        // Only the two size settings: any other Preferences edit not yet
+        // saved stays as the user left it.
+        if let Ok(mut d) = dialog.try_borrow_mut() {
+            for (id, size) in [("window_width", width), ("window_height", height)] {
+                if let Some(setting) = d.get_setting_mut(id) {
+                    setting.value = gcodekit5_settings::SettingValue::Integer(size);
+                    setting.default = gcodekit5_settings::SettingValue::Integer(size);
+                }
             }
         }
     });

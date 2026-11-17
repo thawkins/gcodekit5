@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (keep Preferences edits when saving the first window size)
+
+### Fixed
+- **Main window**: saving the first-start window size updates only Window Width/Height in Preferences, so other Preferences edits not yet saved are no longer replaced by the stored values
+
 ## [Unreleased] - 2026-11-17 (open maximized on first start)
 
 ### Changed
