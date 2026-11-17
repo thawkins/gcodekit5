@@ -76,6 +76,100 @@ fn test_persistence() {
     // Cleanup
     {
         let mut backend = ToolsManagerBackend::with_storage_path(storage.clone());
-        backend.remove_tool(&ToolId("test_persist_tool".to_string()));
+        backend
+            .remove_tool(&ToolId("test_persist_tool".to_string()))
+            .expect("remove");
     }
+}
+
+fn custom_tool(id: &str, name: &str) -> Tool {
+    let mut tool = Tool::new(
+        ToolId(id.to_string()),
+        998,
+        name.to_string(),
+        ToolType::EndMillFlat,
+        3.175,
+        38.0,
+    );
+    tool.custom = true;
+    tool
+}
+
+#[test]
+fn test_save_tool_writes_and_replaces() {
+    let storage = test_storage("test_save_tool_writes_and_replaces");
+    let mut backend = ToolsManagerBackend::with_storage_path(storage.clone());
+    backend
+        .save_tool(custom_tool("save_tool_ok", "First"))
+        .expect("save");
+    backend
+        .save_tool(custom_tool("save_tool_ok", "Second"))
+        .expect("replace");
+    let reloaded = ToolsManagerBackend::with_storage_path(storage);
+    let tool = reloaded
+        .get_tool(&ToolId("save_tool_ok".to_string()))
+        .expect("tool on disk");
+    assert_eq!(tool.name, "Second");
+}
+
+#[test]
+fn test_save_tool_reports_write_failure_and_rolls_back() {
+    // PR #102 review: a failed write was only logged, so Save looked successful
+    // and the edit was lost on restart.
+    let storage = test_storage("test_save_tool_reports_write_failure_and_rolls_back");
+    let mut backend = ToolsManagerBackend::with_storage_path(storage.clone());
+    backend
+        .save_tool(custom_tool("save_tool_fail", "Original"))
+        .expect("first save");
+
+    // A directory where the file should be makes every write fail.
+    std::fs::remove_file(&storage).expect("remove file");
+    std::fs::create_dir(&storage).expect("block path");
+
+    let result = backend.save_tool(custom_tool("save_tool_fail", "Edited"));
+    assert!(result.is_err(), "write failure must be reported");
+    let tool = backend
+        .get_tool(&ToolId("save_tool_fail".to_string()))
+        .expect("tool kept");
+    assert_eq!(
+        tool.name, "Original",
+        "memory rolled back to the saved tool"
+    );
+
+    let result = backend.save_tool(custom_tool("save_tool_new", "New"));
+    assert!(result.is_err());
+    assert!(
+        backend
+            .get_tool(&ToolId("save_tool_new".to_string()))
+            .is_none(),
+        "an unsaved new tool is not kept"
+    );
+}
+
+#[test]
+fn test_remove_tool_reports_write_failure_and_keeps_tool() {
+    // PR #102 review: a failed write on delete was only logged, so the tool
+    // vanished from the list but came back on restart.
+    let storage = test_storage("test_remove_tool_reports_write_failure_and_keeps_tool");
+    let mut backend = ToolsManagerBackend::with_storage_path(storage.clone());
+    let id = ToolId("remove_tool_fail".to_string());
+    backend
+        .save_tool(custom_tool("remove_tool_fail", "Keep me"))
+        .expect("save");
+
+    std::fs::remove_file(&storage).expect("remove file");
+    std::fs::create_dir(&storage).expect("block path");
+
+    assert!(backend.remove_tool(&id).is_err(), "write failure reported");
+    assert_eq!(
+        backend.get_tool(&id).map(|t| t.name.as_str()),
+        Some("Keep me"),
+        "tool put back after the failed write"
+    );
+
+    // Once the file can be written again, the delete goes through.
+    std::fs::remove_dir(&storage).expect("unblock path");
+    let removed = backend.remove_tool(&id).expect("remove");
+    assert_eq!(removed.map(|t| t.name), Some("Keep me".to_string()));
+    assert!(backend.get_tool(&id).is_none());
 }

@@ -21,3 +21,5 @@ pub fn global_env_lock() -> std::sync::MutexGuard<'static, ()> {
 mod audit_followup_regressions;
 #[path = "gcode_parsing_regressions.rs"]
 mod gcode_parsing_regressions;
+#[path = "test_stock_removal_heightmap.rs"]
+mod test_stock_removal_heightmap;

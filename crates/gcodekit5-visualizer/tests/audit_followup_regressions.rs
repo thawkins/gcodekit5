@@ -49,8 +49,6 @@ fn linear(start: (f32, f32, f32), end: (f32, f32, f32)) -> ToolpathSegment {
         start,
         end,
         center: None,
-        feed_rate: 100.0,
-        spindle_speed: 1000.0,
     }
 }
 
@@ -155,38 +153,36 @@ fn test_toolpath_cache_holds_commands_only() {
 
 #[test]
 fn test_stock_removal_top_at_z0_removes_below_zero() {
-    // 10 x 10 x 5 mm stock, 0.5 mm voxels -> 20 x 20 x 10, top at work Z0.
-    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0);
+    // 10 x 10 x 5 mm stock, 0.5 mm cells -> 20 x 20, top at work Z0.
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0).expect("valid stock");
     assert_eq!(sim.stock_top_z(), 0.0);
     sim.simulate_toolpath(&[linear((2.0, 5.0, -2.0), (8.0, 5.0, -2.0))]);
-    let grid = sim.get_grid();
-    // Work Z -2 is grid Z 3 mm (voxel 6): everything from there up is cut away.
-    assert_eq!(grid.get_at_position(10, 10, 9), 0);
-    assert_eq!(grid.get_at_position(10, 10, 6), 0);
-    assert_eq!(grid.get_at_position(10, 10, 5), 255);
+    let map = sim.height_map();
+    // Work Z -2 is 3 mm above the stock bottom: everything above is cut away.
+    assert_eq!(map.height_at(10, 10), Some(3.0));
     // Away from the cut the stock is untouched.
-    assert_eq!(grid.get_at_position(10, 2, 9), 255);
+    assert_eq!(map.height_at(10, 2), Some(5.0));
 }
 
 #[test]
 fn test_stock_removal_above_top_removes_nothing() {
-    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0);
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0).expect("valid stock");
     sim.simulate_toolpath(&[linear((2.0, 5.0, 0.0), (8.0, 5.0, 0.5))]);
-    assert!(sim.get_grid().data().iter().all(|&v| v == 255));
+    assert!(sim.height_map().heights().iter().all(|&h| h == 5.0));
 }
 
 #[test]
 fn test_stock_removal_with_bottom_zero_stock_top() {
-    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0).with_stock_top_z(5.0);
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 5.0, 0.5, 1.0)
+        .expect("valid stock")
+        .with_stock_top_z(5.0);
     sim.simulate_toolpath(&[linear((2.0, 5.0, 3.0), (8.0, 5.0, 3.0))]);
-    let grid = sim.get_grid();
-    assert_eq!(grid.get_at_position(10, 10, 6), 0);
-    assert_eq!(grid.get_at_position(10, 10, 5), 255);
+    assert_eq!(sim.height_map().height_at(10, 10), Some(3.0));
 }
 
 #[test]
 fn test_stock_removal_mesh_is_in_work_coordinates() {
-    let sim = StockSimulator3D::new(2.0, 2.0, 5.0, 1.0, 0.5);
+    let sim = StockSimulator3D::new(2.0, 2.0, 5.0, 1.0, 0.5).expect("valid stock");
     let mesh = sim.get_mesh();
     let zs: Vec<f32> = mesh.as_chunks::<10>().0.iter().map(|v| v[2]).collect();
     let min = zs.iter().copied().fold(f32::INFINITY, f32::min);
@@ -195,12 +191,17 @@ fn test_stock_removal_mesh_is_in_work_coordinates() {
     assert!(max.abs() < 1e-4, "top at Z0, got {max}");
 }
 
-/// Count the voxels removed from a fresh 10 x 10 x 10 mm stock (1 mm voxels).
-fn removed_voxels(reference: StockZeroReference, toolpath: &[ToolpathSegment]) -> usize {
-    let mut sim =
-        StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0).with_stock_zero_reference(reference);
+/// Count the cells cut in a fresh 10 x 10 x 10 mm stock (1 mm cells).
+fn removed_cells(reference: StockZeroReference, toolpath: &[ToolpathSegment]) -> usize {
+    let mut sim = StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0)
+        .expect("valid stock")
+        .with_stock_zero_reference(reference);
     sim.simulate_toolpath(toolpath);
-    sim.get_grid().data().iter().filter(|&&v| v == 0).count()
+    sim.height_map()
+        .heights()
+        .iter()
+        .filter(|&&h| h < 10.0)
+        .count()
 }
 
 #[test]
@@ -212,6 +213,7 @@ fn test_stock_removal_zero_reference_defaults_to_top() {
         assert_eq!(StockZeroReference::from_index(r.index()), r);
     }
     let sim = StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0)
+        .expect("valid stock")
         .with_stock_zero_reference(StockZeroReference::Bottom);
     assert_eq!(sim.stock_top_z(), 10.0);
 }
@@ -220,7 +222,7 @@ fn test_stock_removal_zero_reference_defaults_to_top() {
 fn test_stock_removal_top_zero_feed_at_z0_removes_nothing() {
     // A top-zeroed program that only feeds at Z0 never enters the stock.
     let toolpath = [linear((2.0, 5.0, 0.0), (8.0, 5.0, 0.0))];
-    assert_eq!(removed_voxels(StockZeroReference::Top, &toolpath), 0);
+    assert_eq!(removed_cells(StockZeroReference::Top, &toolpath), 0);
 }
 
 #[test]
@@ -230,7 +232,7 @@ fn test_stock_removal_top_zero_air_cut_removes_nothing() {
         linear((2.0, 5.0, 2.0), (8.0, 5.0, 2.0)),
         linear((8.0, 5.0, 2.0), (8.0, 8.0, 2.0)),
     ];
-    assert_eq!(removed_voxels(StockZeroReference::Top, &toolpath), 0);
+    assert_eq!(removed_cells(StockZeroReference::Top, &toolpath), 0);
 }
 
 #[test]
@@ -238,12 +240,10 @@ fn test_stock_removal_bottom_zero_cuts_between_zero_and_thickness() {
     // The same Z2 pass in a bottom-zeroed program cuts 8 mm deep.
     let toolpath = [linear((2.0, 5.0, 2.0), (8.0, 5.0, 2.0))];
     let mut sim = StockSimulator3D::new(10.0, 10.0, 10.0, 1.0, 1.0)
+        .expect("valid stock")
         .with_stock_zero_reference(StockZeroReference::Bottom);
     sim.simulate_toolpath(&toolpath);
-    let grid = sim.get_grid();
-    assert_eq!(grid.get_at_position(5, 5, 9), 0);
-    assert_eq!(grid.get_at_position(5, 5, 2), 0);
-    assert_eq!(grid.get_at_position(5, 5, 1), 255);
+    assert_eq!(sim.height_map().height_at(5, 5), Some(2.0));
 }
 
 #[test]
@@ -439,7 +439,7 @@ fn test_visualizer_g53_retract_is_not_plotted_at_work_z() {
 fn simulate_within_deadline(width: f32, height: f32, segments: Vec<ToolpathSegment>) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let mut sim = StockSimulator3D::new(width, height, 5.0, 0.5, 1.0);
+        let mut sim = StockSimulator3D::new(width, height, 5.0, 0.5, 1.0).expect("valid stock");
         sim.simulate_toolpath(&segments);
         let _ = tx.send(());
     });
@@ -460,27 +460,30 @@ fn test_stock_removal_cut_left_of_stock_finishes() {
 }
 
 #[test]
-fn test_stock_removal_zero_size_stock_finishes() {
-    simulate_within_deadline(0.0, 0.0, vec![linear((1.0, 1.0, -2.0), (2.0, 1.0, -2.0))]);
+fn test_stock_removal_zero_size_stock_is_rejected() {
+    assert!(StockSimulator3D::new(0.0, 0.0, 5.0, 0.5, 1.0).is_err());
 }
 
 #[test]
 fn test_stock_dimensions_are_checked_before_allocating() {
-    // Audit E1-06: a full sheet needed ~15.7 GB and aborted the process.
-    use gcodekit5_visualizer::VoxelGrid;
-    assert!(VoxelGrid::check_dimensions(200.0, 200.0, 10.0, 0.19).is_ok());
-    assert!(VoxelGrid::check_dimensions(1220.0, 2440.0, 18.0, 0.19).is_err());
-    assert!(VoxelGrid::check_dimensions(0.0, 10.0, 10.0, 0.19).is_err());
-    assert!(VoxelGrid::check_dimensions(f32::NAN, 10.0, 10.0, 0.19).is_err());
+    // Audit E1-06: the old voxel grid needed ~15.7 GB for a full sheet and
+    // aborted the process. The height map needs ~330 MB for that sheet, so it
+    // fits; anything beyond MAX_STOCK_CELLS is still refused up front.
+    use gcodekit5_visualizer::HeightMap;
+    assert!(HeightMap::check_dimensions(200.0, 200.0, 10.0, 0.19).is_ok());
+    assert!(HeightMap::check_dimensions(1220.0, 2440.0, 18.0, 0.19).is_ok());
+    assert!(HeightMap::check_dimensions(5000.0, 5000.0, 18.0, 0.19).is_err());
+    assert!(HeightMap::check_dimensions(0.0, 10.0, 10.0, 0.19).is_err());
+    assert!(HeightMap::check_dimensions(f32::NAN, 10.0, 10.0, 0.19).is_err());
 }
 
 #[test]
 fn test_stock_resolution_must_be_positive_and_finite() {
     // #89 review: a bad resolution gave zero cells and passed the check.
-    use gcodekit5_visualizer::VoxelGrid;
+    use gcodekit5_visualizer::HeightMap;
     for resolution in [0.0, -0.19, f32::NAN, f32::INFINITY] {
         assert!(
-            VoxelGrid::check_dimensions(200.0, 200.0, 10.0, resolution).is_err(),
+            HeightMap::check_dimensions(200.0, 200.0, 10.0, resolution).is_err(),
             "{resolution}"
         );
     }

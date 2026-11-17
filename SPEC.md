@@ -1266,6 +1266,9 @@ Controller-specific parameters:
 - Spindle max value
 - Modes (parking, safety door, etc.)
 
+**Repetier Settings**:
+- EEPROM parameters read from the controller's `EPR:` report and shown in Device Config
+
 **Other Firmware**:
 Similar but firmware-specific parameter sets
 
@@ -1886,7 +1889,7 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - Display: Minimum 1024x768 resolution (1920x1080 recommended)
 
 ### 9.2 Software Constraints
-- Rust version: 1.70.0 or newer
+- Rust version: 1.95.0 or newer
 - Platform: Linux, Windows (7+), macOS (10.13+)
 - No root/admin privileges required
 - Single application instance (planned: multi-instance support)
@@ -2005,13 +2008,11 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 ## Visualizer Updates (December 2025)
 
 ### 3D Stock Removal Simulation
-- **Voxel Engine**: Implemented a 400x400x20 voxel grid (0.5mm resolution) for real-time material removal simulation.
-- **Rendering**: Face-based mesh generation with efficient culling of hidden faces.
-- **Visualization**:
-  - Depth-based coloring (Yellow -> Red -> Blue) to indicate cut depth.
-  - Edge highlighting for better geometry perception.
-  - Configurable stock dimensions and tool radius.
-- **Performance**: Background thread processing to keep UI responsive.
+- **Engine**: Height map with one material height per XY cell (0.19 mm cells). The tool is a flat end mill, so a cut lowers every cell whose centre lies under the tool to the tool tip; depths are exact, not rounded to the cell size. Rapids through the stock cut too.
+- **Placement**: "Stock Z0 at: Top / Bottom" (defaulted from the program header when it records one) and "Stock XY0 at: Lower left / Center" place the stock in work coordinates.
+- **Limits**: Up to 2^27 cells (512 MiB), enough for a full 1220 x 2440 mm sheet; larger stock is refused with a message before allocating.
+- **Rendering**: Surface mesh with coplanar faces and walls merged into large quads, drawn in a single shaded steel-grey colour with back-face culling.
+- **Performance**: Simulation and mesh building run on a background thread with progress and cancel; each run has its own cancel token. Loading or editing G-code clears the result.
 - **Integration**: Fully integrated into the GTK4 Visualizer widget with toggle controls.
 
 ### 3D View Improvements
@@ -2101,6 +2102,6 @@ See [FIRMWARE_CAPABILITIES_DATABASE.md](docs/FIRMWARE_CAPABILITIES_DATABASE.md) 
 - **Connections**: device profiles carry a TCP host and port; connecting with a TCP profile opens a TCP stream through the same communicator as serial. WebSocket is not supported yet.
 - **Machine Control**: rotary A/B/C axes shown from the profile/status; Pause/Resume/Stop only during a job; inch jog presets (0.0001–1 in); probe failures restore G90 once idle.
 - **Stop and busy guard**: Stop sends feed hold (`!`), waits for `Hold:0` (up to 10 s), then soft-resets (0x18), so the position is kept; E-Stop still resets at once. While a job streams, console lines (except `!`, `~`, `?`) and `$$`/`$n=v` are refused with a message; `$` commands also need Idle or Alarm. Pause state clears when the machine reports Run/Jog
-- **Designer**: property fields commit on Enter/focus-out (one undo step per edit); every property edit is undoable; unsaved-changes prompt on New/Open/window close; SVG transforms and viewBox units; DXF `$INSUNITS`.
+- **Designer**: property fields commit on Enter/focus-out (one undo step per edit); every property edit is undoable; unsaved-changes prompt (Save / Discard / Cancel) on New/Open/quit/language restart; the same prompt guards hand edits in the G-code editor (New/Open/quit/language restart) and unsaved tool edits in the Tools Manager; SVG transforms and viewBox units; DXF `$INSUNITS`.
 - **CAM probe tool**: routines use relative (G91) moves from the current position with probe depth, tip-radius and plate-thickness compensation; "Probe" runs the routine and reports the result; "Apply to WCS" sends `G10 L2` (or `G43.1` for tool length).
 - **Bitmap engraving**: dark pixels receive more power by default; the Invert option engraves light areas.

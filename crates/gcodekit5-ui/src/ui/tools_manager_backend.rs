@@ -164,13 +164,43 @@ impl ToolsManagerBackend {
         }
     }
 
-    pub fn remove_tool(&mut self, id: &ToolId) -> Option<Tool> {
-        let result = self.library.remove_tool(id);
-        // Save custom tools to disk
+    /// Adds `tool`, replacing any tool with the same id, and writes the custom
+    /// tools file.
+    ///
+    /// # Errors
+    /// The write error message. The library is then restored to its previous
+    /// state, so memory never holds an edit that is not on disk.
+    pub fn save_tool(&mut self, tool: Tool) -> Result<(), String> {
+        let previous = self.library.remove_tool(&tool.id);
+        let id = tool.id.clone();
+        self.library.add_tool(tool);
         if let Err(e) = self.save_to_file() {
-            tracing::warn!("Failed to save tools: {}", e);
+            self.library.remove_tool(&id);
+            if let Some(previous) = previous {
+                self.library.add_tool(previous);
+            }
+            return Err(e.to_string());
         }
-        result
+        Ok(())
+    }
+
+    /// Removes the tool with `id` and writes the custom tools file.
+    ///
+    /// # Returns
+    /// The removed tool, or `None` when no tool has that id.
+    ///
+    /// # Errors
+    /// The write error message. The tool is then put back, so memory never
+    /// differs from what is on disk.
+    pub fn remove_tool(&mut self, id: &ToolId) -> Result<Option<Tool>, String> {
+        let removed = self.library.remove_tool(id);
+        if let Err(e) = self.save_to_file() {
+            if let Some(tool) = removed {
+                self.library.add_tool(tool);
+            }
+            return Err(e.to_string());
+        }
+        Ok(removed)
     }
 
     pub fn get_tool(&self, id: &ToolId) -> Option<&Tool> {

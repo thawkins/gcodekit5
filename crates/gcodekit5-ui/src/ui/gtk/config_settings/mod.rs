@@ -6,6 +6,7 @@
 
 mod grbl_settings;
 mod operations;
+mod repetier_settings;
 
 use crate::ui::gtk::common::text_dropdown::{TextDropDownExt, new_text_dropdown};
 use gcodekit5_communication::SerialCommunicator;
@@ -16,6 +17,7 @@ use gtk4::{
     Box, Button, DropDown, Label, ListBox, Orientation, PolicyType, ScrolledWindow, SearchEntry,
     Separator,
 };
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -28,6 +30,34 @@ pub struct ConfigSettingRow {
     pub description: String,
     pub category: String,
     pub read_only: bool,
+}
+
+impl ConfigSettingRow {
+    /// Whether the row is shown for the given search text and category filter.
+    ///
+    /// The display list and row activation must use this same test, so that an
+    /// activated row index refers to the setting the user clicked.
+    ///
+    /// # Arguments
+    /// * `search_text` - Lower-cased search text; empty matches everything.
+    /// * `category` - Selected category id; "All" matches every category.
+    pub fn matches_filter(&self, search_text: &str, category: &str) -> bool {
+        if !search_text.is_empty() {
+            // Repetier EEPROM settings are numbered from 1000 and shown as `EPR:<pos>`.
+            let id = if self.number >= 1000 {
+                format!("epr:{}", self.number - 1000)
+            } else {
+                format!("${}", self.number)
+            };
+            let matches = self.name.to_lowercase().contains(search_text)
+                || self.description.to_lowercase().contains(search_text)
+                || id.contains(search_text);
+            if !matches {
+                return false;
+            }
+        }
+        category == "All" || self.category == category
+    }
 }
 
 impl From<&Setting> for ConfigSettingRow {
@@ -53,6 +83,7 @@ impl From<&Setting> for ConfigSettingRow {
             600..=603 => "Encoder",
             650..=651 => "Modbus",
             680 => "RS485",
+            1000..=1999 => "Repetier EEPROM",
             _ => "Other",
         };
 
@@ -99,6 +130,7 @@ pub const SETTING_CATEGORIES: &[&str] = &[
     n_!("Encoder"),
     n_!("Modbus"),
     n_!("RS485"),
+    n_!("Repetier EEPROM"),
     n_!("Other"),
 ];
 
@@ -377,20 +409,7 @@ impl ConfigSettingsView {
 
                 let filtered_settings: Vec<ConfigSettingRow> = all_settings
                     .into_iter()
-                    .filter(|setting| {
-                        // Apply search filter
-                        if !search_text.is_empty() {
-                            let matches = setting.name.to_lowercase().contains(&search_text)
-                                || setting.description.to_lowercase().contains(&search_text)
-                                || format!("${}", setting.number).contains(&search_text);
-                            if !matches {
-                                return false;
-                            }
-                        }
-
-                        // Apply category filter
-                        !(category != "All" && setting.category != category)
-                    })
+                    .filter(|setting| setting.matches_filter(&search_text, &category))
                     .collect();
 
                 if let Some(setting) = filtered_settings.get(index as usize)

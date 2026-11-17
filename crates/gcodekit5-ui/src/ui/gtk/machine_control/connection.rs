@@ -439,10 +439,18 @@ impl MachineControlView {
             self.log("> 0x18 (Reset)");
             let _ = comm.send(&[0x18]);
         }
+        // Start the poller first: it installs this session's generation, which the init
+        // timers below capture so they do nothing once the session has changed or closed.
+        self.start_status_poller();
+        let current_gen = self.poll_generation.get();
         for (i, cmd) in profile.init_commands.iter().enumerate() {
             let view = self.clone();
             let delay = std::time::Duration::from_millis(250 + i as u64 * 300);
             glib::timeout_add_local_once(delay, move || {
+                // Do not send once the connection was closed or replaced.
+                if view.poll_generation.get() != current_gen {
+                    return;
+                }
                 if let Some(mut comm) = view.communicator.try_lock()
                     && comm.is_connected()
                 {
@@ -451,8 +459,6 @@ impl MachineControlView {
                 }
             });
         }
-
-        self.start_status_poller();
     }
 
     /// Starts the main-loop poller that reads responses while no DirectSender job runs.
@@ -466,6 +472,7 @@ impl MachineControlView {
         let mut firmware_detected = false;
         let mut last_checked_detected = ControllerProtocol::Unknown;
         let mut identity_timeout_checked = false;
+        let mut mismatch_reported = false;
 
         glib::timeout_add_local(POLL_INTERVAL, move || {
             if view.poll_generation.get() != generation {
@@ -485,8 +492,9 @@ impl MachineControlView {
                 let should_check = (detected != ControllerProtocol::Unknown
                     && detected != last_checked_detected)
                     || (timeout_reached && !identity_timeout_checked);
-                if should_check {
+                if should_check && !mismatch_reported {
                     if view.protocol_mismatch(configured, detected) {
+                        mismatch_reported = true;
                         return glib::ControlFlow::Break;
                     }
                     last_checked_detected = detected;
@@ -607,10 +615,14 @@ impl MachineControlView {
         // (e.g. soft limit) ends the jog and is logged, not shown as a dialog.
         let jog_reply = (is_ack || is_error) && self.continuous_jog.lock().on_reply(is_error);
 
+        // ---
         let line_for_log = Self::decode_response_line(line);
-        if is_error && !*self.is_streaming.lock() && !jog_reply && !probe_reply {
+        let protocol_ok = comm.detected_protocol() == comm.configured_protocol();
+        if is_error && protocol_ok && !*self.is_streaming.lock() && !jog_reply && !probe_reply {
             self.show_controller_error(&line_for_log);
         }
+
+        // ---
 
         // Log everything except status reports and plain acks.
         if !matches!(kind, GrblResponseLine::Status(_)) && !is_ack {

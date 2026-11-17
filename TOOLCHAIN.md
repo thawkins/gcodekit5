@@ -15,7 +15,7 @@ This document describes how to set up your development environment with Rust and
 
 ## Installing Rust
 
-GCodeKit5 requires Rust 1.70 or later. We recommend using `rustup` for managing your Rust installation.
+GCodeKit5 requires Rust 1.95 or later. We recommend using `rustup` for managing your Rust installation.
 
 ### Install Rustup (Recommended)
 
@@ -42,11 +42,11 @@ rustc --version
 cargo --version
 ```
 
-You should see Rust 1.70 or later:
+You should see Rust 1.95 or later:
 
 ```
-rustc 1.90.0 (...)
-cargo 1.90.0 (...)
+rustc 1.95.0 (...)
+cargo 1.95.0 (...)
 ```
 
 ## Installing Tokei
@@ -114,7 +114,7 @@ cargo build --target x86_64-unknown-linux-musl
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| Rust | 1.70 | 1.90+ |
+| Rust | 1.95 | 1.95+ |
 | LLD | 12.0 | 15.0+ |
 | RAM | 4GB | 8GB+ |
 | Storage | 5GB | 20GB+ (with caches) |

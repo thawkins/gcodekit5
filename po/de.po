@@ -1170,9 +1170,26 @@ msgstr "Import fehlgeschlagen:"
 msgid "Unsaved changes"
 msgstr "Ungespeicherte Änderungen"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr ""
-"Das aktuelle Design hat ungespeicherte Änderungen. Verwerfen und fortfahren?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr "Das aktuelle Design hat ungespeicherte Änderungen. Vor dem Fortfahren speichern?"
+
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr "Das Werkzeug hat ungespeicherte Änderungen. Vor dem Fortfahren speichern?"
+
+msgid "Could not save the tool:"
+msgstr "Das Werkzeug konnte nicht gespeichert werden:"
+
+msgid "Delete Failed"
+msgstr "Löschen fehlgeschlagen"
+
+msgid "Could not delete the tool:"
+msgstr "Das Werkzeug konnte nicht gelöscht werden:"
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr "Der G-Code im Editor hat ungespeicherte Änderungen. Vor dem Fortfahren speichern?"
+
+msgid "Discard"
+msgstr "Verwerfen"
 
 msgid "New 2D design created"
 msgstr "Neues 2D-Design erstellt"
@@ -2853,6 +2870,17 @@ msgstr "Rohteil"
 msgid "Stock Z0 at:"
 msgstr "Rohteil-Z0 bei:"
 
+msgid "Lower left"
+msgstr "Unten links"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Wo auf dem Rohteil der Werkstücknullpunkt X0 Y0 des Programms liegt: an der unteren linken Ecke oder in der Mitte des Rohteils."
+
+msgid "Stock XY0 at:"
+msgstr "Rohteil-XY0 bei:"
+
 msgid "Simulation"
 msgstr "Simulation"
 
@@ -2940,3 +2968,31 @@ msgstr "Rohteil-Simulation"
 
 msgid "to"
 msgstr "bis"
+
+msgid "Repetier EEPROM"
+msgstr "Repetier EEPROM"
+
+msgid "Tpulley"
+msgstr "Tpulley"
+
+
+msgid "Edit EEPROM Pos"
+msgstr "EEPROM-Position bearbeiten"
+
+msgid "Error sending M205:"
+msgstr "Fehler beim Senden von M205:"
+
+msgid "Connection Notice"
+msgstr "Verbindungshinweis"
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr "Bitte verbinden Sie die Maschine, bevor Sie Parameter abrufen."
+
+msgid "Operation cancelled: Device not connected"
+msgstr "Vorgang abgebrochen: Gerät nicht verbunden"
+
+msgid "Retrieving settings and device info..."
+msgstr "Einstellungen und Geräteinformationen werden abgerufen..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Einstellungen unvollständig abgerufen (Zeitüberschreitung), empfangene Einstellungen:"

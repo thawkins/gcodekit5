@@ -425,6 +425,18 @@ impl DeviceInfoView {
         *self.on_setting_changed.borrow_mut() = Some(std::boxed::Box::new(callback));
     }
 
+    pub fn get_device_name(&self) -> String {
+        self.device_name_label.text().to_string()
+    }
+
+    pub fn get_firmware(&self) -> String {
+        self.firmware_label.text().to_string()
+    }
+
+    pub fn get_version(&self) -> String {
+        self.version_label.text().to_string()
+    }
+
     /// Selects a device type without sending anything to the controller.
     fn select_type_silently(&self, device_type: &'static str) {
         *self.suppress_type_change.borrow_mut() = true;

@@ -228,6 +228,7 @@ The object positioning issue when opening "gckd" files.
 
 ### ⚙️ Configuration Management
 - **GRBL Settings Editor**: Complete access to all $0-$130 parameters
+- **Repetier EEPROM**: Read Repetier EEPROM parameters in Device Config
 - **Inline Editing**: Click any setting value to edit
 - **Descriptions**: Tooltips explain each parameter's purpose
 - **Value Validation**: Ensures valid ranges and data types
@@ -327,7 +328,7 @@ The object positioning issue when opening "gckd" files.
 ## Installation
 
 ### Prerequisites
-- **Rust** 1.90 or later (MSRV - Minimum Supported Rust Version)
+- **Rust** 1.95 or later (MSRV - Minimum Supported Rust Version)
 - **Operating System**: Linux, macOS, or Windows
 - **Memory**: 512MB minimum (2GB recommended)
 - **Display**: 1024x768 minimum resolution

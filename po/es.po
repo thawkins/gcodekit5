@@ -1177,8 +1177,26 @@ msgstr "Error de importación:"
 msgid "Unsaved changes"
 msgstr "Cambios sin guardar"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr "El diseño actual tiene cambios sin guardar. ¿Descartarlos y continuar?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr "El diseño actual tiene cambios sin guardar. ¿Guardarlos antes de continuar?"
+
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr "La herramienta tiene cambios sin guardar. ¿Guardarlos antes de continuar?"
+
+msgid "Could not save the tool:"
+msgstr "No se pudo guardar la herramienta:"
+
+msgid "Delete Failed"
+msgstr "Error al eliminar"
+
+msgid "Could not delete the tool:"
+msgstr "No se pudo eliminar la herramienta:"
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr "El G-code del editor tiene cambios sin guardar. ¿Guardarlos antes de continuar?"
+
+msgid "Discard"
+msgstr "Descartar"
 
 msgid "New 2D design created"
 msgstr "Nuevo diseño 2D creado"
@@ -2856,6 +2874,17 @@ msgstr "Material"
 msgid "Stock Z0 at:"
 msgstr "Z0 del material en:"
 
+msgid "Lower left"
+msgstr "Abajo a la izquierda"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Dónde está el X0 Y0 de trabajo del programa en el material: la esquina inferior izquierda o el centro del material."
+
+msgid "Stock XY0 at:"
+msgstr "XY0 del material en:"
+
 msgid "Simulation"
 msgstr "Simulación"
 
@@ -2943,3 +2972,30 @@ msgstr "Simulación del material"
 
 msgid "to"
 msgstr "a"
+
+msgid "Repetier EEPROM"
+msgstr "EEPROM Repetier"
+
+msgid "Tpulley"
+msgstr "PoleaD"
+
+msgid "Edit EEPROM Pos"
+msgstr "Editar posición EEPROM"
+
+msgid "Error sending M205:"
+msgstr "Error al enviar M205:"
+
+msgid "Connection Notice"
+msgstr "Aviso de conexión"
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr "Conecte la máquina antes de obtener los parámetros."
+
+msgid "Operation cancelled: Device not connected"
+msgstr "Operación cancelada: dispositivo no conectado"
+
+msgid "Retrieving settings and device info..."
+msgstr "Obteniendo ajustes e información del dispositivo..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Lectura de ajustes incompleta (tiempo agotado), ajustes recibidos:"

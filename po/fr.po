@@ -1179,10 +1179,26 @@ msgstr "Échec de l'import :"
 msgid "Unsaved changes"
 msgstr "Modifications non enregistrées"
 
-msgid "The current design has unsaved changes. Discard them and continue?"
-msgstr ""
-"Le dessin actuel contient des modifications non enregistrées. Les abandonner "
-"et continuer ?"
+msgid "The current design has unsaved changes. Save them before continuing?"
+msgstr "Le dessin actuel contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
+
+msgid "The tool has unsaved changes. Save them before continuing?"
+msgstr "L'outil contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
+
+msgid "Could not save the tool:"
+msgstr "Impossible d'enregistrer l'outil :"
+
+msgid "Delete Failed"
+msgstr "Échec de la suppression"
+
+msgid "Could not delete the tool:"
+msgstr "Impossible de supprimer l'outil :"
+
+msgid "The G-code in the editor has unsaved changes. Save them before continuing?"
+msgstr "Le G-code de l'éditeur contient des modifications non enregistrées. Les enregistrer avant de continuer ?"
+
+msgid "Discard"
+msgstr "Abandonner"
 
 msgid "New 2D design created"
 msgstr "Nouveau dessin 2D créé"
@@ -2862,6 +2878,17 @@ msgstr "Brut"
 msgid "Stock Z0 at:"
 msgstr "Z0 du brut sur :"
 
+msgid "Lower left"
+msgstr "En bas à gauche"
+
+msgid ""
+"Where on the stock the program's work X0 Y0 is set: the lower-left corner or "
+"the centre of the stock."
+msgstr "Où se trouve le X0 Y0 de travail du programme sur le brut : le coin inférieur gauche ou le centre du brut."
+
+msgid "Stock XY0 at:"
+msgstr "XY0 du brut sur :"
+
 msgid "Simulation"
 msgstr "Simulation"
 
@@ -2949,3 +2976,30 @@ msgstr "Simulation du brut"
 
 msgid "to"
 msgstr "à"
+
+msgid "Repetier EEPROM"
+msgstr "Repetier EEPROM"
+
+msgid "Tpulley"
+msgstr "Tpulley"
+
+msgid "Edit EEPROM Pos"
+msgstr "Modifier la position EEPROM"
+
+msgid "Error sending M205:"
+msgstr "Erreur lors de l'envoi de M205 :"
+
+msgid "Connection Notice"
+msgstr "Avis de connexion"
+
+msgid "Please connect the machine before retrieving parameters."
+msgstr "Veuillez connecter la machine avant de récupérer les paramètres."
+
+msgid "Operation cancelled: Device not connected"
+msgstr "Opération annulée : appareil non connecté"
+
+msgid "Retrieving settings and device info..."
+msgstr "Récupération des paramètres et des informations de l'appareil..."
+
+msgid "Settings retrieval incomplete (timed out), settings received:"
+msgstr "Récupération des paramètres incomplète (délai dépassé), paramètres reçus :"

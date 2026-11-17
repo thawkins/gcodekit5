@@ -31,7 +31,6 @@
 //! ```
 #![deny(unsafe_code)]
 
-pub mod arrays;
 pub mod canvas;
 pub mod commands;
 pub mod dxf_parser;
@@ -61,10 +60,6 @@ pub mod gcode_converter;
 pub mod image_importer;
 
 // Re-export all public types from submodules
-pub use arrays::{
-    ArrayGenerator, ArrayOperation, ArrayType, CircularArrayParams, GridArrayParams,
-    LinearArrayParams,
-};
 pub use canvas::{Canvas, CanvasPoint, DrawingMode};
 pub use commands::DesignerCommand;
 pub use dxf_parser::{DxfEntity, DxfFile, DxfHeader, DxfParser};

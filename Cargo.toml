@@ -14,7 +14,7 @@ resolver = "2"
 [workspace.package]
 version = "1.2.0-beta.2"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 authors = ["GCodeKit Contributors"]
 repository = "https://github.com/thawkins/gcodekit5"

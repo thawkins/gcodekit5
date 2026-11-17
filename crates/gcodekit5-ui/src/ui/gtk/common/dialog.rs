@@ -8,6 +8,7 @@
 use crate::t;
 use gtk4::prelude::*;
 use gtk4::{AlertDialog, ButtonsType, MessageType, ResponseType, Widget, Window};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Standard dialog configuration
 #[derive(Debug, Clone)]
@@ -58,7 +59,13 @@ impl DialogConfig {
     }
 }
 
+/// True while a message dialog from [`show_message_dialog`] is open.
+static DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
+
 /// Show a standardized message dialog
+///
+/// Only one message dialog is shown at a time: a call made while one is open
+/// is ignored.
 ///
 /// # Arguments
 /// * `config` - Dialog configuration
@@ -69,6 +76,11 @@ pub fn show_message_dialog(
     parent: Option<&Window>,
     callback: Option<Box<dyn FnOnce(ResponseType)>>,
 ) {
+    // Keep two dialogs from stacking on top of each other.
+    if DIALOG_OPEN.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
     let detail = match &config.secondary_text {
         Some(secondary) => format!("{}\n\n{}", config.message, secondary),
         None => config.message.clone(),
@@ -105,17 +117,29 @@ pub fn show_message_dialog(
     }
 
     let responses: Vec<ResponseType> = buttons.into_iter().map(|(_, r)| r).collect();
-    dialog.choose(parent, gtk4::gio::Cancellable::NONE, move |result| {
-        // Escape or closing the window reports an error, which MessageDialog
-        // reported as `DeleteEvent`.
-        let response = result
-            .ok()
-            .and_then(|index| usize::try_from(index).ok())
-            .and_then(|index| responses.get(index).copied())
-            .unwrap_or(ResponseType::DeleteEvent);
-        if let Some(cb) = callback {
-            cb(response);
-        }
+    let parent_owned = parent.cloned();
+
+    // Wait 100 ms so the compositor (Wayland/X11) releases the focus grab of a
+    // just-closed DropDown/Popover before the dialog takes focus.
+    gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+        dialog.choose(
+            parent_owned.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                DIALOG_OPEN.store(false, Ordering::SeqCst);
+
+                // Escape or closing the window reports an error, which MessageDialog
+                // reported as `DeleteEvent`.
+                let response = result
+                    .ok()
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| responses.get(index).copied())
+                    .unwrap_or(ResponseType::DeleteEvent);
+                if let Some(cb) = callback {
+                    cb(response);
+                }
+            },
+        );
     });
 }
 
@@ -188,6 +212,85 @@ pub fn show_confirmation(
             ));
         })),
     );
+}
+
+/// The user's answer to an unsaved-changes prompt
+/// (see [`show_unsaved_changes`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsavedChangesChoice {
+    /// Save the work, then carry on with the pending action.
+    Save,
+    /// Carry on with the pending action without saving.
+    Discard,
+    /// Abandon the pending action and keep the work as it is.
+    Cancel,
+}
+
+impl UnsavedChangesChoice {
+    /// Button order of [`show_unsaved_changes`], left to right.
+    pub const BUTTONS: [Self; 3] = [Self::Cancel, Self::Discard, Self::Save];
+
+    /// Choice for the index of the button pressed in [`show_unsaved_changes`].
+    ///
+    /// # Arguments
+    /// * `index` - The pressed button's index, or `None` when the dialog was
+    ///   dismissed with Escape or by closing it.
+    ///
+    /// # Returns
+    /// The matching choice; dismissing the dialog or an unknown index is
+    /// [`UnsavedChangesChoice::Cancel`], so nothing is lost by accident.
+    pub fn from_button_index(index: Option<i32>) -> Self {
+        index
+            .and_then(|i| usize::try_from(i).ok())
+            .and_then(|i| Self::BUTTONS.get(i).copied())
+            .unwrap_or(Self::Cancel)
+    }
+
+    /// Translated button label.
+    fn label(self) -> String {
+        match self {
+            Self::Save => t!("Save"),
+            Self::Discard => t!("Discard"),
+            Self::Cancel => t!("Cancel"),
+        }
+    }
+}
+
+/// Ask what to do with unsaved work before an action that would lose it
+/// (quitting, starting a new document, opening another one).
+///
+/// Shows Cancel, Discard and Save buttons; Save is the default and Escape or
+/// closing the dialog counts as Cancel.
+///
+/// # Arguments
+/// * `title` - Dialog heading.
+/// * `message` - Explanation of what is unsaved.
+/// * `parent` - Optional parent window.
+/// * `callback` - Receives the user's choice. The caller saves for
+///   [`UnsavedChangesChoice::Save`] and runs the pending action after a
+///   successful save or for [`UnsavedChangesChoice::Discard`].
+pub fn show_unsaved_changes(
+    title: &str,
+    message: &str,
+    parent: Option<&Window>,
+    callback: impl FnOnce(UnsavedChangesChoice) + 'static,
+) {
+    let labels: Vec<String> = UnsavedChangesChoice::BUTTONS
+        .iter()
+        .map(|choice| choice.label())
+        .collect();
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let dialog = AlertDialog::builder()
+        .message(title)
+        .detail(message)
+        .modal(true)
+        .build();
+    dialog.set_buttons(&labels);
+    dialog.set_cancel_button(0);
+    dialog.set_default_button(labels.len() as i32 - 1);
+    dialog.choose(parent, gtk4::gio::Cancellable::NONE, move |result| {
+        callback(UnsavedChangesChoice::from_button_index(result.ok()));
+    });
 }
 
 /// Dialog result type for async-like usage (synchronous blocks)

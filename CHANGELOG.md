@@ -1,7 +1,86 @@
+## [Unreleased] - 2026-11-16 (devel fixes restored after the PR #104 merge)
+
+### Fixed
+- **Device type selector** (restored from #74 and #79): reading `$32` after connecting selects CNC or Laser without writing `$32` back to the controller; changing the type is refused while a job runs or the machine is busy, and a failed change shows a message and returns to the previous selection
+- **Device Config settings** (restored from #74 and #79): Retrieve is refused while the machine is busy; the reply is read only from output that arrived after the request and once it has stopped streaming (Repetier `EPR:` lines too), so older or partial lines are not taken as current values; an edited setting is sent first and only shown once the controller accepted it, with a warning otherwise
+- **Settings search**: typing in the Device Config search box filters the list again (its change handler had been replaced by a second category handler)
+- **Settings search and editing**: the list, row activation and Retrieve share one filter, so searching for an EEPROM setting (`epr:<position>`) and clicking its row opens that setting
+- **Settings retrieval completion**: Retrieve waits for the identity reply that follows the settings dump (`[VER:` for `$I`, `FIRMWARE_NAME:` for `M115`) instead of stopping at the first pause, and reports an incomplete read when it times out
+- **Device type on refresh**: refreshing Device Info no longer re-selects CNC or Laser itself (which wrote `$32` back to the controller); only the silent sync from `$32` sets the type
+- **Connection start-up commands**: `$I`, `$$` and Repetier's `M110`/`M115` are sent again after connecting; they were skipped because their timers checked a session number the status poller replaced straight away
+- **Group rotation of images and paths**: rotating a multi-selection moves raster images and already-rotated paths around the group centre and turns them, instead of moving images to the wrong place without turning them
+- **Tools Manager**: after Save while switching tools, the tool being edited is selected in the list again
+- **Flatpak (gcodekit5-design)**: the manifest installs the staged `gcodekit5-design` binary and reads the existing `gcodekit5-design.png`, and the desktop file names the installed icon
+- **Flatpak runtime**: both Flatpak manifests (and the release build) use the GNOME 50 runtime instead of Freedesktop 24.08, which does not ship GTK 4, libadwaita or GtkSourceView, so the packaged app could not start
+
 ## [Unreleased] - 2026-11-16 (dependency lockfile fix)
 
 ### Fixed
 - **`mutants` requirement**: `Cargo.toml` now asks for `mutants` 0.0.4, matching `Cargo.lock`. A `0.0.x` requirement pins the exact version, so the 0.0.4 lockfile from the Dependabot update (#109) made `cargo build --locked` fail
+
+## [Unreleased] - 2026-11-16 (minimum Rust version 1.95)
+
+### Changed
+- **Minimum supported Rust version is now 1.95** (was 1.90): `rfd` 0.18 needs 1.92 and `parking_lot` 0.13 needs 1.95. `rust-version`, the MSRV CI job, `README.md`, `TOOLCHAIN.md` and `SPEC.md` are updated
+
+## [Unreleased] - 2026-11-16 (merge of PR #104: designer improvements and Repetier EEPROM)
+
+### Added
+- **Repetier EEPROM in Device Config**: Repetier controllers are detected and their EEPROM parameters (`EPR:` lines) are read and shown in Device Config
+- **Designer icons and desktop files**: new toolbar icons (move to top/bottom, boxes, puzzle piece), application pictures and Flatpak desktop/metainfo files
+
+### Changed
+- **Shape rotation in degrees**: shape rotation uses degrees, and rotating a group keeps the relative positions of its members
+- **Parametric shapes**: the size, rotation and corner panels are hidden for sprockets, gears and timing pulleys, whose geometry comes from their own parameters
+- **Circular arrays**: `circular_array_step` moved to `gcodekit5_designer::model`; the unused `arrays` module was removed
+- **Settings dialogs**: the deprecated `gtk4::Dialog` and `gtk4::FileChooserDialog` in Device Config were replaced with `gtk4::Window` and `gtk4::FileDialog`
+
+### Fixed
+- **Stacked message dialogs**: only one message dialog can be open at a time, and it is shown 100 ms later so a just-closed drop-down or popover releases focus first
+- **Connection errors**: pending initialisation commands are cancelled when the session changes or closes, and no error dialog is shown while the detected protocol does not yet match the configured one
+- **Dead keys on Wayland** and moving several selected objects with the grips
+
+## [Unreleased] - 2026-11-12 (unsaved-changes prompts for the editor and Tools Manager)
+
+### Added
+- **G-code editor unsaved changes**: the editor now tracks hand edits. Quitting, the language-change restart, New and Open ask "Save / Discard / Cancel" when the editor has unsaved hand edits (after the design's own prompt). G-code put in the editor by the Designer or CAM tools does not count as unsaved, as it can be generated again
+
+### Fixed
+- **Tools Manager save errors**: a tool that cannot be written to `custom_tools.json` is no longer reported as saved; the error shows in the form, the edit stays unsaved and the library is rolled back
+- **Tools Manager delete errors**: deleting a tool that cannot be removed from `custom_tools.json` now shows an error and keeps the tool, instead of dropping it from the list until the next restart
+- **Tools Manager prompt loop**: blocking a tool switch while creating a new tool leaves the list unselected instead of re-selecting the previous tool, which prompted again
+- **GTK tests under `cargo test`**: the UI test binary initialises GTK once per process through a shared `gtk_available` helper, and only the owning thread runs GTK cases; repeated `gtk4::init()` calls from several tests crashed the process (SIGSEGV) in the MSRV job
+
+### Changed
+- **Tools Manager prompt**: creating a new tool, cancelling an edit or switching tools with unsaved changes now asks "Save / Discard / Cancel" instead of "Discard?" Yes/No; Save goes ahead only if the tool saved (a validation error stays in the form)
+
+## [Unreleased] - 2026-11-12 (Save / Discard / Cancel prompt)
+
+### Changed
+- **Unsaved design prompt**: quitting, New, Open and the language-change restart now ask "Save / Discard / Cancel" instead of only offering to discard. Save writes the design (asking for a file name if it has none) and then carries on only if the save worked; Discard carries on without saving; Cancel (or Escape) keeps the design open
+
+## [Unreleased] - 2026-11-11 (3D stock removal simulation rework)
+
+### Fixed
+- **Stock XY origin**: a new "Stock XY0 at: Lower left / Center" option places the stock for programs zeroed on the stock centre; before, the stock was always assumed to start at X0 Y0 and centre-zeroed programs only cut one quarter
+- **Cut placement**: a cell is cut when its centre is under the tool, so cuts are no longer drawn half a cell towards +X/+Y
+- **Exact depths and stock size**: cut depths are exact instead of rounded to the 0.19 mm cell size, and the stock mesh is the stock size (a 10 mm stock no longer renders 10.07 mm)
+- **Overlapping runs**: each simulation run has its own cancel token, so quickly unchecking and re-checking "Show Stock Removal" can no longer let an older run overwrite the newer one
+- **Stale result**: loading or editing G-code clears the stock removal result instead of showing the previous program's
+- **Rapids through the stock** now remove material, so a crash rapid shows as a gouge instead of looking safe
+- **Validation**: the simulator refuses a zero, negative or non-finite stock size or tool diameter instead of allocating or cutting nothing silently
+- **GL state**: drawing the stock restores the blend state the later passes expect
+- **Opening retract**: rapids are not simulated until every axis has moved once, so the opening `G0 Z10` of a bottom-zeroed program no longer cuts a false hole at XY0 (the parser's start position is only assumed)
+- **Mesh memory**: the surface mesh is capped at 128 MiB; a finely varying 3D surface on large stock is meshed from a block-averaged copy instead of exhausting memory
+- **Cancel while meshing**: cancelling stops the worker during meshing too, so repeated toggles do not pile up work
+- **Reference changes**: changing "Stock Z0 at" or "Stock XY0 at" while the simulation is shown re-runs it with the new setting
+- **UI thread**: the height map is allocated on the worker thread; the UI only validates the settings
+
+### Changed
+- **Height map instead of voxels**: a flat end mill only lowers columns, so the simulator stores one height per XY cell. Memory falls by the stock depth in cells (about 53x at default settings), and full sheets (e.g. 1220 x 2440 mm at 0.19 mm) can now be simulated
+- **Mesh off the UI thread and merged**: the surface mesh is built on the worker thread, and flat areas and walls are merged into large quads (an uncut stock is 6 quads instead of millions)
+- **Progress**: the worker sends progress only when the whole percentage changes
+- Removed dead code (commented-out legacy removal functions, unused `ToolpathSegment3D`, `remove_sphere`, the empty 2D `StockRemovalVisualization` placeholder, the unused progress counter) and the made-up `feed_rate`/`spindle_speed` segment fields; comments translated to English. G-code commands are converted with the new `toolpath_from_commands`
 
 ## [Unreleased] - 2026-11-11 (visualiser 2D/3D toggle, quiet start-up, review fixes)
 

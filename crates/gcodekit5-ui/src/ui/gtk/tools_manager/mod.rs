@@ -18,6 +18,8 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::t;
+use crate::ui::gtk::common::dialog::UnsavedChangesChoice;
 use crate::ui::gtk::common::spacing;
 use crate::ui::gtk::help_browser;
 use crate::ui::gtk::platform;
@@ -946,19 +948,30 @@ impl ToolsManagerView {
         !Self::tool_contents_equal(&orig, &current)
     }
 
-    fn show_discard_dialog<F: Fn() + 'static>(&self, on_yes: F) {
+    /// Asks whether to save the edited tool before `proceed` replaces the form.
+    ///
+    /// * Save: saves the tool and runs `proceed` only if the save succeeded
+    ///   (a validation error stays on screen otherwise).
+    /// * Discard: runs `proceed` without saving.
+    /// * Cancel (or closing the prompt): does nothing.
+    fn show_discard_dialog(&self, proceed: impl FnOnce() + 'static) {
         let Some(window) = self.widget.root().and_downcast::<gtk4::Window>() else {
             return;
         };
 
-        crate::ui::gtk::common::dialog::show_question(
-            "Discard changes?",
-            "You have unsaved changes. Discard them?",
+        let view = self.clone();
+        crate::ui::gtk::common::dialog::show_unsaved_changes(
+            &t!("Unsaved changes"),
+            &t!("The tool has unsaved changes. Save them before continuing?"),
             Some(&window),
-            move |resp| {
-                if resp == gtk4::ResponseType::Yes {
-                    on_yes();
+            move |choice| match choice {
+                UnsavedChangesChoice::Save => {
+                    if view.save_tool() {
+                        proceed();
+                    }
                 }
+                UnsavedChangesChoice::Discard => proceed(),
+                UnsavedChangesChoice::Cancel => {}
             },
         );
     }
@@ -991,7 +1004,11 @@ impl ToolsManagerView {
         self.cancel_edit();
     }
 
-    fn save_tool(&self) {
+    /// Saves the tool in the form, showing any validation error in the form.
+    ///
+    /// # Returns
+    /// `true` when the tool was saved.
+    pub(crate) fn save_tool(&self) -> bool {
         self.error_label.set_visible(false);
         self.error_label.set_text("");
 
@@ -1000,7 +1017,7 @@ impl ToolsManagerView {
             Err(e) => {
                 self.error_label.set_text(&e);
                 self.error_label.set_visible(true);
-                return;
+                return false;
             }
         };
 
@@ -1011,20 +1028,20 @@ impl ToolsManagerView {
                 self.error_label
                     .set_text("Tool ID already exists. Please choose a unique ID.");
                 self.error_label.set_visible(true);
-                return;
+                return false;
             }
         }
 
-        let mut backend = self.backend.borrow_mut();
-
-        if *self.is_creating.borrow() {
-            backend.add_tool(tool.clone());
-        } else {
-            backend.remove_tool(&tool.id);
-            backend.add_tool(tool.clone());
+        // A tool that could not be written is not saved: keep the form as it
+        // is (still unsaved) and show why.
+        let saved = self.backend.borrow_mut().save_tool(tool.clone());
+        if let Err(e) = saved {
+            tracing::warn!("Failed to save tool: {e}");
+            self.error_label
+                .set_text(&format!("{} {e}", t!("Could not save the tool:")));
+            self.error_label.set_visible(true);
+            return false;
         }
-
-        drop(backend);
 
         *self.last_selected_tool_id.borrow_mut() = Some(tool.id.0.clone());
         self.persist_ui_state();
@@ -1032,6 +1049,7 @@ impl ToolsManagerView {
         self.load_tools();
         self.load_tool_for_edit(&tool.id.0);
         self.update_save_state();
+        true
     }
 
     fn delete_tool(&self) {
@@ -1050,13 +1068,25 @@ impl ToolsManagerView {
                     ),
                     Some(&window),
                     move |response| {
-                        if response == gtk4::ResponseType::Yes {
-                            let mut backend_mut = backend.borrow_mut();
-                            backend_mut.remove_tool(&tool_id);
-                            drop(backend_mut);
-
-                            view.load_tools();
-                            view.cancel_edit();
+                        if response != gtk4::ResponseType::Yes {
+                            return;
+                        }
+                        let removed = backend.borrow_mut().remove_tool(&tool_id);
+                        match removed {
+                            Ok(_) => {
+                                view.load_tools();
+                                view.cancel_edit();
+                            }
+                            // The tool was not deleted on disk, so keep it and
+                            // its form, and say why.
+                            Err(e) => {
+                                tracing::warn!("Failed to delete tool: {e}");
+                                crate::ui::gtk::common::dialog::show_error(
+                                    &t!("Delete Failed"),
+                                    &format!("{} {e}", t!("Could not delete the tool:")),
+                                    view.widget.root().and_downcast::<gtk4::Window>().as_ref(),
+                                );
+                            }
                         }
                     },
                 );
