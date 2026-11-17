@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-17 (gettext-rs update)
+
+### Changed
+- **Translations**: `gettext-rs` 0.7 → 0.8 in `gcodekit5-ui` and `gcodekit5-settings`. `setlocale` became `unsafe` in 0.8; the call in `i18n::init` is removed instead, because GTK already sets the locale when the application starts, before the first string is translated
+
 ## [Unreleased] - 2026-11-17 (visualizer opens in 3D)
 
 ### Fixed
