@@ -1,3 +1,11 @@
+## [Unreleased] - 2026-11-17 (setting reply follow-ups)
+
+### Fixed
+- **Console settings**: a `$n=v` typed in the console now reports a rejection or a missing reply in the console after up to 2 s, and its request is released once answered
+- **Two quick edits to one setting**: the settings list shows the value the controller accepted last, instead of whichever edit's timer ran last
+- **Setting sent just before a job**: the job streamer retires replies one at a time, so a setting's `ok` that arrives after the job starts is applied to the setting instead of being counted as a job line; stopping a job early no longer forgets lines that are still to be answered
+- **Replies after a job stops**: when a job stops on `error:N`, an alarm or a reset, the replies already received after that line (and any partly received line) are handed back to the connection, so later settings are still matched to their own replies
+
 ## [Unreleased] - 2026-11-16 (settings wait for the controller's reply)
 
 ### Fixed

@@ -620,14 +620,10 @@ impl MachineControlView {
         // A reset drops every line the controller had not answered.
         match &kind {
             GrblResponseLine::Ok => {
-                if let Some(id) = comm.take_reply_tag() {
-                    device_status::note_setting_reply(id, None);
-                }
+                device_status::dispatch_reply(comm.take_reply_tag(), None);
             }
             GrblResponseLine::Error(code) => {
-                if let Some(id) = comm.take_reply_tag() {
-                    device_status::note_setting_reply(id, Some(code));
-                }
+                device_status::dispatch_reply(comm.take_reply_tag(), Some(code));
             }
             GrblResponseLine::Reset(_) => {
                 comm.clear_reply_ledger();

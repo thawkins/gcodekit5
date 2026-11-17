@@ -106,6 +106,49 @@ use crate::ui::gtk::help_browser;
 use crate::{n_, t};
 use gcodekit5_core::{Shared, SharedOption, ThreadSafe, shared, shared_none};
 
+/// How the controller answered a tracked `$n=v` setting assignment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SettingOutcome {
+    /// The controller replied `ok`; the settings cache holds the new value.
+    Accepted,
+    /// The controller replied `error:N`; holds the code. The cache is unchanged.
+    Rejected(String),
+    /// No reply within 2 s; the request is no longer tracked.
+    NoReply,
+}
+
+/// Waits on the GTK main loop for the controller's reply to setting request
+/// `id` (from `device_status::begin_setting_change`), for at most 2 s, then
+/// calls `on_outcome` once. The request is always released: its result is
+/// taken, or it is cancelled on timeout.
+///
+/// # Arguments
+/// * `id` - The setting request id.
+/// * `on_outcome` - Called with the outcome on the main loop.
+pub(crate) fn await_setting_reply(id: u64, on_outcome: impl FnOnce(SettingOutcome) + 'static) {
+    const POLL: std::time::Duration = std::time::Duration::from_millis(50);
+    // 2 s at 50 ms per poll.
+    const MAX_POLLS: u32 = 40;
+    let mut on_outcome = Some(on_outcome);
+    let mut polls = 0u32;
+    gtk4::glib::timeout_add_local(POLL, move || {
+        polls += 1;
+        let outcome = match crate::device_status::take_setting_reply(id) {
+            Some(Ok(())) => SettingOutcome::Accepted,
+            Some(Err(code)) => SettingOutcome::Rejected(code),
+            None if polls > MAX_POLLS => {
+                crate::device_status::cancel_setting_change(id);
+                SettingOutcome::NoReply
+            }
+            None => return gtk4::glib::ControlFlow::Continue,
+        };
+        if let Some(callback) = on_outcome.take() {
+            callback(outcome);
+        }
+        gtk4::glib::ControlFlow::Break
+    });
+}
+
 /// Setting categories offered by the category filter (also the filter ids).
 ///
 /// Each is marked with `n_!` so it is extracted for translation: the labels
