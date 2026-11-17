@@ -156,8 +156,16 @@ fn on_startup() {
     load_css();
 }
 
+/// How long [`open_maximized_and_save_size`] waits for the window manager to
+/// maximize the window before it saves the size the window was given.
+const MAXIMIZE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Maximizes `window` and, once it has its maximized size, saves that size
 /// as the window size in Preferences, so later starts open at that size.
+///
+/// The size is read after a frame has been painted, when that frame's layout
+/// is complete. If the window is not maximized within [`MAXIMIZE_WAIT`] (the
+/// window manager ignored the request), the size it was given is saved.
 ///
 /// # Arguments
 /// * `window` - the main window, not yet presented
@@ -168,15 +176,12 @@ fn open_maximized_and_save_size(
     persistence: &Rc<RefCell<gcodekit5_settings::SettingsPersistence>>,
     dialog: &Rc<RefCell<gcodekit5_settings::SettingsDialog>>,
 ) {
-    window.maximize();
     let persistence = persistence.clone();
     let dialog = dialog.clone();
-    // The size is known only after the compositor has maximized the window
-    // and it has been laid out, so check on each frame until then.
-    window.add_tick_callback(move |win, _clock| {
+    let save = Rc::new(move |win: &ApplicationWindow| {
         let (width, height) = (win.width(), win.height());
-        if !win.is_maximized() || width <= 0 || height <= 0 {
-            return glib::ControlFlow::Continue;
+        if width <= 0 || height <= 0 {
+            return;
         }
         win.set_default_size(width, height);
         if let Ok(mut p) = persistence.try_borrow_mut() {
@@ -187,7 +192,44 @@ fn open_maximized_and_save_size(
                 p.populate_dialog(&mut d);
             }
         }
-        glib::ControlFlow::Break
+    });
+
+    window.maximize();
+    window.connect_realize(move |win| {
+        let Some(clock) = win.frame_clock() else {
+            return;
+        };
+        // Taken by whichever runs first, the paint check or the time limit.
+        let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let id = {
+            let win = win.downgrade();
+            let save = save.clone();
+            let handler = handler.clone();
+            clock.connect_after_paint(move |clock| {
+                let Some(win) = win.upgrade() else {
+                    return;
+                };
+                if !win.is_maximized() || win.width() <= 0 || win.height() <= 0 {
+                    return;
+                }
+                if let Some(id) = handler.borrow_mut().take() {
+                    clock.disconnect(id);
+                    save(&win);
+                }
+            })
+        };
+        *handler.borrow_mut() = Some(id);
+
+        let win = win.downgrade();
+        let save = save.clone();
+        glib::timeout_add_local_once(MAXIMIZE_WAIT, move || {
+            if let Some(id) = handler.borrow_mut().take() {
+                clock.disconnect(id);
+                if let Some(win) = win.upgrade() {
+                    save(&win);
+                }
+            }
+        });
     });
 }
 
