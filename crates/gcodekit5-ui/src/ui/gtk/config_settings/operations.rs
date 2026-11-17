@@ -653,19 +653,24 @@ impl ConfigSettingsView {
 
             // Send to the device first: the page must only show a value the
             // controller actually accepted.
+            // A GRBL `$n=v` is tagged so its own reply decides whether the cache
+            // and this page take the new value (Repetier `M206` is not tracked).
+            let setting_id = if setting_number >= 1000 {
+                None
+            } else {
+                crate::device_status::begin_setting_change(&command)
+            };
             let sent = match crate::device_status::settings_command_blocked() {
                 Some(reason) => Err(reason),
                 None => match *comm_clone.borrow() {
                     Some(ref comm) => {
                         let mut comm_lock = comm.lock();
                         if comm_lock.is_connected() {
-                            let sent = comm_lock.send_command(&command).map_err(|e| e.to_string());
-                            if sent.is_ok() {
-                                // The cache follows a `$n=v` only once the controller
-                                // answers `ok` (see `note_command_reply`).
-                                crate::device_status::note_setting_sent(&command);
+                            match setting_id {
+                                Some(id) => comm_lock.send_tagged_command(&command, id),
+                                None => comm_lock.send_command(&command),
                             }
-                            sent
+                            .map_err(|e| e.to_string())
                         } else {
                             Err(t!("not connected").to_string())
                         }
@@ -673,6 +678,11 @@ impl ConfigSettingsView {
                     None => Err(t!("not connected").to_string()),
                 },
             };
+            if sent.is_err()
+                && let Some(id) = setting_id
+            {
+                crate::device_status::cancel_setting_change(id);
+            }
             if let Err(reason) = sent {
                 crate::ui::gtk::common::dialog::show_warning(
                     &t!("Setting not changed"),
@@ -687,18 +697,18 @@ impl ConfigSettingsView {
 
             // Repetier EEPROM writes are acknowledged as `ok <n>`, which is not
             // tracked, so they are shown as sent.
-            if setting_number >= 1000 {
+            let Some(setting_id) = setting_id else {
                 apply_setting_value(&manager_clone, setting_number, &new_value);
                 refresh_callback();
                 return;
-            }
+            };
 
             // A GRBL `$n=v` is shown only once the controller accepts it.
             let manager = manager_clone.clone();
             let refresh = refresh_callback.clone();
             let polls = std::rc::Rc::new(std::cell::Cell::new(0u32));
             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                let reply = crate::device_status::take_setting_reply();
+                let reply = crate::device_status::take_setting_reply(setting_id);
                 polls.set(polls.get() + 1);
                 // 2 s at 50 ms per poll.
                 let failure = match reply {
@@ -709,7 +719,7 @@ impl ConfigSettingsView {
                     }
                     Some(Err(code)) => format!("{} error:{code}", t!("the controller replied")),
                     None if polls.get() > 40 => {
-                        crate::device_status::clear_pending_setting();
+                        crate::device_status::cancel_setting_change(setting_id);
                         t!("no reply from the controller").to_string()
                     }
                     None => return glib::ControlFlow::Continue,

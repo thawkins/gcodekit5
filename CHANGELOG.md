@@ -2,6 +2,7 @@
 
 ### Fixed
 - **Setting changes**: a `$n=v` setting edited in Device Config, or typed in the console, updates the cached settings (such as `$13` report units) and the settings list only once the controller answers `ok`. A rejected setting (`error:N`) or no reply within 2 s keeps the previous value and shows a warning. Repetier EEPROM edits are still shown as sent, because their `ok <n>` reply is not tracked
+- **Reply matching**: the communicator records every line it sends, so each `ok` / `error:N` is matched to the line it answers, in order. A setting is no longer credited with an earlier command's `ok` (for example `$I` followed quickly by `$13=-1`), two edits in flight keep their own results, and a reset, connect or disconnect forgets lines that will not be answered
 
 ## [Unreleased] - 2026-11-16 (devel fixes restored after the PR #104 merge)
 

@@ -11,6 +11,7 @@
 //! - Event callbacks for connection state changes
 //! - Configurable connection parameters
 
+pub mod reply_ledger;
 pub mod serial;
 pub mod tcp;
 
@@ -396,6 +397,9 @@ pub struct SerialCommunicator {
     repetier_events: Vec<RepetierEvent>,
     repetier_flow_paused: bool,
     repetier_flow_stopped: bool,
+
+    /// Lines written on the GRBL path that await their `ok` / `error:N`.
+    reply_ledger: reply_ledger::ReplyLedger,
 }
 
 impl SerialCommunicator {
@@ -411,7 +415,35 @@ impl SerialCommunicator {
             repetier_events: Vec::new(),
             repetier_flow_paused: false,
             repetier_flow_stopped: false,
+            reply_ledger: reply_ledger::ReplyLedger::new(),
         }
+    }
+
+    /// Sends `command` as one line and tags it, so its reply can be recognised
+    /// with [`Self::take_reply_tag`].
+    ///
+    /// # Arguments
+    /// * `command` - The line to send, without the newline.
+    /// * `tag` - Identifier returned by `take_reply_tag` for this line's reply.
+    ///
+    /// # Errors
+    /// Fails if the line could not be written.
+    pub fn send_tagged_command(&mut self, command: &str, tag: u64) -> gcodekit5_core::Result<()> {
+        self.send_command(command)?;
+        self.reply_ledger.tag_last(tag);
+        Ok(())
+    }
+
+    /// Records one `ok` / `error:N` reply and returns the tag of the line it
+    /// answers (see [`Self::send_tagged_command`]), if that line was tagged.
+    pub fn take_reply_tag(&mut self) -> Option<u64> {
+        self.reply_ledger.on_reply()
+    }
+
+    /// Forgets the lines awaiting a reply, for when the controller will not
+    /// answer them (a reset, or a streamed job that reads its own replies).
+    pub fn clear_reply_ledger(&mut self) {
+        self.reply_ledger.clear();
     }
 
     /// Creates a communicator already connected through `port`.
@@ -639,6 +671,7 @@ impl Communicator for SerialCommunicator {
         };
 
         // Reset emulation flags upon connection
+        self.reply_ledger.clear();
         self.configured_protocol = ControllerProtocol::Unknown;
         self.detected_protocol = ControllerProtocol::Unknown;
         self.repetier_flow_paused = false;
@@ -664,6 +697,7 @@ impl Communicator for SerialCommunicator {
     }
 
     fn disconnect(&mut self) -> gcodekit5_core::Result<()> {
+        self.reply_ledger.clear();
         self.configured_protocol = ControllerProtocol::Unknown;
         self.detected_protocol = ControllerProtocol::Unknown;
 
@@ -782,6 +816,9 @@ impl Communicator for SerialCommunicator {
                 Ok(n) => {
                     tracing::debug!("[TX] (raw) {:?}", String::from_utf8_lossy(data));
                     let sent_data = &data[..n];
+                    // Each complete line written gets exactly one reply.
+                    self.reply_ledger
+                        .on_lines_sent(sent_data.iter().filter(|&&b| b == b'\n').count());
                     let data_str = String::from_utf8_lossy(sent_data);
                     self.notify_listeners(CommunicatorEvent::DataSent, &data_str);
                     Ok(n)

@@ -1,56 +1,77 @@
 //! Tests for keeping the `$13` report-units cache in step with what is sent
-//! (review of #86).
+//! (review of #86), and for applying a setting only once the controller
+//! accepts it.
 
 use gcodekit5_ui::device_status;
+
+/// Sends `command` and answers it with `ok`.
+fn accept(command: &str) {
+    let id = device_status::begin_setting_change(command).expect("assignment");
+    device_status::note_setting_reply(id, None);
+    assert_eq!(device_status::take_setting_reply(id), Some(Ok(())));
+}
 
 #[test]
 fn test_sent_setting_updates_report_units() {
     let _guard = crate::global_env_lock();
-    // The cache follows a sent assignment only once the controller accepts it.
-    device_status::note_setting_sent("$13=1");
-    device_status::note_command_reply(None);
+    accept("$13=1");
     assert!(device_status::reports_in_inches());
-    assert_eq!(device_status::take_setting_reply(), Some(Ok(())));
-    device_status::note_setting_sent("$13=0");
-    device_status::note_command_reply(None);
+    accept("$13=0");
     assert!(!device_status::reports_in_inches());
-    let _ = device_status::take_setting_reply();
-    // Not a setting assignment: ignored.
-    device_status::note_setting_sent("G0 X1");
-    device_status::note_setting_sent("$J=G91 X1 F100");
-    device_status::note_command_reply(None);
-    assert!(!device_status::reports_in_inches());
-    assert_eq!(device_status::take_setting_reply(), None);
+    // Not a setting assignment: not tracked.
+    assert_eq!(device_status::begin_setting_change("G0 X1"), None);
+    assert_eq!(device_status::begin_setting_change("$J=G91 X1 F100"), None);
 }
 
 #[test]
 fn test_rejected_setting_keeps_cached_value() {
     let _guard = crate::global_env_lock();
-    device_status::note_setting_sent("$13=1");
-    device_status::note_command_reply(None);
-    let _ = device_status::take_setting_reply();
-    assert!(device_status::reports_in_inches());
+    accept("$13=1");
 
     // Sent but not answered yet: the cache keeps the old value.
-    device_status::note_setting_sent("$13=0");
+    let id = device_status::begin_setting_change("$13=0").expect("assignment");
     assert!(device_status::reports_in_inches());
-    assert_eq!(device_status::take_setting_reply(), None);
+    assert_eq!(device_status::take_setting_reply(id), None);
 
     // Rejected: the old value stays and the error is reported once.
-    device_status::note_command_reply(Some("3"));
+    device_status::note_setting_reply(id, Some("3"));
     assert!(device_status::reports_in_inches());
     assert_eq!(
-        device_status::take_setting_reply(),
+        device_status::take_setting_reply(id),
         Some(Err("3".to_string()))
     );
-    assert_eq!(device_status::take_setting_reply(), None);
+    assert_eq!(device_status::take_setting_reply(id), None);
 
-    // A later reply does not belong to the rejected assignment.
-    device_status::note_command_reply(None);
-    assert!(device_status::reports_in_inches());
+    accept("$13=0");
+}
 
-    // Leave the cache as other tests expect it.
-    device_status::note_setting_sent("$13=0");
-    device_status::note_command_reply(None);
-    let _ = device_status::take_setting_reply();
+#[test]
+fn test_setting_replies_stay_with_their_request() {
+    let _guard = crate::global_env_lock();
+    accept("$13=0");
+
+    // Two outstanding edits: each reply applies only its own value.
+    let first = device_status::begin_setting_change("$13=1").expect("assignment");
+    let second = device_status::begin_setting_change("$13=0").expect("assignment");
+    device_status::note_setting_reply(first, Some("3"));
+    device_status::note_setting_reply(second, None);
+    assert!(!device_status::reports_in_inches());
+    assert_eq!(device_status::take_setting_reply(second), Some(Ok(())));
+    assert_eq!(
+        device_status::take_setting_reply(first),
+        Some(Err("3".to_string()))
+    );
+}
+
+#[test]
+fn test_disconnect_forgets_pending_settings() {
+    let _guard = crate::global_env_lock();
+    accept("$13=0");
+
+    let id = device_status::begin_setting_change("$13=1").expect("assignment");
+    device_status::update_connection_status(false, None);
+    // A reply after the session ended does not apply the old assignment.
+    device_status::note_setting_reply(id, None);
+    assert!(!device_status::reports_in_inches());
+    assert_eq!(device_status::take_setting_reply(id), None);
 }
