@@ -2920,3 +2920,9 @@ msgstr ""
 
 msgid "Settings retrieval incomplete (timed out), settings received:"
 msgstr ""
+
+msgid "the controller replied"
+msgstr ""
+
+msgid "no reply from the controller"
+msgstr ""

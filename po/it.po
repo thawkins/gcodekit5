@@ -2999,3 +2999,9 @@ msgstr "Recupero delle impostazioni e delle informazioni del dispositivo..."
 
 msgid "Settings retrieval incomplete (timed out), settings received:"
 msgstr "Recupero delle impostazioni incompleto (tempo scaduto), impostazioni ricevute:"
+
+msgid "the controller replied"
+msgstr "il controller ha risposto"
+
+msgid "no reply from the controller"
+msgstr "nessuna risposta dal controller"

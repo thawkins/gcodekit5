@@ -636,6 +636,7 @@ impl ConfigSettingsView {
         let comm_clone = communicator.clone();
         let manager_clone = settings_manager.clone();
         let dialog_save = dialog.clone();
+        let refresh_callback = std::rc::Rc::new(refresh_callback);
 
         save_btn.connect_clicked(move |_| {
             let new_value = value_entry.text().to_string();
@@ -652,18 +653,24 @@ impl ConfigSettingsView {
 
             // Send to the device first: the page must only show a value the
             // controller actually accepted.
+            // A GRBL `$n=v` is tagged so its own reply decides whether the cache
+            // and this page take the new value (Repetier `M206` is not tracked).
+            let setting_id = if setting_number >= 1000 {
+                None
+            } else {
+                crate::device_status::begin_setting_change(&command)
+            };
             let sent = match crate::device_status::settings_command_blocked() {
                 Some(reason) => Err(reason),
                 None => match *comm_clone.borrow() {
                     Some(ref comm) => {
                         let mut comm_lock = comm.lock();
                         if comm_lock.is_connected() {
-                            let sent = comm_lock.send_command(&command).map_err(|e| e.to_string());
-                            if sent.is_ok() {
-                                // GRBL replies `ok`, not the value: keep the cache in step.
-                                crate::device_status::note_setting_sent(&command);
+                            match setting_id {
+                                Some(id) => comm_lock.send_tagged_command(&command, id),
+                                None => comm_lock.send_command(&command),
                             }
-                            sent
+                            .map_err(|e| e.to_string())
                         } else {
                             Err(t!("not connected").to_string())
                         }
@@ -671,6 +678,11 @@ impl ConfigSettingsView {
                     None => Err(t!("not connected").to_string()),
                 },
             };
+            if sent.is_err()
+                && let Some(id) = setting_id
+            {
+                crate::device_status::cancel_setting_change(id);
+            }
             if let Err(reason) = sent {
                 crate::ui::gtk::common::dialog::show_warning(
                     &t!("Setting not changed"),
@@ -681,16 +693,44 @@ impl ConfigSettingsView {
                 return;
             }
 
-            let mut manager = manager_clone.borrow_mut();
-            if let Some(setting) = manager.get_setting(setting_number) {
-                let mut updated = setting.clone();
-                updated.value = new_value.clone();
-                updated.numeric_value = new_value.parse::<f64>().ok();
-                manager.set_setting(updated);
-            }
-            drop(manager);
-            refresh_callback();
             dialog_save.close();
+
+            // Repetier EEPROM writes are acknowledged as `ok <n>`, which is not
+            // tracked, so they are shown as sent.
+            let Some(setting_id) = setting_id else {
+                apply_setting_value(&manager_clone, setting_number, &new_value);
+                refresh_callback();
+                return;
+            };
+
+            // A GRBL `$n=v` is shown only once the controller accepts it.
+            let manager = manager_clone.clone();
+            let refresh = refresh_callback.clone();
+            let polls = std::rc::Rc::new(std::cell::Cell::new(0u32));
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                let reply = crate::device_status::take_setting_reply(setting_id);
+                polls.set(polls.get() + 1);
+                // 2 s at 50 ms per poll.
+                let failure = match reply {
+                    Some(Ok(())) => {
+                        apply_setting_value(&manager, setting_number, &new_value);
+                        refresh();
+                        return glib::ControlFlow::Break;
+                    }
+                    Some(Err(code)) => format!("{} error:{code}", t!("the controller replied")),
+                    None if polls.get() > 40 => {
+                        crate::device_status::cancel_setting_change(setting_id);
+                        t!("no reply from the controller").to_string()
+                    }
+                    None => return glib::ControlFlow::Continue,
+                };
+                crate::ui::gtk::common::dialog::show_warning(
+                    &t!("Setting not changed"),
+                    &format!("${setting_number}={new_value}: {failure}"),
+                    None,
+                );
+                glib::ControlFlow::Break
+            });
         });
         btn_box.append(&save_btn);
 
@@ -751,5 +791,21 @@ impl ConfigSettingsView {
                 }
             }
         });
+    }
+}
+
+/// Stores a new value for a setting in the Device Config list.
+///
+/// # Arguments
+/// * `manager` - The settings shown on the page.
+/// * `number` - Setting number (Repetier EEPROM positions are offset by 1000).
+/// * `value` - The value the controller now holds.
+fn apply_setting_value(manager: &Shared<SettingsManager>, number: u16, value: &str) {
+    let mut manager = manager.borrow_mut();
+    if let Some(setting) = manager.get_setting(number) {
+        let mut updated = setting.clone();
+        updated.value = value.to_string();
+        updated.numeric_value = value.parse::<f64>().ok();
+        manager.set_setting(updated);
     }
 }

@@ -164,6 +164,8 @@ pub fn update_feed_spindle_state(feed_spindle: FeedSpindleState) {
 
 /// Update connection status
 pub fn update_connection_status(connected: bool, port: Option<String>) {
+    // Assignments sent in an earlier session will never be answered in this one.
+    clear_pending_settings();
     {
         let mut status = DEVICE_STATUS.write();
         status.is_connected = connected;
@@ -362,23 +364,103 @@ pub fn machine_is_stopped(state: &str) -> bool {
     !(low.starts_with("run") || low.starts_with("jog") || low.starts_with("home"))
 }
 
-/// Records a `$n=v` setting assignment that was sent to the controller, so
-/// the cached settings (e.g. `$13`, which decides report units) match it.
-/// GRBL answers an assignment with `ok`, not with the new value, so the
-/// cache would otherwise keep the old value until the next `$$`.
+/// A `$n=v` assignment sent to the controller and waiting for its reply.
+#[derive(Debug)]
+struct PendingSetting {
+    number: u16,
+    value: String,
+    /// `None` until the controller answers; then `Ok` for `ok`, or the error code.
+    reply: Option<Result<(), String>>,
+}
+
+/// Assignments awaiting the controller's reply, by request id.
+static PENDING_SETTINGS: Lazy<std::sync::Mutex<HashMap<u64, PendingSetting>>> =
+    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// Source of request ids for [`begin_setting_change`].
+static NEXT_SETTING_ID: AtomicU64 = AtomicU64::new(1);
+
+fn pending_settings() -> std::sync::MutexGuard<'static, HashMap<u64, PendingSetting>> {
+    PENDING_SETTINGS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Starts tracking a `$n=v` setting assignment that is about to be sent.
+///
+/// GRBL answers an assignment with `ok` (or `error:N`), not with the new
+/// value. The cached settings (e.g. `$13`, which decides report units) take
+/// the new value only when [`note_setting_reply`] reports `ok` for this
+/// request; a rejected assignment leaves them unchanged. Send the line tagged
+/// with the returned id (`SerialCommunicator::send_tagged_command`) so its own
+/// reply is matched to it, and call [`cancel_setting_change`] if it could not
+/// be sent.
 ///
 /// # Arguments
-/// * `command` - The line sent; anything that is not `$<number>=<value>` is ignored.
-pub fn note_setting_sent(command: &str) {
-    let Some(body) = command.trim().strip_prefix('$') else {
+/// * `command` - The line to send.
+///
+/// # Returns
+/// The request id, or `None` if `command` is not `$<number>=<value>`.
+pub fn begin_setting_change(command: &str) -> Option<u64> {
+    let body = command.trim().strip_prefix('$')?;
+    let (number, value) = body.split_once('=')?;
+    let number = number.trim().parse::<u16>().ok()?;
+    let id = NEXT_SETTING_ID.fetch_add(1, Ordering::Relaxed);
+    pending_settings().insert(
+        id,
+        PendingSetting {
+            number,
+            value: value.trim().to_string(),
+            reply: None,
+        },
+    );
+    Some(id)
+}
+
+/// Records the controller's reply to the assignment with request id `id`.
+/// On `ok` the cached value is updated. Replies for unknown or already
+/// answered requests are ignored.
+///
+/// # Arguments
+/// * `id` - Request id from [`begin_setting_change`].
+/// * `error` - `None` for `ok`, or the code after `error:`.
+pub fn note_setting_reply(id: u64, error: Option<&str>) {
+    let mut pending = pending_settings();
+    let Some(setting) = pending.get_mut(&id).filter(|p| p.reply.is_none()) else {
         return;
     };
-    let Some((number, value)) = body.split_once('=') else {
-        return;
-    };
-    if let Ok(number) = number.trim().parse::<u16>() {
-        update_grbl_setting(number, value.trim().to_string());
+    match error {
+        None => {
+            update_grbl_setting(setting.number, setting.value.clone());
+            setting.reply = Some(Ok(()));
+        }
+        Some(code) => setting.reply = Some(Err(code.to_string())),
     }
+}
+
+/// Takes the outcome of the assignment with request id `id` once the
+/// controller answered it.
+///
+/// # Returns
+/// `None` while it is unanswered (or unknown); `Some(Ok(()))` when it was
+/// accepted; `Some(Err(code))` when it was rejected.
+pub fn take_setting_reply(id: u64) -> Option<Result<(), String>> {
+    let mut pending = pending_settings();
+    let reply = pending.get(&id).and_then(|p| p.reply.clone())?;
+    pending.remove(&id);
+    Some(reply)
+}
+
+/// Stops tracking the assignment with request id `id` (it was not sent, or
+/// its reply did not arrive in time).
+pub fn cancel_setting_change(id: u64) {
+    pending_settings().remove(&id);
+}
+
+/// Forgets every pending assignment, for when the controller will not answer
+/// them (disconnect or reset).
+pub fn clear_pending_settings() {
+    pending_settings().clear();
 }
 
 /// Whether the controller reports positions in inches (`$13=1`).

@@ -2991,3 +2991,9 @@ msgstr "Obtendo configurações e informações do dispositivo..."
 
 msgid "Settings retrieval incomplete (timed out), settings received:"
 msgstr "Leitura das configurações incompleta (tempo esgotado), configurações recebidas:"
+
+msgid "the controller replied"
+msgstr "o controlador respondeu"
+
+msgid "no reply from the controller"
+msgstr "sem resposta do controlador"

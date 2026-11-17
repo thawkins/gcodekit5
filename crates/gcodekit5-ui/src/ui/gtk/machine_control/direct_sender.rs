@@ -151,6 +151,10 @@ impl DirectSender {
 
         thread::spawn(move || {
             let outcome = stream_lines(&lines, &comm, &stop_flag, &tx);
+            // The streamer reads the job's replies itself, so the communicator's
+            // reply ledger never saw them answered. Settings are refused while a
+            // job runs, so no tagged line is lost by forgetting them here.
+            comm.lock().clear_reply_ledger();
             *streaming_flag.lock() = false;
             running_flag.store(false, Ordering::SeqCst);
             let _ = tx.send(SenderEvent::Finished(outcome));

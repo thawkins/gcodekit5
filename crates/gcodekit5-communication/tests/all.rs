@@ -31,3 +31,5 @@ mod test_error_decoder;
 mod test_protocol_registry;
 #[path = "test_repetier.rs"]
 mod test_repetier;
+#[path = "test_reply_ledger.rs"]
+mod test_reply_ledger;

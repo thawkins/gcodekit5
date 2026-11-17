@@ -615,6 +615,29 @@ impl MachineControlView {
         // (e.g. soft limit) ends the jog and is logged, not shown as a dialog.
         let jog_reply = (is_ack || is_error) && self.continuous_jog.lock().on_reply(is_error);
 
+        // Every `ok` / `error:N` answers the oldest unanswered line. A tagged line is
+        // a `$n=v` assignment, which takes effect in the settings cache only on `ok`.
+        // A reset drops every line the controller had not answered.
+        match &kind {
+            GrblResponseLine::Ok => {
+                if let Some(id) = comm.take_reply_tag() {
+                    device_status::note_setting_reply(id, None);
+                }
+            }
+            GrblResponseLine::Error(code) => {
+                if let Some(id) = comm.take_reply_tag() {
+                    device_status::note_setting_reply(id, Some(code));
+                }
+            }
+            GrblResponseLine::Reset(_) => {
+                comm.clear_reply_ledger();
+                device_status::clear_pending_settings();
+            }
+            GrblResponseLine::Alarm(_)
+            | GrblResponseLine::Status(_)
+            | GrblResponseLine::Other(_) => {}
+        }
+
         // ---
         let line_for_log = Self::decode_response_line(line);
         let protocol_ok = comm.detected_protocol() == comm.configured_protocol();
