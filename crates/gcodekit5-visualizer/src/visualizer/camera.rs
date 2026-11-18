@@ -130,7 +130,7 @@ impl Camera {
             Vec3::Z
         };
 
-        Mat4::look_at_rh(eye, self.target, up)
+        glam::camera::rh::view::look_at_mat4(eye, self.target, up)
     }
 
     pub fn set_view(&mut self, yaw_deg: f32, pitch_deg: f32) {
@@ -165,7 +165,7 @@ impl Camera {
             // PROYECCIÓN ORTOGRÁFICA
             let half_height = self.distance * (self.fov.to_radians() / 2.0).tan();
             let half_width = half_height * self.aspect_ratio;
-            Mat4::orthographic_rh(
+            glam::camera::rh::proj::directx::orthographic(
                 -half_width,
                 half_width,
                 -half_height,
@@ -175,7 +175,7 @@ impl Camera {
             )
         } else {
             // PROYECCIÓN PERSPECTIVA
-            Mat4::perspective_rh(
+            glam::camera::rh::proj::directx::perspective(
                 self.fov.to_radians(),
                 self.aspect_ratio,
                 self.near,
