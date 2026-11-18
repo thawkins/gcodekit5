@@ -1273,7 +1273,7 @@ dependencies = [
  "libloading 0.9.1",
  "lyon",
  "once_cell",
- "raw-window-handle 0.5.2",
+ "raw-window-handle",
  "rfd",
  "serde",
  "serde_json",
@@ -3181,12 +3181,6 @@ dependencies = [
 
 [[package]]
 name = "raw-window-handle"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
-
-[[package]]
-name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
@@ -3290,7 +3284,7 @@ dependencies = [
  "objc2-uniform-type-identifiers",
  "percent-encoding",
  "pollster",
- "raw-window-handle 0.6.2",
+ "raw-window-handle",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wayland-backend",

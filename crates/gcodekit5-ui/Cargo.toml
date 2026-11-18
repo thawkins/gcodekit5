@@ -37,7 +37,7 @@ libloading = "0.9"
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-raw-window-handle = "0.5"
+raw-window-handle = "0.6"
 windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
 
 [build-dependencies]
