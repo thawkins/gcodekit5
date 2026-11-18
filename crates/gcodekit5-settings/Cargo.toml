@@ -14,7 +14,7 @@ gcodekit5-core = { path = "../gcodekit5-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
-dirs = "6.0"
+dirs = "7.0"
 tracing = "0.1"
 thiserror = { workspace = true }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
