@@ -1,3 +1,8 @@
+## [Unreleased] - 2026-11-18 (cavalier_contours update)
+
+### Changed
+- **Dependencies**: `cavalier_contours` 0.7 → 0.9 in `gcodekit5-designer` and `gcodekit5-camtools` (supersedes Dependabot's #134). `Shape::parallel_offset` now takes its options by reference; the one call in `pocket_operations/holes.rs` is updated
+
 ## [Unreleased] - 2026-11-17 (stale TODO removed)
 
 ### Changed
