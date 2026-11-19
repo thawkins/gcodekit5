@@ -95,7 +95,7 @@ fn to_pline(points: &[Point], ccw: bool) -> Option<Polyline> {
 /// A panic inside the offset algorithm is treated as an empty result.
 fn offset_shape(shape: &Shape<f64>, distance: f64) -> Shape<f64> {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        shape.parallel_offset(distance, ShapeOffsetOptions::default())
+        shape.parallel_offset(distance, &ShapeOffsetOptions::default())
     }))
     .unwrap_or_else(|_| {
         tracing::warn!(

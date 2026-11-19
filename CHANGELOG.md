@@ -1,3 +1,13 @@
+## [Unreleased] - 2026-11-18 (glam update)
+
+### Changed
+- **Dependencies**: `glam` 0.29 → 0.34 in `gcodekit5-visualizer` and `gcodekit5-ui` (supersedes Dependabot's #141). glam 0.34 removed the `Mat4` camera constructors; the 3D camera now uses `glam::camera::rh::view::look_at_mat4` and `glam::camera::rh::proj::directx::{perspective, orthographic}`, which produce the same matrices (depth range [0, 1]). New regression tests pin the view, perspective and orthographic matrices to the old formulas
+
+## [Unreleased] - 2026-11-18 (cavalier_contours update)
+
+### Changed
+- **Dependencies**: `cavalier_contours` 0.7 → 0.9 in `gcodekit5-designer` and `gcodekit5-camtools` (supersedes Dependabot's #134). `Shape::parallel_offset` now takes its options by reference; the one call in `pocket_operations/holes.rs` is updated
+
 ## [Unreleased] - 2026-11-17 (stale TODO removed)
 
 ### Changed
