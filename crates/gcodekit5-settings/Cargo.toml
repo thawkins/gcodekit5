@@ -13,7 +13,7 @@ description = "Configuration and settings management for GCodeKit4"
 gcodekit5-core = { path = "../gcodekit5-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "1.1"
 dirs = "7.0"
 tracing = "0.1"
 thiserror = { workspace = true }
