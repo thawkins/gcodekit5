@@ -1293,7 +1293,7 @@ dependencies = [
  "sourceview5",
  "tempfile",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
