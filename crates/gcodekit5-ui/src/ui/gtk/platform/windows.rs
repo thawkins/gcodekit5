@@ -13,8 +13,8 @@
 #![allow(unsafe_code)]
 
 use raw_window_handle::{
-    HasDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32DisplayHandle,
-    Win32WindowHandle,
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawWindowHandle,
+    Win32WindowHandle, WindowHandle,
 };
 
 /// Wrapper for a valid Win32 window handle (HWND).
@@ -23,30 +23,32 @@ use raw_window_handle::{
 /// traits for rfd to use it as a parent window for file dialogs.
 pub struct Win32ParentHandle(pub std::num::NonZeroIsize);
 
-// SAFETY: Win32ParentHandle wraps a valid non-zero HWND obtained from
-// GetForegroundWindow. The handle is valid for the lifetime of the window.
-unsafe impl HasRawWindowHandle for Win32ParentHandle {
-    fn raw_window_handle(&self) -> Result<RawWindowHandle, raw_window_handle::HandleError> {
-        let handle = Win32WindowHandle::new(self.0);
-        Ok(RawWindowHandle::Win32(handle))
+impl HasWindowHandle for Win32ParentHandle {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+        // SAFETY: GetWindowThreadProcessId only reads the window's owner and
+        // returns 0 for an invalid handle; a null process-id pointer is allowed.
+        let owner = unsafe { GetWindowThreadProcessId(self.0.get() as _, std::ptr::null_mut()) };
+        // SAFETY: GetCurrentThreadId has no preconditions.
+        if owner == 0 || owner != unsafe { GetCurrentThreadId() } {
+            // The foreground window belongs to another thread or process, so
+            // it cannot be lent as a parent; the dialog opens unparented.
+            return Err(HandleError::Unavailable);
+        }
+        // The optional `hinstance` is left unset: it must be the window's own
+        // GWLP_HINSTANCE, which rfd does not need to parent a dialog.
+        let raw = RawWindowHandle::Win32(Win32WindowHandle::new(self.0));
+        // SAFETY: the HWND is non-zero, belongs to the calling thread (checked
+        // above), and the modal dialog that borrows it is shown and closed
+        // while that window still exists.
+        Ok(unsafe { WindowHandle::borrow_raw(raw) })
     }
 }
 
-// SAFETY: Win32ParentHandle provides a valid display handle via GetModuleHandleW.
-// The module handle is valid for the lifetime of the process.
-unsafe impl HasDisplayHandle for Win32ParentHandle {
-    fn raw_display_handle(&self) -> Result<RawDisplayHandle, raw_window_handle::HandleError> {
-        // Get module handle for the current process as hinstance
-        use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-        // SAFETY: GetModuleHandleW(null) returns the module handle of the
-        // current process, which is always valid.
-        let hinst = unsafe { GetModuleHandleW(std::ptr::null()) } as isize;
-        if let Some(nz) = std::num::NonZeroIsize::new(hinst) {
-            let dh = Win32DisplayHandle::new(nz);
-            Ok(RawDisplayHandle::Win32(dh))
-        } else {
-            Err(raw_window_handle::HandleError::UnsupportedPlatform)
-        }
+impl HasDisplayHandle for Win32ParentHandle {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        Ok(DisplayHandle::windows())
     }
 }
 
