@@ -25,16 +25,24 @@ pub struct Win32ParentHandle(pub std::num::NonZeroIsize);
 
 impl HasWindowHandle for Win32ParentHandle {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-        use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-        let mut handle = Win32WindowHandle::new(self.0);
-        // SAFETY: GetModuleHandleW(null) returns the module handle of the
-        // current process, which is always valid.
-        let hinstance = unsafe { GetModuleHandleW(std::ptr::null()) } as isize;
-        handle.hinstance = std::num::NonZeroIsize::new(hinstance);
-        // SAFETY: the HWND is a non-zero handle from GetForegroundWindow, and
-        // the dialog that borrows it is modal, so it is shown and closed while
-        // that window still exists.
-        Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(handle)) })
+        use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+        // SAFETY: GetWindowThreadProcessId only reads the window's owner and
+        // returns 0 for an invalid handle; a null process-id pointer is allowed.
+        let owner = unsafe { GetWindowThreadProcessId(self.0.get() as _, std::ptr::null_mut()) };
+        // SAFETY: GetCurrentThreadId has no preconditions.
+        if owner == 0 || owner != unsafe { GetCurrentThreadId() } {
+            // The foreground window belongs to another thread or process, so
+            // it cannot be lent as a parent; the dialog opens unparented.
+            return Err(HandleError::Unavailable);
+        }
+        // The optional `hinstance` is left unset: it must be the window's own
+        // GWLP_HINSTANCE, which rfd does not need to parent a dialog.
+        let raw = RawWindowHandle::Win32(Win32WindowHandle::new(self.0));
+        // SAFETY: the HWND is non-zero, belongs to the calling thread (checked
+        // above), and the modal dialog that borrows it is shown and closed
+        // while that window still exists.
+        Ok(unsafe { WindowHandle::borrow_raw(raw) })
     }
 }
 

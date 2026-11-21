@@ -1,7 +1,7 @@
 ## [Unreleased] - 2026-11-21 (Windows build with raw-window-handle 0.6)
 
 ### Fixed
-- **Windows build**: the file-dialog parent handle (`platform/windows.rs`) now implements the raw-window-handle 0.6 traits (`HasWindowHandle`, `HasDisplayHandle`). Since #135 moved the crate to 0.6, the Windows build failed to compile; the Linux CI does not build this module. Checked with `cargo clippy --target x86_64-pc-windows-gnu` against rfd 0.18, raw-window-handle 0.6 and windows-sys 0.61
+- **Windows build**: the file-dialog parent handle (`platform/windows.rs`) now implements the raw-window-handle 0.6 traits (`HasWindowHandle`, `HasDisplayHandle`), and lends the foreground window as a parent only when it belongs to the calling thread, as raw-window-handle requires (otherwise the dialog opens unparented). Since #135 moved the crate to 0.6, the Windows build failed to compile; the Linux CI does not build this module. Checked with `cargo clippy --target x86_64-pc-windows-gnu` against rfd 0.18, raw-window-handle 0.6 and windows-sys 0.61
 
 ## [Unreleased] - 2026-11-18 (glam update)
 
