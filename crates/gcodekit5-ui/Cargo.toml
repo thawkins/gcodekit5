@@ -38,7 +38,7 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle = "0.6"
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_Threading"] }
 
 [build-dependencies]
 glib-build-tools = "0.22"
